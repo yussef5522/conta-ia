@@ -9,7 +9,7 @@ import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { enviarParaContasPagar } from '@/lib/stock/ponte-contas-pagar'
-import { definirVencimento, parcelasSemData, rastroDoVencimento, VencimentoError } from '@/lib/stock/ponte/vencimento'
+import { definirVencimento, parcelasNaoEnviadas, rastroDoVencimento, VencimentoError } from '@/lib/stock/ponte/vencimento'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -19,7 +19,9 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (a.erro) return a.erro
   const sug = new URL(request.url).searchParams.get('suggestionId')
   if (sug) return NextResponse.json({ rastro: await rastroDoVencimento(companyId, sug, prisma) })
-  return NextResponse.json({ semData: await parcelasSemData(companyId, prisma) })
+    // ⚠️ `semData` fica como nome do campo por compat do cliente; o CONTEÚDO agora é tudo
+  // que falta ir pro financeiro (com data ou sem) — o card separa os dois trabalhos.
+  return NextResponse.json({ semData: await parcelasNaoEnviadas(companyId, prisma) })
 }
 
 const schema = z.object({

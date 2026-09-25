@@ -13,7 +13,7 @@ import { prisma } from '@/lib/db'
 import { buildAuthContextForTest } from '@/lib/auth/rbac'
 import { confirmarConferencia } from '../../confirmar-conferencia'
 import { estadoDasParcelas } from '../estado-das-parcelas'
-import { parcelasSemData } from '../vencimento'
+import { parcelasNaoEnviadas } from '../vencimento'
 import { checkPonteInvariants } from '../../ponte-invariants'
 import {
   previewDefinirParcelas, definirParcelasEEnviar, notasSemVencimento, fraseDaFila, DefinirParcelasError,
@@ -148,7 +148,8 @@ describe('⭐⭐⭐ definir as parcelas CRIA a conta a pagar', () => {
       cadastrarFornecedores: true, ctx: ctx(), userId,
     }, prisma)
     expect(await notasSemVencimento(companyId, prisma)).toEqual([])
-    expect(await parcelasSemData(companyId, prisma)).toEqual([])
+    // ⭐ e a fila zera de verdade: enviada é enviada, não importa se tinha data ou não
+    expect(await parcelasNaoEnviadas(companyId, prisma)).toEqual([])
     // ⭐ o invariante é a MESMA pergunta da fila — os dois zeram juntos, por construção
     expect((await checkPonteInvariants(prisma)).filter((f) => f.companyId === companyId && f.invariante === 'F5')).toHaveLength(0)
   })

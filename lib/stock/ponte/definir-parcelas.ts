@@ -175,11 +175,16 @@ export async function definirParcelasEEnviar(
 }
 
 /**
- * ⭐ A FILA DAS QUE FALTAM — o F5 virando TELA.
+ * ⭐ A FILA DAS QUE FALTAM — o F5 **e o F3** virando TELA.
  *
- * ⚠️ Ela nasce da MESMA pergunta do invariante (sugestão sem data e não enviada), pra o
- * e-mail noturno e a tela nunca contarem números diferentes. **E-mail noturno não é lugar
- * de dívida vencendo — o dono lê TELA** (a lição dos R$ 21.968,02 de 30/08).
+ * ⚠️ Ela nasce da MESMA pergunta do invariante (sugestão não enviada), pra o e-mail
+ * noturno e a tela nunca contarem números diferentes. **E-mail noturno não é lugar de
+ * dívida vencendo — o dono lê TELA** (a lição dos R$ 21.968,02 de 30/08).
+ *
+ * ⛔ Em 13/09 isto valeu só pro **F5** (sem data). O **F3** (conferida, COM data, nunca
+ * enviada) ficou sem tela por 11 dias — e o único caso que apareceu, o do IVAN, venceu
+ * nesse meio-tempo. **A mesma fila responde os dois**, porque a pergunta é uma: *o que
+ * falta ir pro financeiro?*
  */
 export interface NotaSemVencimento {
   nfeId: string
@@ -193,6 +198,21 @@ export interface NotaSemVencimento {
   /** ⭐ pra onde a linha LEVA: o recibo, onde mora o gesto. Fila que não abre o gesto
    *  é a "porta sem maçaneta" do outro lado — o dono vê o trabalho e não alcança ele. */
   conferenceId: string | null
+  /**
+   * ⭐⭐ 24/09 — **O VENCIMENTO, QUANDO ELE JÁ EXISTE.**
+   *
+   * ⛔⛔ A fila do F5 ganhou tela em 13/09 com esta lição escrita no arquivo (*"e-mail
+   * noturno não é lugar de dívida vencendo — o dono lê TELA"*) — e **o F3 nunca ganhou**.
+   * Resultado: o boleto do IVAN (R$ 326,50, venceu 14/09) passou **10 dias** com o F3
+   * gritando todo dia e **nenhuma tela mostrando**. É o episódio de 30/08 se repetindo
+   * exatamente onde o comentário avisava.
+   *
+   * ⚠️ `null` = precisa COMBINAR a data (o trabalho do F5). Com data = **só falta MANDAR**,
+   * e são gestos diferentes: um abre o recibo, o outro é um clique.
+   */
+  dVenc: Date | null
+  /** ⭐ as sugestões desta nota — é o que o POST `/estoque/contas-a-pagar` recebe */
+  suggestionIds: string[]
 }
 
 export async function notasSemVencimento(
@@ -200,9 +220,9 @@ export async function notasSemVencimento(
   db: PrismaClient = defaultPrisma,
 ): Promise<NotaSemVencimento[]> {
   const semData = await db.stockPayableSuggestion.findMany({
-    where: { companyId, dVenc: null },
-    select: { id: true, nfeId: true, chave: true, supplierNome: true, valor: true, criadoEm: true },
-    orderBy: { criadoEm: 'asc' },
+    where: { companyId },
+    select: { id: true, nfeId: true, chave: true, supplierNome: true, valor: true, criadoEm: true, dVenc: true },
+    orderBy: [{ dVenc: 'asc' }, { criadoEm: 'asc' }],
   })
   if (!semData.length) return []
 
@@ -217,7 +237,7 @@ export async function notasSemVencimento(
   for (const s of semData) {
     if (enviadas.has(s.id)) continue
     const j = porNota.get(s.nfeId)
-    if (j) { j.total = r2(j.total + s.valor); j.parcelas++; continue }
+    if (j) { j.total = r2(j.total + s.valor); j.parcelas++; j.suggestionIds.push(s.id); continue }
     porNota.set(s.nfeId, {
       nfeId: s.nfeId,
       nNF: s.chave.slice(25, 34).replace(/^0+/, '') || null,
@@ -227,6 +247,8 @@ export async function notasSemVencimento(
       entrouEm: s.criadoEm,
       parcelas: 1,
       conferenceId: null,
+      dVenc: s.dVenc,
+      suggestionIds: [s.id],
     })
   }
   const notas = [...porNota.values()]

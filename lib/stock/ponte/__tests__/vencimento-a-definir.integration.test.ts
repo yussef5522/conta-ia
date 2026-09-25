@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
-import { parcelasSemData, definirVencimento, rastroDoVencimento, ehADefinir, VencimentoError } from '../vencimento'
+import { parcelasNaoEnviadas, definirVencimento, rastroDoVencimento, ehADefinir, VencimentoError } from '../vencimento'
 import { checkPonteInvariants, F3_DIAS } from '../../ponte-invariants'
 
 // ⚠️ CNPJ ÚNICO na suíte: os arquivos rodam em PARALELO contra o mesmo banco, e dois testes
@@ -45,7 +45,7 @@ afterEach(async () => {
 describe('⭐⭐ a parcela sem data EXISTE e fica visível', () => {
   it('⭐⭐ nota sem boleto vira parcela A DEFINIR na lista', async () => {
     await sugestao({ valor: 526.2 })
-    const lista = await parcelasSemData(companyId, prisma)
+    const lista = await parcelasNaoEnviadas(companyId, prisma)
     expect(lista).toHaveLength(1)
     expect(lista[0].valor).toBe(526.2)
     expect(ehADefinir(null)).toBe(true)
@@ -63,7 +63,13 @@ describe('⭐⭐ a parcela sem data EXISTE e fica visível', () => {
     await prisma.stockPayableLink.create({
       data: { companyId, origem: 'NFE', refId: s.nfeId, suggestionId: s.id, nDup: null, chave: s.chave, transactionId: 'tx-1', supplierId: 'sup-1', valor: 526.2, dVenc: new Date('2026-09-10T00:00:00Z') },
     })
-    expect((await parcelasSemData(companyId, prisma)).find((p) => p.suggestionId === s.id)?.enviada).toBe(true)
+    /**
+     * ⚠️ ASSERÇÃO CORRIGIDA EM 24/09 — ela contradizia o PRÓPRIO TÍTULO. O teste se chama
+     * *"sai da lista"* e conferia que a parcela **estava** na lista com `enviada: true`;
+     * quem a tirava era um `.filter` repetido em cada chamador. Agora a lista responde
+     * *"o que falta ir pro financeiro"* e a exclusão mora nela.
+     */
+    expect((await parcelasNaoEnviadas(companyId, prisma)).find((p) => p.suggestionId === s.id)).toBeUndefined()
   })
 })
 
@@ -83,10 +89,20 @@ describe('⭐⭐ EU defino a data, com rastro', () => {
     expect(rastro[0].dVencAnterior, 'não havia data antes').toBeNull()
   })
 
-  it('⭐ e a parcela sai da lista de "sem data" (entrou no fluxo normal)', async () => {
+  it('⛔⛔ definir a data NÃO tira da fila — ela sai quando VAI pro financeiro', async () => {
+    /**
+     * ⚠️⚠️ TESTE INVERTIDO EM 24/09, COM O MOTIVO ESCRITO — ele afirmava o VÃO.
+     *
+     * Ele dizia que definir a data zera a fila. Mas `definirVencimento` **só grava a data**
+     * (quem manda pro financeiro é o passo seguinte, na rota) — então a parcela ficava com
+     * data, sem conta a pagar, **e fora de toda tela**. É exatamente o estado do boleto do
+     * IVAN, que venceu assim. ***O trabalho só termina quando a conta existe.***
+     */
     const s = await sugestao()
     await definirVencimento(companyId, s.id, new Date('2026-09-10T00:00:00Z'), 'DONO', userId, prisma)
-    expect(await parcelasSemData(companyId, prisma)).toHaveLength(0)
+    const fila = await parcelasNaoEnviadas(companyId, prisma)
+    expect(fila, 'a parcela com data e sem conta a pagar sumiu da fila — o vão do IVAN voltou').toHaveLength(1)
+    expect(fila[0].dVenc, 'e ela aparece COM a data, pra o gesto ser 1 clique').not.toBeNull()
   })
 
   it('⛔ parcela já virada conta a pagar não se edita por aqui', async () => {

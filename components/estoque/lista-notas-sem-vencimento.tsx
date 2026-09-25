@@ -19,6 +19,9 @@ import { usePermissoes } from '@/lib/hooks/use-permissoes'
 interface Nota {
   nfeId: string; nNF: string | null; fornecedor: string | null
   total: number; entrouEm: string; conferenceId: string | null
+  /** ⭐ 24/09 — null = precisa COMBINAR a data (F5) · com data = só falta MANDAR (F3) */
+  dVenc: string | null
+  suggestionIds: string[]
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -28,6 +31,31 @@ export function ListaNotasSemVencimento({ empresaId }: { empresaId: string }) {
   const { pode, carregando } = usePermissoes(empresaId)
   const [notas, setNotas] = useState<Nota[] | null>(null)
   const [erro, setErro] = useState(false)
+  /** ⭐ 24/09 — o gesto do F3: mandar o boleto que já tem data pro financeiro */
+  const [enviando, setEnviando] = useState<string | null>(null)
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null)
+
+  /**
+   * ⭐⭐ REGRA 4 — vai pelo MESMO `POST /estoque/contas-a-pagar` que a conferência usa.
+   * Uma segunda porta de criação de conta a pagar é o que o `@@unique` do
+   * `stock_payable_link` existe pra recusar.
+   */
+  async function mandar(n: Nota) {
+    setEnviando(n.nfeId); setErroEnvio(null)
+    try {
+      const r = await fetch(`/api/empresas/${empresaId}/estoque/contas-a-pagar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestionIds: n.suggestionIds, cadastrarFornecedores: true }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErroEnvio(j?.erro ?? 'Não consegui mandar pro contas a pagar.'); return }
+      // ⭐ some da fila na hora — e o número do card acompanha, porque os dois leem a mesma
+      // pergunta. Recarregar a lista inteira seria mais lento e diria a mesma coisa.
+      setNotas((atual) => (atual ?? []).filter((x) => x.nfeId !== n.nfeId))
+    } catch {
+      setErroEnvio('Falha de rede ao mandar pro contas a pagar.')
+    } finally { setEnviando(null) }
+  }
 
   useEffect(() => {
     let vivo = true
@@ -52,14 +80,29 @@ export function ListaNotasSemVencimento({ empresaId }: { empresaId: string }) {
   }
   if (!notas || notas.length === 0) return null // ⭐ fila zerada = zero tela
 
+  /**
+   * ⭐⭐⭐ 24/09 — OS DOIS TRABALHOS, SEPARADOS, porque os GESTOS são diferentes.
+   *
+   * ⛔⛔ Esta tela nasceu em 13/09 pro **F5** (sem data) com a lição escrita no topo do
+   * arquivo — e **o F3 ficou sem tela**: a parcela conferida COM data e nunca enviada não
+   * aparecia em lugar nenhum. O boleto do IVAN (R$ 326,50) venceu em 14/09 e passou **10
+   * dias** com o F3 gritando no e-mail e **nada na tela**. É literalmente o episódio de
+   * 30/08 que o comentário deste arquivo cita como lição aprendida.
+   *
+   * ⚠️ Juntar os dois num contador só daria um número que não corresponde a nenhum gesto —
+   * o erro que o card já cometeu em 04/09.
+   */
+  const semData = notas.filter((n) => !n.dVenc)
+  const comData = notas.filter((n) => !!n.dVenc)
   const total = notas.reduce((s, n) => s + n.total, 0)
+  const hojeISO = new Date().toISOString().slice(0, 10)
 
   return (
     <div id="sem-vencimento" className="rounded-xl border border-amber-200 bg-amber-50/60">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3.5 py-2.5">
         <CalendarClock className="h-4 w-4 shrink-0 text-amber-600" />
         <span className="text-[13px] font-semibold text-amber-900">
-          {notas.length} {notas.length === 1 ? 'nota entrou sem vencimento' : 'notas entraram sem vencimento'}
+          {notas.length} {notas.length === 1 ? 'boleto não foi' : 'boletos não foram'} pro contas a pagar
           <span className="ml-1.5 tabular-nums font-bold">{brl(total)}</span>
         </span>
         {/* ⚠️ a frase diz o EFEITO, não o estado: "sem data" sozinho não explica por que
@@ -69,8 +112,47 @@ export function ListaNotasSemVencimento({ empresaId }: { empresaId: string }) {
         </span>
       </div>
 
+      {/*
+        ⭐ O GRUPO DO F3 — conferido, COM data, e é **um clique**: a data já é conhecida,
+        então não há o que perguntar. O gesto vai pelo MESMO `POST /estoque/contas-a-pagar`
+        que a conferência usa (REGRA 4 — nenhuma segunda porta de criação de conta).
+      */}
+      {comData.length > 0 && (
+        <div className="border-t border-amber-200/70">
+          <p className="px-3.5 pt-2 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+            já tem vencimento — só falta mandar
+          </p>
+          {comData.map((n) => {
+            const vencido = !!n.dVenc && n.dVenc.slice(0, 10) < hojeISO
+            return (
+              <div key={n.nfeId} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-100 px-3.5 py-2 last:border-0">
+                <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-800">
+                  {n.fornecedor ?? 'fornecedor não identificado'}
+                </span>
+                <span className="shrink-0 text-xs text-slate-500">NF {n.nNF ?? '—'}</span>
+                <span className={`shrink-0 text-xs font-medium ${vencido ? 'text-rose-700' : 'text-slate-500'}`}>
+                  {vencido ? 'venceu' : 'vence'} {dia(n.dVenc!)}
+                </span>
+                <span className="shrink-0 tabular-nums text-[13px] font-semibold text-slate-900">{brl(n.total)}</span>
+                <button
+                  onClick={() => void mandar(n)}
+                  disabled={enviando === n.nfeId}
+                  className="shrink-0 rounded-lg border border-amber-500 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                >
+                  {enviando === n.nfeId ? 'mandando…' : 'mandar pro contas a pagar'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {semData.length > 0 && (
       <div className="border-t border-amber-200/70">
-        {notas.map((n) => {
+        <p className="px-3.5 pt-2 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+          sem data — combine com o fornecedor
+        </p>
+        {semData.map((n) => {
           const conteudo = (
             <>
               <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-800">
@@ -100,6 +182,10 @@ export function ListaNotasSemVencimento({ empresaId }: { empresaId: string }) {
           )
         })}
       </div>
+      )}
+      {erroEnvio && (
+        <p className="border-t border-amber-200/70 px-3.5 py-2 text-[12px] text-rose-700">{erroEnvio}</p>
+      )}
     </div>
   )
 }

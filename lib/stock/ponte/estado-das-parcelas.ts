@@ -16,7 +16,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { combinadoDaNota } from './combinado'
-import { parcelasSemData } from './vencimento'
+import { parcelasNaoEnviadas } from './vencimento'
 
 // ⚠️ o mesmo `Db` de `combinado.ts` (aceita o client transacional) — tipos diferentes aqui
 // obrigariam um cast na fronteira, e cast é onde o erro passa calado
@@ -78,9 +78,9 @@ export async function estadoDasParcelas(
   // justamente onde havia dívida. **Vazio não é "não deve nada".**
   //
   // ⛔ E não nasce um terceiro leitor: quem responde *"o que está sem data"* é o
-  // `parcelasSemData`, dono dessa pergunta desde 03/09 — o mesmo que alimenta o F5.
+  // `parcelasNaoEnviadas`, dono dessa pergunta desde 03/09 — o mesmo que alimenta o F5.
   if (combinado.parcelas.length === 0) {
-    const semData = (await parcelasSemData(companyId, db)).filter((s) => s.nfeId === nfeId && !s.enviada)
+    const semData = (await parcelasNaoEnviadas(companyId, db)).filter((s) => s.nfeId === nfeId && !s.enviada)
     return semData.map((s, i): ParcelaComEstado => ({
       numero: s.nDup ?? String(i + 1).padStart(3, '0'),
       valor: s.valor, vencimento: null, origem: 'A_DEFINIR',

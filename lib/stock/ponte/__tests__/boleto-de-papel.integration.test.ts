@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { confirmarConferencia } from '../../confirmar-conferencia'
-import { conferirPagamentoDoPapel, parcelasSemData, rastroDoVencimento } from '../vencimento'
+import { conferirPagamentoDoPapel, parcelasNaoEnviadas, rastroDoVencimento } from '../vencimento'
 import { checkPonteInvariants } from '../../ponte-invariants'
 
 const CNPJ = '66778899000155'
@@ -76,8 +76,22 @@ describe('⭐⭐ digitei a data do boleto de papel', () => {
     expect(sug).toHaveLength(1)
     expect(sug[0].dVenc?.toISOString().slice(0, 10)).toBe('2026-09-18')
     expect(sug[0].valor).toBe(TOTAL)
-    // ⭐ e fora do A DEFINIR: o trabalho já foi feito na hora certa
-    expect(await parcelasSemData(companyId, prisma)).toHaveLength(0)
+    /**
+     * ⚠️⚠️ ASSERÇÃO INVERTIDA EM 24/09, COM O MOTIVO ESCRITO — ela afirmava o VÃO.
+     *
+     * Ela dizia `toHaveLength(0)`, ou seja *"a parcela com data sai de toda fila"*. Só que
+     * este teste **não envia os boletos** — então a parcela fica exatamente no estado do
+     * boleto do IVAN: **conferida, com data, nunca enviada**. Dizer que ela não aparece em
+     * fila nenhuma era afirmar, em teste, que aquela dívida ficaria invisível.
+     *
+     * ⭐ O que continua valendo — e é o que este teste existe pra provar — é que ela **não
+     * é trabalho de DATA**: a data já foi respondida na hora certa. Por isso a asserção
+     * passou a ser sobre o `dVenc`, não sobre a ausência na lista.
+     */
+    const pendentes = await parcelasNaoEnviadas(companyId, prisma)
+    expect(pendentes).toHaveLength(1)
+    expect(pendentes[0].dVenc, 'a parcela voltou pra fila de "combinar a data"').not.toBeNull()
+    expect(pendentes[0].enviada).toBe(false)
   })
 
   it('⭐⭐ e o rastro grava DONO_NO_RECEBIMENTO', async () => {
@@ -161,7 +175,7 @@ describe('⛔⛔ SEM RESPONDER NÃO CONFIRMA — a porta que fecha a fábrica da
     const sug = await prisma.stockPayableSuggestion.findMany({ where: { companyId } })
     expect(sug).toHaveLength(1)
     expect(sug[0].dVenc, 'o sistema inventou uma data').toBeNull()
-    expect(await parcelasSemData(companyId, prisma)).toHaveLength(1)
+    expect(await parcelasNaoEnviadas(companyId, prisma)).toHaveLength(1)
   })
 
   it('⭐ e segue sem rastro de vencimento: ninguém definiu data nenhuma', async () => {

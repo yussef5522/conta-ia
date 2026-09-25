@@ -43,11 +43,25 @@ export function CardFilaBoletos({ empresaId }: { empresaId: string }) {
     // combinar o vencimento com o fornecedor. Contar as duas coisas juntas dava um número
     // que não correspondia a nada aprovável (30 boletos, dos quais 21 nem podiam ser
     // enviados).
+    /**
+     * ⭐⭐⭐ 24/09 — O CARD VOLTOU A CONTAR **TUDO QUE FALTA IR PRO FINANCEIRO**, não só
+     * as sem data.
+     *
+     * ⛔⛔ O comentário acima estava certo sobre o fluxo NOVO ("o boleto vira conta no
+     * mesmo gesto") e errado sobre o que SOBRA quando esse gesto não acontece: a parcela
+     * conferida **com data** e não enviada ficava **fora de TODA tela**. O boleto do IVAN
+     * (R$ 326,50, venceu 14/09) passou **10 dias** com o F3 gritando e **nenhum lugar onde
+     * clicar**. ***Alarme sem porta é a mesma doença da porta sem maçaneta, do outro lado.***
+     *
+     * ⚠️ E as duas situações têm GESTOS diferentes, então o card os separa: sem data →
+     * *"combine e defina"*; com data → *"só falta mandar"*, que é UM clique.
+     */
     fetch(`/api/empresas/${empresaId}/estoque/vencimento`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (vivo) setFila(((j?.semData ?? []) as { valor: number; enviada: boolean }[])
-        .filter((p) => !p.enviada)
-        .map((p) => ({ suggestionId: '', valor: p.valor, dVenc: null, fornecedorNome: '' })) as Pendente[]) })
+      .then((j) => { if (vivo) setFila(((j?.semData ?? []) as { suggestionId: string; valor: number; enviada: boolean; dVenc: string | null; supplierNome: string | null }[])
+        // ⚠️ a rota já devolve só as PENDENTES (o filtro saiu do cliente em 24/09 — régua
+        // repetida por chamador é como as duas listas divergem)
+        .map((p) => ({ suggestionId: p.suggestionId, valor: p.valor, dVenc: p.dVenc, fornecedorNome: p.supplierNome ?? '' })) as Pendente[]) })
       .catch(() => { if (vivo) setFila([]) }) // falha macia: sem card, nunca uma tela quebrada
     return () => { vivo = false }
   }, [empresaId])
@@ -58,6 +72,10 @@ export function CardFilaBoletos({ empresaId }: { empresaId: string }) {
   // ⭐ a régua mora em `lib/stock/ponte/fila-envio.ts` (pura, testada contra os 8 boletos
   // reais). O componente só ECOA — assim o que decide o vermelho dá pra provar.
   const r = resumoDaFila(fila, new Date())
+  // ⭐ os dois trabalhos, separados: um pede DATA, o outro pede só o ENVIO
+  const semData = fila.filter((p) => !p.dVenc)
+  const comData = fila.filter((p) => !!p.dVenc)
+  const totalComData = comData.reduce((t, p) => t + p.valor, 0)
 
   return (
     <a
@@ -71,13 +89,30 @@ export function CardFilaBoletos({ empresaId }: { empresaId: string }) {
       <Receipt className="h-4 w-4 shrink-0 text-amber-600" />
 
       <span className="text-[13px] font-semibold text-amber-800">
-        {r.n} {r.n === 1 ? 'nota sem data' : 'notas sem data'} de pagamento — combine e defina
-        <span className="ml-1.5 tabular-nums font-bold">{brl(r.total)}</span>
+        {/*
+          ⭐ A FRASE DIZ QUAL É O TRABALHO. Juntar os dois num número só daria uma contagem
+          que não corresponde a nenhum gesto — o erro que este card já cometeu em 04/09
+          ("30 boletos, dos quais 21 nem podiam ser enviados").
+        */}
+        {comData.length > 0 && (
+          <>
+            {comData.length} {comData.length === 1 ? 'boleto' : 'boletos'} conferido{comData.length === 1 ? '' : 's'} sem ir pro financeiro
+            <span className="ml-1.5 tabular-nums font-bold">{brl(totalComData)}</span>
+            {r.vencidos > 0 && <span className="ml-1.5 font-bold text-rose-700">· {r.vencidos} vencido{r.vencidos === 1 ? '' : 's'}</span>}
+          </>
+        )}
+        {comData.length > 0 && semData.length > 0 && <span className="mx-1.5 text-amber-400">·</span>}
+        {semData.length > 0 && (
+          <>
+            {semData.length} sem data de pagamento
+            <span className="ml-1.5 tabular-nums font-bold">{brl(semData.reduce((t, p) => t + p.valor, 0))}</span>
+          </>
+        )}
       </span>
 
 
       <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-amber-700">
-        definir as datas <ChevronRight className="h-3.5 w-3.5" />
+        {comData.length > 0 ? 'mandar pro contas a pagar' : 'definir as datas'} <ChevronRight className="h-3.5 w-3.5" />
       </span>
     </a>
   )

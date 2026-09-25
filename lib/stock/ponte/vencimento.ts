@@ -36,7 +36,7 @@ export type OrigemVencimento = 'DONO' | 'DONO_NO_RECEBIMENTO' | 'BOLETO'
 /** ⭐ derivado, nunca gravado: sem data = a definir. */
 export const ehADefinir = (dVenc: Date | string | null | undefined): boolean => !dVenc
 
-export interface ParcelaSemData {
+export interface ParcelaNaoEnviada {
   suggestionId: string
   nfeId: string
   chave: string
@@ -45,19 +45,45 @@ export interface ParcelaSemData {
   nDup: string | null
   /** já foi enviada pro financeiro? (então não é mais trabalho pendente) */
   enviada: boolean
+  /**
+   * ⭐ 24/09 — a data, quando ela JÁ existe.
+   *
+   * ⛔⛔ **O vão que engoliu o boleto do IVAN:** esta lista filtrava `dVenc: null`, e o card
+   * de Recebimentos (a única tela que a desenha) mostrava só as sem data. A sugestão que
+   * **TEM data e nunca foi enviada** — o caso de quem digitou o boleto do papel na
+   * conferência e não marcou o checkbox — **não aparecia em tela nenhuma**. O F3 gritava
+   * todo dia e não havia onde clicar. ***Alarme sem porta é a família do "porta sem
+   * maçaneta", do lado do alarme.***
+   *
+   * ⚠️ `null` = *"combinar o vencimento"* (o trabalho do F5). Com data = *"só falta
+   * mandar"*, e aí o gesto é UM clique, não dois.
+   */
+  dVenc: Date | null
 }
 
 /**
- * As sugestões sem data — a lista de trabalho *"combinar o vencimento com o fornecedor"*.
+ * ⭐⭐ **TODA PARCELA CONFERIDA QUE AINDA NÃO VIROU CONTA A PAGAR** — com data ou sem.
  *
  * ⚠️ Exclui as já enviadas: conta que virou obrigação no financeiro tem data por definição
  * (a ponte recusa sem), então listá-la aqui seria cobrar trabalho já feito.
+ *
+ * ⛔⛔ **ANTES ELA FILTRAVA `dVenc: null`** e, como o card de Recebimentos é a única tela
+ * que a desenha, a parcela **com data e não enviada** ficava fora de todas as telas — o
+ * caso do IVAN (R$ 326,50, venc 14/09), que o F3 acusou por 10 dias sem que existisse onde
+ * clicar. **É a mesma pergunta** (*"o que falta ir pro financeiro?"*): filtrar por data
+ * aqui era responder metade dela.
  */
-export async function parcelasSemData(companyId: string, db: Db = defaultPrisma): Promise<ParcelaSemData[]> {
+/**
+ * ⚠️⚠️ **O NOME MUDOU COM A PERGUNTA (24/09)**, e isso é regra da casa: ela se chamava
+ * `parcelasSemData` enquanto filtrava `dVenc: null`. Agora devolve **tudo que falta ir pro
+ * financeiro**, e um nome que diz "sem data" sobre uma lista que traz as COM data é
+ * exatamente o *"nenhum rótulo promete mais do que entrega"* de 13/09.
+ */
+export async function parcelasNaoEnviadas(companyId: string, db: Db = defaultPrisma): Promise<ParcelaNaoEnviada[]> {
   const sugestoes = await db.stockPayableSuggestion.findMany({
-    where: { companyId, dVenc: null },
-    select: { id: true, nfeId: true, chave: true, supplierNome: true, valor: true, nDup: true },
-    orderBy: { criadoEm: 'asc' },
+    where: { companyId },
+    select: { id: true, nfeId: true, chave: true, supplierNome: true, valor: true, nDup: true, dVenc: true },
+    orderBy: [{ dVenc: 'asc' }, { criadoEm: 'asc' }],
   })
   if (!sugestoes.length) return []
   const enviadas = new Set((await db.stockPayableLink.findMany({
@@ -65,10 +91,23 @@ export async function parcelasSemData(companyId: string, db: Db = defaultPrisma)
     select: { suggestionId: true },
   })).map((l) => l.suggestionId))
 
-  return sugestoes.map((s) => ({
-    suggestionId: s.id, nfeId: s.nfeId, chave: s.chave, supplierNome: s.supplierNome,
-    valor: s.valor, nDup: s.nDup, enviada: enviadas.has(s.id),
-  }))
+  /**
+   * ⛔⛔ **ELA FILTRA AS ENVIADAS AQUI (24/09), não no chamador.**
+   *
+   * Antes devolvia TODAS e cada tela fazia `.filter(p => !p.enviada)` — uma régua repetida
+   * por chamador, e o `dVenc: null` do `where` mascarava o problema (parcela enviada tem
+   * data por definição, então ela saía pelo filtro errado). Com a pergunta certa
+   * (*"o que falta ir pro financeiro?"*) a resposta é UMA, e o nome passa a ser verdade.
+   *
+   * ⚠️ O campo `enviada` fica (sempre `false`) porque o `estado-das-parcelas` o lê — e
+   * remover campo de contrato é como a home do PF ficou vazia em silêncio (27/08).
+   */
+  return sugestoes
+    .filter((s) => !enviadas.has(s.id))
+    .map((s) => ({
+      suggestionId: s.id, nfeId: s.nfeId, chave: s.chave, supplierNome: s.supplierNome,
+      valor: s.valor, nDup: s.nDup, enviada: false, dVenc: s.dVenc,
+    }))
 }
 
 export interface ConflitoDeData {
