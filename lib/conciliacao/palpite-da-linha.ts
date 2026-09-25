@@ -94,6 +94,8 @@ export function rotuloDoBotao(acao: AcaoDoBalcao, alvoNome?: string): string {
   switch (acao) {
     case 'PGTO_CARTAO': return '✓ Confirmar — baixa a fatura'
     case 'PARCELA_EMPRESTIMO': return '✓ Confirmar — marca a parcela paga'
+    // ⭐ o espelho: lá a parcela reduz dívida, aqui o aporte AUMENTA o patrimônio
+    case 'APORTE_INVESTIMENTO': return alvoNome ? `✓ Confirmar — aporte no ${alvoNome}` : '✓ Confirmar — registra o aporte'
     case 'CASAR_PAGAR': return alvoNome ? `✓ Confirmar — concilia a ${alvoNome}` : '✓ Confirmar — concilia a conta'
     case 'CASAR_RECEBER': return alvoNome ? `✓ Confirmar — baixa ${alvoNome}` : '✓ Confirmar — baixa o recebimento'
     case 'RECEBIMENTO_VENDA': return '✓ Confirmar — registra a receita do dia'

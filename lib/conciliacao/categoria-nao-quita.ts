@@ -37,6 +37,19 @@ export const GRUPOS_QUE_A_CATEGORIA_RESOLVE: readonly string[] = [
   'OUTRAS_RECEITAS',
   'IMPOSTOS_SOBRE_LUCRO',
   'APORTES_CAPITAL',
+  /**
+   * ⭐⭐ 25/09 — **INVESTIMENTOS (consórcio, capitalização) não passa por contas a pagar.**
+   *
+   * Decisão do dono: *"o grupo «investimentos» entra na lista fechada dos que NÃO passam
+   * por contas a pagar"*. ⛔ Era por não estar aqui que o CONSÓRCIO de R$ 1.478,51 ficava
+   * entre as 18 com o aviso *"categorizada, mas sem vínculo"* — cobrando uma nota que
+   * **não existe**: o consórcio debita direto, não emite boleto pro financeiro.
+   *
+   * ⚠️ E isto NÃO afrouxa a régua de 24/09: a linha continua tendo um desfecho NOMEADO —
+   * o gesto 📈 vincula ao CONTRATO e escreve *"aporte no Consórcio X, parcela de set/2026"*.
+   * *Decisão, nunca silêncio.*
+   */
+  'INVESTIMENTOS',
   'TRANSFERENCIA',
   'AJUSTE_SALDO',
 ]

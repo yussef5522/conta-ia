@@ -127,7 +127,7 @@ const dia = (d: string) => d.split('-').reverse().join('/')
 
 /** ⭐ o emoji de cada ação — o mock põe um em cada chip */
 const ICONE: Record<string, string> = {
-  CASAR_PAGAR: '🧾', PGTO_CARTAO: '💳', PARCELA_EMPRESTIMO: '🏦',
+  CASAR_PAGAR: '🧾', PGTO_CARTAO: '💳', PARCELA_EMPRESTIMO: '🏦', APORTE_INVESTIMENTO: '📈',
   TRANSFERENCIA_ENVIADA: '⇄', TRANSFERENCIA_RECEBIDA: '⇄',
   CASAR_RECEBER: '🧾', RECEBIMENTO_VENDA: '💰', ESTORNO: '↩',
   CATEGORIA: '🏷', IGNORAR: '⌫',
@@ -224,8 +224,8 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
    * *erro disfarçado de vazio*, a doença que esta casa mais paga. Agora cada lista sabe se
    * está CARREGANDO, se FALHOU ou se está de fato vazia, e a frase muda com isso.
    */
-  const [cargas, setCargas] = useState<Record<'categorias' | 'cartoes' | 'contratos', 'CARREGANDO' | 'OK' | 'FALHOU'>>(
-    { categorias: 'CARREGANDO', cartoes: 'CARREGANDO', contratos: 'CARREGANDO' },
+  const [cargas, setCargas] = useState<Record<'categorias' | 'cartoes' | 'contratos' | 'investimentos', 'CARREGANDO' | 'OK' | 'FALHOU'>>(
+    { categorias: 'CARREGANDO', cartoes: 'CARREGANDO', contratos: 'CARREGANDO', investimentos: 'CARREGANDO' },
   )
   const [cartoes, setCartoes] = useState<{ id: string; name: string }[]>([])
   /**
@@ -236,6 +236,14 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
    * que abriu este sprint. É o mesmo idioma do menu do empréstimo, que mostra a parcela.
    */
   const [cartoesComFaturas, setCartoesComFaturas] = useState<CartaoComFaturasDTO[]>([])
+  /**
+   * ⭐⭐ 25/09 — OS CONTRATOS DE INVESTIMENTO (consórcio, capitalização).
+   *
+   * ⚠️ Cada item mostra o valor da parcela e quanto JÁ foi aportado — o mesmo idioma do
+   * menu do empréstimo (que traz a parcela) e do de fatura (que traz mês · valor · venc).
+   * *Escolher só pelo nome seria o gesto pela metade.*
+   */
+  const [investimentos, setInvestimentos] = useState<{ id: string; nome: string; tipo: string; valorParcela: number; totalAportado: number; aportes: number }[]>([])
 
   const carregar = useCallback(async () => {
     // ⛔ COM TIMEOUT: spinner eterno é a ausência fingindo progresso (14/09)
@@ -258,17 +266,20 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
    */
   useEffect(() => {
     void (async () => {
-      const [c, k, e] = await Promise.all([
+      const [c, k, e, iv] = await Promise.all([
         // ⛔ `soAtivas=true` — a rota devolve o catálogo inteiro (263 na Caçula, 60 ativas)
         fetchComTimeout<{ categorias?: CategoriaDoMenu[] }>(`/api/empresas/${empresaId}/categorias?soAtivas=true`),
         fetchComTimeout<{ cards?: { id: string; name: string }[]; comFaturas?: CartaoComFaturasDTO[] }>(`/api/empresas/${empresaId}/cartoes`),
         fetchComTimeout<{ loans?: { id: string; lender: string; contractNumber: string | null; proximaParcelaNumero: number | null; proximaParcelaDate: string | null; proximaParcelaValor: number | null }[] }>(`/api/empresas/${empresaId}/emprestimos`),
+        fetchComTimeout<{ contratos?: { id: string; nome: string; tipo: string; valorParcela: number; totalAportado: number; aportes: number }[] }>(`/api/empresas/${empresaId}/investimentos`),
       ])
       setCargas({
         categorias: c.ok && c.data?.categorias ? 'OK' : 'FALHOU',
         cartoes: k.ok && k.data?.cards ? 'OK' : 'FALHOU',
         contratos: e.ok && e.data?.loans ? 'OK' : 'FALHOU',
+        investimentos: iv.ok && iv.data?.contratos ? 'OK' : 'FALHOU',
       })
+      if (iv.ok && iv.data?.contratos) setInvestimentos(iv.data.contratos)
       if (c.ok && c.data?.categorias) setCategorias(c.data.categorias)
       if (k.ok && k.data?.cards) setCartoes(k.data.cards)
       if (k.ok && k.data?.comFaturas) setCartoesComFaturas(k.data.comFaturas)
@@ -538,7 +549,7 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
       {visiveis.map((l) => (
         <div key={l.id} className="flex flex-col gap-2">
           <CartaoDaLinha linha={l} ocupado={ocupado === l.id}
-            categorias={categorias} cartoes={cartoes} cartoesComFaturas={cartoesComFaturas} contratos={contratos} cargas={cargas}
+            categorias={categorias} cartoes={cartoes} cartoesComFaturas={cartoesComFaturas} investimentos={investimentos} contratos={contratos} cargas={cargas}
             erro={erroDaLinha?.id === l.id ? erroDaLinha.texto : null}
             onResolvido={resolverCaso}
             onTrocarConta={(linha) => { setTrocandoConta(true); setProcurando(linha) }}
@@ -790,13 +801,15 @@ function PainelDoCaso({ caso, linhaAtual, ocupado, onResolvido }: {
 // ⭐⭐⭐ O CARTÃO ≍ — banco à esquerda, palpite à direita, chips embaixo
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFaturas, contratos, cargas, erro, onTentarDeNovo, onResolvido, onGesto, onTrocarConta, empresaId, onRecarregar }: {
+function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFaturas, investimentos, contratos, cargas, erro, onTentarDeNovo, onResolvido, onGesto, onTrocarConta, empresaId, onRecarregar }: {
   linha: LinhaDTO; ocupado: boolean
   categorias: CategoriaDoMenu[]
   cartoes: { id: string; name: string }[]
   cartoesComFaturas: CartaoComFaturasDTO[]
+  /** ⭐ 25/09 — os contratos de investimento, pro chip 📈 */
+  investimentos: { id: string; nome: string; tipo: string; valorParcela: number; totalAportado: number; aportes: number }[]
   contratos: { id: string; nome: string; detalhe: string; parcela: number }[]
-  cargas: Record<'categorias' | 'cartoes' | 'contratos', EstadoDaCarga>
+  cargas: Record<'categorias' | 'cartoes' | 'contratos' | 'investimentos', EstadoDaCarga>
   /** ⛔ a recusa do gesto aparece AQUI, ao lado do dedo — no topo da tela ela é silêncio */
   erro: string | null
   /** ⭐ e ela SEMPRE carrega a saída: repetir o MESMO gesto, com o mesmo alvo */
@@ -1316,6 +1329,32 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFatur
                     secoes={menuDeFaturas}
                     vazio={VAZIO.cartoes(cargas.cartoes).texto}
                     onEscolher={(id) => onGesto(l, a.acao, alvoDaFatura(id))} />
+                )
+              }
+              /**
+               * ⭐⭐ 25/09 — O MENU DO APORTE: contrato · valor da parcela · quanto já aportei.
+               *
+               * ⛔ Listar só o NOME repetiria o defeito do menu de cartão que este mesmo dia
+               * consertou: o dono precisa reconhecer QUAL contrato, e o valor da parcela é
+               * o que distingue os dois títulos de capitalização da Caçula.
+               */
+              if (a.pedeAlvo === 'CONTRATO_INVESTIMENTO') {
+                return (
+                  <MenuDoChip key={a.acao} rotulo={a.rotulo} icone={ICONE[a.acao]} ocupado={ocupado}
+                    className={chip} style={cor}
+                    secoes={[{
+                      titulo: '📈 em qual contrato este dinheiro entrou?',
+                      ajuda: 'o aporte aumenta o patrimônio — não é despesa',
+                      itens: investimentos.map((iv) => ({
+                        id: iv.id,
+                        nome: iv.nome,
+                        detalhe: `${brl(iv.valorParcela)}/mês${iv.aportes ? ` · já aportado ${brl(iv.totalAportado)} em ${iv.aportes}` : ' · primeiro aporte'}`,
+                      })),
+                    }]}
+                    vazio={cargas.investimentos === 'CARREGANDO' ? 'carregando os contratos…'
+                      : cargas.investimentos === 'FALHOU' ? 'não consegui carregar os contratos — tente de novo'
+                      : 'nenhum contrato de investimento cadastrado — cadastre em Investimentos'}
+                    onEscolher={(id) => onGesto(l, a.acao, { contractId: id })} />
                 )
               }
               if (a.pedeAlvo === 'CONTRATO') {

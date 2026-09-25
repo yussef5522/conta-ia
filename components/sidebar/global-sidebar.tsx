@@ -276,6 +276,21 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           />
         )}
         {/*
+          ⭐⭐ INVESTIMENTOS (25/09) — o espelho do empréstimo, **ao lado dele de propósito**.
+          Decisão do dono: *"CRUD simples onde os empréstimos moram"*. Lá a parcela reduz
+          dívida, aqui o aporte aumenta o ativo — são a mesma pergunta em dois sinais.
+        */}
+        {empresaAtiva && !soEstoque && (
+          <SidebarItem
+            perm="transaction.view"
+            icon={TrendingUp}
+            label="Investimentos"
+            href={`/empresas/${empresaAtiva}/investimentos`}
+            isActive={/^\/empresas\/[^/]+\/investimentos(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
+        {/*
           ⭐ RETIRADAS (19/09) — a tela existia desde 08/08 e **ninguém alcançava**: só se
           chegava nela por um banner de órfãs ou de dentro do próprio painel da ponte. O
           dono: *"depois eu não sei ONDE achar as retiradas pra completar/conferir"*.

@@ -37,6 +37,7 @@ const vencimentoDaFatura = (mes: string, c: { dueDay?: number | null }): string 
 /** ⚠️ dia/mês curto, em UTC — a data é de CALENDÁRIO (o fuso a puxaria pro dia anterior) */
 const diaCurto = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 import { signedFaturaAmount } from '@/lib/credit-card-pj/fatura-net-total'
+import { sugerirAporte } from '@/lib/investimentos/sugerir-aporte'
 import type { LinhaCrua } from './leitura-da-caixa'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -123,6 +124,16 @@ export async function palpitesDaCaixa(
    * ⚠️ A janela sai das próprias linhas (±45d), como na fila: buscar o histórico inteiro
    * pra palpitar sobre 400 linhas seria a regressão de 9,6 s de 10/09.
    */
+  /**
+   * ⭐ 25/09 — os contratos de INVESTIMENTO, buscados UMA vez (como cartões e contratos).
+   * ⚠️ Só os ATIVOS: palpitar num contrato encerrado ofereceria um gesto que o servidor
+   * recusa — a tela não pode oferecer o que o servidor nega.
+   */
+  const investimentos = await db.investmentContract.findMany({
+    where: { companyId: empresaId, ativo: true },
+    select: { id: true, nome: true, tipo: true, valorParcela: true, diaDoMes: true, bankAccountId: true },
+  })
+
   const datas = linhas.map((l) => l.date.getTime())
   const janela = 45 * 86_400_000
   const contas = await db.transaction.findMany({
@@ -198,6 +209,33 @@ export async function palpitesDaCaixa(
           })
         }
       } catch { /* fail-soft */ }
+    }
+
+    // ── 2b. APORTE EM INVESTIMENTO (só débito) ─────────────────────────────
+    /**
+     * ⭐⭐ 25/09 — o espelho do empréstimo. ⛔ O palpite exige **valor EXATO + sinal de
+     * NOME**, e empate devolve `null`: a Caçula tem DOIS títulos de capitalização de
+     * R$ 297,84 debitados no mesmo dia, e escolher um seria chute.
+     */
+    if (l.type === 'DEBIT' && investimentos.length > 0) {
+      try {
+        const s = sugerirAporte(
+          { descricao, valor: l.amount, data: l.date, bankAccountId: l.bankAccountId ?? null },
+          investimentos,
+        )
+        if (s) {
+          candidatos.push({
+            acao: 'APORTE_INVESTIMENTO',
+            familia: '📈 APORTE EM INVESTIMENTO',
+            titulo: s.nome,
+            detalhe: `${s.porQue} · parcela de ${s.competencia}`,
+            diferenca: 0,
+            confianca: s.confianca,
+            alvo: { contractId: s.contractId, competencia: s.competencia },
+            alvoNome: s.nome,
+          })
+        }
+      } catch { /* fail-soft: sem palpite de aporte nesta linha */ }
     }
 
     // ── 3. CONTA A PAGAR (só débito) ───────────────────────────────────────

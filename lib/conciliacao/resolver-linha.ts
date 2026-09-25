@@ -28,6 +28,7 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-pj/casar-pagamento'
 import { vincularPagamentoDeParcela, VinculoDeParcelaError } from '@/lib/loans/vincular-pagamento'
+import { registrarAporte, AporteError } from '@/lib/investimentos/registrar-aporte'
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 import { acaoValePraSentido, sentidoDaLinha, type AcaoDoBalcao } from './caixa-de-entrada'
 import { reconcileTransactions, ReconciliationError } from './reconcile'
@@ -92,6 +93,10 @@ export interface ResolverInput {
   diferencaAceita?: number
   /** ⭐ 25/09 — os dias de atraso/adiantamento que o dono confirmou no card */
   distanciaAceita?: number
+  /** ⭐ 25/09 — o contrato de investimento que esta linha aporta */
+  contractId?: string
+  /** a competência do aporte (AAAA-MM); sem ela, deriva da data da linha */
+  competencia?: string
   /** ⭐ 24/09 — o motivo que o dono deu à diferença (vai pro rastro da conta) */
   motivoDaDiferenca?: MotivoDaDiferenca | null
   motivoLivre?: string | null
@@ -194,6 +199,35 @@ async function executarGesto(input: ResolverInput, db: PrismaClient): Promise<Re
         return { efeito: `parcela ${input.installmentNumber} ${r.status === 'PAID' ? 'PAGA' : 'parcialmente paga'} · split ${r.splitInjected ? 'aplicado' : 'não aplicável'}`, saiuDaCaixa: true }
       } catch (e) {
         if (e instanceof VinculoDeParcelaError) throw new ResolverError(e.message)
+        throw e
+      }
+    }
+
+    /**
+     * ⭐⭐ 25/09 — **O APORTE: o espelho do empréstimo, do lado do ativo.**
+     *
+     * ⛔ Ele NÃO passa pelo `reconcileTransactions`: não há conta a pagar pra casar. O
+     * consórcio e a capitalização **debitam direto** — por isso o grupo entrou na lista
+     * fechada dos que a categoria resolve (`categoria-nao-quita.ts`).
+     *
+     * ⚠️ E o erro de domínio vira **mensagem**, como no empréstimo: `AporteError` não é
+     * `ResolverError`, e sem traduzir ele escaparia pelo `throw e` da rota como **500 sem
+     * corpo** — o defeito de 19/09 que o dono leu como *"nada aconteceu"*.
+     */
+    case 'APORTE_INVESTIMENTO': {
+      if (!input.contractId) throw new ResolverError('Escolha o contrato de investimento que esta linha aporta.')
+      try {
+        const r = await registrarAporte({
+          db, companyId: input.companyId, contractId: input.contractId,
+          txId: tx.id, competencia: input.competencia ?? null, criadoPorId: input.userId ?? null,
+        })
+        // ⭐ o efeito NOMEIA o contrato e a competência — "registrei o aporte" não seria efeito
+        return {
+          efeito: `aporte de ${r.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} no ${r.contratoNome} (${r.competencia}) — já aportado: ${r.totalAportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
+          saiuDaCaixa: true,
+        }
+      } catch (e) {
+        if (e instanceof AporteError) throw new ResolverError(e.message)
         throw e
       }
     }

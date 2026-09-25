@@ -44,6 +44,12 @@ export function origemDaCategoria(acao: AcaoDoBalcao): OrigemDaCategoria {
      */
     case 'PGTO_CARTAO':
     case 'PARCELA_EMPRESTIMO':
+    /**
+     * ⭐ 25/09 — o APORTE é ESTRUTURAL: o gesto já diz o que a linha é (dinheiro que virou
+     * patrimônio no contrato X). ⛔ Pedir categoria aqui seria cobrar duas vezes pelo mesmo
+     * fato — a mesma razão do pagamento de fatura e da parcela de empréstimo.
+     */
+    case 'APORTE_INVESTIMENTO':
     case 'TRANSFERENCIA_ENVIADA':
     case 'TRANSFERENCIA_RECEBIDA':
     /**

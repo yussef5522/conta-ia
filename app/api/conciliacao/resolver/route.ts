@@ -38,6 +38,9 @@ const schema = z.object({
    * um *"Gesto inválido"* em 23/09, com a tela prometendo o que o servidor nunca recebeu.
    */
   distanciaAceita: z.number().int().nonnegative().optional(),
+  /** ⭐ 25/09 — o contrato de investimento que a linha aporta, e a competência */
+  contractId: z.string().optional(),
+  competencia: z.string().regex(/^\d{4}-\d{2}$/).optional(),
 })
 
 export async function POST(request: NextRequest) {

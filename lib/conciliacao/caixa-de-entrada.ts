@@ -32,6 +32,15 @@ export type AcaoDoBalcao =
   | 'CASAR_PAGAR'
   | 'PGTO_CARTAO'
   | 'PARCELA_EMPRESTIMO'
+  /**
+   * ⭐⭐ 25/09 — **APORTE EM INVESTIMENTO: o espelho do empréstimo, do lado do ATIVO.**
+   *
+   * Decisão do dono: *"CAPITALIZACAO RG e PAGAMENTO CONSORCIO não são despesa nem conta a
+   * pagar — são APORTES que constroem patrimônio. Lá a parcela reduz dívida, aqui aumenta
+   * ativo."* ⛔ Por isso o gesto é PRÓPRIO: resolver isso como "é despesa: categoria"
+   * arquivaria a linha sem dizer em QUAL contrato o dinheiro entrou.
+   */
+  | 'APORTE_INVESTIMENTO'
   | 'TRANSFERENCIA_ENVIADA'
   // ── ENTRADA ──
   | 'CASAR_RECEBER'
@@ -54,13 +63,15 @@ export interface AcaoOferecida {
   acao: AcaoDoBalcao
   rotulo: string
   /** precisa escolher um alvo antes de efetivar (cartão, contrato, conta, saída original) */
-  pedeAlvo: 'CARTAO' | 'CONTRATO' | 'CONTA_PAGAR' | 'CONTA_RECEBER' | 'PAR' | 'CATEGORIA' | 'SAIDA_ORIGINAL' | null
+  pedeAlvo: 'CARTAO' | 'CONTRATO' | 'CONTRATO_INVESTIMENTO' | 'CONTA_PAGAR' | 'CONTA_RECEBER' | 'PAR' | 'CATEGORIA' | 'SAIDA_ORIGINAL' | null
 }
 
 const SAIDA: readonly AcaoOferecida[] = [
   { acao: 'CASAR_PAGAR', rotulo: 'casar com conta a pagar', pedeAlvo: 'CONTA_PAGAR' },
   { acao: 'PGTO_CARTAO', rotulo: 'pagamento de fatura', pedeAlvo: 'CARTAO' },
   { acao: 'PARCELA_EMPRESTIMO', rotulo: 'parcela de empréstimo', pedeAlvo: 'CONTRATO' },
+  /** ⭐ 25/09 — o espelho do empréstimo: aqui a parcela AUMENTA ativo em vez de reduzir dívida */
+  { acao: 'APORTE_INVESTIMENTO', rotulo: 'aporte em investimento', pedeAlvo: 'CONTRATO_INVESTIMENTO' },
   { acao: 'TRANSFERENCIA_ENVIADA', rotulo: 'transferência enviada', pedeAlvo: 'PAR' },
   { acao: 'CATEGORIA', rotulo: 'é despesa: categoria', pedeAlvo: 'CATEGORIA' },
   /**

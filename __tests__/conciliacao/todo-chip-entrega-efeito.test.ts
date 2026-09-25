@@ -84,6 +84,8 @@ const COMO_A_TELA_PEDE_O_ALVO: Record<string, { desenho: RegExp; descricao: stri
    */
   CATEGORIA: { desenho: /onGesto\(l, a\.acao, comCategoria\(\)\)/, descricao: 'chip que dispara com a categoria escolhida na esquerda', noRamo: true },
   CARTAO: { desenho: /<MenuDoChip/, descricao: 'menu dos cartões', noRamo: true },
+  /** ⭐ 25/09 — o aporte em investimento: o espelho do empréstimo, do lado do ativo */
+  CONTRATO_INVESTIMENTO: { desenho: /<MenuDoChip/, descricao: 'menu dos contratos de investimento', noRamo: true },
   CONTRATO: { desenho: /<MenuDoChip/, descricao: 'menu de contrato + parcela', noRamo: true },
   CONTA_PAGAR: { desenho: /<FindAndMatchPanel/, descricao: 'painel de casar, aberto na própria linha', noRamo: false },
   CONTA_RECEBER: { desenho: /<FindAndMatchPanel/, descricao: 'painel de casar, aberto na própria linha', noRamo: false },
@@ -107,7 +109,13 @@ describe('⭐⭐⭐ os 12 chips do cartão ≍ — nenhum é mudo', () => {
      * linha de fornecedor que deixou de arquivar só com categoria. A ENTRADA fica em 6:
      * crédito não paga nota, então a pergunta *"tem nota?"* não existe do outro lado.
      */
-    expect(acoesDoSentido('SAIDA')).toHaveLength(7)
+    /**
+     * ⚠️ 25/09 — a SAÍDA foi a 8: entrou o **📈 aporte em investimento**, o espelho do
+     * empréstimo do lado do ativo (*"lá a parcela reduz dívida, aqui aumenta ativo"*).
+     * ⭐ A ENTRADA fica em 6: aporte é dinheiro que SAI, e a lei do sentido é checada no
+     * servidor — a tela não oferece o que o servidor recusaria.
+     */
+    expect(acoesDoSentido('SAIDA')).toHaveLength(8)
     expect(acoesDoSentido('ENTRADA')).toHaveLength(6)
   })
 

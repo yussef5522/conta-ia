@@ -191,6 +191,7 @@ model Company {
 
   // Sprint Cartao de Credito PJ (24/06/2026)
   businessCreditCards BusinessCreditCard[]
+  investmentContracts InvestmentContract[]
 
   @@map("companies")
 }
@@ -303,6 +304,7 @@ model BankAccount {
 
   // Sprint Cartao Credito PJ (24/06/2026) — cartoes que pagam default por esta conta.
   cardsAsDefaultPayment BusinessCreditCard[] @relation("CardDefaultPayment")
+  investmentContracts   InvestmentContract[]
 
   @@map("bank_accounts")
 }
@@ -620,11 +622,12 @@ model Transaction {
   //
   // NÃO troca `type` (preserva contentHash/sinal exato no seen-ledger) —
   // mantém Sprint Import Idempotente intacto.
-  pendingTransfer          Boolean   @default(false)
+  pendingTransfer          Boolean                 @default(false)
   // 'OUT' = saída (esta conta) · 'IN' = entrada (esta conta) · NULL = não-pendingTransfer
   pendingTransferDirection String?
   // Quando o user marcou (auditoria + ordenação na fila "Aguardando par")
   pendingTransferSince     DateTime?
+  investmentContribution   InvestmentContribution? @relation("InvestmentContribution")
 
   @@unique([bankAccountId, dedupHash])
   // Sprint 4.0.1.b — anti-dup: schedule X só gera 1 tx por dueDate
@@ -4860,4 +4863,64 @@ model FaturaQuarentena {
   @@index([profileId, criadoEm])
   @@index([desfecho, criadoEm])
   @@map("fatura_quarentena")
+}
+
+// ⭐⭐⭐ INVESTIMENTOS — O ESPELHO DO EMPRÉSTIMO, DO LADO DO ATIVO (25/09/2026)
+//
+// **Decisão do dono:** *"CAPITALIZACAO RG e PAGAMENTO CONSORCIO não são despesa nem conta a
+// pagar — são APORTES recorrentes que constroem patrimônio (o espelho do empréstimo: lá a
+// parcela reduz dívida, aqui aumenta ativo)."*
+//
+// ⚠️ **Por que uma tabela PONTE e não uma coluna em `transactions`:** é o desenho que o
+// empréstimo já usa pro N:1 (`LoanInstallmentPayment`) e o que o cartão usa pro vínculo. O
+// FK fica do lado novo, então `transactions` **não é alterada** — migration aditiva pura.
+//
+// ⛔ **`transactionId` é `@unique`:** a MESMA linha do extrato virar dois aportes é
+// impossível por construção, não "checado" (REGRA 5). ⚠️ E NÃO há unique em
+// `(contrato, competência)`: parcela paga em duas partes é caso real, e travar aqui
+// empurraria o dono a lançar por fora — o erro que este módulo mais paga.
+model InvestmentContract {
+  id            String       @id @default(cuid())
+  companyId     String
+  company       Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  // ⚠️ nullable: o consórcio da Caçula sai do "banco caixa" e a capitalização do banrisul —
+  // e um contrato novo pode ser cadastrado antes de o dono decidir a conta.
+  bankAccountId String?
+  bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+
+  nome                   String // "Consórcio Randon", "Capitalização RG 297"
+  tipo                   String // CONSORCIO | CAPITALIZACAO | OUTRO
+  valorParcela           Float
+  /// dia do mês em que a parcela costuma cair (1..31) — sinal do palpite, nunca uma trava
+  diaDoMes               Int
+  /// opcionais: o dono pode entrar no meio e não saber o total
+  totalParcelas          Int?
+  parcelasPagasAoIniciar Int?
+  ativo                  Boolean  @default(true)
+  observacao             String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  aportes InvestmentContribution[]
+
+  @@index([companyId])
+  @@index([companyId, ativo])
+}
+
+/// ⭐ UM aporte = UMA linha do extrato conciliada pelo gesto 📈
+model InvestmentContribution {
+  id            String             @id @default(cuid())
+  contractId    String
+  contract      InvestmentContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  /// ⛔ `@unique`: a mesma linha não vira dois aportes — impossível, não checado
+  transactionId String             @unique
+  transaction   Transaction        @relation("InvestmentContribution", fields: [transactionId], references: [id], onDelete: Cascade)
+  /// YYYY-MM — a competência que o dono confirmou (vai pro rastro)
+  competencia   String
+  valor         Float
+  criadoPorId   String?
+  createdAt     DateTime           @default(now())
+
+  @@index([contractId])
+  @@index([contractId, competencia])
 }
