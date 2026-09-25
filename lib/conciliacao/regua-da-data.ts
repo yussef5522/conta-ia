@@ -59,13 +59,32 @@ export interface VeredictoDaData {
 
 const diaBr = (d: Date) => d.toISOString().slice(0, 10).split('-').reverse().slice(0, 2).join('/')
 
+/** o DIA de calendário em UTC, sem a hora */
+const diaUTC = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+
 /**
- * ⚠️ dias INTEIROS de calendário. `Math.round` e não `floor`: as datas do módulo são
- * carimbadas ao MEIO-DIA UTC (a convenção do banco de dados desde sempre), então um
- * `floor` sobre a diferença em ms erraria por um dia a cada mudança de horário.
+ * ⭐⭐ DIAS DE CALENDÁRIO — **nunca a diferença crua em horas.**
+ *
+ * ⚠️⚠️ **MEDIDO EM PROD NA PRÓPRIA LAMANA, e a 1ª versão errava por UM DIA.** Eu tinha
+ * escrito `Math.round` sobre a diferença em ms, no pressuposto de que *"as datas do módulo
+ * são carimbadas ao MEIO-DIA UTC"*. **Isso vale pras TRANSAÇÕES, não pro `dueDate`:**
+ * ```
+ * linha do extrato : 2026-09-21T12:00:00Z   (meio-dia, convenção das tx)
+ * dueDate da conta : 2026-09-15T00:00:00Z   (data de calendário pura)
+ * diferença crua   : 6,5 dias  →  Math.round = 7   ⛔ e o dono conta 6
+ * ```
+ * ⛔ *Número que o dono SABE que está errado destrói a confiança na tela inteira* — ele
+ * abriria a pergunta *"foi pago com 7 dias de atraso?"* sobre um atraso de 6, e o rastro
+ * mentiria pro contador.
+ *
+ * ⚠️ E o erro não era só de texto: **a régua VELHA (`days > 5`) sofria do mesmo problema**,
+ * então um pagamento de 5 dias de calendário com meia diferença de horas era arredondado
+ * pra 6 e **recusado sem porta**. Parte da queixa do dono nascia daqui.
+ *
+ * ⭐ "Dias de atraso" é contagem de CALENDÁRIO — a mesma que a pessoa faz no dedo.
  */
 export function diasEntre(a: Date, b: Date): number {
-  return Math.abs(Math.round((a.getTime() - b.getTime()) / 86_400_000))
+  return Math.abs(Math.round((diaUTC(a) - diaUTC(b)) / 86_400_000))
 }
 
 /**

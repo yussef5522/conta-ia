@@ -236,8 +236,40 @@ describe('⭐ o caminho manual continua sem teto (senão o beco só mudou de sal
   })
 })
 
-describe('⭐ dias inteiros de calendário', () => {
-  it('⛔ arredonda, não trunca — as datas são carimbadas ao meio-dia UTC', () => {
+describe('⛔⛔ DIAS DE CALENDÁRIO — as duas datas vêm com HORAS DIFERENTES do banco', () => {
+  /**
+   * ⚠️⚠️ **ACHADO NA PROVA EM PROD, com a própria LAMANA.** As horas REAIS são:
+   * ```
+   * linha do extrato : 2026-09-21T12:00:00Z   (meio-dia — a convenção das transações)
+   * dueDate da conta : 2026-09-15T00:00:00Z   (data de calendário pura)
+   * ```
+   * A diferença crua é **6,5 dias**, e `Math.round` dava **7** — enquanto o dono conta 6.
+   * ⛔ *Número que o dono sabe estar errado destrói a confiança na tela*, e o rastro
+   * mentiria pro contador.
+   */
+  const LINHA_REAL = new Date('2026-09-21T12:00:00.000Z')
+  const VENC_REAL = new Date('2026-09-15T00:00:00.000Z')
+
+  it('⛔⛔ a LAMANA real dá 6 dias, não 7', () => {
+    expect(diasEntre(LINHA_REAL, VENC_REAL), 'voltou a contar horas em vez de dias').toBe(6)
+    const v = avaliarDistanciaDeDatas(LINHA_REAL, VENC_REAL)
+    expect(v.dias).toBe(6)
+    expect(v.frase).toContain('6 dias depois')
+  })
+
+  it('⛔⛔ e a BORDA: 5 dias de calendário com meia diferença de horas PASSA DIRETO', () => {
+    /**
+     * ⚠️ Este é o caso que a régua VELHA recusava **sem porta**: 5 dias de calendário
+     * viravam 5,5 crus → `round` = 6 → `days > 5` → recusa. Parte da queixa do dono
+     * nascia daqui, e não do teto em si.
+     */
+    const linha = new Date('2026-09-20T12:00:00.000Z')
+    const venc = new Date('2026-09-15T00:00:00.000Z')
+    expect(diasEntre(linha, venc)).toBe(5)
+    expect(avaliarDistanciaDeDatas(linha, venc).degrau).toBe('PASSA')
+  })
+
+  it('⭐ e continua simétrico e exato quando as horas batem', () => {
     expect(diasEntre(d('2026-09-21'), d('2026-09-15'))).toBe(6)
     expect(diasEntre(d('2026-09-15'), d('2026-09-21'))).toBe(6)
     expect(PASSA_DIRETO_DIAS).toBe(5)
