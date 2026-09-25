@@ -21,6 +21,11 @@ const confirmarSchema = z.object({
    * com a diferença real. Mandar um número qualquer continua sendo recusado.
    */
   diferencaAceita: z.number().optional(),
+  /**
+   * ⭐ 25/09 — os dias de distância que o dono confirmou (a LAMANA: venc 15/09, pago 21/09).
+   * ⛔ Mesma régua do `diferencaAceita`: tem que bater com os dias REAIS, não é `force`.
+   */
+  distanciaAceita: z.number().int().nonnegative().optional(),
 })
 
 export async function POST(request: NextRequest) {

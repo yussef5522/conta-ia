@@ -27,13 +27,17 @@
 //
 // Pré-validações cumulativas (defesa em profundidade):
 //   - |OFX.amount - candidato.amount| < 0,01 (valor exato)
-//   - |OFX.date - candidato.dueDate/paymentDate/date| ≤ 5 dias
+//   - distância de datas: ≤ 5 dias passa direto; 6..45 exige o dono CONFIRMAR o atraso
+//     (`distanciaAceita`, que tem que bater com os dias reais); acima de 45 recusa
+//     nomeando o caminho manual (Find & Match com `windowDays: 'all'`, que não tem teto)
 //   - Mesma direção (DEBIT/CREDIT)
 //   - Mesma empresa (multi-tenant)
 //   - ORPHAN: candidato.origin IN (IMPORT_EXCEL, MANUAL) — nunca OFX-vs-OFX
 
 import { processadoraDaLinha, chaveDoPadrao } from './processadora-de-boleto'
 import { textoDoMotivo, type MotivoDaDiferenca } from './regua-da-diferenca'
+import { avaliarDistanciaDeDatas, JANELA_ESTENDIDA_DIAS } from './regua-da-data'
+import { montarRastro } from './rastro-da-conciliacao'
 import { prisma } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import type { AuthContext } from '@/lib/auth/rbac'
@@ -81,14 +85,23 @@ export interface ReconcileInput {
   motivoDaDiferenca?: MotivoDaDiferenca | null
   /** o texto do dono quando o motivo é OUTRO */
   motivoLivre?: string | null
+  /**
+   * ⭐⭐ 25/09 — **OS DIAS DE DISTÂNCIA QUE O DONO CONFIRMOU** (a LAMANA: venc 15/09, pago
+   * 21/09). *"Atraso é rotina de caixa; a régua de datas existe pra evitar casamento
+   * ERRADO, não pra proibir atraso VERDADEIRO."*
+   *
+   * ⛔ **Não é um `force`:** tem que BATER com os dias reais, exatamente como o
+   * `diferencaAceita` bate com a diferença real. Número qualquer não abre a porta.
+   */
+  distanciaAceita?: number
 }
 
-const MAX_DAYS_APART = 5
+/**
+ * ⚠️ **`MAX_DAYS_APART = 5` e `daysBetween` MORRERAM AQUI em 25/09** — os dois viraram
+ * `PASSA_DIRETO_DIAS` e `diasEntre` em `regua-da-data.ts`, onde a TELA também os lê.
+ * ⛔ Deixá-los como constante órfã seria a segunda régua esperando alguém religar.
+ */
 const AMOUNT_EQ_TOLERANCE = 0.01
-
-function daysBetween(a: Date, b: Date): number {
-  return Math.abs(Math.round((a.getTime() - b.getTime()) / 86_400_000))
-}
 
 function resolveCandidateDate(candidate: {
   paymentDate: Date | null
@@ -243,11 +256,25 @@ export async function reconcileTransactions(
         + ` (diferença de R$ ${diferencaReal.toFixed(2)}; confirme a diferença pra conciliar)`,
       )
     }
+    /**
+     * ⭐⭐⭐ 25/09 — **A DISTÂNCIA VIRA PERGUNTA, NÃO MURO.**
+     *
+     * ⛔ Antes: `days > 5` → recusa seca, **sem porta**. A LAMANA (venc 15/09, paga 21/09)
+     * era a conta CERTA, paga com 6 dias de atraso — e não havia como dizer isso.
+     * ⭐ Agora a régua mora num lugar só (`avaliarDistanciaDeDatas`), a TELA faz a mesma
+     * pergunta que o servidor exige, e a resposta vem no gesto.
+     */
     const candidateDate = resolveCandidateDate(candidate)
-    const days = daysBetween(candidateDate, ofx.date)
-    if (days > MAX_DAYS_APART) {
+    const vd = avaliarDistanciaDeDatas(ofx.date, candidateDate, input.distanciaAceita)
+    if (!vd.podeFechar) {
       throw new ReconciliationError(
-        `Datas distantes — ${days} dias entre OFX (${ofx.date.toISOString().slice(0, 10)}) e candidato (${candidateDate.toISOString().slice(0, 10)}). Máximo ${MAX_DAYS_APART} dias.`,
+        vd.degrau === 'RECUSA'
+          ? `Datas muito distantes — ${vd.dias} dias entre o pagamento (${ofx.date.toISOString().slice(0, 10)})`
+            + ` e a conta (${candidateDate.toISOString().slice(0, 10)}), acima dos ${JANELA_ESTENDIDA_DIAS} dias do atalho.`
+            + ` Se é esta conta mesmo, use "procurar outra" e busque sem janela de data.`
+          : `Datas distantes — ${vd.dias} dias entre o pagamento (${ofx.date.toISOString().slice(0, 10)})`
+            + ` e a conta (${candidateDate.toISOString().slice(0, 10)}).`
+            + ` Confirme na tela que ${vd.sentido === 'ADIANTAMENTO' ? 'foi pago adiantado' : 'foi pago com atraso'} pra conciliar.`,
       )
     }
   }
@@ -264,12 +291,25 @@ export async function reconcileTransactions(
    * ⚠️ É a família "N caminhos, 1 esquecido" — a mesma do estorno de cartão e do gatilho de
    * vendas. Agora o texto é montado UMA vez, antes da bifurcação.
    */
-  const rastroDaDiferenca =
-    input.diferencaAceita !== undefined && Math.abs(input.diferencaAceita) >= AMOUNT_EQ_TOLERANCE
-      ? `pagamento conciliado com a linha do extrato de ${ofx.date.toISOString().slice(0, 10)}`
-        + ` (R$ ${ofx.amount.toFixed(2)}) · diferença de R$ ${input.diferencaAceita.toFixed(2)}`
-        + ` = ${textoDoMotivo(input.motivoDaDiferenca, input.motivoLivre)}, confirmada por quem conciliou`
-      : null
+  /**
+   * ⭐⭐ 25/09 — **AS DUAS CONFIRMAÇÕES NO MESMO RASTRO, porque elas vêm no mesmo gesto.**
+   *
+   * O caso comum é exatamente o combinado: *atrasou E pagou juros*. Montar dois rastros
+   * (ou deixar um sobrescrever o outro) faria a conta contar metade da história — e é o
+   * contador que lê isso em três meses.
+   */
+  const rastroDaDiferenca = (() => {
+    const cd = resolveCandidateDate(candidate)
+    const vd = avaliarDistanciaDeDatas(ofx.date, cd, input.distanciaAceita)
+    return montarRastro({
+      dataDaLinha: ofx.date.toISOString().slice(0, 10),
+      valorDaLinha: ofx.amount,
+      diferenca: input.diferencaAceita !== undefined
+        ? { valor: input.diferencaAceita, motivo: input.motivoDaDiferenca, livre: input.motivoLivre }
+        : null,
+      distancia: input.distanciaAceita != null ? { dias: vd.dias, sentido: vd.sentido } : null,
+    })
+  })()
 
   const updated = await prisma.$transaction(async (trx) => {
     if (candidateMode === 'CLASSIC') {

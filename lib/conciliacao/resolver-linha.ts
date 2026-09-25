@@ -90,6 +90,8 @@ export interface ResolverInput {
   contaIds?: string[]
   /** o aceite da diferença nomeada (juros/tarifa), quando ela existe */
   diferencaAceita?: number
+  /** ⭐ 25/09 — os dias de atraso/adiantamento que o dono confirmou no card */
+  distanciaAceita?: number
   /** ⭐ 24/09 — o motivo que o dono deu à diferença (vai pro rastro da conta) */
   motivoDaDiferenca?: MotivoDaDiferenca | null
   motivoLivre?: string | null
@@ -138,6 +140,7 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
         ...(input.contaIds?.length ? { contaIds: input.contaIds } : {}),
         ...(input.categoryId ? { categoryId: input.categoryId } : {}),
         ...(input.diferencaAceita !== undefined ? { diferencaAceita: input.diferencaAceita, motivoDaDiferenca: input.motivoDaDiferenca ?? null } : {}),
+        ...(input.distanciaAceita !== undefined ? { distanciaAceita: input.distanciaAceita } : {}),
         origem: 'caixa-de-entrada',
       },
     }).catch(() => {})
@@ -341,6 +344,7 @@ async function executarGesto(input: ResolverInput, db: PrismaClient): Promise<Re
             ofxTransactionId: input.txId, candidateId: contaId,
             allowMultiReconcile: contas.length > 1, reconcileGroupId: grupo,
             diferencaAceita: input.diferencaAceita,
+            distanciaAceita: input.distanciaAceita,
             motivoDaDiferenca: input.motivoDaDiferenca,
             motivoLivre: input.motivoLivre,
           }, ctxDoReconcile(input))

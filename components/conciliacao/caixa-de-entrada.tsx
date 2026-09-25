@@ -31,6 +31,7 @@ import { consequenciaDeVincular } from '@/lib/conciliacao/uma-casa-por-caso'
 import { venceuOuVence } from '@/lib/conciliacao/vencimento-na-tela'
 import { secoesDeFatura, alvoDaFatura } from '@/lib/credit-card-pj/faturas-pra-quitar'
 import { avaliarDiferenca, MOTIVOS_DA_DIFERENCA, type MotivoDaDiferenca } from '@/lib/conciliacao/regua-da-diferenca'
+import { avaliarDistanciaDeDatas } from '@/lib/conciliacao/regua-da-data'
 
 /** ⚠️ o mesmo arredondamento da régua — comparar float cru daria diferença de 1e-13 */
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -868,14 +869,43 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFatur
   const difRespondida = !vd || vd.degrau === 'FECHA' || vd.degrau === 'RECUSA' || vd.podeFechar
 
   /**
+   * ⭐⭐⭐ 25/09 — A SEGUNDA PERGUNTA: A DISTÂNCIA DAS DATAS (o caso da LAMANA).
+   *
+   * ⛔ Antes o servidor recusava *"Datas distantes — 6 dias. Máximo 5"* **sem porta**, e o
+   * pagamento era verdadeiro: a conta venceu 15/09 e foi paga 21/09. *Atraso é rotina de
+   * caixa.* ⭐ Mesma anatomia da diferença: a régua é a MESMA do servidor, a resposta vai
+   * **no gesto**, e vira rastro.
+   *
+   * ⚠️ E ela convive com a pergunta do valor **no mesmo card**: o caso comum é justamente
+   * *atrasou E pagou juros*. Duas perguntas, **um** confirmar.
+   */
+  const [atrasoOk, setAtrasoOk] = useState(false)
+  const vdata = useMemo(() => {
+    const venc = l.palpite?.alvoDetalhe?.vencimento
+    if (!venc || !l.data) return null
+    return avaliarDistanciaDeDatas(new Date(l.data), new Date(venc), atrasoOk ? undefined : null)
+  }, [l.palpite?.alvoDetalhe?.vencimento, l.data, atrasoOk])
+
+  /** ⛔ só o degrau PERGUNTA depende da resposta; PASSA e RECUSA não */
+  const dataRespondida = !vdata || vdata.degrau !== 'PERGUNTA' || atrasoOk
+
+  /**
    * ⭐ o que vai no corpo do gesto — **o número EXATO que esta tela mostrou**, com o motivo.
    * ⛔ O servidor recusa se o número não bater ao centavo: é confirmação do que o dono viu,
    * nunca um `force` (a régua de 07/09).
    */
-  const comDiferenca = (alvo: Record<string, unknown>) =>
-    vd && motivoDif && (vd.degrau === 'OFERECE' || vd.degrau === 'PERGUNTA')
+  const comDiferenca = (alvo: Record<string, unknown>) => {
+    const comDif = vd && motivoDif && (vd.degrau === 'OFERECE' || vd.degrau === 'PERGUNTA')
       ? { ...alvo, diferencaAceita: vd.diferenca, motivoDaDiferenca: motivoDif, ...(motivoDif === 'OUTRO' ? { motivoLivre } : {}) }
       : alvo
+    /**
+     * ⭐ AS DUAS RESPOSTAS NO MESMO CORPO — *"um confirmar só resolve"* (ordem do dono).
+     * ⛔ Coletar e não enviar foi o bug de 12/09; por isso o guard olha o corpo do gesto.
+     */
+    return vdata && vdata.degrau === 'PERGUNTA' && atrasoOk
+      ? { ...comDif, distanciaAceita: vdata.dias }
+      : comDif
+  }
   /**
    * ⭐⭐⭐ QUEM MANDA É O CASO, NÃO O PALPITE (23/09) — o beco da MARIA LUIZA.
    *
@@ -1090,12 +1120,45 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFatur
                 </div>
               )}
               {/*
+                ⭐⭐⭐ A PERGUNTA DA DATA (25/09) — o caso da LAMANA.
+
+                ⛔ Antes isto era uma RECUSA do servidor (*"Datas distantes — 6 dias.
+                Máximo 5"*) **sem porta nenhuma**, sobre uma conta que era a certa: venceu
+                15/09 e foi paga 21/09. *Atraso é rotina de caixa.*
+
+                ⚠️ Ela mora ao lado da pergunta do valor DE PROPÓSITO: o caso comum é
+                **atrasou E pagou juros**, e um confirmar só resolve os dois.
+              */}
+              {vdata && vdata.degrau === 'PERGUNTA' && (
+                <div className="mt-2 rounded-xl border-[1.5px] p-2.5" style={{ borderColor: V3.ambar, background: V3.ambarBg }}>
+                  <p className="text-[12px] font-bold" style={{ color: V3.ambar }}>{vdata.frase}</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <button type="button" disabled={ocupado} onClick={() => setAtrasoOk(!atrasoOk)}
+                      className="rounded-full border-[1.5px] px-2.5 py-[5px] text-[11.5px] font-bold disabled:opacity-40"
+                      style={atrasoOk
+                        ? { borderColor: V3.ambar, background: V3.ambar, color: '#fff' }
+                        : { borderColor: V3.ambar, background: '#fff', color: V3.ambar }}>
+                      {vdata.rotuloDaConfirmacao}
+                    </button>
+                    {/* ⭐ a saída honesta: se NÃO é essa conta, a porta de troca é a de sempre */}
+                    <button type="button" disabled={ocupado} onClick={() => onTrocarConta(l)}
+                      className="rounded-full border-[1.5px] px-2.5 py-[5px] text-[11.5px] font-bold disabled:opacity-40"
+                      style={{ borderColor: V3.line, background: '#fff', color: V3.sub }}>
+                      não é essa conta
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[11px]" style={{ color: V3.sub }}>
+                    fica escrito no histórico da conta — é o que o contador lê depois
+                  </p>
+                </div>
+              )}
+              {/*
                 ⭐ o botão diz O EFEITO — e é o MESMO confirmar de ontem.
                 ⛔ Só que agora ele **espera a categoria** quando o gesto é dos que pedem
                 escolha; nos estruturais e no casar ele segue livre (a régua está na lib).
               */}
               <button type="button"
-                disabled={ocupado || !podeDisparar(l.palpite.acao as AcaoDoBalcao, temCategoria) || !difRespondida}
+                disabled={ocupado || !podeDisparar(l.palpite.acao as AcaoDoBalcao, temCategoria) || !difRespondida || !dataRespondida}
                 onClick={() => onGesto(l, l.palpite!.acao, comDiferenca(comCategoria(l.palpite!.alvo)))}
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-[13px] text-[15px] font-extrabold text-white disabled:opacity-50"
                 style={{ background: `linear-gradient(135deg,${V3.verde},${V3.verde2})`, boxShadow: '0 6px 18px rgba(15,157,88,.35)' }}>
@@ -1107,9 +1170,14 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFatur
                 </div>
               )}
               {/* ⛔ e o botão travado DIZ o que falta — desabilitado mudo é o dono adivinhando */}
-              {podeDisparar(l.palpite.acao as AcaoDoBalcao, temCategoria) && !difRespondida && (
+              {podeDisparar(l.palpite.acao as AcaoDoBalcao, temCategoria) && (!difRespondida || !dataRespondida) && (
                 <div className="mt-1.5 text-center text-[11.5px] font-bold" style={{ color: V3.ambar }}>
-                  diga o que é a diferença ↑ — ela vai pro histórico da conta
+                  {/* ⛔ botão travado DIZ o que falta — e quando faltam AS DUAS, diz as duas */}
+                  {!difRespondida && !dataRespondida
+                    ? 'responda o atraso e a diferença ↑ — os dois vão pro histórico da conta'
+                    : !difRespondida
+                      ? 'diga o que é a diferença ↑ — ela vai pro histórico da conta'
+                      : 'confirme o atraso ↑ — ele vai pro histórico da conta'}
                 </div>
               )}
               {/*

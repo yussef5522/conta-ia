@@ -30,6 +30,14 @@ const schema = z.object({
    */
   motivoDaDiferenca: z.enum(['JUROS', 'MULTA', 'TARIFA', 'DESCONTO', 'OUTRO']).optional(),
   motivoLivre: z.string().trim().max(80).optional(),
+  /**
+   * ⭐ 25/09 — os dias de atraso/adiantamento que o dono CONFIRMOU no card (a LAMANA).
+   *
+   * ⚠️ **Tem que estar aqui.** O zod recorta o corpo, então campo que a tela manda e o
+   * schema não declara **some em silêncio** — foi assim que o `empresaId` do lote produziu
+   * um *"Gesto inválido"* em 23/09, com a tela prometendo o que o servidor nunca recebeu.
+   */
+  distanciaAceita: z.number().int().nonnegative().optional(),
 })
 
 export async function POST(request: NextRequest) {

@@ -72,11 +72,23 @@ describe('⭐⭐ o MOTIVO vai pro rastro — e "desconto" não pode virar "juros
     expect(textoDoMotivo(null)).toBe('juros/tarifa de boleto')
   })
 
-  it('⛔ e o reconcile usa o dono da frase, nunca um texto cravado', () => {
-    const rec = semComentario(ler('lib/conciliacao/reconcile.ts'))
+  it('⛔ e o rastro usa o dono da frase, nunca um texto cravado', () => {
+    /**
+     * ⚠️ **REAPONTADO em 25/09 — o alvo MUDOU DE CASA, a régua não.** A montagem do rastro
+     * saiu do `reconcile.ts` pra `rastro-da-conciliacao.ts` quando o ATRASO virou o segundo
+     * pedaço: enterrada numa função de 300 linhas que só roda com banco, ela **só podia ser
+     * testada por menção** — e um guard desses veio verde com o rastro arrancado.
+     *
+     * ⭐ A pergunta segue a mesma (*o nome vem do motivo do dono, nunca cravado?*); agora
+     * ela é feita a quem monta.
+     */
+    const rec = semComentario(ler('lib/conciliacao/rastro-da-conciliacao.ts'))
     expect(rec, 'o texto do rastro voltou a ser cravado — desconto vira juros de novo')
       .not.toMatch(/= juros\/tarifa de boleto, confirmada/)
-    expect(rec).toContain('textoDoMotivo(input.motivoDaDiferenca, input.motivoLivre)')
+    expect(rec).toContain('textoDoMotivo(')
+    // ⛔ e o reconcile não pode voltar a montar o texto por conta própria
+    expect(semComentario(ler('lib/conciliacao/reconcile.ts')))
+      .not.toMatch(/= juros\/tarifa de boleto, confirmada/)
   })
 })
 
@@ -88,7 +100,13 @@ describe('⛔⛔⛔ A EXIGÊNCIA APONTA PRO CONTROLE (a régua de 23/09)', () =>
   })
 
   it('⛔⛔ o botão TRAVA sem a resposta — e DIZ o que falta', () => {
-    expect(CAIXA).toMatch(/\|\| !difRespondida\}/)
+    /**
+     * ⚠️ **REAPONTADO em 25/09 e MAIS FORTE:** o botão passou a esperar TAMBÉM a resposta
+     * do atraso (a LAMANA), então o literal `|| !difRespondida}` deixou de existir. A régua
+     * não afrouxou — *ele continua travando sem a diferença nomeada*; o que mudou é que
+     * agora ele trava por duas razões, e o guard exige as duas.
+     */
+    expect(CAIXA).toMatch(/\|\| !difRespondida \|\| !dataRespondida\}/)
     expect(CAIXA, 'desabilitado mudo é o dono adivinhando')
       .toContain('diga o que é a diferença ↑')
   })

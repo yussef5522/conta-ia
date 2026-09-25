@@ -128,6 +128,9 @@ describe('⛔⛔ o SERVIDOR aceita exatamente o que a tela oferece', () => {
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
+/** ⚠️ sem comentário: o arquivo que DOCUMENTA a frase não pode ser o que a absolve */
+const semComentario = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
 describe('⛔⛔ o rastro da diferença vale pros DOIS ramos', () => {
   const fonte = readFileSync(join(__dirname, '..', 'reconcile.ts'), 'utf8')
   /**
@@ -151,11 +154,20 @@ describe('⛔⛔ o rastro da diferença vale pros DOIS ramos', () => {
      * (`textoDoMotivo`), e o guard exige as duas coisas: a montagem única **e** que ela
      * passe pela função, nunca por um literal.
      */
-    const montagens = fonte.split(', confirmada por quem conciliou').length - 1
-    expect(montagens).toBe(1)
-    expect(fonte, 'a frase voltou a ser cravada — desconto vira juros de novo')
-      .toContain('textoDoMotivo(input.motivoDaDiferenca, input.motivoLivre)')
-    expect(fonte).not.toMatch(/= juros\/tarifa de boleto, confirmada/)
+    /**
+     * ⚠️ **REAPONTADO em 25/09 — a montagem mudou de ARQUIVO.** Com o atraso virando o
+     * segundo pedaço do rastro, ela saiu pra `rastro-da-conciliacao.ts`. ⭐ A régua é a
+     * mesma (*UMA montagem, e o nome vem do `textoDoMotivo`*) e ficou mais forte: o guard
+     * confere que o `reconcile` **não** voltou a montar por conta própria.
+     */
+    const rastro = semComentario(readFileSync(join(process.cwd(), 'lib/conciliacao/rastro-da-conciliacao.ts'), 'utf-8'))
+    const montagens = rastro.split(', confirmada por quem conciliou').length - 1
+    expect(montagens, 'duas montagens do mesmo rastro divergem no primeiro campo novo').toBe(1)
+    expect(rastro, 'a frase voltou a ser cravada — desconto vira juros de novo')
+      .toContain('textoDoMotivo(')
+    expect(rastro).not.toMatch(/= juros\/tarifa de boleto, confirmada/)
+    expect(fonte, 'o reconcile voltou a montar o rastro por fora do dono')
+      .not.toContain(', confirmada por quem conciliou')
   })
 
   it('⛔⛔ os DOIS ramos ESCREVEM o rastro — um só era o defeito da OESA', () => {
