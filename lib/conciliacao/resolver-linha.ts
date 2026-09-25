@@ -33,6 +33,7 @@ import { acaoValePraSentido, sentidoDaLinha, type AcaoDoBalcao } from './caixa-d
 import { reconcileTransactions, ReconciliationError } from './reconcile'
 import type { MotivoDaDiferenca } from './regua-da-diferenca'
 import type { AuthContext } from '@/lib/auth/rbac'
+import { logAudit } from '@/lib/audit'
 
 /**
  * ⭐ O CONTEXTO QUE O RECONCILE EXIGE — e a recusa aqui **ENSINA** em vez de estourar.
@@ -109,6 +110,42 @@ export interface ResolverResultado {
  * `CASAR_PAGAR` é recusado com a frase que ensina.
  */
 export async function resolverLinha(input: ResolverInput, db: PrismaClient = defaultPrisma): Promise<ResolverResultado> {
+  const r = await executarGesto(input, db)
+  /**
+   * ⭐⭐⭐ 25/09 — **A AUDITORIA DA CAIXA, NUM CHOKE-POINT SÓ.**
+   *
+   * **O buraco, medido no mapa do problema 3:** as duas linhas do CASPER de 21/09 estavam
+   * conciliadas e a auditoria tinha **0 eventos pelo id da linha** — *"dá pra ver o estado,
+   * mas não quem o produziu"*. O dono ficou sem saber se tinha sido ele às 00:27.
+   *
+   * ⛔ E ela vai **AQUI**, envolvendo o `switch`, não dentro de cada ramo: são **11 ações** e
+   * o próximo gesto nasceria sem rastro. É a doença *"N caminhos, 1 esquecido"* — a mesma que
+   * custou o gatilho de vendas e o split do empréstimo — evitada por construção.
+   *
+   * ⚠️ **FAIL-SOFT**: rastro que derruba o gesto seria pior que rastro nenhum. O gesto do
+   * dono já gravou quando chegamos aqui; se o audit falhar, o efeito continua valendo.
+   */
+  if (input.authCtx?.company) {
+    await logAudit(input.authCtx, {
+      action: 'UPDATE',
+      entityType: 'Transaction',
+      // ⭐ o id da LINHA — é por ele que o dono procura ("o que houve com esta linha?")
+      entityId: input.txId,
+      metadata: {
+        gesto: input.acao,
+        efeito: r.efeito,
+        saiuDaCaixa: r.saiuDaCaixa,
+        ...(input.contaIds?.length ? { contaIds: input.contaIds } : {}),
+        ...(input.categoryId ? { categoryId: input.categoryId } : {}),
+        ...(input.diferencaAceita !== undefined ? { diferencaAceita: input.diferencaAceita, motivoDaDiferenca: input.motivoDaDiferenca ?? null } : {}),
+        origem: 'caixa-de-entrada',
+      },
+    }).catch(() => {})
+  }
+  return r
+}
+
+async function executarGesto(input: ResolverInput, db: PrismaClient): Promise<ResolverResultado> {
   const tx = await db.transaction.findFirst({
     where: { id: input.txId, bankAccount: { companyId: input.companyId } },
     select: { id: true, type: true, amount: true, date: true, bankAccountId: true, categoryId: true, ignoredAt: true },
@@ -197,6 +234,29 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
     case 'IGNORAR': {
       await db.transaction.update({ where: { id: tx.id }, data: { ignoredAt: new Date() } })
       return { efeito: 'linha fora das filas, reversível', saiuDaCaixa: true }
+    }
+
+    /**
+     * ⭐⭐⭐ 25/09 — **"É DESPESA AVULSA — NÃO TEM NOTA"**: a porta da linha de fornecedor.
+     *
+     * ⚠️ Ela grava a DECISÃO (com autor e data), nunca mexe na linha: o que muda é que a lei
+     * da estação passa a ter um fato pra declarar a linha resolvida, com selo PRÓPRIO
+     * (*"avulsa confirmada"*). ⛔ Reusar o selo *"categorizada"* misturaria *"o dono disse
+     * que não tem nota"* com *"ninguém olhou ainda"* — e é justamente essa mistura que
+     * escondeu os R$ 16.201,01.
+     *
+     * ⭐ `upsert` porque confirmar duas vezes é o dono clicando duas vezes, não um erro.
+     */
+    case 'AVULSA_CONFIRMADA': {
+      await db.conciliacaoAvulsaConfirmada.upsert({
+        where: { transactionId: tx.id },
+        create: {
+          companyId: input.companyId, transactionId: tx.id,
+          motivo: input.motivoLivre?.trim() || null, confirmadoPorId: input.userId ?? null,
+        },
+        update: {},
+      })
+      return { efeito: 'arquivada como despesa avulsa — sem nota a casar', saiuDaCaixa: true }
     }
 
     /**

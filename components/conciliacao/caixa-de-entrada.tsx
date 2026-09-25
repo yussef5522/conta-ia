@@ -65,6 +65,11 @@ interface LinhaDTO {
   /** ⭐ a categoria da conta que o palpite de CASAR aponta (o seletor DIZ, não pede) */
   categoriaDaConta: string | null
   /**
+   * ⭐⭐ 25/09 — POR QUE esta linha ainda está na caixa apesar de ter categoria.
+   * ⛔ Linha que muda de estado sem dizer o motivo é a família da que some sem gesto.
+   */
+  avisoCategoriaSemVinculo: string | null
+  /**
    * ⭐⭐⭐ O CASO — e ele mora **DENTRO do cartão ≍** (20/09), no lugar do palpite.
    *
    * ⛔ Era seção separada embaixo, com visual próprio: o dono via *"a mesma coisa duas
@@ -1089,6 +1094,19 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
                   não é essa — escolher outra →
                 </button>
               )}
+            </div>
+          )}
+
+          {/*
+            ⭐⭐⭐ 25/09 — O AVISO DA LINHA QUE FICOU POR NÃO TER VÍNCULO.
+            ⛔ Âmbar, nunca vermelho: ela não está errada — está **incompleta**. E a frase diz
+            as DUAS saídas, porque *"é despesa avulsa"* é caso legítimo (compra pré-sistema,
+            pix pro entregador) e sem a segunda porta o aviso seria um beco.
+          */}
+          {l.avisoCategoriaSemVinculo && (
+            <div className="mt-2 rounded-xl border-[1.5px] px-2.5 py-2 text-[11.5px] font-bold"
+              style={{ borderColor: V3.ambar, background: V3.ambarBg, color: V3.ambar }}>
+              {l.avisoCategoriaSemVinculo}
             </div>
           )}
 

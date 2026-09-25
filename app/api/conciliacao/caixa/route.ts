@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
+import { AVISO_CATEGORIZADA_SEM_VINCULO } from '@/lib/conciliacao/categoria-nao-quita'
 import { estacaoDaLinha, comoFoiResolvida, sentidoDaLinha, acoesDoSentido } from '@/lib/conciliacao/caixa-de-entrada'
 /**
  * ⭐ A CONSULTA NÃO MORA MAIS AQUI (faxina de 15/09) — ela é de `leitura-da-caixa`, a MESMA
@@ -209,6 +210,19 @@ export async function GET(request: NextRequest) {
       palpite: palpites.get(r.id) ?? null,
       /** ⭐ o que o seletor da esquerda mostra quando o palpite é CASAR */
       categoriaDaConta: categoriaDoAlvo(palpites.get(r.id)),
+      /**
+       * ⭐⭐⭐ 25/09 — **POR QUE ESTA LINHA AINDA ESTÁ AQUI.**
+       *
+       * Ela tem categoria, mas de um grupo que **passa por contas a pagar** (mercadoria,
+       * embalagem, frete, consórcio) — então a categoria não encerra: falta dizer QUAL NOTA
+       * ela pagou. ⛔ Sem este campo a linha voltaria pra caixa **muda**, e o dono acharia
+       * que o sistema esqueceu de arquivá-la. *Mudar o estado sem dizer por quê é a família
+       * da linha que some sem gesto.*
+       */
+      avisoCategoriaSemVinculo:
+        estacaoDaLinha(l) === 'CAIXA' && !!l.categoryId && !l.avulsaConfirmada
+          ? AVISO_CATEGORIZADA_SEM_VINCULO
+          : null,
       /**
        * ⭐ quando o caso mora no CARD, a linha perde o botão e ganha o CAMINHO.
        * ⛔ Nunca as duas com botão — e nunca a linha muda sem dizer pra onde ir.

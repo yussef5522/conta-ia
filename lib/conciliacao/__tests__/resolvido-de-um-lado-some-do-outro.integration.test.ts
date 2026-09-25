@@ -20,6 +20,7 @@ let companyId = ''
 let contaId = ''
 let supplierId = ''
 let categoryId = ''
+let categoriaDeFornecedorId = ''
 let linhaId = ''
 let notaId = ''
 
@@ -28,7 +29,14 @@ beforeEach(async () => {
   companyId = (await prisma.company.create({ data: { cnpj: CNPJ, name: 'EMPRESA DUAS CASAS' } })).id
   contaId = (await prisma.bankAccount.create({ data: { companyId, name: 'sicredi', bankName: 'Sicredi' } })).id
   supplierId = (await prisma.supplier.create({ data: { companyId, razaoSocial: 'FRANCIELE DE LIMA DIAS' } })).id
-  categoryId = (await prisma.category.create({ data: { companyId, name: 'Salários', type: 'EXPENSE' } })).id
+  /**
+   * ⚠️ 25/09 — o `dreGroup` passou a ser OBRIGATÓRIO no fixture, e o `tsc` não cobra isso:
+   * cobrou o TESTE. A lei da estação agora decide pelo GRUPO (salário encerra a linha;
+   * fornecedor com nota não), e categoria sem grupo é configuração incompleta — a lei trata
+   * ausência como *"não resolve"*, que é o default seguro (a lição do `?? 'CAIXA'`).
+   */
+  categoryId = (await prisma.category.create({ data: { companyId, name: 'Salários', type: 'EXPENSE', dreGroup: 'DESPESAS_PESSOAL' } })).id
+  categoriaDeFornecedorId = (await prisma.category.create({ data: { companyId, name: 'Matéria-Prima - Alimentos', type: 'EXPENSE', dreGroup: 'CUSTO_PRODUTO_VENDIDO' } })).id
 
   linhaId = (await prisma.transaction.create({
     data: {
@@ -94,9 +102,31 @@ describe('⛔⛔ resolvido de um lado, o outro some', () => {
    * ⚠️ As duas perguntas convivem: a linha sai da CAIXA (não pede mais decisão) e continua
    * elegível pro card (ainda pode ser o pagamento de uma conta em aberto).
    */
-  it('⛔ categorizar tira da CAIXA e MANTÉM no card — de propósito', async () => {
+  it('⛔ categorizar como SALÁRIO tira da CAIXA e MANTÉM no card — de propósito', async () => {
     await prisma.transaction.update({ where: { id: linhaId }, data: { categoryId, status: 'RECONCILED' } })
-    expect(await estaNaCaixa(), 'a linha categorizada continua pedindo decisão').toBe(false)
+    expect(await estaNaCaixa(), 'a linha de salário continua pedindo decisão').toBe(false)
     expect(await oCardAindaOferece(), 'esconder aqui esconderia o pagamento lançado como despesa avulsa').toBe(true)
+  })
+
+  it('⛔⛔⛔ mas categorizar como FORNECEDOR **não** tira da caixa (25/09)', async () => {
+    /**
+     * **O achado do mapa do problema 3:** 18 saídas de fornecedor (R$ 16.201,01) estavam
+     * arquivadas só com categoria — DOCEOLI 5.234,88, as duas do CASPER de 04/09, DIVINE…
+     * ***Dinheiro que saiu, não baixou conta a pagar nenhuma, fora da caixa e sem ninguém
+     * cobrando.*** Fornecedor emite nota: a linha ainda pede a decisão *qual nota ela pagou*.
+     */
+    await prisma.transaction.update({ where: { id: linhaId }, data: { categoryId: categoriaDeFornecedorId, status: 'RECONCILED' } })
+    expect(await estaNaCaixa(), 'a linha de fornecedor voltou a arquivar só com categoria').toBe(true)
+    expect(await oCardAindaOferece()).toBe(true)
+  })
+
+  it('⭐⭐ e a saída honesta existe: "avulsa confirmada" ARQUIVA (decisão, nunca silêncio)', async () => {
+    await prisma.transaction.update({ where: { id: linhaId }, data: { categoryId: categoriaDeFornecedorId, status: 'RECONCILED' } })
+    expect(await estaNaCaixa()).toBe(true)
+    // ⭐ compra pré-sistema / pix pro entregador é caso LEGÍTIMO — e o dono diz isso
+    await prisma.conciliacaoAvulsaConfirmada.create({
+      data: { companyId, transactionId: linhaId, motivo: 'compra anterior ao sistema' },
+    })
+    expect(await estaNaCaixa(), 'a confirmação do dono não fechou o caso — o aviso vira beco').toBe(false)
   })
 })

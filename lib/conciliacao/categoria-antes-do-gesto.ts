@@ -46,6 +46,12 @@ export function origemDaCategoria(acao: AcaoDoBalcao): OrigemDaCategoria {
     case 'PARCELA_EMPRESTIMO':
     case 'TRANSFERENCIA_ENVIADA':
     case 'TRANSFERENCIA_RECEBIDA':
+    /**
+     * ⭐ `AVULSA_CONFIRMADA` é ESTRUTURAL de propósito (25/09): ela só existe **depois** de
+     * a linha já ter categoria — o gesto responde *"não tem nota"*, não *"o que é isto"*.
+     * Cobrar categoria aqui seria cobrar duas vezes o mesmo fato.
+     */
+    case 'AVULSA_CONFIRMADA':
     case 'IGNORAR':
       return 'ESTRUTURAL'
   }

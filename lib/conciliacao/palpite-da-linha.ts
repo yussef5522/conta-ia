@@ -102,6 +102,8 @@ export function rotuloDoBotao(acao: AcaoDoBalcao, alvoNome?: string): string {
     case 'TRANSFERENCIA_RECEBIDA': return '✓ Confirmar — casa a transferência'
     case 'CATEGORIA': return '✓ Confirmar — grava a categoria'
     case 'IGNORAR': return '✓ Confirmar — tira das filas'
+    // ⭐ o rótulo diz O EFEITO e o LIMITE: arquiva, e NÃO baixa conta nenhuma
+    case 'AVULSA_CONFIRMADA': return '✓ Confirmar — arquiva como avulsa (sem nota)'
   }
 }
 

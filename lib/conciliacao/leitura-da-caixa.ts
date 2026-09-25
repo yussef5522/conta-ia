@@ -23,6 +23,15 @@ export const SELECT_DA_CAIXA = {
   reconciledFrom: { select: { id: true } },
   loanInstallmentPaid: { select: { id: true } },
   loanInstallmentPayments: { select: { id: true } },
+  /**
+   * ⭐⭐ 25/09 — O GRUPO DO DRE vem JUNTO, no mesmo select.
+   *
+   * ⛔ Sem o campo, `categoriaResolveSozinha` receberia `undefined` pra TODA linha e — como
+   * a régua trata ausência como *"não resolve"* — o arquivo inteiro voltaria pra caixa. É a
+   * doença do **select incompleto** (o PIX de 7.000, 17/08): o motor decide com um campo
+   * que a consulta não trouxe, e **não dá erro: dá silêncio**.
+   */
+  category: { select: { dreGroup: true } },
 } as const
 
 /**
@@ -44,12 +53,25 @@ export type LinhaCrua = {
   reconciledFrom: { id: string }[]
   loanInstallmentPaid: { id: string } | null
   loanInstallmentPayments: { id: string }[]
+  /** ⭐ 25/09 — o grupo do DRE da categoria, que decide se ela encerra a linha */
+  category?: { dreGroup: string | null } | null
+  /**
+   * ⭐ 25/09 — a decisão *"esta saída não tem nota"*, INJETADA pela leitura.
+   *
+   * ⚠️ Não é coluna de `transactions`: ela vive em `conciliacao_avulsa_confirmada`, porque
+   * decisão tem AUTOR e DATA (e um boolean não guarda nem um nem outro). Quem junta é a
+   * `lerCaixa`, num lugar só — cada leitor buscando por conta própria é como dois deles
+   * discordam sobre a mesma linha.
+   */
+  avulsaConfirmada?: boolean
 }
 
 /** ⭐ a tradução da linha crua pra o que a LEI lê — um lugar só, senão as duas divergem */
 export function paraLei(r: LinhaCrua): LinhaParaEstacao {
   return {
     categoryId: r.categoryId,
+    dreGroupDaCategoria: r.category?.dreGroup ?? null,
+    avulsaConfirmada: r.avulsaConfirmada ?? false,
     reconciledWithId: r.reconciledWithId,
     temReconciledFrom: r.reconciledFrom.length > 0,
     isCardPayment: r.isCardPayment,
@@ -94,6 +116,18 @@ export async function lerCaixa(empresaId: string, db: PrismaClient = defaultPris
     orderBy: { date: 'desc' },
     take: TETO_DA_CAIXA,
   })) as unknown as LinhaCrua[]
+
+  /**
+   * ⭐ UMA consulta pra todas as linhas, não uma por linha — a lição do badge que virou
+   * 1,3 s (11/09). E ela roda depois do `take`, então só busca o que a tela vai desenhar.
+   */
+  const avulsas = rows.length
+    ? new Set((await db.conciliacaoAvulsaConfirmada.findMany({
+        where: { companyId: empresaId, transactionId: { in: rows.map((r) => r.id) } },
+        select: { transactionId: true },
+      })).map((a) => a.transactionId))
+    : new Set<string>()
+  for (const r of rows) r.avulsaConfirmada = avulsas.has(r.id)
 
   return { rows, contadores: contarEstacoes(rows.map(paraLei)), corte, nomeConta: new Map(contas.map((c) => [c.id, c.name])) }
 }

@@ -4573,6 +4573,28 @@ model ConciliacaoParRecusado {
   @@map("conciliacao_par_recusado")
 }
 
+/// ⭐⭐⭐ "ESTA SAÍDA NÃO TEM NOTA" — A DECISÃO EXPLÍCITA (25/09/2026).
+///
+/// **Nasce da régua do dono:** a linha de fornecedor deixou de arquivar só com categoria, e
+/// a saída honesta pra quem **de fato não tem nota** (compra pré-sistema, pix pro entregador)
+/// é ELE DIZER isso. ⛔ *"Decisão, nunca silêncio"* — sem esta porta o aviso seria um beco.
+///
+/// ⚠️ **Tabela e não coluna**, pelo mesmo motivo do `stock_item_categoria_trocada`: a decisão
+/// tem AUTOR e DATA, e um boolean não guarda nem um nem outro. O contador vai perguntar.
+model ConciliacaoAvulsaConfirmada {
+  id              String   @id @default(cuid())
+  companyId       String
+  /// a linha do extrato (Transaction EFFECTED de origem OFX)
+  transactionId   String   @unique
+  /// o porquê, quando o dono quis escrever — opcional de propósito (cerimônia afasta)
+  motivo          String?
+  confirmadoPorId String?
+  criadoEm        DateTime @default(now())
+
+  @@index([companyId, criadoEm])
+  @@map("conciliacao_avulsa_confirmada")
+}
+
 /// ⭐⭐ O RASTRO DE "AGRUPADA POR GRAFIA" (08/09/2026).
 ///
 /// Quando uma grafia entra no mapa SOZINHA porque o canônico dela já tinha ficha, o

@@ -36,6 +36,9 @@ const CARTER: LinhaParaEstacao = {
   pendingTransfer: false,
   ignoredAt: null,
   tipo: 'DEBIT',
+  // ⭐ 25/09 — os dois campos novos da lei; aqui não mudam nada (a linha não tem categoria)
+  dreGroupDaCategoria: null,
+  avulsaConfirmada: false,
 }
 
 describe('⛔⛔⛔ pagamento de cartão SEM vínculo não sai da caixa', () => {
@@ -62,7 +65,19 @@ describe('⛔⛔⛔ pagamento de cartão SEM vínculo não sai da caixa', () => 
 
   it('⛔ e nenhum outro campo "resolve" a órfã por tabela', () => {
     // ⚠️ o que resolve tem que ser um FATO gravado, não uma impressão do import
-    expect(comoFoiResolvida({ ...CARTER, categoryId: 'cat1' })).toBe('categorizada')
+    /**
+     * ⚠️ AJUSTADO EM 25/09 — a lei mudou, e o teste acompanhou com o motivo escrito.
+     *
+     * `categoryId` sozinho **não resolve mais**: quem decide é o **grupo do DRE** dela
+     * (`categoriaResolveSozinha`). Salário e retirada de sócio encerram a linha; fornecedor
+     * que emite nota **não** — ali ela ainda pede o vínculo. O que este teste continua
+     * provando é o que ele nasceu pra provar: *só FATO gravado resolve*.
+     */
+    expect(comoFoiResolvida({ ...CARTER, categoryId: 'cat1', dreGroupDaCategoria: 'DESPESAS_PESSOAL' })).toBe('categorizada')
+    expect(
+      comoFoiResolvida({ ...CARTER, categoryId: 'cat1', dreGroupDaCategoria: 'CUSTO_PRODUTO_VENDIDO' }),
+      'fornecedor com nota voltou a arquivar só com categoria',
+    ).toBeNull()
     expect(comoFoiResolvida({ ...CARTER, ignoredAt: new Date() })).toBe('ignorada por você')
   })
 })

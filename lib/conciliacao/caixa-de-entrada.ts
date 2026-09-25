@@ -41,6 +41,14 @@ export type AcaoDoBalcao =
   // ── os dois lados ──
   | 'CATEGORIA'
   | 'IGNORAR'
+  /**
+   * ⭐⭐ 25/09 — **"É DESPESA AVULSA — NÃO TEM NOTA"**, a saída honesta da linha de
+   * fornecedor que ficou na caixa por não ter vínculo.
+   *
+   * ⛔ Sem ela o aviso *"categorizada, mas sem vínculo"* seria um **beco**: compra
+   * pré-sistema e pix pro entregador são casos legítimos. ***Decisão, nunca silêncio.***
+   */
+  | 'AVULSA_CONFIRMADA'
 
 export interface AcaoOferecida {
   acao: AcaoDoBalcao
@@ -55,6 +63,13 @@ const SAIDA: readonly AcaoOferecida[] = [
   { acao: 'PARCELA_EMPRESTIMO', rotulo: 'parcela de empréstimo', pedeAlvo: 'CONTRATO' },
   { acao: 'TRANSFERENCIA_ENVIADA', rotulo: 'transferência enviada', pedeAlvo: 'PAR' },
   { acao: 'CATEGORIA', rotulo: 'é despesa: categoria', pedeAlvo: 'CATEGORIA' },
+  /**
+   * ⭐⭐ 25/09 — a saída da linha de FORNECEDOR que ficou na caixa por não ter vínculo.
+   *
+   * ⛔ Ela é de SAÍDA só: crédito não paga nota, então a pergunta *"tem nota?"* não existe
+   * do outro lado — e a lei do sentido é checada no servidor.
+   */
+  { acao: 'AVULSA_CONFIRMADA', rotulo: 'é despesa avulsa — não tem nota', pedeAlvo: null },
   { acao: 'IGNORAR', rotulo: 'ignorar', pedeAlvo: null },
 ]
 
@@ -106,6 +121,8 @@ export function acaoValePraSentido(acao: AcaoDoBalcao, sentido: SentidoDaLinha):
 // ⭐⭐ EM QUE ESTAÇÃO A LINHA ESTÁ — a derivação única (o invariante mora nela)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+import { categoriaResolveSozinha, SELO_AVULSA_CONFIRMADA } from './categoria-nao-quita'
+
 export type Estacao = 'CAIXA' | 'ARQUIVO'
 
 /** o que basta saber de uma linha pra dizer onde ela está */
@@ -122,17 +139,38 @@ export interface LinhaParaEstacao {
   pendingTransfer: boolean
   ignoredAt: Date | null
   tipo: string
+  /**
+   * ⭐⭐ 25/09 — O GRUPO DO DRE DA CATEGORIA. É ele que decide se a categoria **encerra** a
+   * linha ou se ela ainda pede o vínculo com a nota.
+   *
+   * ⚠️ Vem como VALOR (não pelo nome da categoria): nome é texto livre que cada cliente
+   * escreve como quer; `dreGroup` é escolha estrutural. A régua mora em
+   * `categoria-nao-quita.ts`, um dono só.
+   */
+  dreGroupDaCategoria: string | null
+  /** ⭐ o dono CONFIRMOU que esta saída não tem nota (decisão registrada, com autor) */
+  avulsaConfirmada: boolean
 }
 
 /**
  * ⭐⭐⭐ RESOLVIDA = tem DESTINO FINAL. E cada forma de destino tem um selo próprio — é ele
  * que o arquivo (Movimentações) mostra como "COMO isto foi resolvido".
  *
- * ⚠️ **TER CATEGORIA CONTA COMO RESOLVIDA AQUI, e isso NÃO contradiz a régua de 07/09**
- * (*"ter categoria não quita conta nenhuma"*). Lá a pergunta era *"esta linha ainda pode
- * pagar um boleto?"* — e pode. Aqui é *"esta linha ainda pede decisão minha?"* — e não
- * pede: o dono já disse o que ela é. As duas perguntas convivem: a linha categorizada sai
- * da CAIXA e continua elegível pro Find & Match quando ele procurar de propósito.
+ * ⚠️⚠️ **E O PARÁGRAFO QUE ESTAVA AQUI ERA METADE VERDADE — corrigido em 25/09.**
+ *
+ * Ele dizia: *"ter categoria conta como resolvida AQUI, e isso NÃO contradiz a régua de
+ * 07/09 — lá a pergunta era «esta linha ainda pode pagar um boleto?»; aqui é «esta linha
+ * ainda pede decisão minha?», e não pede"*. ⭐ **O argumento vale pro SALÁRIO e pra RETIRADA
+ * DE SÓCIO** (não existe boleto pra casar) **e NÃO vale pro FORNECEDOR**: ali a linha ainda
+ * pede uma decisão, e a decisão é *qual nota ela pagou*.
+ *
+ * **O estrago, medido no mapa do problema 3:** 68 saídas arquivadas só com categoria, das
+ * quais **18 (R$ 16.201,01) são de fornecedor que emite nota** — DOCEOLI 5.234,88, as duas
+ * do CASPER de 04/09, DIVINE, CEREALISTA, E-CAIXAS, frete. ***Dinheiro que saiu, não baixou
+ * conta a pagar nenhuma, fora da caixa e sem ninguém cobrando.***
+ *
+ * ⭐ Agora quem decide é o **grupo do DRE** (`categoriaResolveSozinha`), e a saída pra quem
+ * de fato não tem nota é o dono DIZER isso — selo *"avulsa confirmada"*, com autor e data.
  */
 export function comoFoiResolvida(l: LinhaParaEstacao): string | null {
   if (l.ignoredAt) return 'ignorada por você'
@@ -158,7 +196,9 @@ export function comoFoiResolvida(l: LinhaParaEstacao): string | null {
   if (l.isCardPayment && l.faturaVinculada) return 'pagamento de fatura de cartão'
   if (l.temParcelaVinculada) return 'parcela de empréstimo'
   if (l.transferGroupId || l.isInternalTransfer || l.tipo === 'TRANSFER') return 'transferência entre contas'
-  if (l.categoryId) return 'categorizada'
+  // ⭐ a decisão explícita do dono resolve ANTES da categoria — é ela que fecha o caso
+  if (l.avulsaConfirmada) return SELO_AVULSA_CONFIRMADA
+  if (l.categoryId && categoriaResolveSozinha(l.dreGroupDaCategoria)) return 'categorizada'
   return null
 }
 

@@ -55,12 +55,25 @@ const COMO_A_TELA_PEDE_O_ALVO: Record<string, { procurar: RegExp; descricao: str
   PAR: { procurar: /deepLink[\s\S]{0,200}window\.location/, descricao: 'deep-link pro /parear' },
 }
 
-/** as que gravam direto, sem alvo nenhum */
-const EFETIVAM_SOZINHAS: AcaoDoBalcao[] = ['IGNORAR']
+/**
+ * as que gravam direto, sem alvo nenhum.
+ *
+ * ⭐ 25/09 — `AVULSA_CONFIRMADA` entrou: o gesto É a resposta (*"não tem nota"*), então não
+ * há alvo a escolher. Ele grava a decisão com autor e data, e a linha arquiva com selo
+ * PRÓPRIO (*"avulsa confirmada"*) — nunca reusando o *"categorizada"*, que é justamente a
+ * mistura que escondeu R$ 16.201,01 de pagamento de fornecedor.
+ */
+const EFETIVAM_SOZINHAS: AcaoDoBalcao[] = ['IGNORAR', 'AVULSA_CONFIRMADA']
 
 describe('⭐⭐⭐ os 12 chips do cartão ≍ — nenhum é mudo', () => {
-  it('⭐ cada sentido oferece exatamente 6 gestos (o menu do mock)', () => {
-    for (const s of SENTIDOS) expect(acoesDoSentido(s), `sentido ${s}`).toHaveLength(6)
+  it('⭐ o menu de cada sentido tem o tamanho que o mock desenha', () => {
+    /**
+     * ⚠️ 25/09 — a SAÍDA ganhou o 7º gesto (*"é despesa avulsa — não tem nota"*), a porta da
+     * linha de fornecedor que deixou de arquivar só com categoria. A ENTRADA fica em 6:
+     * crédito não paga nota, então a pergunta *"tem nota?"* não existe do outro lado.
+     */
+    expect(acoesDoSentido('SAIDA')).toHaveLength(7)
+    expect(acoesDoSentido('ENTRADA')).toHaveLength(6)
   })
 
   for (const sentido of SENTIDOS) {
