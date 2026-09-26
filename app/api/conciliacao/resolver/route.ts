@@ -8,12 +8,18 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { resolverLinha, destinoDaAcao, ResolverError } from '@/lib/conciliacao/resolver-linha'
+import { TODAS_AS_ACOES } from '@/lib/conciliacao/caixa-de-entrada'
 
 const schema = z.object({
   empresaId: z.string().min(1),
   txId: z.string().min(1),
-  acao: z.enum(['CASAR_PAGAR', 'PGTO_CARTAO', 'PARCELA_EMPRESTIMO', 'TRANSFERENCIA_ENVIADA',
-    'CASAR_RECEBER', 'RECEBIMENTO_VENDA', 'TRANSFERENCIA_RECEBIDA', 'ESTORNO', 'CATEGORIA', 'IGNORAR']),
+  /**
+   * ⛔⛔ **DERIVADO, nunca digitado.** A lista à mão deixou DOIS gestos de 25/09 nascerem
+   * quebrados em prod (`AVULSA_CONFIRMADA` e `APORTE_INVESTIMENTO` → 400 *"Gesto
+   * inválido"*), porque quem os acrescentou na lib não sabia que havia uma segunda lista
+   * aqui. Agora gesto novo fora do schema é impossível.
+   */
+  acao: z.enum(TODAS_AS_ACOES),
   cardId: z.string().optional(),
   invoiceMonth: z.string().nullable().optional(),
   loanId: z.string().optional(),

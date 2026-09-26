@@ -26,7 +26,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { acoesDoSentido, type AcaoDoBalcao, type SentidoDaLinha } from '@/lib/conciliacao/caixa-de-entrada'
+import { TODAS_AS_ACOES, acoesDoSentido, type AcaoDoBalcao, type SentidoDaLinha } from '@/lib/conciliacao/caixa-de-entrada'
 import { destinoDaAcao } from '@/lib/conciliacao/resolver-linha'
 
 const raiz = process.cwd()
@@ -236,5 +236,39 @@ describe('⭐ REGRA 12 — a caixa tem UMA composição, então celular e deskto
       .not.toMatch(/sm:hidden[\s\S]{0,400}(<MenuDoChip|l\.acoes\.map)/)
     expect(cartao, 'bloco só-desktop dentro do cartão = segunda composição dos chips')
       .not.toMatch(/hidden sm:[\s\S]{0,400}(<MenuDoChip|l\.acoes\.map)/)
+  })
+})
+
+describe('⛔⛔⛔ O SCHEMA DA ROTA COBRE TODO GESTO — senão o gesto novo nasce quebrado', () => {
+  /**
+   * ⚠️⚠️ **DOIS GESTOS NASCERAM QUEBRADOS EM PROD por causa disto, e só a prova navegando
+   * pegou.** O `z.enum` da rota `/resolver` repetia a lista de ações **à mão**:
+   * ```
+   * AVULSA_CONFIRMADA   (25/09) → 400 "Gesto inválido"   ⛔ nunca funcionou
+   * APORTE_INVESTIMENTO (25/09) → 400 "Gesto inválido"   ⛔ idem
+   * IGNORAR (no enum)           → 422 "linha não encontrada"  ⭐ chega na lib
+   * ```
+   * ⛔ **E os testes não pegavam porque chamam `resolverLinha` DIRETO**, passando por cima do
+   * zod — *"testar a lib não prova o encaixe da rota"* (23/09), a 3ª vez desta classe.
+   *
+   * ⭐ Agora o enum é DERIVADO de `TODAS_AS_ACOES`. Este guard trava que ele continue sendo.
+   */
+  it('⭐ o enum da rota é DERIVADO, não uma segunda lista digitada', () => {
+    const rota = fonte('app/api/conciliacao/resolver/route.ts')
+    expect(rota, 'a lista de ações voltou a ser digitada à mão na rota — gesto novo nasce quebrado')
+      .toContain('z.enum(TODAS_AS_ACOES)')
+    expect(rota).not.toMatch(/acao: z\.enum\(\[/)
+  })
+
+  it('⭐⭐ e TODA ação dos dois sentidos está no conjunto derivado', () => {
+    const todas = new Set(TODAS_AS_ACOES)
+    for (const s of SENTIDOS) {
+      for (const a of acoesDoSentido(s)) {
+        expect(todas.has(a.acao), `«${a.rotulo}» (${a.acao}) ficou fora do schema da rota`).toBe(true)
+      }
+    }
+    // ⭐ e os dois que quebraram estão lá, nomeados — o guard não passa por cegueira
+    expect(todas.has('AVULSA_CONFIRMADA')).toBe(true)
+    expect(todas.has('APORTE_INVESTIMENTO')).toBe(true)
   })
 })

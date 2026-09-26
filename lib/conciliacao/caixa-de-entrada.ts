@@ -124,6 +124,25 @@ export function acoesDoSentido(sentido: SentidoDaLinha): readonly AcaoOferecida[
 }
 
 /** a ação é oferecida pra esse sentido? (a mesma pergunta que o servidor faz antes de gravar) */
+/**
+ * ⭐⭐⭐ TODAS AS AÇÕES DO BALCÃO — derivadas dos dois sentidos, nunca digitadas de novo.
+ *
+ * ⛔⛔ **NASCEU DE DOIS GESTOS QUE NASCERAM QUEBRADOS EM PROD.** O `z.enum` da rota
+ * `/resolver` repetia a lista **à mão**, e quem acrescentava um gesto aqui não sabia disso:
+ * ```
+ * AVULSA_CONFIRMADA (25/09)   → 400 "Gesto inválido"   ⛔ nunca funcionou
+ * APORTE_INVESTIMENTO (25/09) → 400 "Gesto inválido"   ⛔ idem
+ * IGNORAR (no enum)           → 422 "linha não encontrada"  ⭐ chega na lib
+ * ```
+ * ⚠️ **E os testes não pegavam porque chamam `resolverLinha` DIRETO**, passando por cima do
+ * zod — a mesma lição de 23/09 (*"testar a lib não prova o encaixe da rota"*), a terceira
+ * ocorrência desta classe.
+ *
+ * ⭐ Com o enum DERIVADO daqui, gesto novo fora do schema é **impossível**, não "checado"
+ * (REGRA 5: *disciplina vira impossibilidade*).
+ */
+export const TODAS_AS_ACOES = [...new Set([...SAIDA, ...ENTRADA].map((a) => a.acao))] as [AcaoDoBalcao, ...AcaoDoBalcao[]]
+
 export function acaoValePraSentido(acao: AcaoDoBalcao, sentido: SentidoDaLinha): boolean {
   return acoesDoSentido(sentido).some((a) => a.acao === acao)
 }
