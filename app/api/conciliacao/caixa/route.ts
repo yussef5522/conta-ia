@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
-import { AVISO_CATEGORIZADA_SEM_VINCULO } from '@/lib/conciliacao/categoria-nao-quita'
+import { avisoDaLinhaNaCaixa } from '@/lib/conciliacao/categoria-nao-quita'
 import { estacaoDaLinha, comoFoiResolvida, sentidoDaLinha, acoesDoSentido } from '@/lib/conciliacao/caixa-de-entrada'
 /**
  * ⭐ A CONSULTA NÃO MORA MAIS AQUI (faxina de 15/09) — ela é de `leitura-da-caixa`, a MESMA
@@ -219,10 +219,12 @@ export async function GET(request: NextRequest) {
        * que o sistema esqueceu de arquivá-la. *Mudar o estado sem dizer por quê é a família
        * da linha que some sem gesto.*
        */
-      avisoCategoriaSemVinculo:
-        estacaoDaLinha(l) === 'CAIXA' && !!l.categoryId && !l.avulsaConfirmada
-          ? AVISO_CATEGORIZADA_SEM_VINCULO
-          : null,
+      /**
+       * ⚠️ 25/09 — a régua saiu daqui pra `avisoDaLinhaNaCaixa` (pura, testada). Inline na
+       * rota ela não tinha como ser provada — e a 1ª versão cobrava NOTA do aporte, que o
+       * consórcio nunca emite.
+       */
+      avisoCategoriaSemVinculo: estacaoDaLinha(l) === 'CAIXA' ? avisoDaLinhaNaCaixa(l) : null,
       /**
        * ⭐ quando o caso mora no CARD, a linha perde o botão e ganha o CAMINHO.
        * ⛔ Nunca as duas com botão — e nunca a linha muda sem dizer pra onde ir.

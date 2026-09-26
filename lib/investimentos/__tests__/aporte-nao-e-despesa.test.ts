@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { sugerirAporte, type ContratoParaPalpite } from '../sugerir-aporte'
 import { competenciaDaData, competenciaCurta, rastroDoAporte, ehTipoValido } from '../contratos'
-import { categoriaResolveSozinha } from '@/lib/conciliacao/categoria-nao-quita'
+import { categoriaResolveSozinha, avisoDaLinhaNaCaixa, AVISO_APORTE_SEM_CONTRATO, AVISO_CATEGORIZADA_SEM_VINCULO } from '@/lib/conciliacao/categoria-nao-quita'
 import { acoesDoSentido, acaoValePraSentido } from '@/lib/conciliacao/caixa-de-entrada'
 import { origemDaCategoria } from '@/lib/conciliacao/categoria-antes-do-gesto'
 
@@ -234,5 +234,39 @@ describe('⛔⛔ o gesto tem UMA porta de gravação', () => {
     const rota = semComentario(ler('app/api/conciliacao/resolver/route.ts'))
     expect(rota).toMatch(/contractId: z\./)
     expect(rota).toMatch(/competencia: z\./)
+  })
+})
+
+describe('⛔⛔⛔ O AVISO COBRA O CONTRATO, NUNCA A NOTA', () => {
+  /**
+   * ⚠️⚠️ **MEDIDO EM PROD e era um defeito meu, na frase que eu acabei de pôr na tela.** Com
+   * o gesto no ar, as 5 linhas de aporte voltaram pra caixa dizendo *"casa com a nota ou
+   * confirma que não tem"* — e consórcio **debita direto, não emite boleto**. O aviso
+   * mandava o dono caçar um documento que não existe. *É a lição de 16/09.*
+   */
+  const base = { categoryId: 'c', avulsaConfirmada: false, temAporteVinculado: false }
+
+  it('⛔ o aporte SEM contrato pede o CONTRATO — e a palavra "nota" não aparece', () => {
+    const a = avisoDaLinhaNaCaixa({ ...base, dreGroupDaCategoria: 'INVESTIMENTOS' })
+    expect(a).toBe(AVISO_APORTE_SEM_CONTRATO)
+    expect(a, 'o aviso voltou a cobrar um boleto que o consórcio nunca emite').not.toContain('nota')
+    expect(a).toContain('contrato')
+  })
+
+  it('⭐ com o contrato vinculado, nada é cobrado', () => {
+    expect(avisoDaLinhaNaCaixa({ ...base, dreGroupDaCategoria: 'INVESTIMENTOS', temAporteVinculado: true })).toBeNull()
+  })
+
+  it('⭐ e o FORNECEDOR continua cobrando a nota — a régua de 24/09 intacta', () => {
+    expect(avisoDaLinhaNaCaixa({ ...base, dreGroupDaCategoria: 'CUSTO_PRODUTO_VENDIDO' }))
+      .toBe(AVISO_CATEGORIZADA_SEM_VINCULO)
+  })
+
+  it('⭐ quem a categoria resolve sozinha não pede nada (salário, retirada)', () => {
+    expect(avisoDaLinhaNaCaixa({ ...base, dreGroupDaCategoria: 'DESPESAS_PESSOAL' })).toBeNull()
+  })
+
+  it('⭐ e a decisão do dono ("avulsa confirmada") cala o aviso', () => {
+    expect(avisoDaLinhaNaCaixa({ ...base, dreGroupDaCategoria: 'CUSTO_PRODUTO_VENDIDO', avulsaConfirmada: true })).toBeNull()
   })
 })

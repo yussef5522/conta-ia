@@ -83,3 +83,40 @@ export const AVISO_CATEGORIZADA_SEM_VINCULO =
 
 /** ⭐ o selo do arquivo quando o dono confirma que não há nota */
 export const SELO_AVULSA_CONFIRMADA = 'avulsa confirmada'
+
+/**
+ * ⭐⭐⭐ 25/09 — **O APORTE COBRA O CONTRATO, NUNCA A NOTA.**
+ *
+ * ⚠️ Medido em prod: com o gesto 📈 no ar, as 5 linhas de aporte voltaram pra caixa
+ * **com o aviso errado** — *"casa com a nota ou confirma que não tem"*. ⛔ Consórcio e
+ * capitalização **debitam direto e não emitem boleto**: o aviso mandava o dono caçar um
+ * documento que não existe. *É a lição de 16/09 — "mensagem que acusa o campo errado faz o
+ * dono caçar um erro que não existe"* — na frase que eu mesmo acabei de pôr na tela.
+ */
+export const AVISO_APORTE_SEM_CONTRATO =
+  'falta dizer em qual contrato este dinheiro entrou — escolha no 📈 aporte em investimento'
+
+/**
+ * ⭐⭐ A FRASE QUE A LINHA NA CAIXA MOSTRA — uma régua, um lugar.
+ *
+ * ⛔ Ela vivia **inline na rota**, e regra que mora numa rota é regra que ninguém prova
+ * (a lição do prefill do cardápio, 28/08). Aqui ela é pura e testada.
+ *
+ * ⚠️ E ela é por CASO, não uma frase pra tudo: o que a linha DEVE é diferente em cada um,
+ * e cobrar a coisa errada é pior que não cobrar nada.
+ */
+export function avisoDaLinhaNaCaixa(l: {
+  categoryId: string | null
+  dreGroupDaCategoria: string | null
+  avulsaConfirmada: boolean
+  temAporteVinculado: boolean
+}): string | null {
+  if (!l.categoryId || l.avulsaConfirmada) return null
+  // ⭐ o aporte pede o CONTRATO — e vem ANTES, senão a frase da nota o alcança
+  if (l.dreGroupDaCategoria === 'INVESTIMENTOS') {
+    return l.temAporteVinculado ? null : AVISO_APORTE_SEM_CONTRATO
+  }
+  // ⚠️ grupo que a categoria resolve sozinha não pede nada
+  if (categoriaResolveSozinha(l.dreGroupDaCategoria)) return null
+  return AVISO_CATEGORIZADA_SEM_VINCULO
+}
