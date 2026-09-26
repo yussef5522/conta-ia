@@ -1367,6 +1367,81 @@ O `ponte/renegociacao` ficava vermelho ~1 vez a cada 5 rodadas cheias. Eu suspei
 
 ⭐ **A cura é da CLASSE, não da instância:** o teto de 5 s do vitest é pra teste **puro**, e a suíte tem **98 arquivos de integração** contra banco real — qualquer um deles pode estourar; o `renegociacao` só era o mais perto do limite. `testTimeout: 20_000`, com o motivo escrito. ⛔ **Nenhuma asserção mudou** — o que muda é parar de chamar de falha o que é fila. ***Alarme falso repetido é como um alarme morre***, e suíte que fica vermelha sozinha ensina a ignorar o vermelho. **3 rodadas cheias verdes seguidas.**
 
+### ⭐⭐⭐ INVESTIMENTOS — O ESPELHO DO EMPRÉSTIMO, DO LADO DO ATIVO (25/09)
+
+**Decisão do dono:** *"CAPITALIZACAO RG e PAGAMENTO CONSORCIO não são despesa nem conta a pagar — são APORTES recorrentes que constroem patrimônio. O espelho do empréstimo: lá a parcela reduz dívida, aqui aumenta ativo."*
+
+**⭐⭐ A MEDIÇÃO MUDOU O ESCOPO ANTES DE EU ESCREVER UMA LINHA — o item 3 já estava atendido.** As linhas **já vinham** categorizadas como `Investimentos`, e `INVESTIMENTOS` **já era um dreGroup NÃO-DRE**. Provado por **contrafactual**, não por inspeção: o DRE de setembro é **idêntico ao centavo** com e sem os R$ 2.214,23, e eles aparecem em `nonDreGroups`. *O que faltava era o CONTRATO, o GESTO e uma linha na lista fechada.*
+
+**1. OS CONTRATOS** (`InvestmentContract` + `InvestmentContribution`, migration **aditiva pura**: 2 CREATE, zero ALTER em tabela com dado). ⭐ O **total aportado é DERIVADO** dos vínculos, nunca gravado — *campo gravado envelhece*, foi assim que a `CreditCardInvoice.status` ficou eternamente OPEN. ⚠️ E o que o dono **declarou** ter pago antes do sistema fica **separado** do que o sistema **viu**: misturar faria a tela afirmar um histórico que ninguém conferiu. ⛔ `transactionId @unique`: a mesma linha virar dois aportes é **impossível**, não checado. ⚠️ Sem total conhecido, "restantes" é **`null`** — 0 se leria como *"acabou"*.
+
+**2. O GESTO 📈** na fileira de caminhos, com menu de **contrato · valor da parcela · quanto já aportei** (listar só o nome repetiria o defeito do menu de cartão que a manhã de hoje consertou). **O palpite exige VALOR EXATO + sinal de NOME**, e ⛔ **empate devolve `null`** — a Caçula tem **dois** títulos de R$ 297,84 debitados no mesmo dia (medido: externalId 590236 e 590237), e escolher um poria o dinheiro no contrato errado. ⚠️ O **dia** é o 3º sinal e decide a **confiança**, nunca exclui: o consórcio dela caiu dia 9, 10 e 11 em meses diferentes.
+
+**4. `INVESTIMENTOS` ENTROU NA LISTA FECHADA** — era por isso que o CONSÓRCIO de R$ 1.478,51 estava entre as 18 com o aviso, cobrando um boleto que o consórcio **nunca emite**.
+
+### ⛔⛔⛔ E O ITEM 4 CRIOU A PORTA SEM MAÇANETA — a 11ª volta, pela minha mão
+
+Com a lista fechada certa, a categoria passou a resolver sozinha e **os aportes saíram da caixa**: medido em prod, **14 → 4 linhas**, e o gesto 📈 ficou **inalcançável**.
+
+⭐ **A cura é a régua do CARTÃO (20/09), palavra por palavra:** ***a flag diz "parece", o vínculo diz "é"***. Categoria `Investimentos` sem contrato vinculado é *"parece aporte"*; **com** o vínculo sai com o selo que nomeia onde o dinheiro entrou. ⚠️ **E a diferença que importa:** ela fica na caixa esperando o **CONTRATO**, nunca a NOTA.
+
+**⛔ E O AVISO AINDA COBRAVA A COISA ERRADA** — as 5 linhas voltaram dizendo *"casa com a nota ou confirma que não tem"*. É a lição de 16/09 (*"mensagem que acusa o campo errado faz o dono caçar um erro que não existe"*) **na frase que eu acabei de pôr na tela**. A régua do aviso saiu de **inline na rota** pra função pura (*regra que mora numa rota é regra que ninguém prova*) e virou **por caso**: aporte pede contrato, fornecedor pede nota, salário não pede nada.
+
+### ⛔⛔⛔ DOIS GESTOS NASCERAM QUEBRADOS EM PROD — e só a prova NAVEGANDO pegou
+
+O `z.enum` da rota `/resolver` repetia a lista de ações **à mão**, e quem acrescentava gesto na lib não sabia disso. Medido **com controle**:
+```
+AVULSA_CONFIRMADA   (25/09) → 400 "Gesto inválido"          ⛔ NUNCA funcionou
+APORTE_INVESTIMENTO (25/09) → 400 "Gesto inválido"          ⛔ idem
+IGNORAR (no enum)           → 422 "linha não encontrada"    ⭐ chega na lib
+```
+⚠️⚠️ **Ou seja: o *"é despesa avulsa — não tem nota"* de ontem nunca funcionou** — o dono clicaria e levaria *"Gesto inválido"*. **E os testes não pegavam porque chamam `resolverLinha` DIRETO, por cima do zod** — *"testar a lib não prova o encaixe da rota"* (23/09), a **3ª ocorrência** desta classe. ⭐ Agora o enum **DERIVA** de `TODAS_AS_ACOES`: gesto fora do schema é **impossível** (REGRA 5).
+
+### ⛔⛔ E O `@@map` QUE FALTAVA — um defeito que SÓ APARECE EM PROD
+
+A migration criava `investment_contracts` (snake_case, como todo o schema) e os modelos não declaravam `@@map`, então o Prisma procurava `public.InvestmentContract`. ⚠️ **O dev não pega por construção:** `db push` cria a tabela com o nome do **modelo**; o SQL da migration só roda em **prod**. ***É a mesma classe do `contains` case-sensitive (08/09): funciona em dev e falha calado em prod.***
+
+⭐ **Guard novo fecha a classe** (`modelo-e-tabela-batem.test.ts`): todo modelo aponta pra uma tabela que alguma migration cria. Medido no repo inteiro — **157 modelos, 0 divergências** —, então nasce **sem allowlist**.
+
+**PROVADO EM PROD, pelas rotas reais, nos DOIS viewports (REGRA 12):**
+```
+PAGE /investimentos  celular 200 em 246ms · desktop 200 em 46ms
+⭐ os 5 aportes VOLTARAM pra caixa, cada um com o 📈 na fileira e o aviso CERTO:
+   "falta dizer em qual contrato este dinheiro entrou — escolha no 📈 aporte em investimento"
+   R$ 1.478,51 «PAGAMENTO CONSORCIO» → palpite: valor exato · cai por volta do dia 9 · o
+                                        nome bate com «Consórcio Banrisul» · parcela 2026-09
+   R$ 70,02 ×2 «CAPITALIZACAO RG»    → palpite aceso
+   R$ 297,84 ×2                      → ⭐ SEM palpite (dois títulos iguais: "não sei qual é")
+
+O GESTO (endpoint real) → HTTP 200
+   {"efeito":"aporte de R$ 1.478,51 no Consórcio Banrisul (2026-09) — já aportado: R$ 1.478,51"}
+   a caixa: 5 → 4 aportes · o contrato: R$ 1.478,51 em 1 · último 2026-09
+   RASTRO na linha: "aporte no Consórcio Banrisul, parcela de set/2026"
+
+ITEM 3 (contrafactual): despesas operacionais R$ 117.504,57 COM e SEM os aportes ·
+   lucro líquido R$ 43.748,82 nos dois · TOTAIS IDÊNTICOS ⭐
+   nonDreGroups: INVESTIMENTOS R$ 2.214,23 em 5 transações
+```
+
+**REGRA 11 — 7 becos repostos, 7 vermelhos** (a lista fechada · valor parecido · escolher no empate · dispensar o nome · o gesto fora da fileira · a rota sem o campo · o enum digitado à mão). ⭐ **E o TypeScript achou os 3 `switch` que precisavam conhecer o gesto novo** — a REGRA 4 de graça, em vez de grep; o campo `temAporteVinculado` entrou **obrigatório** e o compilador achou a leitura e o teste que faltavam.
+
+**⚠️ E DOIS GUARDS DA CASA PEGARAM DEFEITOS MEUS:** o `return` antes do fetch **sem tocar no estado** (spinner eterno, a classe de 20/09) e o **CNPJ de teste colidindo** — duas vezes, porque eu chutei em vez de conferir; na terceira eu **listei os 157 CNPJs do repo** antes de escolher.
+
+**10.942 verdes · TS 0 · `pg_dump pre-investimentos-20260925-173714.dump` (6,9 MB) · deploys 4/4 (`WWsY-5dIh9Idlyc426UhT`, `SVyVlqS33O3MHpOxgVSI0`, `saybyQJHg5WGpAaZ9wnKI`, `s79_QVYGEisIdjvnZ7bS3`, `KnRsnSxvaEXHjAQyWsZqd`) · Δ bundle +8 KB.**
+
+⚠️ **OS 3 CONTRATOS EM PROD SÃO MEUS, PRA PROVAR O CICLO — os nomes são do dono.** Criei *"Consórcio Banrisul"*, *"Consórcio Banco Caixa"* e *"Capitalização RG 70"* a partir do que o DADO mostrou (valor + dia + conta). **Ele renomeia, acrescenta o 2º título de cada capitalização e informa o total de parcelas.** Apagar é 1 clique enquanto não houver aporte; com aporte, o caminho é **encerrar** (a régua do *"sumir com o item"*, 09/09).
+
+### 📋 ACHADO À PARTE, MEDIDO E NÃO CORRIGIDO — R$ 595,68 de duplicata em julho
+
+Ao mapear os aportes, a contagem por **externalId** (a identidade que o BANCO dá) achou:
+```
+externalId 590236 → 2 linhas · 01/07 E 02/07 · R$ 297,84 (imports de 01/07 19:20 e 02/07 19:49)
+externalId 590237 → 2 linhas · 01/07 E 02/07 · R$ 297,84
+```
+⭐ **É EXATAMENTE a mania do Banrisul de re-datar linha já publicada**, a mesma classe que o *Tier 1.5* (`fronteira-de-dia.ts`) passou a barrar em **05/09** — e nela o exemplo documentado é a própria `CAPITALIZACAO RG`. A trava vale **dali pra frente**; **as de julho ficaram**. ⚠️ **Cirurgia de dado é decisão do dono** — o mapa está medido e o estorno é pelo caminho de sempre.
+
+⚠️⚠️ **E QUASE REPORTEI UMA DUPLICATA FALSA ANTES DESSA:** a minha sonda rotulava *"FITIDs distintos"* enquanto media `contentHash` (igual por construção, porque data+valor+descrição são iguais). Os pares do MESMO dia têm `externalId` **diferentes** — são dois títulos de verdade. ***Rótulo de sonda que mente produz achado falso tão convincente quanto um real.***
+
 ### ⛔⛔⛔ REUNITIZAR O ITEM NUNCA É EFEITO COLATERAL DO RECEBIMENTO (24/09)
 
 **O dono, na nota do ALAN:** *"item da nota «SAL CISNE REFINADO 1KG · 10 UN · R$ 4,79», destino «sal» (controlado em KG). O preview propõe «o item passa a ser controlado em UN» + converter 41 movimentos e 18 fichas + «saldo −0,9 KG → −12,76 UN» (número sem sentido)."*
