@@ -9,7 +9,8 @@ import { PrismaClient } from '@prisma/client'
 import { resolverLinha } from '@/lib/conciliacao/resolver-linha'
 import { registrarAporte, desfazerAporte, AporteError } from '../registrar-aporte'
 import { contratosComTotais } from '../contratos'
-import { estacaoDaLinha } from '@/lib/conciliacao/caixa-de-entrada'
+import { estacaoDaLinha, comoFoiResolvida } from '@/lib/conciliacao/caixa-de-entrada'
+import { categoriaResolveSozinha } from '@/lib/conciliacao/categoria-nao-quita'
 
 const db = new PrismaClient()
 /**
@@ -46,6 +47,8 @@ async function linha(valor: number, desc: string, data = new Date('2026-09-09T12
     data: {
       bankAccountId, type: 'DEBIT', amount: valor, date: data, description: desc,
       lifecycle: 'EFFECTED', status: 'PENDING', categoryId: categoriaInvestimentoId,
+      // ⚠️ `origin: 'OFX'` — é o que a `lerCaixa` exige; fixture sem isso não entra na caixa
+      origin: 'OFX',
     },
   })
 }
@@ -157,19 +160,59 @@ describe('⭐ desfazer devolve a linha ao estado anterior', () => {
   })
 })
 
-describe('⭐⭐ ITEM 3 — o aporte NÃO infla a despesa, e a linha sai da caixa', () => {
-  it('⛔ a linha categorizada como INVESTIMENTOS vai pro ARQUIVO sem cobrar nota', async () => {
+describe('⛔⛔⛔ O APORTE SÓ SAI DA CAIXA COM O CONTRATO VINCULADO', () => {
+  /**
+   * ⚠️⚠️ **ESTE BLOCO NASCEU DE UM DEFEITO QUE EU CRIEI E MEDI EM PROD.** Ao pôr
+   * `INVESTIMENTOS` na lista fechada (item 4, correto — consórcio não emite boleto), a
+   * categoria passou a resolver sozinha e **os aportes saíram da caixa**: medido,
+   * **14 → 4 linhas**, e o gesto 📈 ficou **inalcançável**. *A porta sem maçaneta, a 11ª
+   * volta.*
+   *
+   * ⭐ A cura é a régua do CARTÃO (20/09): ***a flag diz "parece", o vínculo diz "é"***.
+   */
+  const base = {
+    categoryId: 'cat', dreGroupDaCategoria: 'INVESTIMENTOS',
+    isCardPayment: false, faturaVinculada: false, temParcelaVinculada: false,
+    temReconciledFrom: false, isInternalTransfer: false, pendingTransfer: false,
+    tipo: 'DEBIT', ignoredAt: null, reconciledWithId: null, transferGroupId: null,
+    avulsaConfirmada: false,
+  }
+
+  it('⛔ SEM vínculo a linha FICA na caixa — é onde o gesto 📈 mora', () => {
+    expect(estacaoDaLinha({ ...base, temAporteVinculado: false } as never),
+      'o aporte foi arquivado sem ninguém dizer em qual contrato o dinheiro entrou').toBe('CAIXA')
+  })
+
+  it('⭐ COM vínculo ela sai, com o selo que nomeia o que houve', () => {
+    expect(estacaoDaLinha({ ...base, temAporteVinculado: true } as never)).toBe('ARQUIVO')
+    expect(comoFoiResolvida({ ...base, temAporteVinculado: true } as never)).toBe('aporte em investimento')
+  })
+
+  it('⛔⛔ e ela NÃO cobra nota — o item 4 continua valendo', () => {
     /**
-     * ⭐ Era o defeito do item 4: sem `INVESTIMENTOS` na lista fechada, a linha ficava na
-     * CAIXA com o aviso *"categorizada, mas sem vínculo"* — cobrando uma nota que o
-     * consórcio nunca emite.
+     * ⭐ A diferença que importa: ela fica na caixa esperando o **CONTRATO**, nunca a NOTA.
+     * O aviso *"categorizada, mas sem vínculo — casa com a nota"* cobraria um boleto que o
+     * consórcio jamais emite.
      */
-    expect(estacaoDaLinha({
-      categoryId: categoriaInvestimentoId,
-      dreGroupDaCategoria: 'INVESTIMENTOS',
-      isCardPayment: false, faturaVinculada: false, parcelaVinculada: false,
-      type: 'DEBIT', ignoredAt: null, reconciledWithId: null, transferGroupId: null,
-      avulsaConfirmada: false,
-    } as never)).toBe('ARQUIVO')
+    expect(categoriaResolveSozinha('INVESTIMENTOS'),
+      'o grupo saiu da lista fechada e voltou a cobrar nota').toBe(true)
+  })
+
+  it('⭐⭐ o ciclo inteiro: fica na caixa → gesto → sai com o selo', async () => {
+    const ct = await contrato('Consórcio Ciclo', 321.45)
+    const tx = await linha(321.45, 'PAGAMENTO CONSORCIO')
+
+    const { lerCaixa, paraLei } = await import('@/lib/conciliacao/leitura-da-caixa')
+    const antes = await lerCaixa(companyId, db)
+    const linhaAntes = antes.rows.find((r) => r.id === tx.id)
+    expect(linhaAntes, 'a linha nem apareceu na leitura').toBeTruthy()
+    expect(estacaoDaLinha(paraLei(linhaAntes!)), 'sem vínculo ela devia estar na CAIXA').toBe('CAIXA')
+
+    await registrarAporte({ db, companyId, contractId: ct.id, txId: tx.id })
+
+    const depois = await lerCaixa(companyId, db)
+    const linhaDepois = depois.rows.find((r) => r.id === tx.id)!
+    expect(estacaoDaLinha(paraLei(linhaDepois)), 'com vínculo ela devia ter saído').toBe('ARQUIVO')
+    expect(comoFoiResolvida(paraLei(linhaDepois))).toBe('aporte em investimento')
   })
 })

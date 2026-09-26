@@ -24,6 +24,12 @@ export const SELECT_DA_CAIXA = {
   loanInstallmentPaid: { select: { id: true } },
   loanInstallmentPayments: { select: { id: true } },
   /**
+   * ⭐⭐ 25/09 — o VÍNCULO com o contrato de investimento, no MESMO select.
+   * ⚠️ Sem ele `temAporteVinculado` seria `false` pra toda linha e **todo aporte voltaria
+   * pra caixa** — a doença do select incompleto, que este arquivo já documenta logo abaixo.
+   */
+  investmentContribution: { select: { id: true } },
+  /**
    * ⭐⭐ 25/09 — O GRUPO DO DRE vem JUNTO, no mesmo select.
    *
    * ⛔ Sem o campo, `categoriaResolveSozinha` receberia `undefined` pra TODA linha e — como
@@ -64,6 +70,7 @@ export type LinhaCrua = {
    * discordam sobre a mesma linha.
    */
   avulsaConfirmada?: boolean
+  investmentContribution?: { id: string } | null
 }
 
 /** ⭐ a tradução da linha crua pra o que a LEI lê — um lugar só, senão as duas divergem */
@@ -72,6 +79,7 @@ export function paraLei(r: LinhaCrua): LinhaParaEstacao {
     categoryId: r.categoryId,
     dreGroupDaCategoria: r.category?.dreGroup ?? null,
     avulsaConfirmada: r.avulsaConfirmada ?? false,
+    temAporteVinculado: r.investmentContribution != null,
     reconciledWithId: r.reconciledWithId,
     temReconciledFrom: r.reconciledFrom.length > 0,
     isCardPayment: r.isCardPayment,

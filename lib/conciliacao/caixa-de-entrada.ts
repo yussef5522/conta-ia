@@ -161,6 +161,14 @@ export interface LinhaParaEstacao {
   dreGroupDaCategoria: string | null
   /** ⭐ o dono CONFIRMOU que esta saída não tem nota (decisão registrada, com autor) */
   avulsaConfirmada: boolean
+  /**
+   * ⭐⭐ 25/09 — A LINHA JÁ ESTÁ VINCULADA A UM CONTRATO DE INVESTIMENTO?
+   *
+   * ⚠️ É o irmão do `faturaVinculada`: *a flag diz "parece", o vínculo diz "é"*. Sem ele, a
+   * categoria `Investimentos` arquivaria a linha e o gesto 📈 ficaria inalcançável — o que
+   * de fato aconteceu em prod hoje, e foi medido (14 → 4 linhas na caixa).
+   */
+  temAporteVinculado: boolean
 }
 
 /**
@@ -206,6 +214,25 @@ export function comoFoiResolvida(l: LinhaParaEstacao): string | null {
    */
   if (l.isCardPayment && l.faturaVinculada) return 'pagamento de fatura de cartão'
   if (l.temParcelaVinculada) return 'parcela de empréstimo'
+  /**
+   * ⭐⭐⭐ 25/09 — **O APORTE SÓ ESTÁ RESOLVIDO COM O CONTRATO VINCULADO.**
+   *
+   * ⚠️⚠️ **E ISTO NASCEU DE UM DEFEITO QUE EU CRIEI HOJE, medido em prod.** Ao pôr
+   * `INVESTIMENTOS` na lista fechada (o item 4, correto: consórcio **não** emite boleto),
+   * a categoria passou a resolver sozinha — e **os aportes saíram da caixa** (14 → 4
+   * linhas). O gesto 📈 existia e ficou **inalcançável**: ***a porta sem maçaneta, a 11ª
+   * volta da família.***
+   *
+   * ⭐ A cura é a régua do CARTÃO (20/09), palavra por palavra: *a flag diz "parece", o
+   * vínculo diz "é"*. Categoria `Investimentos` sem contrato vinculado é **"parece
+   * aporte"**; com o vínculo é **"é aporte no contrato X"**, e aí a linha sai com o selo
+   * que nomeia onde o dinheiro entrou.
+   *
+   * ⛔ Note a ordem: este `if` vem ANTES do `categoriaResolveSozinha`, senão a categoria
+   * resolveria primeiro e o vínculo nunca seria cobrado.
+   */
+  if (l.temAporteVinculado) return 'aporte em investimento'
+  if (l.dreGroupDaCategoria === 'INVESTIMENTOS' && !l.temAporteVinculado) return null
   if (l.transferGroupId || l.isInternalTransfer || l.tipo === 'TRANSFER') return 'transferência entre contas'
   // ⭐ a decisão explícita do dono resolve ANTES da categoria — é ela que fecha o caso
   if (l.avulsaConfirmada) return SELO_AVULSA_CONFIRMADA

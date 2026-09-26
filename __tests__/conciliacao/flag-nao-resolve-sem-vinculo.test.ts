@@ -38,7 +38,7 @@ const CARTER: LinhaParaEstacao = {
   tipo: 'DEBIT',
   // ⭐ 25/09 — os dois campos novos da lei; aqui não mudam nada (a linha não tem categoria)
   dreGroupDaCategoria: null,
-  avulsaConfirmada: false,
+  avulsaConfirmada: false, temAporteVinculado: false,
 }
 
 describe('⛔⛔⛔ pagamento de cartão SEM vínculo não sai da caixa', () => {
