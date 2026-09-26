@@ -4905,6 +4905,7 @@ model InvestmentContract {
 
   @@index([companyId])
   @@index([companyId, ativo])
+  @@map("investment_contracts")
 }
 
 /// ⭐ UM aporte = UMA linha do extrato conciliada pelo gesto 📈
@@ -4923,4 +4924,5 @@ model InvestmentContribution {
 
   @@index([contractId])
   @@index([contractId, competencia])
+  @@map("investment_contributions")
 }
