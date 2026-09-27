@@ -7,6 +7,28 @@
 import { z } from 'zod'
 import { whereDoStatus } from './escopo'
 
+/**
+ * ⭐⭐⭐ A BASE DOS KPIs DE PAGAS TEM UM DONO SÓ (26/09/2026).
+ *
+ * ⛔ O `where` base dos cards carrega o `lifecycleScope` com `reconciledWithId: null`, então
+ * os KPIs de pagas contavam **só as sem vínculo**: medido em prod, **40 de 236** em setembro
+ * — 8,7% do que o dono pagou.
+ *
+ * ⭐ **Por que é função e não um objeto montado na rota:** o defeito vive no `where` que a
+ * ROTA monta, então um guard que só exercitasse `buildPayableListWhere` ficaria **verde com
+ * o defeito reposto**. Com dono, o teste executa a MESMA função que a rota chama — e o
+ * `whereDoStatus` continua sendo o único lugar que sabe recortar.
+ *
+ * ⚠️ Ela **não monta o where inteiro**: delega ao builder com o escopo de pagas, e é ele que
+ * relaxa o `lifecycleScope`. Escrever o relaxamento aqui criaria a 2ª régua de multi-tenant.
+ */
+export function baseDosKpisDePagas(
+  input: ListPayableInput,
+  now: Date = new Date(),
+): Record<string, unknown> {
+  return buildPayableListWhere({ ...input, escopo: 'PAGA' }, now)
+}
+
 export const dataFieldEnum = z.enum([
   'dueDate', // padrão — data esperada de pagamento
   'paymentDate', // data efetiva do pagamento (PAID)
@@ -43,8 +65,12 @@ export const listPayableSchema = z.object({
    * mostra 34"*. Sem isto, o card e a lista tinham réguas diferentes e o dono via um
    * número no topo e outro na tabela — a doença que este sprint inteiro conserta.
    */
-  /** ⭐ 26/09 — `VENCE_HOJE` entrou como 4º card (partição de A_PAGAR, não subconjunto) */
-  escopo: z.enum(['VENCIDA', 'VENCE_HOJE', 'A_PAGAR', 'PAGA']).optional(),
+  /**
+   * ⭐ 26/09 — `VENCE_HOJE` entrou como 4º card (partição de A_PAGAR, não subconjunto).
+   * ⭐⭐ E as duas SUB-opções de PAGA (*"se eu quiser separar"*): o cartão conta TODAS, e
+   * quem quer o recorte escolhe no dropdown.
+   */
+  escopo: z.enum(['VENCIDA', 'VENCE_HOJE', 'A_PAGAR', 'PAGA', 'PAGA_CONCILIADA', 'PAGA_SEM_VINCULO']).optional(),
   /**
    * ⭐⭐ O MÊS DO RECORTE DE FLUXO (`YYYY-MM`, 14/09) — padrão: o mês corrente.
    *
@@ -115,6 +141,23 @@ export function buildPayableListWhere(
   //     viram EFFECTED. Mantemos visíveis aqui pra UX de histórico.
   //     reconciledWithId IS NULL exclui as conciliadas com OFX (que aparecem
   //     em /movimentacoes).
+  /**
+   * ⭐⭐⭐ 26/09 — **AS CONCILIADAS ENTRAM QUANDO O DONO PEDE, e só então.**
+   *
+   * **A decisão dele:** *"o cartão vira PAGAS · SETEMBRO com TODAS as contas pagas no mês,
+   * não importa o meio. Clicar no cartão filtra a lista pra TODAS as pagas do mês."*
+   *
+   * **MEDIDO EM PROD antes de mexer, e o tamanho justifica:** em setembro há **236 pagas**
+   * (R$ 292.743,50) e o cartão mostrava **40** (R$ 25.441,86) — **8,7% do que ele pagou**.
+   * As outras **196** (R$ 267.301,64) são `EFFECTED` com vencimento, ou seja **passariam no
+   * escopo se não fosse o `reconciledWithId: null`**.
+   *
+   * ⚠️⚠️ **E A DECISÃO DE 28/05 CONTINUA DE PÉ ONDE ELA IMPORTA.** Ela existe pra a mesma
+   * linha não viver em duas telas — e por isso o relaxamento é **só sob o escopo PAGA**,
+   * que só nasce de um GESTO (clicar no cartão / escolher no dropdown). ⭐ *O default da
+   * lista segue sem as conciliadas: não é duplicação permanente, é o dono pedindo pra ver.*
+   */
+  const querAsPagas = input.escopo === 'PAGA' || input.escopo === 'PAGA_CONCILIADA'
   const lifecycleScope = {
     OR: [
       { lifecycle: 'PAYABLE' },
@@ -122,7 +165,7 @@ export function buildPayableListWhere(
         lifecycle: 'EFFECTED',
         dueDate: { not: null },
         type: 'DEBIT',
-        reconciledWithId: null,
+        ...(querAsPagas ? {} : { reconciledWithId: null }),
       },
     ],
   }

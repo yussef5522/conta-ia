@@ -33,3 +33,21 @@ export const ROTULO_TODOS = 'Em aberto e pagas sem vínculo'
  *
  * ⛔ Removidas e não guardadas: constante sem chamador é o que alguém religa por descuido.
  */
+
+/**
+ * ⭐⭐ 26/09 — OS RÓTULOS DO RECORTE DAS PAGAS.
+ *
+ * ⛔ **E eles resolvem uma mentira NOVA que o cartão criou hoje.** O card passou a contar
+ * TODAS as pagas do mês; o preset dele manda `escopo: 'PAGA'` com `status: 'TODOS'`, e o
+ * dropdown de status mostraria *"Em aberto e pagas sem vínculo"* **enquanto a lista traz as
+ * conciliadas**. ⭐ Sob um escopo de pagas o dropdown deixa de perguntar `status` e passa a
+ * perguntar **o recorte** — *um controle por pergunta*, a régua da limpeza de hoje.
+ *
+ * ⚠️ O `ROTULO_PAGAS` acima continua honesto onde vive: ali a pergunta é `status=RECONCILED`,
+ * e por aquele caminho o `lifecycleScope` segue excluindo a conciliada (a decisão de 28/05).
+ */
+export const ROTULO_RECORTE = {
+  PAGA: 'Todas as pagas do mês',
+  PAGA_CONCILIADA: 'Só conciliadas com o banco',
+  PAGA_SEM_VINCULO: 'Só sem vínculo',
+} as const

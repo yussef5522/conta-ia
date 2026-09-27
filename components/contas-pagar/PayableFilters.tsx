@@ -23,15 +23,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ROTULO_PAGAS, ROTULO_TODOS } from '@/lib/contas-pagar/rotulos'
+import { ROTULO_PAGAS, ROTULO_TODOS, ROTULO_RECORTE } from '@/lib/contas-pagar/rotulos'
+import { ehFluxo, type EscopoDaLista } from '@/lib/contas-pagar/escopo'
 
 export interface PayableFilterState {
   q: string
   dataDe: string // YYYY-MM-DD
   dataAte: string
   status: 'TODOS' | 'PENDING' | 'RECONCILED' | 'IGNORED'
-  /** ⭐ o recorte dos três stats — `undefined` = a tela inteira (13/09) */
-  escopo?: 'VENCIDA' | 'VENCE_HOJE' | 'A_PAGAR' | 'PAGA'
+  /**
+   * ⭐ o recorte dos cards — `undefined` = a tela inteira (13/09).
+   *
+   * ⚠️ O tipo **DERIVA** de `EscopoDaLista` em vez de reenumerar: foi a lista escrita à mão
+   * que deixou os campos mortos do «a vencer (3d)» vivos no tipo por 13 dias.
+   */
+  escopo?: EscopoDaLista
   vencidasOnly: boolean
 }
 
@@ -89,7 +95,31 @@ export function PayableFilters({ value, onChange, onClear, total }: Props) {
         label="Vencimento"
       />
 
-      {/* Status */}
+      {/*
+        ⭐⭐ 26/09 — SOB UM ESCOPO DE PAGAS, ESTE CONTROLE PERGUNTA O **RECORTE**, não o status.
+        ⛔ Deixar o de status ali faria a tela dizer *"Em aberto e pagas sem vínculo"* com as
+        conciliadas na lista — a mentira que os rótulos de 13/09 existem pra não contar.
+        ⭐ E é aqui que moram as duas sub-opções que o dono pediu.
+      */}
+      {value.escopo && ehFluxo(value.escopo) ? (
+        <Select
+          value={value.escopo}
+          onValueChange={(v) => onChange({ ...value, escopo: v as EscopoDaLista })}
+        >
+          <SelectTrigger
+            className="w-auto min-w-[200px] h-9 text-sm"
+            data-testid="filter-recorte-pagas"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="PAGA">{ROTULO_RECORTE.PAGA}</SelectItem>
+            <SelectItem value="PAGA_CONCILIADA">{ROTULO_RECORTE.PAGA_CONCILIADA}</SelectItem>
+            <SelectItem value="PAGA_SEM_VINCULO">{ROTULO_RECORTE.PAGA_SEM_VINCULO}</SelectItem>
+          </SelectContent>
+        </Select>
+      ) : (
+      /* Status */
       <Select
         value={value.status}
         onValueChange={(v) =>
@@ -112,6 +142,7 @@ export function PayableFilters({ value, onChange, onClear, total }: Props) {
           <SelectItem value="TODOS">{ROTULO_TODOS}</SelectItem>
         </SelectContent>
       </Select>
+      )}
 
       {/* Vencidas only */}
       <label className="flex items-center gap-1.5 text-sm text-muted-foreground select-none px-2">

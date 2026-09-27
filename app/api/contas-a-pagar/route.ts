@@ -11,7 +11,7 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { contaAPagarCreateSchema } from '@/lib/validations/contas-ap-ar'
 import { createContaPendente, ContaCreateError } from '@/lib/contas-ap-ar/create'
 import {
-  buildPayableListWhere,
+  buildPayableListWhere, baseDosKpisDePagas,
   buildPayableOrderBy,
   listPayableSchema,
 } from '@/lib/contas-pagar/list-filters'
@@ -81,8 +81,21 @@ export async function GET(request: NextRequest) {
       q: undefined,
     } as typeof input
     const whereBase = buildPayableListWhere(kpiBaseInput, now)
+    /**
+     * ⭐⭐⭐ 26/09 — O BASE DAS PAGAS, e ele é **o coração do acerto**.
+     *
+     * ⛔ O `whereBase` carrega o `lifecycleScope` com `reconciledWithId: null`, então os KPIs
+     * de pagas contavam **só as sem vínculo**: medido em setembro, **40 de 236** — 8,7% do
+     * que o dono pagou. *O cartão respondia "quanto eu paguei sem o banco", que não é a
+     * pergunta que ele faz.*
+     *
+     * ⭐ Forçando `escopo: 'PAGA'`, o mesmo builder devolve o escopo relaxado — **uma porta,
+     * duas respostas**, em vez de um `where` montado à mão aqui (que seria a 2ª régua de
+     * multi-tenant, onde o vazamento entre empresas nasce).
+     */
+    const whereBasePagas = baseDosKpisDePagas(kpiBaseInput, now)
 
-    const [items, total, kpiPagas, kpiPendentes, kpiVencidas, kpiVenceHoje] =
+    const [items, total, kpiPagas, kpiPendentes, kpiVencidas, kpiVenceHoje, kpiConciliadas, kpiSemVinculo] =
       await Promise.all([
         prisma.transaction.findMany({
           where: whereList,
@@ -108,7 +121,8 @@ export async function GET(request: NextRequest) {
          * do mês. Os outros dois seguem sem mês: são ESTOQUE (ver `whereDoStatus`).
          */
         prisma.transaction.aggregate({
-          where: { AND: [whereBase, whereDoStatus('PAGA', now, mesDoRecorte)] },
+          // ⭐ 26/09 — TODAS as pagas do mês, por qualquer meio (ver `whereBasePagas`)
+          where: { AND: [whereBasePagas, whereDoStatus('PAGA', now, mesDoRecorte)] },
           _sum: { amount: true },
           _count: { _all: true },
         }),
@@ -144,6 +158,27 @@ export async function GET(request: NextRequest) {
          */
         prisma.transaction.aggregate({
           where: { AND: [whereBase, whereDoStatus('VENCE_HOJE', now)] },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        /**
+         * ⭐⭐ 26/09 — A DIVISÃO HONESTA DAS PAGAS (*"X conciliadas com o banco · Y sem
+         * vínculo"*), como **detalhe dentro do cartão**, nunca como recorte.
+         *
+         * ⚠️ **`whereBasePagas` e não `whereBase`:** o escopo da lista só deixa a conciliada
+         * entrar sob o escopo PAGA, e sem isso a metade "conciliadas" viria **ZERO** — o
+         * número seria plausível e falso, que é pior que ausência.
+         *
+         * ⛔ E as duas metades derivam do MESMO ramo `PAGA` (por recursão, na lib): duas
+         * definições de *"paga no mês"* fariam a soma das partes não dar o total.
+         */
+        prisma.transaction.aggregate({
+          where: { AND: [whereBasePagas, whereDoStatus('PAGA_CONCILIADA', now, mesDoRecorte)] },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        prisma.transaction.aggregate({
+          where: { AND: [whereBasePagas, whereDoStatus('PAGA_SEM_VINCULO', now, mesDoRecorte)] },
           _sum: { amount: true },
           _count: { _all: true },
         }),
@@ -186,6 +221,9 @@ export async function GET(request: NextRequest) {
         countVencido: kpiVencidas._count._all,
         totalVenceHoje: kpiVenceHoje._sum.amount ?? 0,
         countVenceHoje: kpiVenceHoje._count._all,
+        /** ⭐ a divisão que vai na linha pequena embaixo do total do cartão PAGAS */
+        countPagasConciliadas: kpiConciliadas._count._all,
+        countPagasSemVinculo: kpiSemVinculo._count._all,
       },
       // Sprint 5.0.3.0a — Echo dos filtros parseados (UI sincroniza state)
       appliedFilters: {

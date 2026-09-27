@@ -39,13 +39,20 @@ describe('payableVisualStatus', () => {
   // Como status ele fazia duas coisas erradas: era SUBCONJUNTO de "a pagar" (a soma dos
   // 4 cards contava a mesma conta 2×) e discordava do KPI, que comparava por TIMESTAMP.
   // ⭐ O prazo não se perdeu: virou `textoDoPrazo` ("· em 2d") colado na data.
-  it('⚠️ INVERTIDO: dueDate hoje → A PAGAR (o dia não acabou), nunca "vence em breve"', () => {
-    expect(
-      payableVisualStatus(
-        { status: 'PENDING', dueDate: '2026-05-27', paymentDate: null },
-        NOW,
-      ),
-    ).toBe('pending')
+  /**
+   * ⚠️⚠️ **INVERTIDO DE NOVO EM 26/09, e por um motivo diferente do de 13/09.** Em 13/09 só
+   * existiam TRÊS estados, então *"vence hoje"* só podia ser `pending`; hoje ele tem estado
+   * próprio (`today`, âmbar), que é **PARTIÇÃO** de a-pagar — nada de subconjunto: o que
+   * vence hoje **sai** do a-pagar, nos dois andares.
+   *
+   * ⭐ **A metade que importava daquele dia continua sendo o que este teste prova:** o dia
+   * não acabou, então **NÃO é VENCIDA**. Essa nunca mudou, e o 2º `expect` a trava.
+   */
+  it('⚠️ INVERTIDO 2×: dueDate hoje → VENCE HOJE (nunca "vencida", o dia não acabou)', () => {
+    const hoje = { status: 'PENDING', dueDate: '2026-05-27', paymentDate: null }
+    expect(payableVisualStatus(hoje, NOW)).toBe('today')
+    expect(payableVisualStatus(hoje, NOW), 'o dia não acabou — cobrar como vencida é mentir')
+      .not.toBe('overdue')
   })
 
   it('⚠️ INVERTIDO: dueDate em 2 dias → A PAGAR — o prazo é texto da data', () => {
@@ -138,7 +145,8 @@ describe('payableStatusLabel', () => {
 
 describe('PAYABLE_STATUS_COLOR — safelist Tailwind', () => {
   it('todos os 4 status tem mapeamento completo', () => {
-    for (const k of ['paid', 'pending', 'overdue'] as const) {
+    // ⭐ 26/09 — `today` entrou como 4º (âmbar, entre o azul de a-pagar e o vermelho de vencida)
+    for (const k of ['paid', 'pending', 'overdue', 'today'] as const) {
       expect(PAYABLE_STATUS_COLOR[k]).toBeDefined()
       expect(PAYABLE_STATUS_COLOR[k].stripe).toMatch(/^bg-/)
       expect(PAYABLE_STATUS_COLOR[k].badgeBg).toMatch(/^bg-/)
@@ -150,7 +158,13 @@ describe('PAYABLE_STATUS_COLOR — safelist Tailwind', () => {
     const stripes = new Set(
       Object.values(PAYABLE_STATUS_COLOR).map((c) => c.stripe),
     )
-    // ⚠️ 3 desde 13/09 — o 'warn' âmbar saiu junto com o status
-    expect(stripes.size).toBe(3)
+    /**
+     * ⚠️ **INVERTIDO em 26/09:** eram 3 desde 13/09 (o `warn` âmbar saiu junto com o status
+     * *"vence em breve"*, que era SUBCONJUNTO). Agora são **4** — o `today` é PARTIÇÃO e tem
+     * cor própria, senão a conta que vence hoje se pinta igual à que vence em 20 dias.
+     * ⭐ O que o teste continua provando é o que importa: **nenhuma cor repetida** — duas
+     * faixas iguais fariam dois estados diferentes parecerem o mesmo na lista.
+     */
+    expect(stripes.size).toBe(4)
   })
 })

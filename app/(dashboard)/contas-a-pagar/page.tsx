@@ -125,6 +125,9 @@ interface KPIs {
   /** ⭐ 26/09 — o 4º card, entre A PAGAR e VENCIDAS */
   totalVenceHoje: number
   countVenceHoje: number
+  /** ⭐ 26/09 — a divisão honesta das pagas, na linha pequena do cartão */
+  countPagasConciliadas: number
+  countPagasSemVinculo: number
   totalVencido: number
   countVencido: number
   /**
@@ -148,6 +151,8 @@ const EMPTY_KPIS: KPIs = {
   countPendente: 0,
   totalVenceHoje: 0,
   countVenceHoje: 0,
+  countPagasConciliadas: 0,
+  countPagasSemVinculo: 0,
   totalVencido: 0,
   countVencido: 0,
 }
@@ -983,13 +988,21 @@ function ContasAPagarInner() {
               ⭐ E cada card É o filtro: clicar recorta a lista no MESMO conjunto que ele
               contou (`escopo`), pelo dono único `whereDoStatus`. */}
           <StatCardGrid>
+            {/*
+              ⭐⭐⭐ 26/09 — **PAGAS · SETEMBRO: TODAS as pagas do mês** (decisão do dono).
+              ⛔ Antes o rótulo era *"Pagas (sem conciliar)"* e o número mostrava **40 de
+              236** em setembro — 8,7% do que ele pagou. *O card respondia "quanto eu paguei
+              sem o banco", que não é a pergunta que ele faz.*
+              ⭐ A RESSALVA não morreu: ela virou o **detalhe** da linha de baixo.
+            */}
             <StatsCard
               variant="paid"
-              // ⭐ o rótulo diz o RECORTE: "Pagas (sem conciliar) · setembro" — card de
-              // fluxo sem o período é um número que não se sabe de quando
-              label={`${ROTULO_PAGAS} · ${rotuloDoMes(mes)}`}
+              // ⭐ o rótulo diz o RECORTE: card de fluxo sem o período é um número que não
+              // se sabe de quando
+              label={`Pagas · ${rotuloDoMes(mes)}`}
               amount={kpis.totalPagas}
               count={kpis.countPagas}
+              detalhe={`${kpis.countPagasConciliadas} conciliadas com o banco · ${kpis.countPagasSemVinculo} sem vínculo`}
               icon={CheckCircle2}
               onClick={() => applyFilterPreset('paid')}
             />

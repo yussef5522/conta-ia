@@ -111,10 +111,19 @@ describe('⭐⭐ O CARD EXISTE, NA ORDEM, E É O FILTRO', () => {
   })
 
   it('⭐⭐ a ORDEM é PAGAS · VENCE HOJE · A PAGAR · VENCIDAS', () => {
+    /**
+     * ⚠️ **REAPONTADO em 26/09 (fim do dia), não afrouxado.** O card deixou de se chamar
+     * `ROTULO_PAGAS` (*"Pagas (sem conciliar)"*) porque passou a contar **TODAS** as pagas do
+     * mês — manter a âncora antiga cobraria de volta um rótulo que hoje seria **mentira**.
+     * ⭐ A régua que este teste existe pra provar — **a ORDEM dos quatro** — não mudou.
+     */
     const i = (s: string) => pagina.indexOf(s)
-    expect(i('label={`${ROTULO_PAGAS}')).toBeGreaterThan(-1)
-    expect(i('label={`${ROTULO_PAGAS}')).toBeLessThan(i('label="Vence hoje"'))
+    expect(i('label={`Pagas · ')).toBeGreaterThan(-1)
+    expect(i('label={`Pagas · ')).toBeLessThan(i('label="Vence hoje"'))
     expect(i('label="Vence hoje"')).toBeLessThan(i('label="A pagar"'))
+    // ⛔ e o card NÃO pode voltar a se chamar "(sem conciliar)": ele conta as conciliadas
+    expect(pagina, 'o rótulo do card promete menos do que ele entrega')
+      .not.toContain('label={`${ROTULO_PAGAS}')
     expect(i('label="A pagar"')).toBeLessThan(i('label="Vencidas"'))
   })
 
@@ -134,6 +143,26 @@ describe('⭐⭐ O CARD EXISTE, NA ORDEM, E É O FILTRO', () => {
     expect(rota).toContain("whereDoStatus('VENCE_HOJE', now)")
     expect(rota).toContain('totalVenceHoje')
     expect(rota).toContain('countVenceHoje')
+  })
+
+  it('⭐⭐ e a RESSALVA não morreu — ela virou o DETALHE do cartão e o recorte do dropdown', () => {
+    /**
+     * ⚠️⚠️ **A tensão com a régua de 13/09 continua registrada, e é ela que este teste guarda.**
+     * Naquele dia o rótulo ganhou *"(sem conciliar)"* porque *"nenhum rótulo promete mais do
+     * que entrega"*. O card passou a entregar TODAS — então a ressalva **desceu pra a linha
+     * pequena** (a divisão honesta) e o recorte virou **opção do dropdown**.
+     * ⛔ Se as duas sumirem, volta a MENTIRA, que é pior que o mistério.
+     */
+    expect(pagina, 'a divisão honesta saiu do cartão — o total voltaria a esconder o meio')
+      .toContain('conciliadas com o banco')
+    expect(pagina).toContain('sem vínculo')
+
+    const filtros = semComentario(ler('components/contas-pagar/PayableFilters.tsx'))
+    expect(filtros, 'as sub-opções do recorte das pagas sumiram do dropdown')
+      .toContain('ROTULO_RECORTE.PAGA_CONCILIADA')
+    expect(filtros).toContain('ROTULO_RECORTE.PAGA_SEM_VINCULO')
+    // ⭐ e o rótulo honesto do STATUS continua onde ele é verdade (`status=RECONCILED`)
+    expect(filtros).toContain('ROTULO_PAGAS')
   })
 
   it('⛔⛔ e o campo morto do "a vencer (3d)" SUMIU do tipo', () => {

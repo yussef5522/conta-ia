@@ -35,12 +35,29 @@ import { janelaDoMes } from '@/lib/periodo/mes-corrente'
 export type StatusDaConta = 'VENCIDA' | 'VENCE_HOJE' | 'A_PAGAR' | 'PAGA'
 
 /**
+ * ⭐⭐ 26/09 — AS DUAS METADES DE `PAGA`, pro dono separar quando quiser.
+ *
+ * **Decisão dele:** o cartão conta **TODAS** as pagas do mês (*"não importa o meio:
+ * conciliada com o banco, paga em dinheiro, marcada na mão"*), e a divisão honesta aparece
+ * como **detalhe dentro do cartão**, não como recorte.
+ *
+ * ⛔ **Elas são PARTIÇÃO de `PAGA`, nunca um 5º card** — a lição do *"a vencer (3d)"*: card
+ * que é pedaço de outro faz a Σ contar a mesma conta 2×. Aqui vivem no **dropdown**.
+ */
+export type RecorteDasPagas = 'PAGA_CONCILIADA' | 'PAGA_SEM_VINCULO'
+export type EscopoDaLista = StatusDaConta | RecorteDasPagas
+
+export const ehRecorteDasPagas = (e: EscopoDaLista): e is RecorteDasPagas =>
+  e === 'PAGA_CONCILIADA' || e === 'PAGA_SEM_VINCULO'
+
+/**
  * ⭐ QUEM É FLUXO E QUEM É ESTOQUE — a régua da casa, num lugar só.
  *
  * ⚠️ É ela que decide se o período se aplica. Um `boolean` solto em cada tela viraria a
  * segunda régua no dia em que um status novo aparecer.
  */
-export const ehFluxo = (s: StatusDaConta): boolean => s === 'PAGA'
+export const ehFluxo = (s: EscopoDaLista): boolean =>
+  s === 'PAGA' || ehRecorteDasPagas(s)
 
 /**
  * ⚠️ meia-noite do dia do BRASIL, em UTC — a fronteira que decide vencida × a pagar.
@@ -94,12 +111,27 @@ export function statusDaConta(c: ContaParaStatus, now: Date = new Date()): Statu
  * segunda porta de multi-tenant, que é onde o vazamento entre empresas nasce.
  */
 export function whereDoStatus(
-  status: StatusDaConta,
+  status: EscopoDaLista,
   now: Date = new Date(),
-  /** ⭐ `YYYY-MM` — o recorte de FLUXO. Ignorado de propósito pelos dois de ESTOQUE. */
+  /** ⭐ `YYYY-MM` — o recorte de FLUXO. Ignorado de propósito pelos de ESTOQUE. */
   mes?: string | null,
 ): Record<string, unknown> {
   const hoje = inicioDoDiaBrasil(now)
+  /**
+   * ⭐⭐ 26/09 — as duas metades: o MESMO recorte de mês, mais o vínculo.
+   *
+   * ⛔ Derivadas do ramo `PAGA` (por recursão), nunca reescritas: duas definições de
+   * *"quando uma conta conta como paga no mês"* divergiriam no primeiro ajuste, e aí a soma
+   * das partes deixaria de dar o total — que é justamente o invariante que o dono pediu.
+   */
+  if (ehRecorteDasPagas(status)) {
+    return {
+      AND: [
+        whereDoStatus('PAGA', now, mes),
+        status === 'PAGA_CONCILIADA' ? { reconciledWithId: { not: null } } : { reconciledWithId: null },
+      ],
+    }
+  }
   if (status === 'PAGA') {
     /**
      * ⭐⭐ PAGAS É FLUXO — aconteceu no tempo, e o padrão é o MÊS CORRENTE.
@@ -107,6 +139,15 @@ export function whereDoStatus(
      * O dono: *"pagas em setembro: R$ X. Pagas de junho/julho/agosto só quando eu escolher
      * o período. É o número que muda com o filtro."* ⛔ Sem isto o card somava **R$ 220 mil
      * desde sempre** — um número que não responde pergunta nenhuma do mês.
+     */
+    /**
+     * ⭐⭐ 26/09 — **e ele conta TODAS as pagas do mês, por QUALQUER meio.** ⛔ Antes a tela
+     * mostrava só as sem vínculo (o `reconciledWithId: null` do `lifecycleScope`): medido,
+     * **40 de 236** em setembro — 8,7% do que o dono pagou. *O cartão respondia "quanto eu
+     * paguei sem o banco", que não é a pergunta que ele faz.*
+     *
+     * ⚠️ Note que este `where` NUNCA filtrou vínculo: quem excluía era o escopo da LISTA.
+     * A correção mora lá, sob gesto — aqui é só o recorte de tempo.
      */
     if (!mes) return { paymentDate: { not: null } }
     const { de, ate } = janelaDoMes(mes)
