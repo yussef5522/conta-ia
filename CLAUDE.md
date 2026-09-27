@@ -1367,6 +1367,54 @@ O `ponte/renegociacao` ficava vermelho ~1 vez a cada 5 rodadas cheias. Eu suspei
 
 ⭐ **A cura é da CLASSE, não da instância:** o teto de 5 s do vitest é pra teste **puro**, e a suíte tem **98 arquivos de integração** contra banco real — qualquer um deles pode estourar; o `renegociacao` só era o mais perto do limite. `testTimeout: 20_000`, com o motivo escrito. ⛔ **Nenhuma asserção mudou** — o que muda é parar de chamar de falha o que é fila. ***Alarme falso repetido é como um alarme morre***, e suíte que fica vermelha sozinha ensina a ignorar o vermelho. **3 rodadas cheias verdes seguidas.**
 
+### 🧹 CONTAS A PAGAR — O 4º CARTÃO E A TELA QUE PAROU DE SE EXPLICAR (26/09)
+
+**⭐⭐ 1. VENCE HOJE — e ele NÃO é o `A VENCER (3D)` que morreu em 13/09.** Aquele era um **SUBCONJUNTO** de A PAGAR escolhido a dedo (*"3 dias"* é número, não estado), então a soma dos cards contava a mesma conta **2×** e o total do rodapé vinha inflado. ⭐ Este é uma **PARTIÇÃO**: o `whereDoStatus('A_PAGAR')` passou a começar em **AMANHÃ**, e a Σ dos três de aberto continua sendo o total em aberto. ***É essa a diferença entre um card legítimo e o que morreu*** — e é o que o guard afirma, com os `where` conferidos como **contíguos e disjuntos**: `]-∞, hoje[ · [hoje, amanhã[ · [amanhã, +∞[`.
+
+⚠️ **E "hoje" é o dia do BRASIL**, a régua de 13/09: às 23h de São Paulo o servidor em UTC já diz amanhã, e sem isso a conta de hoje ficaria **vermelha com o dia inteiro ainda pra pagar**.
+
+**⭐⭐ 2. A LIMPEZA — a tela AGE, não se explica.** Morreram a **legenda de construção** (*"Esta tela mostra o que está em aberto… as já conciliadas estão em Movimentações →"*) e o **seletor de mês do topo**: ***um controle por pergunta, não dois*** (palavras dele). A tela **sempre abre no mês corrente**, e quem quer outra época usa o *"Selecionar período"* de baixo, que já fazia isso. ⚠️ O `?mes=` da URL continua respeitado — link antigo não vira 404 silencioso.
+
+**3. A RÉGUA NÃO MUDOU:** o mês recorta as PAGAS (fluxo); VENCE HOJE, A PAGAR e VENCIDAS mostram **tudo** que está em aberto (dívida não respeita virada de mês). ⭐ *Isso é comportamento, não legenda* — e é por isso que a tela pode calar.
+
+**⚠️ TRÊS COISAS ACHADAS NO CAMINHO, todas consequência direta:**
+1. **O RODAPÉ passaria a somar MENOS que a realidade.** Ele se declara fechado (`paid + pending + overdue`) e o 4º ficaria fora — a dupla contagem **ao contrário**. Entrou junto.
+2. **Campo morto vivo no tipo:** `totalAVencer3d`/`countAVencer3d` ficaram na interface desde 13/09, e o rodapé somava `countAVencer3d` (**sempre 0**) achando que contava algo. *Campo que ninguém desenha é o que alguém religa por descuido.*
+3. **A `frase` do `NavegadorDeMes` virou OBRIGATÓRIA.** O default era *"· o mês recorta as pagas; vencidas e a pagar…"* — uma frase **específica de Contas a Pagar** servindo de padrão pra qualquer tela. Com o navegador saindo dali, o default ficou **sem chamador** (os outros 2 callers — Recebimentos e PF — sempre passaram a deles). ⛔ Obrigatória e não removida: tela nova **tem que dizer o que o mês dela alcança** (REGRA 5).
+
+**PROVADO EM PROD, pelas rotas reais, nos DOIS viewports (REGRA 12):**
+```
+PAGE /contas-a-pagar  celular 200 em 156ms · desktop 200 em 51ms · mês do recorte 2026-09
+   ⭐ abre em setembro SEM seletor duplicado no topo
+
+OS 4 CARTÕES            card        lista (clicando)
+  PAGAS (sem conciliar)   33 ·  24.663,90      33  ✓
+  VENCE HOJE               1 ·   1.940,59       1  ✓  ⭐ o 4º
+  A PAGAR                 84 · 131.950,01      84  ✓
+  VENCIDAS                25 ·  25.995,68      25  ✓
+
+⛔ A SOMA, medida por DOIS caminhos independentes:
+   Σ dos três de aberto  110 · R$ 159.886,28
+   total EM ABERTO       110 · R$ 159.886,28   (sem passar pelos escopos)
+   ⭐ FECHA — nada some, nada conta 2×
+
+A conta que vence HOJE: R$ 1.940,59 · vence 2026-09-26 · «LATICINIOS SANTO CRISTO — NF …»
+   ⭐ e ela SAIU do A PAGAR (84, não 85)
+
+AS FRASES MORTAS, no HTML servido:
+   ⭐ "Esta tela mostra o que…"     não existe
+   ⭐ "o mês recorta as pagas"      não existe
+   ⭐ "as já conciliadas estão…"    não existe
+```
+
+**REGRA 11 — 7 becos repostos, 7 vermelhos:** A PAGAR voltando a incluir hoje (a dupla contagem, **2**) · contar pelo relógio UTC em vez do dia do Brasil (**4**) · o card sumindo da tela (**2**) · o rodapé parando de somar o 4º (**1**) · a legenda voltando pro topo (**2**) · o seletor de mês voltando (**1**) · a `frase` voltando a ser opcional com o default errado (**1**).
+
+**⚠️ 1 TESTE INVERTIDO e 1 GUARD REAPONTADO, os dois com o motivo escrito:**
+- *"vence HOJE ainda é A PAGAR"* era a lei de 13/09 (só havia três estados). ⭐ **A metade que importa — *"o dia não acabou, então NÃO é VENCIDA"* — continua sendo o que ele prova**, e essa nunca mudou.
+- ⚠️⚠️ **E há uma TENSÃO REAL com a régua de 13/09, registrada em vez de escondida:** a nota das conciliadas nasceu naquele dia porque *"rótulo honesto que não diz o caminho troca uma mentira por um mistério"*. O dono pesou e tirou. ⭐ **O que segura a promessa continua de pé, e é o que o guard passa a provar:** a ressalva que levanta a dúvida (*"Pagas **(sem conciliar)**"*, *"Em aberto e pagas **sem vínculo**"*) segue nos RÓTULOS do dropdown. *O que saiu foi a legenda permanente ocupando a primeira dobra de uma tela de trabalho — texto que se lê uma vez e nunca mais.* Se a ressalva sumir, volta a MENTIRA, que é pior que o mistério.
+
+**10.959 verdes · TS 0 · deploy 4/4 (`h4DGvUzf7576pWfXPxQLS`) · Δ bundle +0 KB.**
+
 ### ⭐⭐⭐ INVESTIMENTOS — O ESPELHO DO EMPRÉSTIMO, DO LADO DO ATIVO (25/09)
 
 **Decisão do dono:** *"CAPITALIZACAO RG e PAGAMENTO CONSORCIO não são despesa nem conta a pagar — são APORTES recorrentes que constroem patrimônio. O espelho do empréstimo: lá a parcela reduz dívida, aqui aumenta ativo."*
