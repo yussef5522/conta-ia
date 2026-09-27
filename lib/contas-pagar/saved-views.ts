@@ -109,15 +109,29 @@ export const SAVED_VIEWS: ReadonlyArray<SavedViewDef> = [
     }),
   },
   {
+    /**
+     * ⛔⛔ **26/09 — ELA ERA A TERCEIRA DEFINIÇÃO DE "PAGAS NO MÊS", com a régua ANTIGA.**
+     *
+     * Achada na prova em prod: o bundle trazia `"Pagas no mês"` ao lado de `"Pagas · "`, e
+     * os dois nomes davam **números diferentes** — a view usava `status: 'RECONCILED'` sem
+     * escopo, então o `lifecycleScope` seguia excluindo a conciliada e ela entregava **33**
+     * enquanto o cartão ao lado dizia **229**. *O mesmo nome, dois números* é exatamente a
+     * doença que o cartão de hoje conserta.
+     *
+     * ⭐ Agora ela manda o **escopo** — a MESMA porta dos cards (`whereDoStatus`), então não
+     * há como divergir. ⚠️ E as datas saíram: o escopo já recorta o mês por `paymentDate`;
+     * manter `dataDe/dataAte` seria uma segunda régua de período no mesmo pedido.
+     */
     id: 'pagas-mes',
     name: 'Pagas no mês',
-    buildFilters: (now) => ({
+    buildFilters: () => ({
       q: '',
-      dataDe: formatISODate(startOfMonthUTC(now)),
-      dataAte: formatISODate(endOfMonthUTC(now)),
-      status: 'RECONCILED',
+      dataDe: '',
+      dataAte: '',
+      status: 'TODOS',
+      escopo: 'PAGA',
       vencidasOnly: false,
-      // CRÍTICO: usa paymentDate, não dueDate
+      // ⭐ a ordenação continua pela data do PAGAMENTO — é a pergunta da view
       dataField: 'paymentDate',
       sortBy: 'paymentDate',
       sortDir: 'desc',

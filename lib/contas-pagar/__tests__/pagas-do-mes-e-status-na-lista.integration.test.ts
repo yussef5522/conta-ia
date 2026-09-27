@@ -266,6 +266,34 @@ describe('⛔⛔⛔ GUARD 2 — o status da LINHA é o cartão onde ela CONTA', 
   })
 })
 
+describe('⛔⛔⛔ UM NOME, UM NÚMERO — a saved view «Pagas no mês» e o cartão', () => {
+  /**
+   * ⛔⛔ **Achada na PROVA EM PROD, não no código:** o bundle trazia `"Pagas no mês"` (a
+   * saved view) ao lado de `"Pagas · setembro"` (o cartão), e os dois davam números
+   * diferentes — a view usava `status: 'RECONCILED'` **sem escopo**, então o `lifecycleScope`
+   * seguia excluindo a conciliada: **33** contra **229**, com o mesmo nome.
+   *
+   * ⭐ É a doença que este sprint conserta, aparecendo num terceiro lugar. *Duas definições
+   * da mesma pergunta divergem no primeiro ajuste* — e aqui já tinham divergido.
+   */
+  it('⭐ a view manda o ESCOPO, e devolve o MESMO conjunto do cartão', async () => {
+    const { SAVED_VIEWS } = await import('../saved-views')
+    const view = SAVED_VIEWS.find((v) => v.id === 'pagas-mes')!
+    const f = view.buildFilters(AGORA)
+    expect(f.escopo, 'a view voltou a montar régua própria em vez de usar o escopo')
+      .toBe('PAGA')
+
+    const where = buildPayableListWhere(
+      { ...(kpiBaseInput as object), empresaId: companyId, mes: MES, escopo: f.escopo, status: f.status } as never,
+      AGORA,
+    )
+    const naView = await db.transaction.count({ where })
+    const noCartao = (await contarNaLista('PAGA')).count
+    expect(naView, '«Pagas no mês» e o cartão PAGAS discordam — um nome, dois números')
+      .toBe(noCartao)
+  })
+})
+
 describe('⛔⛔ E A ROTA USA A PORTA — os KPIs de pagas não montam base própria', () => {
   /**
    * ⚠️⚠️ **Sem este bloco a REGRA 11 reprovava o arquivo inteiro:** repondo o defeito **na

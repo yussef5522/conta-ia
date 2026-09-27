@@ -203,7 +203,11 @@ export async function GET(request: NextRequest) {
       },
       kpis: {
         /**
-         * ⭐ OS QUATRO CARDS: PAGAS (SEM CONCILIAR) · VENCE HOJE · A PAGAR · VENCIDAS.
+         * ⭐ OS QUATRO CARDS: PAGAS (do mês, TODAS) · VENCE HOJE · A PAGAR · VENCIDAS.
+         *
+         * ⚠️ O rótulo *"(sem conciliar)"* saiu daqui em 26/09 porque deixou de ser verdade:
+         * o card conta as pagas por **qualquer meio**, e a ressalva desceu pra a linha
+         * pequena (`countPagasConciliadas` / `countPagasSemVinculo`).
          *
          * ⛔ *"A VENCER (3d)"* morreu em 13/09 e **não voltou**: ele era um SUBCONJUNTO de
          * A PAGAR (a mesma conta contada 2×) e *"3 dias"* é número escolhido a dedo, não
