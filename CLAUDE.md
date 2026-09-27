@@ -1415,6 +1415,57 @@ AS FRASES MORTAS, no HTML servido:
 
 **10.959 verdes · TS 0 · deploy 4/4 (`h4DGvUzf7576pWfXPxQLS`) · Δ bundle +0 KB.**
 
+### 💰 CONTAS A PAGAR — «PAGAS» CONTA TODAS AS DO MÊS · E O «VENCE HOJE» CHEGOU NA LISTA (26/09)
+
+**⛔⛔⛔ 1. O CARTÃO MOSTRAVA 8,7% DO QUE O DONO PAGOU — medido antes de codar.** Setembro tem **236 contas pagas (R$ 292.743,50)**; o cartão dizia **40 (R$ 25.441,86)**. As outras **196 (R$ 267.301,64)** eram invisíveis nesta tela. *O card respondia "quanto eu paguei sem o banco", que não é a pergunta que ele faz.*
+
+⭐ **E a causa era UMA LINHA, não a régua de recorte:** o `lifecycleScope` da lista carrega `reconciledWithId: null` (a decisão de 28/05, pra a mesma linha não viver em duas telas), e os KPIs de pagas herdavam isso. **É por isso que o guard roda contra BANCO:** um teste puro sobre `whereDoStatus` daria **verde com o defeito vivo**.
+
+**⭐ AS DUAS METADES DERIVAM DO RAMO `PAGA` POR RECURSÃO** — nunca reescritas. É o que faz a **Σ das partes ser sempre o total**, que era o invariante que o dono pediu. E a relaxação vale **só** sob escopo de pagas: nos escopos de aberto a conciliada continua fora, travado em teste (*"linha em duas telas é duplicação"*).
+
+⭐ **A RESSALVA NÃO MORREU — virou o DETALHE:** *"196 conciliadas com o banco · 33 sem vínculo"* na linha pequena do cartão, e o recorte virou **sub-opção do dropdown**. ⛔ E ela é **APENSADA** ao `N contas`, nunca substituta: deixar o detalhe tomar o lugar da contagem abriria a porta pros dois números divergirem.
+
+**⛔⛔ 2. O «VENCE HOJE» NÃO CHEGAVA NA LISTA — E O DEFEITO ERA MEU, DE ONTEM.** O cartão separava; a linha continuava dizendo *"A PAGAR"*. **Não eram duas réguas brigando: era UMA régua com um TRADUTOR CEGO** — o `payableVisualStatus` já era casca sobre `statusDaConta` e colapsava `VENCE_HOJE` em `pending`. Agora o switch é **TOTAL** (estado novo não compila sem par) e a faixa é **âmbar**, entre o azul do a-pagar e o vermelho da vencida.
+
+**⛔⛔ 3. E O CARTÃO NOVO CRIOU UMA MENTIRA DE RÓTULO QUE FOI FECHADA NO MESMO GESTO:** o preset manda `escopo: 'PAGA'` com `status: 'TODOS'`, e o dropdown mostraria *"Em aberto e pagas sem vínculo"* **com as conciliadas na lista**. ⭐ Sob um escopo de pagas ele deixa de perguntar `status` e passa a perguntar **o recorte** — *um controle por pergunta*, a régua da limpeza de ontem. ⚠️ O `ROTULO_PAGAS` continua honesto **onde ele é verdade** (`status=RECONCILED`, caminho pelo qual a conciliada segue excluída).
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU A **TERCEIRA** DEFINIÇÃO DE "PAGAS NO MÊS" (26/09)
+
+O bundle trazia **`"Pagas no mês"`** (a saved view) ao lado de **`"Pagas · setembro"`** (o cartão) — e os dois nomes davam números diferentes: a view usava `status: 'RECONCILED'` **sem escopo**, então entregava **33** contra os **229** do cartão. ***Um nome, dois números*** — a doença que este sprint conserta, aparecendo num lugar que ninguém tinha olhado. Agora ela manda o **escopo**, a mesma porta dos cards, e o período próprio sai (o escopo já recorta por `paymentDate`; manter `dataDe/dataAte` seria a 2ª régua de período no mesmo pedido).
+
+⭐⭐ **E A METADE CERTA DOS 5 TESTES INVERTIDOS FOI REALOCADA, não apagada:** eles guardavam a **BORDA DO MÊS** (fevereiro bissexto, janeiro 31, dezembro virando o ano). Quem responde isso agora é a `janelaDoMes` — e é contra ela que a borda é conferida, com o fim **exclusivo** (`< ate`), mais o **mês do BRASIL**. *Remoção sem realocação é perda.*
+
+**⭐ E A DECISÃO GANHOU DONO POR EXIGÊNCIA DA REGRA 11.** O defeito vivia no `where` que a **ROTA** monta, então o guard ficaria **verde com ele reposto**: `baseDosKpisDePagas` é a porta única, o teste executa a MESMA função que a rota chama, e o **contrafactual** da base errada (que devolve 2 em vez de 4) fica no arquivo — senão o dia em que a base de aberto parar de esconder, ninguém saberá que o teste perdeu o sentido.
+
+**PROVADO EM PROD, pelas rotas reais, nos DOIS viewports (REGRA 12):**
+```
+O CARTÃO «PAGAS · SETEMBRO»   229 contas · R$ 291.965,54
+   a linha de baixo: 196 conciliadas com o banco · 33 sem vínculo
+   ⛔ Σ das partes == total do cartão ✓ FECHA          (antes o cartão mostrava 33)
+
+CLICANDO CADA ESCOPO — o card diz X, a lista mostra X
+   PAGA 229→229 · PAGA_CONCILIADA 196→196 · PAGA_SEM_VINCULO 33→33
+   VENCE_HOJE 1→1 · A_PAGAR 84→84 · VENCIDA 25→25
+   ⛔ Σ dos três de aberto: 110 · R$ 159.886,28 (o 4º card segue sem dupla contagem)
+
+⭐ LATICINIOS SANTO CRISTO R$ 1.940,59 · vence 2026-09-26 → VENCE HOJE na lista
+⭐ e as pagas que estavam INVISÍVEIS aparecem: vandre 216,00 · FRIGORIFICO 1.426,38 …
+⭐ «Pagas no mês» (saved view) 229 == o cartão 229 — um nome, um número
+
+celular 200 em 321ms · desktop 200 em 121ms · 1.112 KB
+  ✓ o detalhe · ✓ Vence hoje · ✓ bg-amber-500 · ✓ as 3 sub-opções
+  ✓ a ressalva viva no dropdown de status
+  ⛔ o rótulo velho no cartão · a legenda · o subtítulo · o seletor de mês: MORTOS
+```
+
+**REGRA 11 — 6 becos repostos, todos vermelhos:** a rota voltando pra base de aberto (**2 braços**: a declaração e o aggregate) · o `lifecycleScope` excluindo sempre (**4 vermelhos**) · os recortes deixando de derivar do ramo `PAGA` (**2**) · a lista colapsando `VENCE_HOJE` (**4**) · a saved view voltando à régua antiga (**1**).
+
+**⚠️ 1 GUARD REAPONTADO E 7 TESTES INVERTIDOS, todos com o motivo escrito:** a âncora do rótulo do card (a ORDEM dos quatro, que é a régua dele, não mudou — e ele passou a exigir que **a ressalva siga viva** nos dois lugares novos); os 2 de 13/09 que afirmavam o mundo de TRÊS estados (*"hoje → A PAGAR"* e *"3 cores distintas"* → **4**, com a metade certa — *não é VENCIDA, o dia não acabou* — travada num `expect` próprio); e os 5 da saved view.
+
+**⚠️ E A SONDA DA PROVA ERROU DUAS VEZES ANTES DE MEDIR:** rodei o script de `/tmp`, fora do repo, e o `@prisma/client` não resolvia (o Node sobe diretórios a partir do ARQUIVO, não do cwd) — pior, num `until` que virou laço infinito num erro permanente; e chutei os nomes dos campos do payload (`countPendentes`/`total` em vez de `countPendente`/`paginacao.total`), o que imprimiu `undefined` com cara de KPI quebrado. **A terceira armadilha foi o minificador:** o `·` sai como `\xb7` no bundle enquanto o resto fica em UTF-8 cru — a cicatriz de 15/09 (`Sa\xeddas:`) de novo. *Sonda errada dá um vermelho tão convincente quanto um defeito real* — e aqui ela quase me fez reportar 4 frases ausentes que estavam lá.
+
+**10.971 verdes · TS 0 · deploys 4/4 (`4DhWL-zVkBJv-6eEBVzBn` e `x-DcyeOQdnF7soD_8wtWe`) · Δ bundle +0 KB.**
+
 ### ⭐⭐⭐ INVESTIMENTOS — O ESPELHO DO EMPRÉSTIMO, DO LADO DO ATIVO (25/09)
 
 **Decisão do dono:** *"CAPITALIZACAO RG e PAGAMENTO CONSORCIO não são despesa nem conta a pagar — são APORTES recorrentes que constroem patrimônio. O espelho do empréstimo: lá a parcela reduz dívida, aqui aumenta ativo."*
