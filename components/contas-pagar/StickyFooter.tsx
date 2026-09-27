@@ -1,6 +1,6 @@
 // Sprint 5.0.3.0a — Footer fixo (sticky bottom) com totalizadores.
 //
-// 4 valores clicáveis que filtram a tabela: Vencido / A vencer 3d / Pendente / Pago.
+// Valores clicáveis que filtram a tabela: Vencidas / Vence hoje / A pagar / Pagas.
 // + Total geral à direita.
 //
 // Cada item tem aria-label pra screen reader + role="button" pra accessibility.
@@ -12,15 +12,23 @@ interface Totals {
   paid: number
   pending: number
   overdue: number
+  /** ⭐ 26/09 — o 4º card entrou, e o rodapé se declara FECHADO: sem ele somaria menos */
+  today: number
 }
 
 interface Props {
   totals: Totals
-  onClickFilter: (kind: 'paid' | 'pending' | 'overdue') => void
+  onClickFilter: (kind: 'paid' | 'pending' | 'overdue' | 'today') => void
 }
 
 const ITEMS = [
   { kind: 'overdue', label: 'Vencidas', tone: 'text-red-600 dark:text-red-400' },
+  /**
+   * ⭐⭐ 26/09 — VENCE HOJE. ⛔ E ele NÃO repete o erro do *"a vencer (3d)"* que saiu daqui
+   * em 13/09: aquele era SUBCONJUNTO de "A pagar" (a mesma conta 2× no total); este é
+   * PARTIÇÃO — o "A pagar" agora começa em amanhã.
+   */
+  { kind: 'today', label: 'Vence hoje', tone: 'text-amber-600 dark:text-amber-400' },
   // ⛔ "A vencer (3d)" saiu daqui junto com o card (13/09): era SUBCONJUNTO de "A pagar",
   // então o rodapé somava a mesma conta 2× e o total geral vinha inflado.
   { kind: 'pending', label: 'A pagar', tone: 'text-sky-600 dark:text-sky-400' },
@@ -29,8 +37,8 @@ const ITEMS = [
 ] as const
 
 export function StickyFooter({ totals, onClickFilter }: Props) {
-  // ⭐ agora a soma FECHA: os três status cobrem tudo e não se sobrepõem
-  const total = totals.paid + totals.pending + totals.overdue
+  // ⭐ a soma FECHA: os status cobrem tudo e não se sobrepõem (guard em `escopo.test.ts`)
+  const total = totals.paid + totals.pending + totals.overdue + totals.today
 
   return (
     <div

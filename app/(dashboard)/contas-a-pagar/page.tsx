@@ -39,9 +39,18 @@ import { StatCardGrid } from '@/components/ui/stat-card'
 import { PayableSkeleton } from '@/components/contas-pagar/PayableSkeleton'
 import { PayableEmptyState } from '@/components/contas-pagar/PayableEmptyState'
 import { StickyFooter } from '@/components/contas-pagar/StickyFooter'
-import { NavegadorDeMes } from '@/components/contas-pagar/NavegadorDeMes'
 import { mesCorrente, rotuloDoMes } from '@/lib/periodo/mes-corrente'
-import { ROTULO_PAGAS, NOTA_CONCILIADAS, hrefMovimentacoes } from '@/lib/contas-pagar/rotulos'
+/**
+ * ⚠️⚠️ 26/09 — a frase *"as já conciliadas estão em Movimentações →"* MORREU (decisão do
+ * dono: *"legenda de construção; quem precisar de conciliadas acha em Movimentações
+ * sozinho"*), e com ela `NOTA_CONCILIADAS`/`hrefMovimentacoes` ficaram **sem chamador** —
+ * removidos da lib, porque constante órfã é o que alguém religa por descuido.
+ *
+ * ⭐ **O que segura a promessa continua de pé:** os RÓTULOS honestos (`Pagas (sem
+ * conciliar)`, `Em aberto e pagas sem vínculo`) seguem no dropdown de status. *A ressalva
+ * fica; o que saiu foi a legenda permanente.*
+ */
+import { ROTULO_PAGAS } from '@/lib/contas-pagar/rotulos'
 import {
   PayableFilters,
   EMPTY_FILTERS,
@@ -113,10 +122,16 @@ interface KPIs {
   countPagas: number
   totalPendente: number
   countPendente: number
-  totalAVencer3d: number
-  countAVencer3d: number
+  /** ⭐ 26/09 — o 4º card, entre A PAGAR e VENCIDAS */
+  totalVenceHoje: number
+  countVenceHoje: number
   totalVencido: number
   countVencido: number
+  /**
+   * ⚠️ `totalAVencer3d`/`countAVencer3d` MORRERAM aqui em 26/09 — o card deles foi removido
+   * em 13/09 e os campos ficaram no tipo, sem ninguém desenhar. **Campo que ninguém usa é
+   * o que alguém religa por descuido** (a lição do `?extratoId=` sem chamador, 10/09).
+   */
 }
 
 interface Paginacao {
@@ -131,8 +146,8 @@ const EMPTY_KPIS: KPIs = {
   countPagas: 0,
   totalPendente: 0,
   countPendente: 0,
-  totalAVencer3d: 0,
-  countAVencer3d: 0,
+  totalVenceHoje: 0,
+  countVenceHoje: 0,
   totalVencido: 0,
   countVencido: 0,
 }
@@ -824,8 +839,11 @@ function ContasAPagarInner() {
    * "vencidas" usava `dueDate < now` (timestamp) enquanto o aging comparava por DIA.
    * Agora os três mandam o MESMO `escopo` que o servidor usou pra contar.
    */
-  function applyFilterPreset(kind: 'paid' | 'pending' | 'overdue') {
-    const escopo = kind === 'paid' ? 'PAGA' : kind === 'overdue' ? 'VENCIDA' : 'A_PAGAR'
+  function applyFilterPreset(kind: 'paid' | 'pending' | 'overdue' | 'today') {
+    const escopo = kind === 'paid' ? 'PAGA'
+      : kind === 'overdue' ? 'VENCIDA'
+        // ⭐ 26/09 — o 4º card manda o MESMO escopo que o servidor usou pra contar
+        : kind === 'today' ? 'VENCE_HOJE' : 'A_PAGAR'
     // ⚠️ `status: 'TODOS'` de propósito: quem recorta agora é o ESCOPO, e deixar o filtro
     // de status junto cortaria de novo por outra régua (foi assim que a lista mostrava
     // "muito menos" do que o card dizia).
@@ -946,18 +964,18 @@ function ContasAPagarInner() {
       {/* Conteúdo principal */}
       {empresaId && !loading && (
         <>
-          {/* ⭐⭐ A NOTA QUE FECHA A PROMESSA (13/09) — sem ela o rótulo honesto
-              ("pagas SEM CONCILIAR") levanta a pergunta "então cadê as outras?" e não
-              responde. O link leva ao lugar onde elas REALMENTE estão. */}
-          <p className="-mt-1 mb-2 text-xs text-slate-500">
-            Esta tela mostra o que está <b>em aberto</b> e o que foi pago <b>sem vínculo com o extrato</b> ·{' '}
-            <a href={hrefMovimentacoes(empresaId)} className="font-medium text-violet-700 hover:underline">
-              {NOTA_CONCILIADAS} →
-            </a>
-          </p>
-
-          <NavegadorDeMes mes={mes} onMudar={setMes} />
-
+          {/*
+            ⭐⭐⭐ 26/09 — **A TELA AGE, NÃO SE EXPLICA** (decisão do dono).
+            Morreram daqui:
+            · a frase *"Esta tela mostra o que está em aberto… as já conciliadas estão em
+              Movimentações →"* — legenda de construção; quem precisa de conciliada acha em
+              Movimentações sozinho;
+            · o **seletor de mês do topo** (`NavegadorDeMes`) — a tela **sempre abre no mês
+              corrente**, e quem quer outra época usa o *"Selecionar período"* de baixo, que
+              já faz isso. ***Um controle por pergunta, não dois.***
+            ⛔ E a RÉGUA continua igual: o mês corrente recorta as PAGAS; VENCE HOJE, A PAGAR
+            e VENCIDAS mostram tudo que está em aberto. *Isso é comportamento, não legenda.*
+          */}
           {/* ⭐⭐⭐ TRÊS STATUS, COMO NO MUNDO REAL (13/09) — decisão do dono.
               ⛔ "A VENCER (3D)" MORREU COMO CARD: era um SUBCONJUNTO de A PAGAR, então a
               soma dos quatro contava a mesma conta 2× — e "vence em 2 dias" não é um
@@ -974,6 +992,23 @@ function ContasAPagarInner() {
               count={kpis.countPagas}
               icon={CheckCircle2}
               onClick={() => applyFilterPreset('paid')}
+            />
+            {/*
+              ⭐⭐⭐ VENCE HOJE (26/09) — o 4º card, e ele é PARTIÇÃO, não subconjunto.
+              ⛔ O *"a vencer (3d)"* morreu em 13/09 porque era um pedaço de A PAGAR
+              escolhido a dedo — a mesma conta contada 2×. Aqui o `whereDoStatus('A_PAGAR')`
+              passou a começar em AMANHÃ, então **a Σ dos três de aberto continua sendo o
+              total em aberto** (travado em `escopo.test.ts`).
+              ⚠️ E "hoje" é o dia do BRASIL: às 23h o servidor em UTC já diz amanhã, e sem
+              isso a conta de hoje ficaria vermelha com o dia inteiro ainda pra pagar.
+            */}
+            <StatsCard
+              variant="warn"
+              label="Vence hoje"
+              amount={kpis.totalVenceHoje}
+              count={kpis.countVenceHoje}
+              icon={CalendarClock}
+              onClick={() => applyFilterPreset('today')}
             />
             <StatsCard
               variant="pending"
@@ -1104,12 +1139,13 @@ function ContasAPagarInner() {
       )}
 
       {/* Footer fixo com totalizadores */}
-      {empresaId && !loading && (kpis.countPagas + kpis.countPendente + kpis.countAVencer3d + kpis.countVencido) > 0 && (
+      {empresaId && !loading && (kpis.countPagas + kpis.countPendente + kpis.countVenceHoje + kpis.countVencido) > 0 && (
         <StickyFooter
           totals={{
             paid: kpis.totalPagas,
             pending: kpis.totalPendente,
             overdue: kpis.totalVencido,
+            today: kpis.totalVenceHoje,
           }}
           onClickFilter={applyFilterPreset}
         />

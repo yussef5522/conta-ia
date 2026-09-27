@@ -33,8 +33,19 @@ describe('⛔⛔ "vencida" é UMA régua, e ela é por DIA DO BRASIL', () => {
     expect(statusDaConta(conta('2026-09-12'), NOITE_DE_13)).toBe('VENCIDA')
   })
 
-  it('⭐ vence HOJE ainda é A PAGAR — o dia não acabou', () => {
-    expect(statusDaConta(conta('2026-09-13'), NOITE_DE_13)).toBe('A_PAGAR')
+  it('⛔⛔ vence HOJE NÃO é vencida — o dia não acabou', () => {
+    /**
+     * ⚠️⚠️ **INVERTIDO em 26/09, com a metade CERTA preservada.** Ele afirmava
+     * `toBe('A_PAGAR')`, que era a lei da época: só havia três estados. ⭐ **A metade que
+     * importa — *"o dia não acabou, então não é VENCIDA"* — continua sendo o que ele
+     * prova**, e essa nunca mudou: é a fronteira do dia do Brasil.
+     *
+     * O que mudou é que *hoje* ganhou estado PRÓPRIO (o 4º card, decisão do dono), porque
+     * muda a AÇÃO: vencida já passou, a pagar ainda dá tempo, e hoje é o dia de agir.
+     */
+    const st = statusDaConta(conta('2026-09-13'), NOITE_DE_13)
+    expect(st, 'a conta de hoje voltou a ser tratada como vencida às 23h').not.toBe('VENCIDA')
+    expect(st).toBe('VENCE_HOJE')
   })
 
   it('⛔⛔ PAGA ganha de tudo — paga com atraso NÃO é vencida', () => {
@@ -46,17 +57,49 @@ describe('⛔⛔ "vencida" é UMA régua, e ela é por DIA DO BRASIL', () => {
     expect(statusDaConta(conta(null), NOITE_DE_13)).toBe('A_PAGAR')
   })
 
-  it('⛔⛔ os três status COBREM TUDO e não se sobrepõem — a soma tem que fechar', () => {
-    // ⚠️ era exatamente isto que o 4º card quebrava: "A VENCER (3d)" é um SUBCONJUNTO de
-    // "A PAGAR", então pendente + vencido + pagas + aVencer3d contava a mesma conta 2×.
+  it('⛔⛔ os status COBREM TUDO e não se sobrepõem — a soma tem que fechar', () => {
+    /**
+     * ⚠️ era exatamente isto que o card *"A VENCER (3d)"* quebrava em 13/09: ele era um
+     * **SUBCONJUNTO** de A PAGAR, então a soma contava a mesma conta 2×.
+     *
+     * ⭐⭐ **26/09 — `VENCE_HOJE` entrou e a soma CONTINUA fechando**, porque ele é uma
+     * PARTIÇÃO, não um subconjunto: a conta de hoje **sai** do A PAGAR. É essa a diferença
+     * entre um card legítimo e o que morreu.
+     */
     const amostra = [
       conta('2026-09-12'), conta('2026-09-13'), conta('2026-09-14'), conta(null),
       conta('2026-08-01', { paymentDate: '2026-09-10' }),
     ]
-    const contagem = { VENCIDA: 0, A_PAGAR: 0, PAGA: 0 }
+    const contagem = { VENCIDA: 0, VENCE_HOJE: 0, A_PAGAR: 0, PAGA: 0 }
     for (const c of amostra) contagem[statusDaConta(c, NOITE_DE_13)]++
-    expect(contagem.VENCIDA + contagem.A_PAGAR + contagem.PAGA).toBe(amostra.length)
-    expect(contagem).toEqual({ VENCIDA: 1, A_PAGAR: 3, PAGA: 1 })
+    expect(contagem.VENCIDA + contagem.VENCE_HOJE + contagem.A_PAGAR + contagem.PAGA).toBe(amostra.length)
+    // ⭐ a de 13/09 saiu do A_PAGAR e virou VENCE_HOJE — 3 → 2
+    expect(contagem).toEqual({ VENCIDA: 1, VENCE_HOJE: 1, A_PAGAR: 2, PAGA: 1 })
+  })
+
+  it('⭐⭐ VENCE HOJE é o dia do BRASIL inteiro — inclusive às 23h', () => {
+    /**
+     * ⚠️ O servidor roda em UTC: às 23h de São Paulo o `new Date()` já diz o dia seguinte.
+     * ⛔ Sem a fronteira do Brasil, a conta que vence HOJE viraria "vencida" às 21h e o
+     * dono veria dívida vermelha que ele ainda tinha o dia inteiro pra pagar.
+     */
+    expect(statusDaConta(conta('2026-09-13'), NOITE_DE_13)).toBe('VENCE_HOJE')
+    // ⭐ e amanhã ela é A PAGAR, nunca "vence hoje"
+    expect(statusDaConta(conta('2026-09-14'), NOITE_DE_13)).toBe('A_PAGAR')
+    // ⛔ e ontem é VENCIDA
+    expect(statusDaConta(conta('2026-09-12'), NOITE_DE_13)).toBe('VENCIDA')
+  })
+
+  it('⛔⛔ e o `where` dos três de ABERTO não se sobrepõe — a dupla contagem é impossível', () => {
+    const hoje = whereDoStatus('VENCE_HOJE', NOITE_DE_13) as { dueDate: { gte: Date; lt: Date } }
+    const vencida = whereDoStatus('VENCIDA', NOITE_DE_13) as { dueDate: { lt: Date } }
+    const aPagar = whereDoStatus('A_PAGAR', NOITE_DE_13) as { OR: Array<{ dueDate?: { gte?: Date } | null }> }
+    // ⭐ VENCIDA termina onde VENCE_HOJE começa
+    expect(vencida.dueDate.lt.getTime()).toBe(hoje.dueDate.gte.getTime())
+    // ⭐ e A PAGAR começa onde VENCE_HOJE termina
+    const comeco = aPagar.OR.find((o) => o.dueDate?.gte)?.dueDate?.gte
+    expect(comeco?.getTime(), 'A PAGAR voltou a incluir o dia de hoje — dupla contagem')
+      .toBe(hoje.dueDate.lt.getTime())
   })
 })
 
@@ -72,7 +115,7 @@ describe('⭐⭐ o `where` diz a MESMA coisa que a função — o número É o f
     expect(whereDoStatus('VENCIDA', NOITE_DE_13)).toMatchObject({ paymentDate: null })
   })
 
-  it('⭐ A PAGAR carrega a SEM VENCIMENTO junto — senão a soma dos três não fecha', () => {
+  it('⭐ A PAGAR carrega a SEM VENCIMENTO junto — senão a soma não fecha', () => {
     const w = whereDoStatus('A_PAGAR', NOITE_DE_13) as { OR: Array<Record<string, unknown>> }
     expect(w.OR.some((o) => o.dueDate === null)).toBe(true)
   })

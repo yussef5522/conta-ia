@@ -5,10 +5,9 @@
 // ⚠️ É o MESMO gesto do dashboard PF (‹ mês ›), de propósito: dois jeitos de navegar mês
 // no mesmo sistema seriam duas coisas pra aprender.
 //
-// ⛔ E ele diz **o que o recorte alcança**: *"pagas em setembro · vencidas e a pagar
-// mostram tudo em aberto"*. Sem essa frase, o dono vê "setembro" no topo e conclui que as
-// vencidas de agosto sumiram — que é exatamente a mentira que a régua dos dois tempos
-// existe pra impedir.
+// ⛔ E ele diz **o que o recorte alcança**. Sem essa frase, o dono vê "setembro" no topo e
+// conclui que as vencidas de agosto sumiram — a mentira que a régua dos dois tempos existe
+// pra impedir. ⚠️ Por isso a `frase` é **obrigatória** desde 26/09 (ver abaixo).
 
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { mesVizinho, rotuloDoMes, mesCorrente } from '@/lib/periodo/mes-corrente'
@@ -16,8 +15,18 @@ import { mesVizinho, rotuloDoMes, mesCorrente } from '@/lib/periodo/mes-corrente
 export function NavegadorDeMes({ mes, onMudar, frase }: {
   mes: string
   onMudar: (m: string) => void
-  /** ⚠️ cada tela DIZ o que o mês dela alcança — a frase genérica mentiria na outra */
-  frase?: string
+  /**
+   * ⚠️⚠️ **OBRIGATÓRIA desde 26/09.** O default era *"· o mês recorta as pagas; vencidas e a
+   * pagar mostram tudo que está em aberto"* — uma frase **específica de Contas a Pagar**
+   * servindo de padrão pra qualquer tela. Com o navegador saindo daquela tela (o dono:
+   * *"um controle por pergunta, não dois"*), o default ficou **sem chamador**: os outros
+   * dois callers sempre passaram a frase deles.
+   *
+   * ⛔ Obrigatória e não "removida": tela nova que use o navegador **tem que dizer o que o
+   * mês dela alcança**, senão o dono vê "setembro" e conclui que o resto sumiu. *Disciplina
+   * virou impossibilidade* (REGRA 5).
+   */
+  frase: string
 }) {
   const corrente = mesCorrente()
   return (
@@ -52,7 +61,7 @@ export function NavegadorDeMes({ mes, onMudar, frase }: {
       )}
 
       <span className="w-full text-[11px] text-slate-400 sm:w-auto">
-        {frase ?? '· o mês recorta as pagas; vencidas e a pagar mostram tudo que está em aberto'}
+        {frase}
       </span>
     </div>
   )

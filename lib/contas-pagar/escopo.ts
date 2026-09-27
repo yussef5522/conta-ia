@@ -19,10 +19,20 @@
 // ⭐ **A RÉGUA, dele:** *"VENCIDA = conta EM ABERTO com vencimento < hoje; paga-sem-vínculo
 // NÃO é vencida (é assunto do card PAGAS)."* E "hoje" é o dia do **BRASIL**.
 
-/** ⭐ os três estados do mundo real — "vence em breve" NÃO é um deles */
+/**
+ * ⭐ os estados do mundo real — *"vence em breve"* NÃO é um deles.
+ *
+ * ⚠️⚠️ **`VENCE_HOJE` entrou em 26/09, e ele NÃO é o "a vencer (3d)" que morreu em 13/09.**
+ * Aquele era um **subconjunto** de `A_PAGAR` escolhido a dedo (*"3 dias"* é número, não
+ * estado), então a soma dos cards contava a mesma conta **2×**. Este é uma **PARTIÇÃO**: o
+ * que vence hoje SAI do `A_PAGAR`, e a soma continua fechando — o guard afirma isso.
+ *
+ * ⭐ E ele é um estado de verdade porque muda a AÇÃO: vencida já passou, a pagar ainda dá
+ * tempo, e *hoje* é o dia em que o dono precisa fazer alguma coisa antes do banco fechar.
+ */
 import { janelaDoMes } from '@/lib/periodo/mes-corrente'
 
-export type StatusDaConta = 'VENCIDA' | 'A_PAGAR' | 'PAGA'
+export type StatusDaConta = 'VENCIDA' | 'VENCE_HOJE' | 'A_PAGAR' | 'PAGA'
 
 /**
  * ⭐ QUEM É FLUXO E QUEM É ESTOQUE — a régua da casa, num lugar só.
@@ -39,6 +49,17 @@ export const ehFluxo = (s: StatusDaConta): boolean => s === 'PAGA'
 export function inicioDoDiaBrasil(now: Date = new Date()): Date {
   const br = new Date(now.getTime() - 3 * 60 * 60 * 1000) // UTC−3
   return new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), br.getUTCDate()))
+}
+
+/**
+ * ⭐ a meia-noite do dia SEGUINTE, no fuso do Brasil — o fim do "vence hoje".
+ *
+ * ⚠️ Derivada do `inicioDoDiaBrasil`, nunca de `now + 24h`: somar horas erra no dia em que
+ * o fuso mudar, e a fronteira aqui é de CALENDÁRIO (a mesma lição da régua da data, 25/09).
+ */
+export function inicioDoDiaSeguinteBrasil(now: Date = new Date()): Date {
+  const h = inicioDoDiaBrasil(now)
+  return new Date(Date.UTC(h.getUTCFullYear(), h.getUTCMonth(), h.getUTCDate() + 1))
 }
 
 export interface ContaParaStatus {
@@ -59,7 +80,10 @@ export function statusDaConta(c: ContaParaStatus, now: Date = new Date()): Statu
   if (c.status !== 'PENDING') return 'PAGA' // RECONCILED/EFFECTED sem paymentDate: já saiu da fila
   if (!c.dueDate) return 'A_PAGAR' // ⚠️ sem prazo não é atraso — não há data pra ter passado
   const d = c.dueDate instanceof Date ? c.dueDate : new Date(c.dueDate)
-  return d < inicioDoDiaBrasil(now) ? 'VENCIDA' : 'A_PAGAR'
+  if (d < inicioDoDiaBrasil(now)) return 'VENCIDA'
+  // ⭐ 26/09 — o que vence HOJE tem estado próprio, e ele PARTICIONA o `A_PAGAR`
+  if (d < inicioDoDiaSeguinteBrasil(now)) return 'VENCE_HOJE'
+  return 'A_PAGAR'
 }
 
 /**
@@ -90,6 +114,14 @@ export function whereDoStatus(
   }
   if (status === 'VENCIDA') return { status: 'PENDING', paymentDate: null, dueDate: { lt: hoje } }
   /**
+   * ⭐⭐ VENCE HOJE — o dia do BRASIL inteiro, de meia-noite a meia-noite.
+   * ⛔ `gte: hoje, lt: amanhã` — e o `A_PAGAR` abaixo começa em `amanhã`, senão as duas
+   * consultas se sobreporiam e a conta de hoje seria contada nos dois cards.
+   */
+  if (status === 'VENCE_HOJE') {
+    return { status: 'PENDING', paymentDate: null, dueDate: { gte: hoje, lt: inicioDoDiaSeguinteBrasil(now) } }
+  }
+  /**
    * ⛔⛔ VENCIDA E A PAGAR SÃO **ESTOQUE**, e o `mes` é IGNORADO aqui de propósito.
    *
    * *"Dívida aberta não expira com a virada do mês — esconder vencida de agosto seria
@@ -97,9 +129,18 @@ export function whereDoStatus(
    * dependesse de cada chamador lembrar de não passar o mês, a primeira tela nova
    * esconderia dívida em silêncio. **Aqui é impossível.**
    */
-  // ⚠️ A PAGAR inclui a SEM VENCIMENTO — ela deve e ninguém combinou a data; some-la
-  // faria a soma dos três não fechar com o total, que é o defeito que isto conserta.
-  return { status: 'PENDING', paymentDate: null, OR: [{ dueDate: { gte: hoje } }, { dueDate: null }] }
+  /**
+   * ⚠️ A PAGAR inclui a SEM VENCIMENTO — ela deve e ninguém combinou a data; somê-la faria
+   * a soma dos estados não fechar com o total, que é o defeito que isto conserta.
+   *
+   * ⭐ 26/09 — e ele começa em **AMANHÃ**: o que vence hoje tem card próprio. *Sem isto a
+   * conta de hoje apareceria nos dois, e a Σ dos cards passaria do total em aberto* — a
+   * dupla contagem que matou o "a vencer (3d)" em 13/09.
+   */
+  return {
+    status: 'PENDING', paymentDate: null,
+    OR: [{ dueDate: { gte: inicioDoDiaSeguinteBrasil(now) } }, { dueDate: null }],
+  }
 }
 
 /** ⭐ quantos dias faltam (ou passaram) — é INFORMAÇÃO DA DATA, nunca um status */

@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildPayableListWhere } from '../list-filters'
-import { ROTULO_PAGAS, ROTULO_TODOS, NOTA_CONCILIADAS } from '../rotulos'
+import { ROTULO_PAGAS, ROTULO_TODOS } from '../rotulos'
 
 const raiz = join(__dirname, '..', '..', '..')
 const ler = (p: string) => readFileSync(join(raiz, p), 'utf8')
@@ -61,16 +61,34 @@ describe('⛔ o filtro esconde as conciliadas — então o rótulo TEM que dizer
     expect(ler(PAGINA)).not.toMatch(/label="Pagas"/)
   })
 
-  it('⭐⭐ e a tela DIZ ONDE ESTÃO AS OUTRAS, com link — senão troca mentira por mistério', () => {
-    const pagina = ler(PAGINA)
-    // ⚠️⚠️ CONTA O **USO**, NÃO A MENÇÃO. A 1ª versão media `toContain(...)` e ficou
-    // VERDE com a nota apagada da tela — porque a linha do `import` já carrega o nome.
-    // É a lição do detector de rastro (12/09) e do guard do POST: **guard novo só conta
-    // depois de rodar contra o defeito que o motivou** (REGRA 11).
-    const usos = (nome: string) => pagina.split(nome).length - 1
-    expect(usos('NOTA_CONCILIADAS'), 'a nota sumiu da tela (só sobrou o import)').toBeGreaterThan(1)
-    expect(usos('hrefMovimentacoes'), 'o link sumiu da tela (só sobrou o import)').toBeGreaterThan(1)
-    expect(NOTA_CONCILIADAS.toLowerCase()).toContain('movimenta')
+  it('⭐⭐ a RESSALVA continua dita — é ela que segura a promessa', () => {
+    /**
+     * ⚠️⚠️ **INVERTIDO em 26/09, com a TENSÃO registrada — e ela é real.** Este teste exigia
+     * que a tela mostrasse *"as já conciliadas estão em Movimentações →"*, pela régua de
+     * 13/09: *"rótulo honesto que não diz o caminho troca uma mentira por um mistério"*.
+     *
+     * ⭐ O dono pesou e decidiu o contrário: *"MORRE a frase — legenda de construção; quem
+     * precisar de conciliadas acha em Movimentações sozinho"*. O que ele trocou foi **uma
+     * legenda permanente na primeira dobra de uma tela de trabalho** por texto que se lê
+     * uma vez e nunca mais.
+     *
+     * ⛔ **O que NÃO afrouxou, e é o que este teste passa a provar:** a ressalva que levanta
+     * a dúvida continua nos RÓTULOS (*"Pagas (sem conciliar)"*, *"Em aberto e pagas sem
+     * vínculo"*). Se ela sumisse, voltaria a MENTIRA — que é pior que o mistério.
+     */
+    const filtros = ler(DROPDOWN)
+    expect(filtros, 'o rótulo honesto sumiu — "Pagas" seco volta a mentir').toContain('ROTULO_PAGAS')
+    expect(filtros).toContain('ROTULO_TODOS')
+    expect(ROTULO_PAGAS.toLowerCase()).toContain('sem conciliar')
+    expect(ROTULO_TODOS.toLowerCase()).toContain('sem vínculo')
+    /**
+     * ⛔ e a legenda permanente não pode voltar pra primeira dobra.
+     * ⚠️ Lido SEM COMENTÁRIO: *o arquivo que DOCUMENTA a remoção não pode ser o que a
+     * reprova* — a frase sobrevive no comentário que explica por que ela saiu.
+     */
+    const semComentario = (x: string) => x.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(semComentario(ler(PAGINA)), 'a legenda de construção voltou pro topo da tela')
+      .not.toContain('Esta tela mostra o que está')
   })
 
   it('⚠️ auto-teste do detector: ele PEGA o mundo antigo', () => {

@@ -31,7 +31,7 @@ export interface PayableFilterState {
   dataAte: string
   status: 'TODOS' | 'PENDING' | 'RECONCILED' | 'IGNORED'
   /** ⭐ o recorte dos três stats — `undefined` = a tela inteira (13/09) */
-  escopo?: 'VENCIDA' | 'A_PAGAR' | 'PAGA'
+  escopo?: 'VENCIDA' | 'VENCE_HOJE' | 'A_PAGAR' | 'PAGA'
   vencidasOnly: boolean
 }
 

@@ -21,13 +21,15 @@ export const ROTULO_PAGAS = 'Pagas (sem conciliar)'
 export const ROTULO_TODOS = 'Em aberto e pagas sem vínculo'
 
 /**
- * ⭐ A NOTA QUE DIZ ONDE ESTÁ O RESTO — e ela é obrigatória.
+ * ⚠️⚠️ **`NOTA_CONCILIADAS` e `hrefMovimentacoes` MORRERAM em 26/09**, por decisão do dono:
+ * *"MORRE a frase «…as já conciliadas estão em Movimentações →» (legenda de construção;
+ * quem precisar de conciliadas acha em Movimentações sozinho)"*.
  *
- * Sem a segunda metade da frase o rótulo vira só uma ressalva ("sem conciliar") que
- * levanta a pergunta sem responder: *"então cadê as outras?"*. **Rótulo honesto que não
- * diz o caminho troca uma mentira por um mistério.**
+ * ⚠️ **E há uma tensão real com a régua de 13/09, que fica registrada:** naquele dia a nota
+ * nasceu porque *"rótulo honesto que não diz o caminho troca uma mentira por um mistério"*.
+ * ⭐ O que o dono pesou: a ressalva que levanta a dúvida (**"(sem conciliar)"**) continua
+ * nos RÓTULOS acima — o que saiu foi a **legenda permanente** ocupando a primeira dobra de
+ * uma tela de trabalho. *Texto que se lê uma vez e nunca mais vira móvel fixo.*
+ *
+ * ⛔ Removidas e não guardadas: constante sem chamador é o que alguém religa por descuido.
  */
-export const NOTA_CONCILIADAS = 'as já conciliadas estão em Movimentações'
-
-/** ⚠️ o link é o MESMO destino do menu (`/transacoes?empresaId=`) — não inventa rota */
-export const hrefMovimentacoes = (empresaId: string) => `/transacoes?empresaId=${empresaId}`

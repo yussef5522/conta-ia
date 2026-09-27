@@ -43,7 +43,8 @@ export const listPayableSchema = z.object({
    * mostra 34"*. Sem isto, o card e a lista tinham réguas diferentes e o dono via um
    * número no topo e outro na tabela — a doença que este sprint inteiro conserta.
    */
-  escopo: z.enum(['VENCIDA', 'A_PAGAR', 'PAGA']).optional(),
+  /** ⭐ 26/09 — `VENCE_HOJE` entrou como 4º card (partição de A_PAGAR, não subconjunto) */
+  escopo: z.enum(['VENCIDA', 'VENCE_HOJE', 'A_PAGAR', 'PAGA']).optional(),
   /**
    * ⭐⭐ O MÊS DO RECORTE DE FLUXO (`YYYY-MM`, 14/09) — padrão: o mês corrente.
    *

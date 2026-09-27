@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
     } as typeof input
     const whereBase = buildPayableListWhere(kpiBaseInput, now)
 
-    const [items, total, kpiPagas, kpiPendentes, kpiVencidas] =
+    const [items, total, kpiPagas, kpiPendentes, kpiVencidas, kpiVenceHoje] =
       await Promise.all([
         prisma.transaction.findMany({
           where: whereList,
@@ -134,6 +134,19 @@ export async function GET(request: NextRequest) {
           _sum: { amount: true },
           _count: { _all: true },
         }),
+        /**
+         * ⭐⭐ 26/09 — VENCE HOJE, o 4º card (decisão do dono).
+         *
+         * ⛔ Ele NÃO é o *"a vencer (3d)"* que morreu em 13/09: aquele era **subconjunto**
+         * de A PAGAR (dupla contagem); este é **PARTIÇÃO** — o `whereDoStatus('A_PAGAR')`
+         * passou a começar em AMANHÃ. ⭐ E a Σ dos três de aberto continua sendo o total em
+         * aberto, o que o guard afirma.
+         */
+        prisma.transaction.aggregate({
+          where: { AND: [whereBase, whereDoStatus('VENCE_HOJE', now)] },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
       ])
 
     // ⭐ "VER NOTA DE ORIGEM" (30/08) — a seta de volta da ponte. Só as linhas desta
@@ -154,9 +167,14 @@ export async function GET(request: NextRequest) {
         totalPages: Math.max(1, Math.ceil(total / input.limit)),
       },
       kpis: {
-        // ⭐ TRÊS status, como no mundo real (13/09): VENCIDA · A PAGAR · PAGA.
-        // ⛔ "A VENCER (3d)" morreu como card — era um SUBCONJUNTO de A PAGAR, então a
-        // soma dos quatro contava a mesma conta 2×. O prazo virou texto na coluna da data.
+        /**
+         * ⭐ OS QUATRO CARDS: PAGAS (SEM CONCILIAR) · VENCE HOJE · A PAGAR · VENCIDAS.
+         *
+         * ⛔ *"A VENCER (3d)"* morreu em 13/09 e **não voltou**: ele era um SUBCONJUNTO de
+         * A PAGAR (a mesma conta contada 2×) e *"3 dias"* é número escolhido a dedo, não
+         * estado. ⭐ `VENCE HOJE` é **partição**: a conta de hoje SAI do A PAGAR, e a Σ dos
+         * três de aberto continua sendo o total em aberto.
+         */
         // ⭐ a tela ecoa o mês que o servidor usou — se ela adivinhasse, o card e a lista
         // poderiam recortar meses diferentes
         mes: mesDoRecorte,
@@ -166,6 +184,8 @@ export async function GET(request: NextRequest) {
         countPendente: kpiPendentes._count._all,
         totalVencido: kpiVencidas._sum.amount ?? 0,
         countVencido: kpiVencidas._count._all,
+        totalVenceHoje: kpiVenceHoje._sum.amount ?? 0,
+        countVenceHoje: kpiVenceHoje._count._all,
       },
       // Sprint 5.0.3.0a — Echo dos filtros parseados (UI sincroniza state)
       appliedFilters: {
