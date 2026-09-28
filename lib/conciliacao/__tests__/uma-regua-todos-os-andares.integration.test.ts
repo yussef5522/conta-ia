@@ -290,10 +290,31 @@ describe('⛔⛔ A RÉGUA TEM UM DONO — nenhum andar pode ter a própria', () 
     // as 5 famílias do `seloDoSistema` + a transferência
     expect(W.loanInstallmentPaid).toEqual({ is: null })
     expect(W.loanInstallmentPayments).toEqual({ none: {} })
-    expect(W.businessCreditCardId).toBe(null)
+    // ⭐ o PAGAMENTO com vínculo sai; a COMPRA de cartão FICA (ela espera categoria de verdade)
+    expect(W.NOT).toEqual({ AND: [{ isCardPayment: true }, { businessCreditCardId: { not: null } }] })
     expect(W.investmentContribution).toEqual({ is: null })
     expect(W.loanDisbursement).toEqual({ is: null })
     expect(W.transferGroupId).toBe(null)
+  })
+
+  it('⛔⛔ e a COMPRA de cartão CONTINUA na fila — ela é que espera a palavra do dono', async () => {
+    /**
+     * ⚠️⚠️ **ESTE TESTE NASCEU DE UM ERRO MEU, medido em prod antes de o dono ver.** A 1ª versão
+     * do fix excluía a fila por `businessCreditCardId: null` — o que tirava **toda linha de
+     * cartão**, inclusive as COMPRAS. Medido na hora: 0 compras sem categoria na Caçula hoje,
+     * então nada sumiu de fato; mas a **próxima fatura importada** teria compras invisíveis.
+     */
+    const compra = await db.transaction.create({
+      data: {
+        businessCreditCardId: cardId, type: 'DEBIT', amount: 89.9,
+        date: new Date('2026-09-12T12:00:00Z'), description: 'MERCADO LIVRE*LOJA',
+        lifecycle: 'EFFECTED', status: 'PENDING', invoiceMonth: '2026-10',
+      },
+    })
+    const naFila = await db.transaction.count({
+      where: { AND: [{ ...NEEDS_REVIEW_WHERE_PRISMA }, { id: compra.id }] },
+    })
+    expect(naFila, 'a COMPRA de cartão sumiu da fila — ela espera categoria de verdade').toBe(1)
   })
 
   it('⛔ a tela de Transações NÃO deriva o selo — ele vem pronto do servidor', () => {

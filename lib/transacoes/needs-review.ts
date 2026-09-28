@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client'
 // Sprint Fundação Status (28/06/2026, modelo QuickBooks/Xero "For Review").
 //
 // FONTE DE VERDADE ÚNICA pra "tx precisa de revisão" (= aparecer na fila /pendentes).
@@ -69,7 +70,7 @@ export function needsReview(tx: TxFlagsForReview): boolean {
  *
  * NÃO inclui status — by design.
  */
-export const NEEDS_REVIEW_WHERE_PRISMA = {
+export const NEEDS_REVIEW_WHERE_PRISMA: Prisma.TransactionWhereInput = {
   categoryId: null,
   transferGroupId: null,
   reconciledWithId: null,
@@ -83,7 +84,20 @@ export const NEEDS_REVIEW_WHERE_PRISMA = {
    * ⚠️ Medido antes de trocar: **0 linhas** com a flag sem vínculo na Caçula — o número da fila
    * não se move hoje; o que muda é a porta sem maçaneta deixar de ser possível.
    */
-  businessCreditCardId: null,
+  /**
+   * ⚠️⚠️ **AQUI EU ERREI E MEDI ANTES DE O DONO VER.** A 1ª versão do fix escreveu
+   * `businessCreditCardId: null`, que exclui **TODA linha de cartão — inclusive as COMPRAS**,
+   * que são justamente as que esperam a palavra do dono. A régua antiga (`isCardPayment:
+   * false`) mantinha as compras na fila; eu a estreitei sem querer.
+   *
+   * ⭐ Medido em prod na hora: **0 compras de cartão sem categoria** na Caçula hoje, então
+   * nada sumiu de fato — mas a **próxima fatura importada** teria compras invisíveis. *Defeito
+   * latente medido é defeito consertado; latente não medido é o que volta em três meses.*
+   *
+   * ⭐ O que sai da fila é o **PAGAMENTO com vínculo** (que é o que o gesto 💳 resolve), nunca
+   * a compra — a mesma condição do `seloDoSistema`: `isCardPayment && faturaVinculada`.
+   */
+  NOT: { AND: [{ isCardPayment: true }, { businessCreditCardId: { not: null } }] },
   loanInstallmentPaid: { is: null },
   // Sprint Casar Pagamento (04/08/2026): tx vinculada a parcela via ponte N:1
   // (débito parcial de empréstimo) SAI da fila — o split é do empréstimo, não
@@ -101,7 +115,13 @@ export const NEEDS_REVIEW_WHERE_PRISMA = {
   isInternalTransfer: false,
   ignoredAt: null,
   type: { not: 'TRANSFER' as const },
-} as const
+  /**
+   * ⚠️ **Tipado como `TransactionWhereInput` em vez de `as const` (27/09):** o `NOT` acima
+   * precisa ser mutável pro Prisma aceitar, e o `as const` o tornava readonly. ⭐ Conferido que
+   * **nenhum dos 5 chamadores** define `NOT` próprio — se um definir, o spread o apagaria em
+   * silêncio, e aí a régua volta a ser duas.
+   */
+}
 
 /**
  * Regra da escada de status. Use SEMPRE ao criar/atualizar uma tx:

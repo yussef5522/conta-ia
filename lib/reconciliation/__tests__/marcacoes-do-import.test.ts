@@ -101,7 +101,8 @@ describe('⚠️ pagamento de cartão sai da fila pelo VÍNCULO, não pela flag 
    */
   it('⭐ o filtro de pendências exige o VÍNCULO nulo, não a flag', async () => {
     const { NEEDS_REVIEW_WHERE_PRISMA } = await import('@/lib/transacoes/needs-review')
-    expect(NEEDS_REVIEW_WHERE_PRISMA.businessCreditCardId).toBe(null)
+    expect(NEEDS_REVIEW_WHERE_PRISMA.NOT)
+      .toEqual({ AND: [{ isCardPayment: true }, { businessCreditCardId: { not: null } }] })
     // ⭐ e a fila continua NÃO olhando status — a pergunta dela é outra
     expect('status' in NEEDS_REVIEW_WHERE_PRISMA).toBe(false)
   })

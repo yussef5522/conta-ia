@@ -100,7 +100,12 @@ describe('NEEDS_REVIEW_WHERE_PRISMA — shape pra Prisma WHERE', () => {
      * fila sem estar resolvida e deixa o gesto inalcançável (o Carter de 20/09: fatura OPEN
      * com o pagamento dela no extrato). ⭐ A régua agora é o VÍNCULO.
      */
-    expect(W.businessCreditCardId).toBe(null)
+    /**
+     * ⭐ 27/09 (2ª volta) — o que sai da fila é o **PAGAMENTO com vínculo**, nunca a COMPRA.
+     * A 1ª versão do fix escreveu `businessCreditCardId: null` e excluiu **toda linha de
+     * cartão** — inclusive as compras, que são justamente as que esperam a palavra do dono.
+     */
+    expect(W.NOT).toEqual({ AND: [{ isCardPayment: true }, { businessCreditCardId: { not: null } }] })
     expect(W.loanInstallmentPaid).toEqual({ is: null })
     // ⭐ 27/09 — as duas famílias que faltavam na lista (aporte 25/09, liberação 26/08)
     expect(W.investmentContribution).toEqual({ is: null })
