@@ -22,6 +22,8 @@ export const MARCO_FECHADO = '2026-08'
 // Rótulos SINTÉTICOS: o banco não categoriza estas duas famílias, mas o sistema sabe o
 // que elas são por ESTRUTURA (flag de fatura, vínculo de parcela). Jogá-las em
 // "A CLASSIFICAR" seria esconder R$ 43 mil de agosto atrás de um rótulo de erro.
+import { seloDoSistema } from '@/lib/conciliacao/selo-do-sistema'
+
 export const CAT_FATURA = 'Fatura de cartão (paga)'
 export const CAT_PARCELA = 'Parcela de empréstimo'
 export const CAT_SEM = 'A CLASSIFICAR'
@@ -46,6 +48,13 @@ export interface LinhaFluxo {
   isCardPayment: boolean
   /** vínculo com parcela de empréstimo por QUALQUER das 2 portas (1:1 ou N:1) */
   ehParcelaEmprestimo: boolean
+  /**
+   * ⭐⭐ 27/09 — OBRIGATÓRIOS de propósito (não opcionais): foi assim que o `tsc` achou os
+   * call-sites do `temAporteVinculado` em 25/09, em vez de eu ir de grep. Campo de vínculo
+   * que nasce opcional é o `select` incompleto esperando a vez (a doença do PIX de 7.000).
+   */
+  faturaVinculada: boolean
+  temAporteVinculado: boolean
   /** esta tx É a liberação de um empréstimo (vínculo ESTRUTURAL, não categoria) */
   ehLiberacaoEmprestimo: boolean
   dreGroup: string | null
@@ -142,6 +151,13 @@ export const SELECT_FLUXO = {
   // estão TODAS pela porta N:1 — só a primeira porta acharia zero.
   loanInstallmentPaid: { select: { id: true } },
   loanInstallmentPayments: { select: { id: true }, take: 1 },
+  /**
+   * ⭐ 27/09 — **o VÍNCULO do cartão, não a flag.** Sem este campo o `faturaVinculada` seria
+   * sempre `false` e TODO pagamento de fatura cairia em "A CLASSIFICAR" — a doença do select
+   * incompleto (o motor decide com um campo que a consulta não trouxe, **em silêncio**).
+   */
+  businessCreditCardId: true,
+  investmentContribution: { select: { id: true } },
 } as const
 
 /** Converte a linha crua do Prisma pro formato do motor. */
@@ -153,6 +169,8 @@ export function paraLinha(t: {
   loanInstallmentPaid: { id: string } | null
   loanInstallmentPayments: { id: string }[]
   loanDisbursement?: { id: string } | null
+  businessCreditCardId: string | null
+  investmentContribution?: { id: string } | null
 }): LinhaFluxo {
   return {
     id: t.id,
@@ -162,6 +180,8 @@ export function paraLinha(t: {
     categoriaNome: t.category?.name ?? null,
     isCardPayment: t.isCardPayment,
     ehParcelaEmprestimo: !!t.loanInstallmentPaid || t.loanInstallmentPayments.length > 0,
+    faturaVinculada: !!t.businessCreditCardId,
+    temAporteVinculado: !!t.investmentContribution,
     ehLiberacaoEmprestimo: !!t.loanDisbursement,
     dreGroup: t.category?.dreGroup ?? null,
     contaNome: t.bankAccount?.name?.trim() || '(sem conta)',
@@ -175,8 +195,28 @@ export function paraLinha(t: {
  */
 export function rotularLinha(l: LinhaFluxo): { rotulo: string; sintetico: boolean } {
   if (l.categoriaNome) return { rotulo: l.categoriaNome, sintetico: false }
-  if (l.isCardPayment) return { rotulo: CAT_FATURA, sintetico: true }
-  if (l.ehParcelaEmprestimo) return { rotulo: CAT_PARCELA, sintetico: true }
+  /**
+   * ⭐⭐ 27/09 — **DELEGA pro dono da pergunta** (`seloDoSistema`). Este `if` era a SEGUNDA
+   * cópia da régua "o sistema já sabe o que é esta linha?", e enquanto ela existia o Fluxo
+   * podia dizer *"Parcela de empréstimo"* com a tela de Transações dizendo *"Sem categoria"*
+   * — que é literalmente o defeito que o dono relatou.
+   *
+   * ⛔⛔ **E A DELEGAÇÃO APERTA ESTE ANDAR, não afrouxa:** aqui era `if (l.isCardPayment)`
+   * **sem exigir o vínculo** — a régua VELHA, que 20/09 já tinha corrigido na caixa (*a flag
+   * diz "parece", o vínculo diz "é"*). Medido antes de trocar: **0 linhas** com a flag sem
+   * vínculo na Caçula, então nenhum número se move hoje; o que muda é a divergência deixar
+   * de ser possível amanhã.
+   */
+  const selo = seloDoSistema({
+    isCardPayment: l.isCardPayment,
+    faturaVinculada: l.faturaVinculada,
+    temParcelaVinculada: l.ehParcelaEmprestimo,
+    temAporteVinculado: l.temAporteVinculado,
+    ehLiberacaoEmprestimo: l.ehLiberacaoEmprestimo,
+    // ⚠️ transferência nem entra no universo (`whereFluxoCaixa` a exclui) — nunca é caso aqui
+    ehTransferencia: false,
+  })
+  if (selo) return { rotulo: selo.rotulo, sintetico: true }
   return { rotulo: CAT_SEM, sintetico: true }
 }
 

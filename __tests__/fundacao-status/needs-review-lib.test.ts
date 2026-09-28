@@ -88,14 +88,23 @@ describe('statusFromCategoryId — escada inviolável', () => {
 })
 
 describe('NEEDS_REVIEW_WHERE_PRISMA — shape pra Prisma WHERE', () => {
-  it('inclui os 10 guards', () => {
+  it('inclui os guards de vínculo', () => {
     const W = NEEDS_REVIEW_WHERE_PRISMA
     expect(W.categoryId).toBe(null)
     expect(W.transferGroupId).toBe(null)
     expect(W.reconciledWithId).toBe(null)
     expect(W.reconciledFrom).toEqual({ none: {} })
-    expect(W.isCardPayment).toBe(false)
+    /**
+     * ⚠️⚠️ **INVERTIDO em 27/09, e o ajuste APERTA:** era `isCardPayment: false` — a FLAG. Ela
+     * **escondia da fila** a linha com a flag da heurística e **nenhum vínculo**, que sai da
+     * fila sem estar resolvida e deixa o gesto inalcançável (o Carter de 20/09: fatura OPEN
+     * com o pagamento dela no extrato). ⭐ A régua agora é o VÍNCULO.
+     */
+    expect(W.businessCreditCardId).toBe(null)
     expect(W.loanInstallmentPaid).toEqual({ is: null })
+    // ⭐ 27/09 — as duas famílias que faltavam na lista (aporte 25/09, liberação 26/08)
+    expect(W.investmentContribution).toEqual({ is: null })
+    expect(W.loanDisbursement).toEqual({ is: null })
     expect(W.pendingTransfer).toBe(false)
     expect(W.isInternalTransfer).toBe(false)
     expect(W.ignoredAt).toBe(null)

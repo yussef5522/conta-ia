@@ -26,6 +26,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { carimbarSeTemVinculo } from './carimbar-vinculo'
 import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-pj/casar-pagamento'
 import { vincularPagamentoDeParcela, VinculoDeParcelaError } from '@/lib/loans/vincular-pagamento'
 import { registrarAporte, AporteError } from '@/lib/investimentos/registrar-aporte'
@@ -117,7 +118,7 @@ export interface ResolverResultado {
  * `CASAR_PAGAR` é recusado com a frase que ensina.
  */
 export async function resolverLinha(input: ResolverInput, db: PrismaClient = defaultPrisma): Promise<ResolverResultado> {
-  const r = await executarGesto(input, db)
+  let r = await executarGesto(input, db)
   /**
    * ⭐⭐⭐ 25/09 — **A AUDITORIA DA CAIXA, NUM CHOKE-POINT SÓ.**
    *
@@ -132,6 +133,33 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
    * ⚠️ **FAIL-SOFT**: rastro que derruba o gesto seria pior que rastro nenhum. O gesto do
    * dono já gravou quando chegamos aqui; se o audit falhar, o efeito continua valendo.
    */
+  /**
+   * ⭐⭐⭐ 27/09 — **O GESTO TERMINA O SERVIÇO: a linha com vínculo nunca mais fica "Pendente".**
+   *
+   * ⛔ **O defeito, nas palavras do dono:** *"Concilio pelo gesto 🏦/💳/📈 e a transação fica
+   * «Sem categoria · Pendente» na tela de Transações — mas o Fluxo já mostra ela como «Parcela
+   * de empréstimo» lendo o vínculo. **Dois andares lendo réguas diferentes: um sabe, o outro
+   * cobra.**"* Medido: **58 linhas** nesse estado (R$ 192.679,93).
+   *
+   * ⭐ E ele vai **AQUI**, envolvendo o `switch`, pelo MESMO motivo do audit logo abaixo: são
+   * 11 ações, e dentro dos ramos o próximo gesto nasceria sem carimbo. O carimbo é **derivado
+   * do vínculo que o gesto deixou** — gesto que não vincula não é afetado, e o gesto NOVO é
+   * carimbado de graça.
+   *
+   * ⚠️ **FAIL-SOFT, MAS NUNCA SILENCIOSO.** O gesto do dono JÁ GRAVOU quando chegamos aqui;
+   * derrubar faria ele ler *"nada aconteceu"* sobre algo que aconteceu (o defeito de 19/09) e
+   * repetir um gesto que os três motores recusam duplicar. Então a falha entra no **efeito** e
+   * no **audit** — e o retroativo, que é idempotente, conserta.
+   */
+  let carimbo: { selo: string | null; carimbou: boolean; falhou?: string } = { selo: null, carimbou: false }
+  try {
+    const c = await carimbarSeTemVinculo(db, input.txId, input.companyId)
+    carimbo = { selo: c.selo?.curto ?? null, carimbou: c.carimbou }
+  } catch (e) {
+    carimbo = { selo: null, carimbou: false, falhou: e instanceof Error ? e.message : 'erro' }
+    r = { ...r, efeito: `${r.efeito} · ⚠️ a linha segue marcada como pendente (o carimbo falhou) — o retroativo conserta` }
+  }
+
   if (input.authCtx?.company) {
     await logAudit(input.authCtx, {
       action: 'UPDATE',
@@ -146,6 +174,8 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
         ...(input.categoryId ? { categoryId: input.categoryId } : {}),
         ...(input.diferencaAceita !== undefined ? { diferencaAceita: input.diferencaAceita, motivoDaDiferenca: input.motivoDaDiferenca ?? null } : {}),
         ...(input.distanciaAceita !== undefined ? { distanciaAceita: input.distanciaAceita } : {}),
+        // ⭐ o carimbo no rastro: "o gesto resolveu E marcou" vs "marcou antes" vs "falhou"
+        carimbo,
         origem: 'caixa-de-entrada',
       },
     }).catch(() => {})

@@ -13,6 +13,8 @@ let seq = 0
 const linha = (p: Partial<LinhaFluxo> & { type: string; amount: number }): LinhaFluxo => ({
   id: `t${++seq}`, date: d('2026-08-10'), categoriaNome: null, isCardPayment: false,
   ehParcelaEmprestimo: false, ehLiberacaoEmprestimo: false, dreGroup: null,
+  // ⭐ 27/09 — os vínculos que o `seloDoSistema` lê (obrigatórios no tipo, de propósito)
+  faturaVinculada: false, temAporteVinculado: false,
   contaNome: 'banrisul', descricao: 'x', ...p,
 })
 
@@ -48,9 +50,35 @@ describe('rotularLinha — a categoria do dono manda', () => {
     expect(r).toEqual({ rotulo: 'Salários', sintetico: false })
   })
 
-  it('pagamento de fatura sem categoria vira linha PRÓPRIA, não "A CLASSIFICAR"', () => {
-    expect(rotularLinha(linha({ type: 'DEBIT', amount: 7896.32, isCardPayment: true })))
+  /**
+   * ⚠️⚠️ **AJUSTADO EM 27/09, e o ajuste APERTA a régua — não a afrouxa.**
+   *
+   * O teste afirmava que `isCardPayment` **sozinho** já dava a linha própria. Essa é a régua
+   * VELHA, que 20/09 corrigiu na caixa de entrada com estas palavras: ***a flag diz "parece",
+   * o vínculo diz "é"*** — foi confiar nela que deixou a fatura do Carter **OPEN com o
+   * pagamento dela no extrato**. Ao delegar pro `seloDoSistema`, este andar passou a exigir o
+   * **vínculo** (`faturaVinculada`), como os outros dois já exigiam.
+   *
+   * ⭐ Medido antes de trocar: **0 linhas** com a flag sem vínculo na Caçula — nenhum número
+   * do Fluxo se move hoje.
+   */
+  it('pagamento de fatura COM VÍNCULO vira linha PRÓPRIA, não "A CLASSIFICAR"', () => {
+    expect(rotularLinha(linha({ type: 'DEBIT', amount: 7896.32, isCardPayment: true, faturaVinculada: true })))
       .toEqual({ rotulo: CAT_FATURA, sintetico: true })
+  })
+
+  it('⛔⛔ a FLAG sem vínculo NÃO resolve nada — cai em A CLASSIFICAR, onde o gesto a alcança', () => {
+    /**
+     * ⭐ É o desfecho honesto: sem `businessCreditCardId` a linha **não quita fatura nenhuma**,
+     * então ela ainda espera o gesto 💳 — e o lugar de quem espera é o balde de erro, à vista.
+     */
+    expect(rotularLinha(linha({ type: 'DEBIT', amount: 8626.98, isCardPayment: true })))
+      .toEqual({ rotulo: CAT_SEM, sintetico: true })
+  })
+
+  it('⭐ 27/09 — aporte com contrato vinculado também tem linha própria', () => {
+    expect(rotularLinha(linha({ type: 'DEBIT', amount: 1478.51, temAporteVinculado: true })))
+      .toEqual({ rotulo: 'Aporte em investimento', sintetico: true })
   })
 
   it('parcela de empréstimo sem categoria vira linha PRÓPRIA', () => {
@@ -67,7 +95,7 @@ describe('paraLinha — o vínculo de empréstimo tem DUAS portas', () => {
   const cru = (over: object) => ({
     id: 'a', date: d('2026-08-10'), amount: 100, type: 'DEBIT', description: 'LIQUIDACAO',
     isCardPayment: false, category: null, bankAccount: { name: 'sicredi ' },
-    loanInstallmentPaid: null, loanInstallmentPayments: [], ...over,
+    loanInstallmentPaid: null, loanInstallmentPayments: [], businessCreditCardId: null, ...over,
   })
 
   it('porta 1:1 (reconciledTransactionId)', () => {
@@ -122,7 +150,7 @@ describe('agruparFluxo', () => {
     const r = agruparFluxo([
       linha({ type: 'CREDIT', amount: 1000, categoriaNome: 'Receita de Vendas' }),
       linha({ type: 'DEBIT', amount: 129864.01, categoriaNome: 'Matéria-Prima - Alimentos' }),
-      linha({ type: 'DEBIT', amount: 7896.32, isCardPayment: true }),
+      linha({ type: 'DEBIT', amount: 7896.32, isCardPayment: true, faturaVinculada: true }),
       linha({ type: 'DEBIT', amount: 4348.64, ehParcelaEmprestimo: true }),
       linha({ type: 'DEBIT', amount: 77.5 }), // sem categoria nenhuma
     ])

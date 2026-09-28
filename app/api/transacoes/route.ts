@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { seloDoSistema, SELO_PELO_SISTEMA } from '@/lib/conciliacao/selo-do-sistema'
+import { paraSelo } from '@/lib/conciliacao/carimbar-vinculo'
 import { transacaoSchema } from '@/lib/validations/transacao'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit } from '@/lib/audit'
@@ -164,6 +166,25 @@ export async function GET(request: NextRequest) {
           // Sprint Fluxo-Único-Retirada (08/06/2026): bridge pra detectar
           // tx já vinculadas à entrada PF.
           bridge: { select: { id: true } },
+          /**
+           * ⭐⭐⭐ 27/09 — **OS VÍNCULOS DE GESTO, pra a tela não cobrar o que já foi decidido.**
+           *
+           * ⛔ Sem eles a tela de Transações mostrava *"Sem categoria · Pendente"* numa linha que
+           * o Fluxo de Caixa já chamava de *"Parcela de empréstimo (pelo sistema)"* — **dois
+           * andares lendo réguas diferentes: um sabe, o outro cobra** (palavras do dono).
+           *
+           * ⚠️ O selo é derivado **NO SERVIDOR** (`seloDoSistema`) e vai pronto no payload: se a
+           * tela derivasse, nasceria a 4ª régua da mesma pergunta — e ela divergiria no primeiro
+           * gesto novo, que é exatamente o que este sprint conserta.
+           */
+          loanInstallmentPaid: { select: { id: true, number: true, loan: { select: { contractNumber: true } } } },
+          loanInstallmentPayments: {
+            select: { installment: { select: { number: true, loan: { select: { contractNumber: true } } } } },
+            take: 1,
+          },
+          businessCreditCard: { select: { id: true, name: true } },
+          investmentContribution: { select: { id: true, competencia: true, contract: { select: { nome: true } } } },
+          loanDisbursement: { select: { id: true, contractNumber: true } },
         },
       }),
     ])
@@ -212,8 +233,40 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    /**
+     * ⭐⭐ 27/09 — **O SELO vai PRONTO no payload, derivado pela MESMA função dos outros andares.**
+     *
+     * ⚠️ E ele carrega o DETALHE (qual contrato, qual cartão, qual competência): *"Parcela de
+     * empréstimo"* sem dizer de qual contrato manda o dono adivinhar, e o pedido dele era
+     * explícito — *"Parcela de empréstimo → contrato X"*.
+     */
+    const comSelo = transacoes.map((t) => {
+      const selo = seloDoSistema(paraSelo(t as never))
+      if (!selo) return { ...t, selo: null }
+      const p11 = t.loanInstallmentPaid
+      const pn1 = t.loanInstallmentPayments[0]?.installment
+      const detalhe =
+        selo.familia === 'PARCELA_EMPRESTIMO'
+          ? (p11
+              ? `contrato ${p11.loan.contractNumber} · parcela ${p11.number}`
+              : pn1
+                ? `contrato ${pn1.loan.contractNumber} · parcela ${pn1.number}`
+                : null)
+          : selo.familia === 'FATURA_CARTAO'
+            ? [t.businessCreditCard?.name, t.paidInvoiceMonth].filter(Boolean).join(' · ') || null
+            : selo.familia === 'APORTE_INVESTIMENTO'
+              ? [t.investmentContribution?.contract.nome, t.investmentContribution?.competencia].filter(Boolean).join(' · ') || null
+              : selo.familia === 'LIBERACAO_EMPRESTIMO'
+                ? (t.loanDisbursement ? `contrato ${t.loanDisbursement.contractNumber}` : null)
+                : null
+      return {
+        ...t,
+        selo: { familia: selo.familia, rotulo: selo.rotulo, detalhe, pelo: SELO_PELO_SISTEMA },
+      }
+    })
+
     return NextResponse.json({
-      transacoes,
+      transacoes: comSelo,
       conta: contaSingle,
       paginacao: { total, page, limit, totalPages: Math.ceil(total / limit) },
       // Sprint Transfer Display+Sync — opcional, só pra TRANSFER pareadas

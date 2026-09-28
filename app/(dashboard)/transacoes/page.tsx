@@ -83,6 +83,23 @@ interface Transacao {
   isInternalTransfer?: boolean | null
   transferGroupId?: string | null
   bridge?: { id: string } | null
+  /**
+   * ⭐⭐⭐ 27/09 — **O SELO DO SISTEMA, derivado no SERVIDOR.**
+   *
+   * `null` = a linha espera de verdade a palavra do dono. Preenchido = o vínculo já respondeu
+   * o que ela é (parcela, fatura, aporte, liberação, transferência), e a tela **mostra** em vez
+   * de **cobrar** — era esse o defeito: *"dois andares lendo réguas diferentes: um sabe, o
+   * outro cobra"*.
+   *
+   * ⚠️ A tela **não deriva** nada: se derivasse, nasceria a 4ª régua da mesma pergunta.
+   */
+  selo?: {
+    familia: string
+    rotulo: string
+    /** *"contrato C41033828-8 · parcela 22"* — sem isso o dono adivinha QUAL */
+    detalhe: string | null
+    pelo: string
+  } | null
 }
 
 interface Paginacao { total: number; page: number; limit: number; totalPages: number }
@@ -1039,6 +1056,29 @@ function TransacoesPageInner() {
                         Aguardando outro extrato
                       </span>
                     )
+                  ) : t.selo ? (
+                    /**
+                     * ⭐⭐ O SELO DO SISTEMA no lugar do seletor de categoria.
+                     *
+                     * ⛔ **E ele substitui o seletor de propósito:** oferecer "escolher categoria"
+                     * numa linha que o vínculo já resolveu é pedir uma decisão que o dono já
+                     * tomou pelo gesto — e a categoria dessas linhas é nula **por desenho** (ver
+                     * `selo-do-sistema.ts`: gravar uma viraria tag fantasma em relatório e
+                     * arriscaria contar a despesa duas vezes).
+                     */
+                    <span
+                      className="flex items-center gap-1.5 text-xs text-slate-600"
+                      title={t.selo.detalhe ?? undefined}
+                    >
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />
+                      <span className="font-medium">{t.selo.rotulo}</span>
+                      {t.selo.detalhe && (
+                        <span className="hidden sm:inline text-slate-400">· {t.selo.detalhe}</span>
+                      )}
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+                        {t.selo.pelo}
+                      </span>
+                    </span>
                   ) : categorias.length > 0 ? (
                     <InlineCategorySelect
                       transacaoId={t.id}
@@ -1104,8 +1144,17 @@ function TransacoesPageInner() {
               {/* Status — Sprint Caixa-Status (08/06/2026): esconde badge em
                   contas Caixa (dinheiro físico não tem extrato pra conciliar). */}
               {t.bankAccount?.accountType !== 'CASH' && (
-                <Badge variant={STATUS_VARIANTS[t.status] ?? 'outline'} className="hidden sm:inline-flex text-xs">
-                  {STATUS_LABELS[t.status] ?? t.status}
+                /**
+                 * ⭐ Com selo, o badge diz **resolvida** — e a DEFESA EM PROFUNDIDADE está aqui
+                 * de propósito: depois do carimbo o `status` já vem `RECONCILED`, mas se uma
+                 * linha antiga escapar do retroativo a tela **não volta a cobrar** o que o
+                 * vínculo já respondeu. *Um andar não pode contradizer o outro nem por resíduo.*
+                 */
+                <Badge
+                  variant={t.selo ? 'secondary' : STATUS_VARIANTS[t.status] ?? 'outline'}
+                  className="hidden sm:inline-flex text-xs"
+                >
+                  {t.selo ? 'Resolvida' : STATUS_LABELS[t.status] ?? t.status}
                 </Badge>
               )}
 

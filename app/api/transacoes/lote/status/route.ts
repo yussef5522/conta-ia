@@ -18,6 +18,7 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { transacaoLoteStatusSchema } from '@/lib/validations/transacao-lote'
 import { enforceStatusLadder } from '@/lib/transacoes/needs-review'
+import { SELECT_VINCULO_MINIMO, temVinculoDeGesto } from '@/lib/conciliacao/carimbar-vinculo'
 
 export async function PATCH(request: NextRequest) {
   const user = await getAuthUser(request)
@@ -39,6 +40,9 @@ export async function PATCH(request: NextRequest) {
         id: true,
         categoryId: true,
         bankAccount: { select: { accountType: true } },
+        // ⭐ 27/09 — os vínculos de gesto: sem eles o lote devolveria a "Pendente" a linha
+        // que o gesto 🏦/💳/📈 acabou de resolver (a escada decidiria pela categoria nula)
+        ...SELECT_VINCULO_MINIMO,
       },
     })
 
@@ -54,6 +58,7 @@ export async function PATCH(request: NextRequest) {
         intendedStatus: data.status,
         categoryId: t.categoryId,
         accountType: t.bankAccount?.accountType ?? null,
+        temVinculoDeGesto: temVinculoDeGesto(t),
       })
       byEnforced[final].push(t.id)
     }

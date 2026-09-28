@@ -89,11 +89,20 @@ describe('⭐ a ponte que conserta: o mapa vem do CONFIRM', () => {
   })
 })
 
-describe('⚠️ pagamento de cartão sai da fila de pendentes pela FLAG, não pelo status', () => {
-  it('⭐ o filtro de pendências exige isCardPayment: false', async () => {
+describe('⚠️ pagamento de cartão sai da fila pelo VÍNCULO, não pela flag nem pelo status', () => {
+  /**
+   * ⚠️⚠️ **INVERTIDO em 27/09, com o motivo escrito.** O título dizia *"pela FLAG"* e o teste
+   * afirmava `isCardPayment: false` — a régua que 20/09 aposentou na caixa de entrada: ***a
+   * flag diz "parece", o vínculo diz "é"***. Sair da fila pela flag é sair sem estar resolvida.
+   *
+   * ⭐ **A metade CERTA dele continua sendo o que ele prova, e está no `expect` de baixo:**
+   * *pendência é sobre FALTA de classificação, não sobre o `status`* — por isso `status=PENDING`
+   * numa linha com vínculo é inofensivo pra fila (e desde 27/09 nem existe: o gesto carimba).
+   */
+  it('⭐ o filtro de pendências exige o VÍNCULO nulo, não a flag', async () => {
     const { NEEDS_REVIEW_WHERE_PRISMA } = await import('@/lib/transacoes/needs-review')
-    // por isso `status=PENDING` numa tx de pagamento de cartão é inofensivo: o que tira da
-    // fila é a flag. Pendência é sobre FALTA de classificação, não sobre o status.
-    expect(NEEDS_REVIEW_WHERE_PRISMA.isCardPayment).toBe(false)
+    expect(NEEDS_REVIEW_WHERE_PRISMA.businessCreditCardId).toBe(null)
+    // ⭐ e a fila continua NÃO olhando status — a pergunta dela é outra
+    expect('status' in NEEDS_REVIEW_WHERE_PRISMA).toBe(false)
   })
 })

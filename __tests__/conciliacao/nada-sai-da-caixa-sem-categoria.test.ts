@@ -25,7 +25,16 @@ import { ResolverError } from '@/lib/conciliacao/resolver-linha'
 vi.mock('@/lib/credit-card-pj/casar-pagamento', () => ({
   CasarPagamentoError: class extends Error {},
   casarPagamentoDeCartao: vi.fn(async () => {
-    estado.isCardPayment = true          // ⭐ é ISTO que dá nome à linha da fatura
+    /**
+     * ⚠️⚠️ **AJUSTADO em 27/09: o mock contava MEIA VERDADE.** Ele marcava só a FLAG, e o motor
+     * real (`casarPagamentoDeCartao`) grava **`businessCreditCardId` + `paidInvoiceMonth`** —
+     * ou seja, o VÍNCULO. Com a régua unificada num dono só, é o vínculo que dá nome à linha
+     * (*a flag diz "parece", o vínculo diz "é"*), e um mock que simula menos do que o original
+     * aprovaria a tela que depende do que ele não simula. *É a lição de 20/09: guard que troca
+     * a peça não prova o encaixe dela.*
+     */
+    estado.isCardPayment = true
+    estado.faturaVinculada = true        // ⭐ é o VÍNCULO que dá nome à linha da fatura
     return { paidInvoiceMonth: '2026-09' }
   }),
 }))
@@ -51,12 +60,12 @@ vi.mock('@/lib/conciliacao/reconcile', () => ({
 vi.mock('@/lib/vendas/recompute-hook', () => ({ recomputeVendasSeVenda: vi.fn(async () => {}) }))
 
 /** o estado em que a LINHA DO BANCO ficou depois do gesto */
-let estado: { categoriaNome: string | null; isCardPayment: boolean; ehParcelaEmprestimo: boolean; ignorada: boolean }
+let estado: { categoriaNome: string | null; isCardPayment: boolean; faturaVinculada: boolean; ehParcelaEmprestimo: boolean; temAporteVinculado: boolean; ignorada: boolean }
 /** as contas a pagar do cenário: id → nome da categoria (null = a conta não tem) */
 let contas: Record<string, string | null>
 
 beforeEach(() => {
-  estado = { categoriaNome: null, isCardPayment: false, ehParcelaEmprestimo: false, ignorada: false }
+  estado = { categoriaNome: null, isCardPayment: false, faturaVinculada: false, ehParcelaEmprestimo: false, temAporteVinculado: false, ignorada: false }
   contas = {}
 })
 
@@ -64,7 +73,8 @@ beforeEach(() => {
 function linhaTemNome(): boolean {
   const l = {
     categoriaNome: estado.categoriaNome, isCardPayment: estado.isCardPayment,
-    ehParcelaEmprestimo: estado.ehParcelaEmprestimo,
+    faturaVinculada: estado.faturaVinculada, ehParcelaEmprestimo: estado.ehParcelaEmprestimo,
+    temAporteVinculado: estado.temAporteVinculado,
   } as unknown as LinhaFluxo
   return rotularLinha(l).rotulo !== CAT_SEM
 }
@@ -136,7 +146,15 @@ describe('⛔⛔⛔ toda linha que SAI da caixa termina com nome', () => {
   it('⭐ fatura de cartão: a categoria é ESTRUTURAL (o vínculo com o cartão)', async () => {
     const r = await resolver('PGTO_CARTAO', { cardId: 'card1' })
     expect(r.saiuDaCaixa).toBe(true)
-    expect(rotularLinha({ categoriaNome: null, isCardPayment: true } as unknown as LinhaFluxo))
+    /**
+     * ⚠️ **AJUSTADO em 27/09, e o ajuste APERTA:** a fixture tinha só `isCardPayment` — a FLAG.
+     * Ao unificar a régua num dono só (`seloDoSistema`), o Fluxo passou a exigir o **VÍNCULO**,
+     * como a caixa já exigia desde 20/09 (*a flag diz "parece", o vínculo diz "é"* — foi
+     * confiar nela que deixou a fatura do Carter OPEN com o pagamento dela no extrato).
+     *
+     * ⭐ O que o teste prova segue igual: **a categoria da fatura é ESTRUTURAL**, não escolhida.
+     */
+    expect(rotularLinha({ categoriaNome: null, isCardPayment: true, faturaVinculada: true } as unknown as LinhaFluxo))
       .toMatchObject({ rotulo: 'Fatura de cartão (paga)', sintetico: true })
     expect(linhaTemNome()).toBe(true)
   })

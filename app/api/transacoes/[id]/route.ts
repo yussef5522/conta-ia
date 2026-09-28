@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { transacaoUpdateSchema } from '@/lib/validations/transacao'
 import { montarUpdateClassificacaoManual } from '@/lib/transacoes/classificar'
 import { enforceStatusLadder } from '@/lib/transacoes/needs-review'
+import { SELECT_VINCULO_MINIMO, temVinculoDeGesto } from '@/lib/conciliacao/carimbar-vinculo'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit, diffFields } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
@@ -89,10 +90,20 @@ export async function PUT(request: NextRequest, { params }: Params) {
       where: { id: antiga.bankAccountId! },
       select: { accountType: true },
     })
+    /**
+     * ⭐ 27/09 — os vínculos da própria linha: sem eles, **editar a descrição** de um pagamento
+     * de empréstimo devolveria ele pra "Pendente" (a escada decide pela categoria, que é nula
+     * por desenho). *O defeito voltaria sozinho, em silêncio.*
+     */
+    const vinculosDaLinha = await prisma.transaction.findUnique({
+      where: { id },
+      select: SELECT_VINCULO_MINIMO,
+    })
     const statusEnforced = enforceStatusLadder({
       intendedStatus: intendedStatus as 'PENDING' | 'RECONCILED' | 'IGNORED',
       categoryId: categoryIdFinal,
       accountType: accountTypeBucket?.accountType ?? null,
+      temVinculoDeGesto: vinculosDaLinha ? temVinculoDeGesto(vinculosDaLinha) : false,
     })
 
     const transacao = await prisma.$transaction(async (tx) => {

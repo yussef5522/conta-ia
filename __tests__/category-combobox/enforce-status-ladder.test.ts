@@ -8,6 +8,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
   it('IGNORED via body preserva (manual, independente)', () => {
     expect(
       enforceStatusLadder({
+        temVinculoDeGesto: false,
         intendedStatus: 'IGNORED',
         categoryId: null,
         accountType: 'CHECKING',
@@ -16,6 +17,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
     // IGNORED preserva mesmo COM categoria + CASH
     expect(
       enforceStatusLadder({
+        temVinculoDeGesto: false,
         intendedStatus: 'IGNORED',
         categoryId: 'cat_x',
         accountType: 'CASH',
@@ -26,6 +28,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
   it('CASH sempre RECONCILED (sem extrato pra conciliar)', () => {
     expect(
       enforceStatusLadder({
+        temVinculoDeGesto: false,
         intendedStatus: 'PENDING',
         categoryId: null,
         accountType: 'CASH',
@@ -33,6 +36,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
     ).toBe('RECONCILED')
     expect(
       enforceStatusLadder({
+        temVinculoDeGesto: false,
         intendedStatus: 'PENDING',
         categoryId: 'cat_x',
         accountType: 'CASH',
@@ -44,6 +48,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
     // 🚨 armadilha original — agora blindada
     expect(
       enforceStatusLadder({
+        temVinculoDeGesto: false,
         intendedStatus: 'PENDING',
         categoryId: 'cat_x',
         accountType: 'CHECKING',
@@ -55,6 +60,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
     // 🚨 outro caso — também blindado
     expect(
       enforceStatusLadder({
+        temVinculoDeGesto: false,
         intendedStatus: 'RECONCILED',
         categoryId: null,
         accountType: 'CHECKING',
@@ -65,6 +71,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
   it('intendedStatus null/undefined funciona', () => {
     expect(
       enforceStatusLadder({
+        temVinculoDeGesto: false,
         intendedStatus: null,
         categoryId: 'cat_x',
         accountType: 'CHECKING',
@@ -72,6 +79,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
     ).toBe('RECONCILED')
     expect(
       enforceStatusLadder({
+        temVinculoDeGesto: false,
         intendedStatus: undefined,
         categoryId: null,
         accountType: 'CHECKING',
@@ -82,6 +90,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
   it('accountType null/undefined trata como não-CASH', () => {
     expect(
       enforceStatusLadder({
+        temVinculoDeGesto: false,
         intendedStatus: 'PENDING',
         categoryId: 'cat_x',
         accountType: null,
@@ -89,6 +98,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
     ).toBe('RECONCILED')
     expect(
       enforceStatusLadder({
+        temVinculoDeGesto: false,
         intendedStatus: 'PENDING',
         categoryId: null,
       }),
@@ -100,6 +110,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
       intendedStatus: 'PENDING' as const,
       categoryId: 'cat_x',
       accountType: 'CHECKING',
+      temVinculoDeGesto: false,
     }
     const a = enforceStatusLadder(ctx)
     const b = enforceStatusLadder({ ...ctx, intendedStatus: a })
@@ -119,6 +130,7 @@ describe('enforceStatusLadder — invariante blindada', () => {
       for (const c of cats) {
         for (const t of types) {
           const r = enforceStatusLadder({
+            temVinculoDeGesto: false,
             intendedStatus: s,
             categoryId: c,
             accountType: t,
@@ -139,6 +151,7 @@ describe('Blindagem: armadilha lateral do PUT', () => {
   it('body { categoryId: X, status: "PENDING" } → resultado RECONCILED', () => {
     // Cenário exato do diagnóstico anterior. Helper força RECONCILED.
     const final = enforceStatusLadder({
+      temVinculoDeGesto: false,
       intendedStatus: 'PENDING',
       categoryId: 'cmq_xyz',
       accountType: 'CHECKING',
@@ -149,10 +162,52 @@ describe('Blindagem: armadilha lateral do PUT', () => {
   it('body { categoryId: null, status: "RECONCILED" } → resultado PENDING', () => {
     // Outro lado da armadilha.
     const final = enforceStatusLadder({
+      temVinculoDeGesto: false,
       intendedStatus: 'RECONCILED',
       categoryId: null,
       accountType: 'CHECKING',
     })
     expect(final).toBe('PENDING')
+  })
+})
+
+describe('⭐⭐ 27/09 — O DEGRAU DO VÍNCULO: o gesto resolve, e o resultado SOBREVIVE', () => {
+  /**
+   * ⛔⛔ **O defeito que este degrau fecha:** esta função roda no fim de **todo** create/update
+   * (a defesa em profundidade de 29/06), então sem ele **qualquer edição posterior** — mudar a
+   * descrição, um lote de status — devolvia a "Pendente" a linha que o gesto 🏦/💳/📈 acabou de
+   * resolver. *O defeito voltaria sozinho, em silêncio.*
+   *
+   * ⚠️ E `temVinculoDeGesto` virou campo **OBRIGATÓRIO** no tipo de propósito: opcional seria
+   * `undefined` = "sem vínculo", o default **errado** — e o `tsc` achou os 4 chamadores em vez
+   * de eu ir de grep (a REGRA 4 de graça, como no `temAporteVinculado` de 25/09).
+   */
+  it('⭐ com vínculo e SEM categoria → RECONCILED (era PENDING: o bug dos 58 lançamentos)', () => {
+    expect(enforceStatusLadder({
+      intendedStatus: 'PENDING', categoryId: null, accountType: 'CHECKING',
+      temVinculoDeGesto: true,
+    })).toBe('RECONCILED')
+  })
+
+  it('⭐ e ele vem ANTES da escada da categoria — a categoria dessas linhas é nula por DESENHO', () => {
+    // ⚠️ sem a precedência, a escada decidiria por `categoryId: null` e o carimbo não sobreviveria
+    expect(enforceStatusLadder({
+      intendedStatus: 'RECONCILED', categoryId: null, accountType: null,
+      temVinculoDeGesto: true,
+    })).toBe('RECONCILED')
+  })
+
+  it('⛔ IGNORED continua vencendo tudo — decisão do dono não se sobrescreve', () => {
+    expect(enforceStatusLadder({
+      intendedStatus: 'IGNORED', categoryId: null, accountType: 'CHECKING',
+      temVinculoDeGesto: true,
+    })).toBe('IGNORED')
+  })
+
+  it('⛔ e SEM vínculo nada muda — a escada da categoria continua mandando', () => {
+    expect(enforceStatusLadder({
+      intendedStatus: 'RECONCILED', categoryId: null, accountType: 'CHECKING',
+      temVinculoDeGesto: false,
+    })).toBe('PENDING')
   })
 })

@@ -28,6 +28,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { whereCategoriaAceita } from '@/lib/categorias/destino-valido'
 import { enforceStatusLadder } from '@/lib/transacoes/needs-review'
+import { SELECT_VINCULO_MINIMO, temVinculoDeGesto } from '@/lib/conciliacao/carimbar-vinculo'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -106,10 +107,13 @@ export async function POST(request: NextRequest, { params }: Params) {
         ],
       },
       select: {
+        // ⭐ 27/09 — os vínculos de gesto: recategorizar em lote não pode devolver a "Pendente"
+        // a linha que o gesto 🏦/💳/📈 resolveu (a escada decidiria pela categoria nula).
+        // ⚠️ o spread vem PRIMEIRO: `type` está nos dois, e o `tsc` avisa sobre sobrescrita
+        ...SELECT_VINCULO_MINIMO,
         id: true,
         categoryId: true,
         amount: true,
-        type: true,
         description: true,
         status: true,
         bankAccount: { select: { accountType: true } },
@@ -142,6 +146,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         intendedStatus: t.status as 'PENDING' | 'RECONCILED' | 'IGNORED',
         categoryId: novaCategoriaId,
         accountType: t.bankAccount?.accountType ?? null,
+        temVinculoDeGesto: temVinculoDeGesto(t),
       })
       const arr = groups.get(nextStatus) ?? []
       arr.push(t.id)

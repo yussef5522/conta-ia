@@ -152,6 +152,7 @@ export function acaoValePraSentido(acao: AcaoDoBalcao, sentido: SentidoDaLinha):
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { categoriaResolveSozinha, SELO_AVULSA_CONFIRMADA } from './categoria-nao-quita'
+import { seloDoSistema } from './selo-do-sistema'
 
 export type Estacao = 'CAIXA' | 'ARQUIVO'
 
@@ -231,8 +232,25 @@ export function comoFoiResolvida(l: LinhaParaEstacao): string | null {
    * ⭐ Agora o selo exige o VÍNCULO. Sem ele a linha **volta pra caixa**, onde o palpite do
    * cartão (`mesQueBateOValor`) a reconhece e oferece o gesto que a resolve de verdade.
    */
-  if (l.isCardPayment && l.faturaVinculada) return 'pagamento de fatura de cartão'
-  if (l.temParcelaVinculada) return 'parcela de empréstimo'
+  /**
+   * ⭐⭐ 27/09 — **DELEGA pro dono da pergunta** (`seloDoSistema`). A régua nasceu aqui, com as
+   * travas certas; o que faltava era ela ter dono e os outros andares a consumirem — o Fluxo
+   * tinha uma cópia com a régua VELHA e a tela de Transações não tinha nenhuma.
+   *
+   * ⛔ A ORDEM e as travas são as mesmas, palavra por palavra: *a flag diz "parece", o vínculo
+   * diz "é"*. O que muda é o número de lugares que sabem disso: de três, um.
+   */
+  const selo = seloDoSistema({
+    isCardPayment: l.isCardPayment,
+    faturaVinculada: l.faturaVinculada,
+    temParcelaVinculada: l.temParcelaVinculada,
+    temAporteVinculado: l.temAporteVinculado,
+    // ⚠️ a caixa não trata liberação nem transferência por aqui (o `estacaoDaLinha` já as
+    // tira antes) — declarar `false` é a leitura honesta, não um esquecimento
+    ehLiberacaoEmprestimo: false,
+    ehTransferencia: false,
+  })
+  if (selo) return selo.curto
   /**
    * ⭐⭐⭐ 25/09 — **O APORTE SÓ ESTÁ RESOLVIDO COM O CONTRATO VINCULADO.**
    *
@@ -250,7 +268,6 @@ export function comoFoiResolvida(l: LinhaParaEstacao): string | null {
    * ⛔ Note a ordem: este `if` vem ANTES do `categoriaResolveSozinha`, senão a categoria
    * resolveria primeiro e o vínculo nunca seria cobrado.
    */
-  if (l.temAporteVinculado) return 'aporte em investimento'
   if (l.dreGroupDaCategoria === 'INVESTIMENTOS' && !l.temAporteVinculado) return null
   if (l.transferGroupId || l.isInternalTransfer || l.tipo === 'TRANSFER') return 'transferência entre contas'
   // ⭐ a decisão explícita do dono resolve ANTES da categoria — é ela que fecha o caso

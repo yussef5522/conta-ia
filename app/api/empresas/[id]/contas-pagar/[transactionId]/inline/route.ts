@@ -19,6 +19,7 @@ import {
   extractCategoryName,
 } from '@/lib/validations/saved-view'
 import { enforceStatusLadder } from '@/lib/transacoes/needs-review'
+import { SELECT_VINCULO_MINIMO, temVinculoDeGesto } from '@/lib/conciliacao/carimbar-vinculo'
 
 interface Params {
   params: Promise<{ id: string; transactionId: string }>
@@ -157,10 +158,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
               select: { accountType: true },
             })
           : null
+        const vinc = await tx.transaction.findUnique({
+          where: { id: transactionId },
+          select: SELECT_VINCULO_MINIMO,
+        })
         const statusEnforced = enforceStatusLadder({
           intendedStatus: antiga.status as 'PENDING' | 'RECONCILED' | 'IGNORED',
           categoryId: resolvedCategoryId,
           accountType: acc?.accountType ?? null,
+          temVinculoDeGesto: vinc ? temVinculoDeGesto(vinc) : false,
         })
         if (statusEnforced !== antiga.status) {
           data.status = statusEnforced

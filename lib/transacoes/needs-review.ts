@@ -74,12 +74,29 @@ export const NEEDS_REVIEW_WHERE_PRISMA = {
   transferGroupId: null,
   reconciledWithId: null,
   reconciledFrom: { none: {} },
-  isCardPayment: false,
+  /**
+   * ⭐⭐ 27/09 — **O VÍNCULO, não a flag.** Era `isCardPayment: false`, e isso **escondia da
+   * fila** a linha que tem a flag da heurística e **nenhum vínculo** — ela saía da fila sem
+   * estar resolvida, e o gesto que a resolveria ficava inalcançável (o Carter de 20/09: fatura
+   * OPEN com o pagamento dela no extrato, o K3 gritando e nenhuma tela onde agir).
+   *
+   * ⚠️ Medido antes de trocar: **0 linhas** com a flag sem vínculo na Caçula — o número da fila
+   * não se move hoje; o que muda é a porta sem maçaneta deixar de ser possível.
+   */
+  businessCreditCardId: null,
   loanInstallmentPaid: { is: null },
   // Sprint Casar Pagamento (04/08/2026): tx vinculada a parcela via ponte N:1
   // (débito parcial de empréstimo) SAI da fila — o split é do empréstimo, não
   // categoria da tx. Espelha o loanInstallmentPaid (1:1).
   loanInstallmentPayments: { none: {} },
+  /**
+   * ⭐ 27/09 — **APORTE e LIBERAÇÃO entram na lista.** Eram as duas famílias de vínculo que
+   * ninguém tinha acrescentado aqui: o aporte nasceu em 25/09 e a liberação em 26/08, e as
+   * duas são resolvidas pelo vínculo (o DRE as trata por `nonDreGroups` e por `loanDisbursement`).
+   * ⚠️ Lista de exclusão que envelhece é o que faz a fila cobrar o que já foi decidido.
+   */
+  investmentContribution: { is: null },
+  loanDisbursement: { is: null },
   pendingTransfer: false,
   isInternalTransfer: false,
   ignoredAt: null,
@@ -116,6 +133,19 @@ export function statusFromCategoryId(
  * Idempotente: chamar 2x retorna o mesmo valor.
  */
 export interface StatusContext {
+  /**
+   * ⭐⭐⭐ 27/09 — **O DEGRAU DO VÍNCULO, e ele é o que faz o carimbo SOBREVIVER.**
+   *
+   * ⛔ Sem ele a escada devolvia `PENDING` pra toda linha sem categoria — inclusive a que o
+   * gesto 🏦/💳/📈 acabou de resolver. Como esta função roda no fim de **todo** create/update
+   * (é a defesa em profundidade de 29/06), **qualquer edição posterior** (mudar a descrição,
+   * um lote de status) devolveria a linha pra "Pendente" e o defeito voltaria sozinho —
+   * *silenciosamente*, que é o pior jeito.
+   *
+   * ⭐ `true` = há vínculo de gesto (parcela, fatura, aporte, liberação, transferência). Quem
+   * responde isso é o `seloDoSistema`, nunca um `if` local: **uma régua, todos os andares.**
+   */
+  temVinculoDeGesto: boolean
   /** Status que o caller pretendia gravar (ou status atual da tx). */
   intendedStatus?: 'PENDING' | 'RECONCILED' | 'IGNORED' | null
   /** categoryId que vai entrar na tx (após o update). */
@@ -133,6 +163,17 @@ export function enforceStatusLadder(
   // (1) CASH não tem extrato OFX → nasce/permanece RECONCILED.
   if (ctx.accountType === 'CASH') return 'RECONCILED'
 
-  // (2) Escada: categoria decide.
+  /**
+   * ⭐⭐ (2) 27/09 — **VÍNCULO DE GESTO RESOLVE, e vem ANTES da categoria.**
+   *
+   * A pergunta do `status` é *"esta linha ainda espera alguém?"*, e com vínculo a resposta é
+   * **não**: o dono já disse o que ela é pelo gesto próprio. ⚠️ E ele vem antes de propósito —
+   * a categoria dessas linhas é `null` **por desenho** (ver `selo-do-sistema.ts`: gravar uma
+   * viraria tag fantasma em relatório e envelheceria se o vínculo fosse desfeito), então
+   * deixar a escada da categoria decidir é exatamente o defeito.
+   */
+  if (ctx.temVinculoDeGesto) return 'RECONCILED'
+
+  // (3) Escada: categoria decide.
   return statusFromCategoryId(ctx.categoryId)
 }
