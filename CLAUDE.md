@@ -1415,6 +1415,59 @@ AS FRASES MORTAS, no HTML servido:
 
 **10.959 verdes · TS 0 · deploy 4/4 (`h4DGvUzf7576pWfXPxQLS`) · Δ bundle +0 KB.**
 
+### ⛔⛔⛔ UMA RÉGUA, TODOS OS ANDARES — O GESTO TERMINA O SERVIÇO (27/09)
+
+**O dono:** *"Concilio pelo gesto 🏦/💳/📈 e a transação fica «Sem categoria · Pendente» na tela de Transações — mas o Fluxo já mostra ela como «Parcela de empréstimo» lendo o vínculo. **Dois andares lendo réguas diferentes: um sabe, o outro cobra.**"*
+
+**OS CASOS, medidos por id:** `LIQUIDACAO DE PARCELA-C41033828` (R$ 2.665,44) e `AMORTIZACAO CONTRATO-C41033828` (R$ 7.568,91), 25/09 — as duas vinculadas à **parcela #22 pela porta N:1**, as duas `PENDING` + `categoryId: null`. **O universo: 58 linhas** (48 de empréstimo, 10 de fatura), **R$ 192.679,93**.
+
+**⭐⭐ A RÉGUA JÁ EXISTIA — em `comoFoiResolvida` (a caixa), com as travas certas.** O que faltava era ela ter **DONO** e os outros andares a consumirem: o Fluxo tinha a própria cópia e a tela de Transações não tinha nenhuma. `seloDoSistema` é a porta única; os três delegam. *Três andares, uma pergunta — a lição do B1 em forma de rótulo de tela.*
+
+**⛔⛔ E A DELEGAÇÃO APERTA O FLUXO, não afrouxa:** lá era `if (l.isCardPayment)` **sem exigir o vínculo** — a régua VELHA, que 20/09 já tinha corrigido na caixa (*a flag diz "parece", o vínculo diz "é"* — foi confiar nela que deixou a fatura do Carter **OPEN com o pagamento dela no extrato**). **Medido antes de trocar: 0 linhas com a flag sem vínculo** — nenhum número se move hoje; o que muda é a divergência deixar de ser possível amanhã.
+
+**⭐ O CARIMBO É O `status`, E O RÓTULO É DERIVADO** — e a decisão sai da própria frase dele: *"não é categoria de despesa que eu escolho, é o vínculo falando"*. **Três razões medidas** (escritas em `selo-do-sistema.ts`): categoria gravada viraria **tag fantasma** em relatório por categoria — é por isso que o `applyTransferCandidate` **zera** o `categoryId` desde 06/08, e medi **256 transferências** nesse estado, de propósito; **campo gravado envelhece** (se o vínculo for desfeito, ela mentiria — a doença da `CreditCardInvoice.status`); e o **DRE já trata os três sem categoria**, por fontes que não mentem (`paidInterest`, a competência da compra, `nonDreGroups` — o contrafactual de 25/09). Inventar categoria arriscaria contar a despesa **2×**.
+
+**⭐ E O CARIMBO MORA NO CHOKE-POINT** que envolve o `switch`, pelo mesmo motivo do audit: são **11 ações**, e dentro dos ramos o próximo gesto nasceria sem carimbo (*"N caminhos, 1 esquecido"*). Ele é **derivado do vínculo que o gesto deixou**, nunca da intenção da ação — gesto que não vincula não é afetado, e o gesto NOVO é carimbado **de graça** (REGRA 5). ⚠️ **Fail-soft, mas nunca silencioso:** o gesto já gravou quando o carimbo roda; a falha entra no **efeito** e no **audit**, e o retroativo (idempotente) conserta.
+
+**⛔⛔ O DEGRAU QUE IMPEDE O DEFEITO DE VOLTAR SOZINHO:** `enforceStatusLadder` roda no fim de **todo** create/update (a defesa em profundidade de 29/06) e devolvia `PENDING` pra toda linha sem categoria — então **mudar a descrição** de um pagamento de empréstimo o devolveria pra *"Pendente"*, **em silêncio**. O contexto ganhou `temVinculoDeGesto` **OBRIGATÓRIO** (opcional seria `undefined` = "sem vínculo", o default errado): o **`tsc` achou os 4 chamadores**, a REGRA 4 de graça.
+
+**⚠️⚠️ E A PREMISSA DO PEDIDO PRECISOU DE UMA CORREÇÃO MEDIDA:** o dono disse que as 2 linhas estavam *"inflando o A CLASSIFICAR (27.226,67 / 22)"*. **Não estavam.** O número dele bate exato com o balde do Fluxo (24.226,67 saída + 3.000 entrada, 22 lanç), mas o Fluxo **já** rotulava as duas como *"Parcela de empréstimo"* — as 22 são outras linhas, que **realmente** esperam a palavra dele. ⭐ O item 3 do pedido já estava atendido **naquele** andar; quem cobrava era a tela de Transações.
+
+### ⛔⛔ E EU ESTREITEI A FILA SEM QUERER — achado e consertado antes de chegar no dono (27/09)
+
+A 1ª versão do fix trocou `isCardPayment: false` por **`businessCreditCardId: null`** em `NEEDS_REVIEW_WHERE_PRISMA` — o que exclui **TODA linha de cartão, inclusive as COMPRAS**, que são justamente as que esperam categoria. A régua antiga mantinha as compras na fila; eu a estreitei. **Medido em prod na hora: 0 compras de cartão sem categoria na Caçula hoje** — nada sumiu de fato, mas a **próxima fatura importada** teria compras invisíveis. ⭐ Agora sai da fila o **PAGAMENTO com vínculo**, nunca a compra (a mesma condição do `seloDoSistema`). *Defeito latente medido é defeito consertado; latente não medido é o que volta em três meses.*
+
+⚠️ A fila também ganhou **aporte** e **liberação**, que ninguém tinha acrescentado (nasceram em 25/09 e 26/08) — *lista de exclusão que envelhece é o que faz a fila cobrar o que já foi decidido*.
+
+**PROVADO EM PROD, pelas rotas reais, nos DOIS viewports (REGRA 12):**
+```
+ANDAR 1 · TRANSAÇÕES (rota 200) — os 2 casos do dono
+  R$ 2.665,44 «LIQUIDACAO DE PARCELA-C41033828»
+     status: RECONCILED · categoria: (nenhuma — por desenho)
+     ⭐ selo: «Parcela de empréstimo» · contrato C41033828-8 · parcela 22 · pelo sistema
+  R$ 7.568,91 «AMORTIZACAO CONTRATO-C41033828»   idem
+
+ANDAR 2 · FLUXO · setembro   «Parcela de empréstimo» 7 · R$ 81.184,57
+                             «Fatura de cartão (paga)» 3 · R$ 14.721,67
+ANDAR 3 · A FILA             0 com vínculo de gesto ✓ o número é honesto
+⛔ INVARIANTE: linhas com vínculo ainda "Pendente": 0 ✓
+
+RETROATIVO (preview → pg_dump → aplicar): 58 carimbadas · 0 sobrando
+   48 parcela de empréstimo R$ 138.152,85 · 10 fatura R$ 54.527,08
+   ⛔ nenhuma categoria criada nem gravada
+
+celular 200 em 77ms · desktop 200 em 69ms · 1.007 KB
+  ✓ `.selo.rotulo` · `.selo.detalhe` · `.selo.pelo` · o badge «Resolvida»
+```
+
+**REGRA 11 — 7 becos repostos, todos vermelhos:** o gesto sem carimbar (**3**) · o Fluxo voltando à flag (**2**) · a fila pela flag e sem aporte/liberação (**3**) · a escada ignorando o vínculo (**1**) · o selo aceitando a flag (**1**) · o carimbo sobrescrevendo o `IGNORED` do dono (**1**) · a fila excluindo toda linha de cartão (**2**).
+
+**⚠️ 3 TESTES AJUSTADOS E 1 MOCK CORRIGIDO, todos com o motivo escrito** — e o mock é o mais instrutivo: ele marcava só `isCardPayment` enquanto o motor real grava **`businessCreditCardId` + `paidInvoiceMonth`**. ***Mock que simula menos que o original aprova a tela que depende do que ele não simula*** — é a lição de 20/09 (*"guard que troca a peça não prova o encaixe dela"*).
+
+**⚠️ E O GUARD `sem-data-fixa-no-futuro` PEGOU O MEU PRÓPRIO TESTE NOVO** (`ate: '2026-09-30'` é uma data que o calendário alcança). Trocado pela régua da casa (`janelaDoMes`). ⚠️ **As sondas da prova erraram 3 vezes**: rodei de `/tmp` (o Node resolve módulo a partir do ARQUIVO, não do cwd), chutei nomes de campo do payload, e procurei `t.selo` num bundle onde **o minificador renomeia a variável** (`e.selo.rotulo`). *Sonda errada dá um vermelho tão convincente quanto um defeito real.*
+
+**10.990 verdes · TS 0 · `pg_dump pre-carimbo-vinculos-20260928-134237` (7,2 MB) · deploys 4/4 (`puYDucmCgOjJikDVJjYw9` e `r-W5NDnu5qyK23f4VAg1R`) · Δ bundle +0 KB.**
+
 ### 💰 CONTAS A PAGAR — «PAGAS» CONTA TODAS AS DO MÊS · E O «VENCE HOJE» CHEGOU NA LISTA (26/09)
 
 **⛔⛔⛔ 1. O CARTÃO MOSTRAVA 8,7% DO QUE O DONO PAGOU — medido antes de codar.** Setembro tem **236 contas pagas (R$ 292.743,50)**; o cartão dizia **40 (R$ 25.441,86)**. As outras **196 (R$ 267.301,64)** eram invisíveis nesta tela. *O card respondia "quanto eu paguei sem o banco", que não é a pergunta que ele faz.*
