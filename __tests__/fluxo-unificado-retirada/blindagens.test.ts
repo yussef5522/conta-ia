@@ -166,9 +166,22 @@ describe('g) Cache invalidado ao criar ponte', () => {
 
 describe('h) Sidebar badge — item Sócios', () => {
   const code = read('components/sidebar/global-sidebar.tsx')
-  it('fetch de retiradas-pendentes por empresa', () => {
+  /**
+   * ⚠️ **REAPONTADO em 28/09, não afrouxado.** A âncora era o NOME da variável
+   * (`empresaIdForBadges`), e ele mudou pra `empresaIdParaBadges` quando o fetch passou a
+   * respeitar a permissão — *grep não distingue "renomeei" de "quebrei"* (a razão de ser da
+   * REGRA 3). ⭐ A régua que este teste guarda (o contador existe e busca **por empresa**)
+   * continua igual, e ele ficou **mais forte**: passou a exigir o gate.
+   */
+  it('fetch de retiradas-pendentes por empresa, e SÓ pra quem pode ver o número', () => {
     expect(code).toMatch(/retiradasPendentesCount/)
-    expect(code).toMatch(/\/api\/empresas\/\$\{empresaIdForBadges\}\/retiradas-pendentes/)
+    expect(code).toMatch(/\/api\/empresas\/\$\{empresaIdParaBadges\}\/retiradas-pendentes/)
+    /**
+     * ⭐ 28/09 — a rota exige `transaction.view`, e o operador do estoque não tem: eram **39
+     * respostas 403 por dia** vindas daqui (mais 1.391 do badge irmão).
+     */
+    expect(code, 'o contador voltou a chamar sem passar pela permissão')
+      .toMatch(/permissoes\s*!==\s*null\s*&&\s*pode\('transaction\.view'\)/)
   })
   it('badge âmbar no item Sócios quando > 0', () => {
     expect(code).toMatch(/label=["']Sócios["']/)

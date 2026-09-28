@@ -82,19 +82,48 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
     }
   }, [currentEmpresaId, workspaceType])
 
-  const badges = useSidebarBadges(empresaIdForBadges)
+  /**
+   * ⚠️ **SUBIRAM em 28/09 (estavam ~90 linhas abaixo):** o gate do badge precisa saber a
+   * permissão ANTES de perguntar o número, e hook só lê o que já foi declarado. ⭐ A ordem dos
+   * hooks não muda (os dois continuam no topo do componente, antes de qualquer `return`) — a
+   * REGRA 9 continua respeitada.
+   */
+  const empresaAtiva = workspaceType === 'pf' ? null : currentEmpresaId
+  const { permissoes, pode } = usePermissoes(empresaAtiva)
+
+  /**
+   * ⭐⭐⭐ 28/09 — **O BADGE SÓ É CHAMADO POR QUEM PODE VER O NÚMERO.**
+   *
+   * ⛔ **Medido no log do nginx:** **1.391 respostas 403 por dia** vinham daqui — a máquina do
+   * estoque, com o operador logado, pedindo `/api/dashboard/badges` a cada 60s. A rota exige
+   * `transaction.view` e o `OPERADOR_ESTOQUE` tem só `stock.view` + `stock.operate`. Somando os
+   * irmãos (`retiradas-pendentes`, também `transaction.view`), eram **17% de todo o tráfego**.
+   *
+   * ⚠️ Não causava tela travada (o hook faz `if (!res.ok) return` — best-effort, falha em
+   * silêncio), mas é ~1.400 requisições/dia queimadas e **ruído que escondia problema de
+   * verdade no log**: o R2 que nasceu hoje teria gritado isso o tempo todo.
+   *
+   * ⭐ **Enquanto as permissões carregam, NÃO se pergunta.** `permissoes === null` é *"ainda não
+   * sei"*, e chutar "pode" custaria uma 403 por carregamento de página. O badge é enfeite —
+   * aparecer 200ms depois não custa nada; cobrar uma porta fechada, sim.
+   */
+  const podeVerNumeroDeDinheiro = permissoes !== null && pode('transaction.view')
+  const empresaIdParaBadges = podeVerNumeroDeDinheiro ? empresaIdForBadges : null
+
+  const badges = useSidebarBadges(empresaIdParaBadges)
 
   // Sprint Fluxo-Unificado-Retirada (30/06/2026): contador da fila de
   // retiradas pendentes (badge no item Sócios). Fetch 1x por empresa
   // (endpoint tem cache 60s). Silencioso — badges são best-effort.
   const [retiradasPendentesCount, setRetiradasPendentesCount] = useState<number | null>(null)
   useEffect(() => {
-    if (!empresaIdForBadges) {
+    // ⭐ o MESMO gate do badge: esta rota também exige `transaction.view` (39 403/dia vinham daqui)
+    if (!empresaIdParaBadges) {
       setRetiradasPendentesCount(null)
       return
     }
     let cancelled = false
-    fetch(`/api/empresas/${empresaIdForBadges}/retiradas-pendentes`, {
+    fetch(`/api/empresas/${empresaIdParaBadges}/retiradas-pendentes`, {
       credentials: 'include',
     })
       .then((r) => (r.ok ? r.json() : null))
@@ -109,7 +138,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
     return () => {
       cancelled = true
     }
-  }, [empresaIdForBadges])
+  }, [empresaIdParaBadges])
   const apBadge = badges?.contasAPagar
     ? badges.contasAPagar.vencidas + badges.contasAPagar.vencendoEm3Dias
     : 0
@@ -153,7 +182,6 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
   // ⚠️ Já sabiam disso: o efeito acima zera `empresaIdForBadges` no PF pelo MESMO
   // motivo ("badges mostravam dados de empresa que o user nem está visualizando") —
   // corrigiram os badges e deixaram os 30 itens do menu. Uma variável, não 30 ifs.
-  const empresaAtiva = workspaceType === 'pf' ? null : currentEmpresaId
   const empresaQs = empresaAtiva ? `?empresaId=${empresaAtiva}` : ''
 
   // ⭐⭐ O MENU RESPEITA O PAPEL (30/08/2026). O endpoint `/api/empresas/[id]/me` existia
@@ -166,7 +194,6 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
   // ⭐⭐ ALLOWLIST (30/08): cada item declara a permissão que exige e o `SidebarItem`
   // some sozinho quando o papel não tem. Substitui a blocklist da 1ª tentativa, que
   // deixava passar tudo que eu não tinha lembrado de esconder.
-  const { permissoes, pode } = usePermissoes(empresaAtiva)
   const soEstoque = !pode('transaction.view') && pode('stock.view')
 
   return (

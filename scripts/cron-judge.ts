@@ -14,6 +14,7 @@ import { buildJudgeAlertEmail } from '../lib/loans/judge-alert-email'
 import { sendEmail } from '../lib/email/send'
 import { checkInfra } from '../lib/infra/health'
 import { checkDeploy, migrationsPendentes, avaliarDeploy } from '../lib/infra/deploy-health'
+import { checkRotas } from '../lib/infra/rotas-lentas'
 
 const prisma = new PrismaClient()
 const BASE = process.env.APP_BASE_URL ?? 'https://app.caixaos.com.br'
@@ -54,9 +55,27 @@ async function main() {
     for (const c of deployChecks) console.log(`[juiz ${stamp}]   ${c.invariante} (${c.nivel}): ${c.detalhe}`)
   }
 
+  /**
+   * ⭐⭐ ROTAS — R1/R2 (28/09). *"A lentidão passa a ficar GRAVADA e vigiada; nunca mais
+   * check-up às cegas."*
+   *
+   * ⚠️ **Fail-soft e HONESTO quando não há dado:** se o log ainda não tiver `rt=` (formato
+   * novo não aplicado, ou rotacionado hoje), ele diz **"sem dado"** em vez de calar — *silêncio
+   * lido como "está tudo bem" é a doença que este juiz existe pra não ter*.
+   */
+  const rotas = checkRotas()
+  if (rotas.linhasComTempo === 0) {
+    console.log(`[juiz ${stamp}] rotas: ⚠️ sem dado — o access.log não tem \`rt=\` (formato de tempo não aplicado ou log recém-rotacionado)`)
+  } else {
+    const top = rotas.topLentas.map((r) => `${r.rota} p95 ${r.p95.toFixed(2)}s (${r.chamadas}x)`).join(' · ')
+    console.log(`[juiz ${stamp}] rotas: ${rotas.linhasComTempo} requisições medidas${rotas.checks.length ? ` · ${rotas.checks.length} alerta(s)` : ''}`)
+    console.log(`[juiz ${stamp}]   top 5 por p95: ${top}`)
+    for (const c of rotas.checks) console.log(`[juiz ${stamp}]   ${c.invariante} (${c.nivel}): ${c.detalhe}`)
+  }
+
   console.log(`[juiz ${stamp}] ${rep.passed ? '✓ OK' : '✗ FALHA'} · ${rep.totalContracts - rep.totalFail}/${rep.totalContracts} contratos · balance ${rep.balanceIssues} · dup ${rep.dupIssues} · venda ${rep.vendaIssues} · cartão ${rep.cardIssues} · estoque ${stockRep.stockIssues} · ${rep.durationMs}ms`)
 
-  if (!rep.passed || !stockRep.passed || infraChecks.length > 0 || deployChecks.length > 0) {
+  if (!rep.passed || !stockRep.passed || infraChecks.length > 0 || deployChecks.length > 0 || rotas.checks.length > 0) {
     if (!ALERT_TO) {
       console.error(`[juiz ${stamp}] FALHA detectada mas JUDGE_ALERT_EMAIL não configurado — e-mail NÃO enviado`)
     } else {
@@ -73,7 +92,9 @@ async function main() {
         vendaChecks: rep.vendaChecks,
         cardChecks: rep.cardChecks,
         stockChecks: stockRep.fails,
-        infraChecks: [...infraChecks, ...deployChecks],
+        // ⭐ R1/R2 entram no MESMO bloco de infra do e-mail: o dono lê UM lugar sobre a
+        // máquina, não três. (O R2 é aviso — não deixa o selo vermelho sozinho.)
+        infraChecks: [...infraChecks, ...deployChecks, ...rotas.checks],
         juizUrl: `${BASE}/juiz`,
       })
       const r = await sendEmail({ to: ALERT_TO, subject, html, type: 'juiz-module-alert' })
