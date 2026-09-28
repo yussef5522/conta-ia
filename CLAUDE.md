@@ -1415,6 +1415,76 @@ AS FRASES MORTAS, no HTML servido:
 
 **10.959 verdes · TS 0 · deploy 4/4 (`h4DGvUzf7576pWfXPxQLS`) · Δ bundle +0 KB.**
 
+## 🩺 CHECK-UP DE SAÚDE (28/09/2026) — o mapa antes de otimizar, e o que ele refutou
+
+**O dono:** *"páginas às vezes demoram e ficam no «carregando». Quero o mapa ANTES de qualquer otimização."*
+
+**⭐ A MÁQUINA ESTÁ FOLGADA E NÃO PRECISA CRESCER** (nenhum número pede): disco **13%** (15 de 116 GB) · RAM **777 MB de 3.915** · load **0.00/0.03/0.12** em 2 vCPUs · pm2 **54 MB**, 0 restart instável, **0 OOM kill em 113 dias** · banco **68 MB** com cache hit **99,98%** (cabe inteiro na RAM) · 16 conexões de 100. ⚠️ Swap **105 MB** em uso — abaixo do alarme N1 (256), mas não é zero.
+
+**⭐⭐ O BANCO NÃO É O GARGALO — NEM PERTO.** `EXPLAIN ANALYZE` nas duas piores: o where dos 4 cards de Contas a Pagar em **1,2 ms** e o universo do Fluxo em **1,1 ms**, as duas por índice. As 27 colunas indexadas de `transactions` cobrem os where novos.
+
+### ⛔⛔⛔ O GARGALO É REDE E PROTOCOLO — e a conta fecha
+
+```
+o servidor responde a página em      40 ms   (medido de dentro)
+o navegador recebe o 1º byte em     563 ms   (medido de fora, como o dono)
+RTT Brasil → Nova York: 143 ms  ·  handshake TLS: 297 ms
+```
+Cada tela pede **22 recursos** (319 KB gzip) e só então hidrata e dispara as chamadas de API. **Estimativa: 2,5–3,5 s no desktop; 5–8 s no celular em 4G** — com o servidor respondendo em 40 ms.
+
+**⚠️⚠️ E A MINHA PRÓPRIA RECOMENDAÇÃO FOI REFUTADA PELA MEDIÇÃO.** Eu previ que o HTTP/2 seria *"o maior ganho pelo menor esforço"*. Aplicado e medido com os 22 recursos reais, `curl --parallel` forçando cada protocolo:
+```
+HTTP/1.1  1.181 ms (mediana de 5)
+HTTP/2    1.335 ms  ← ~11% PIOR
+```
+**A razão é conhecida e eu não pesei:** com poucas dezenas de recursos pequenos e RTT alto, as **6 conexões** do HTTP/1.1 dão **6 janelas de congestionamento crescendo em paralelo**; o HTTP/2 usa **uma** conexão e paga o TCP head-of-line. O h2 ganha quando o limite de 6 conexões morde — **não é o nosso caso hoje**. ⭐ *A promessa não se confirmou, e isso fica escrito em vez de enterrado.* **Ficou ligado** (prod íntegro, 200 em tudo) com o rollback anotado; reverter é uma linha.
+
+### ⛔⛔ E APARECERAM OUTLIERS DE ~40 SEGUNDOS — só em paralelo
+
+Dois em ~20 rodadas (**10%**), e **0 em 25 requisições sequenciais**. O servidor **não** tem rate limit, fail2ban nem falta de conexão (`worker_connections 768`, 30 estabelecidas). A assinatura bate com **retry de SYN perdido** (1+3+7+15 s ≈ 40 s) quando várias conexões abrem de uma vez. ⚠️ **Não consigo provar de onde vem** — pode ser a minha rede, o caminho, ou o NAT. *É exatamente o "às vezes" do sintoma*, e é por isso que o item 2 existe: agora fica gravado.
+
+### ⭐⭐ R1/R2 — A LENTIDÃO PASSA A FICAR GRAVADA E VIGIADA
+
+**⛔ O buraco que isto fecha:** o nginx usava o `combined` padrão, **sem `$request_time`** — *"as páginas às vezes demoram"* **não existia em lugar nenhum**, e o check-up teve que **simular** requisições. Agora: `log_format comtempo` (o combined INTEIRO + `rt=`/`urt=`, nada do que já era lido se perde) + **`lib/infra/rotas-lentas.ts`** no juiz das 3h — **R1 (erro)** rota com p95 > 2 s em 20+ chamadas · **R2 (aviso)** rota com >5% de 4xx em 50+.
+
+- ⛔ **linha sem `rt=` é IGNORADA, nunca contada como zero** — log antigo diluiria o p95 e daria **verde por diluição**.
+- ⛔ **a rota é NORMALIZADA** (`/empresas/<id>/…`), senão cada id vira uma "rota" e nenhum percentil junta chamadas que signifiquem algo.
+- ⚠️ **R2 é AVISO de propósito:** 4xx pode ser a trava de permissão **funcionando**; erro deixaria o e-mail vermelho por comportamento correto, e aí o dono para de ler (os 111 falsos de 26/08).
+- ⭐ **E é honesto sem dado:** `linhasComTempo: 0` faz o juiz dizer *"sem dado"* em vez de calar — *silêncio lido como saúde* é a doença que ele existe pra não ter.
+
+**⚠️⚠️ E OS TESTES CORRIGIRAM A MINHA ARITMÉTICA:** eu escrevi uma fixture com **1 outlier em 20** esperando que acendesse. Não acende, **com razão** — 1/20 é *exatamente* 5%, o limite do p95. **O guard pega "1 em cada 20 ou pior"**, e isso está escrito no arquivo em vez de eu prometer que ele vê tudo. *(Os travamentos medidos foram 2 em 20 = 10%, dentro do alcance.)*
+
+**⭐ PROVADO EM PROD na 1ª rodada**, contra o log real (682 requisições): top 5 por p95 impresso, e o **R2 acusou sozinho** *"/api/dashboard/badges: 67% das 57 chamadas voltaram 4xx"*.
+
+### ⛔ O BADGE LEVAVA 403 A CADA 60 s — 17% DE TODO O TRÁFEGO
+
+**Medido no log:** **1.391 respostas 403/dia** do `/api/dashboard/badges` + 39 do `retiradas-pendentes`, de **um IP só** — a máquina do estoque, com o `OPERADOR_ESTOQUE` logado (ele tem `stock.*`, a rota exige `transaction.view`). ⭐ **Não travava tela** (o hook faz `if (!res.ok) return`, best-effort), mas eram ~1.430 requisições/dia queimadas **e ruído que esconderia problema de verdade** — o R2 gritaria isso todo dia.
+
+⭐ Agora o badge só é chamado por quem tem a permissão. ⛔ **"Ainda não sei" (permissões carregando) NÃO vira "pode"**: chutar custaria 1 403 por carregamento de página — *badge é enfeite, aparecer 200 ms depois não custa nada; cobrar porta fechada, sim*. ⚠️ `usePermissoes` subiu ~90 linhas (hook só lê o que já foi declarado), os dois seguem no topo do componente — **REGRA 9** travada em teste.
+
+⚠️ **A cadência revelou outra coisa:** 4-5 403 por minuto = **~4-5 abas do app abertas** naquela máquina, cada uma com o seu polling.
+
+**REGRA 11 — 5 becos repostos, todos vermelhos.** ⚠️ 1 guard de 30/06 reapontado (ancorava no **nome da variável**, que mudou — *grep não distingue "renomeei" de "quebrei"*) e ficou **mais forte**: passou a exigir o gate.
+
+**11.022 verdes · TS 0 · deploy 4/4 (`VSg-wTKOB5LF4_OKQZkjX`) · Δ bundle +0 KB.**
+
+### 📋 REGISTRADO, NÃO CONSTRUÍDO (ordem do dono)
+
+- **FLUXO DE CAIXA — sprint seguinte.** A rota leva **760 ms** e a causa está medida: ela carrega **7.239 linhas / 2.994 KB de seis meses** pra desenhar um gráfico de **6 barras** (12 números). A query sozinha são **878 ms**; agrupar e montar a série custam **46 ms**. ⚠️ Não é um `groupBy` cru: o `serieMensal` aplica a régua do `entradaInformativa` (liberação de empréstimo **não** é entrada), que depende do vínculo — então é agregado **+** uma consulta pequena pras informativas.
+- **MIGRAÇÃO DE SERVIDOR — NÃO fazer, NÃO planejar.** Fica só registrado que existe: o servidor está em **nyc1** e o RTT de **143 ms** cairia pra ~10-20 ms em São Paulo, valendo em *toda* requisição. **Só se a lentidão continuar depois dos itens 1-4**, e só com o dono pedindo.
+- **`pg_stat_statements`** está *disponível* e **não instalado** — exigiria `shared_preload_libraries` + **restart do Postgres**. Não feito, e pelo que foi medido não mudaria o veredito (o banco responde em 1 ms).
+- **Achado do R1 na 1ª rodada, abaixo do mínimo de amostra:** `/api/empresas/<id>/estoque/recebimentos/<id>/confirmar` com **p95 4,84 s** em 2 chamadas — é o confirmar de conferência de nota (cria itens, movimentos e evento SEFAZ numa transação). Não acendeu (2 < 20 chamadas), e **está certo que não tenha acendido**; fica de olho.
+
+**ROLLBACKS ANOTADOS (as duas mudanças de servidor deste dia):**
+```
+HTTP/2:     cp /etc/nginx/sites-available/caixaos.conf.bak.pre-http2-20260928-143527 \
+               /etc/nginx/sites-available/caixaos.conf && nginx -t && systemctl reload nginx
+            (a linha antiga, 4×:  listen 443 ssl;)
+$request_time: cp /etc/nginx/nginx.conf.bak.pre-request-time-20260928-145024 \
+               /etc/nginx/nginx.conf && nginx -t && systemctl reload nginx
+            (a linha antiga:  access_log /var/log/nginx/access.log;)
+```
+
 ### ⛔⛔⛔ UMA RÉGUA, TODOS OS ANDARES — O GESTO TERMINA O SERVIÇO (27/09)
 
 **O dono:** *"Concilio pelo gesto 🏦/💳/📈 e a transação fica «Sem categoria · Pendente» na tela de Transações — mas o Fluxo já mostra ela como «Parcela de empréstimo» lendo o vínculo. **Dois andares lendo réguas diferentes: um sabe, o outro cobra.**"*
