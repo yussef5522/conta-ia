@@ -1432,25 +1432,36 @@ RTT Brasil → Nova York: 143 ms  ·  handshake TLS: 297 ms
 ```
 Cada tela pede **22 recursos** (319 KB gzip) e só então hidrata e dispara as chamadas de API. **Estimativa: 2,5–3,5 s no desktop; 5–8 s no celular em 4G** — com o servidor respondendo em 40 ms.
 
-**⚠️⚠️ E A MINHA PRÓPRIA RECOMENDAÇÃO FOI REFUTADA PELA MEDIÇÃO.** Eu previ que o HTTP/2 seria *"o maior ganho pelo menor esforço"*. Aplicado e medido com os 22 recursos reais, `curl --parallel` **forçando** cada protocolo:
-```
-HTTP/1.1  1.181 ms (mediana de 5)
-HTTP/2    1.335 ms  ← ~11% PIOR
-```
-**A razão:** com poucas dezenas de recursos pequenos e RTT alto, as **6 conexões** do HTTP/1.1 dão **6 janelas de congestionamento crescendo em paralelo**; o HTTP/2 usa **uma** conexão e paga o TCP head-of-line. **REVERTIDO por ordem do dono** (*"medição mandou"*), com o rollback anotado executado — `curl -I` voltou a **HTTP/1.1 200**, o h2 deixou de ser negociado nem forçando, e o `$request_time` **sobreviveu** (ele vive no `nginx.conf`, arquivo diferente do que o rollback restaurou).
+### ⭐⭐⭐ HTTP/2 — LIGADO, e o caminho até o número certo é a lição
 
-### ⚠️⚠️ E A RE-MEDIÇÃO DO ROLLBACK ACHOU UM VIÉS NO MEU MÉTODO — registrado, não enterrado
+**Ele passou por três veredictos no mesmo dia, e os dois primeiros eram MEUS ERROS DE MÉTODO.**
 
-O dono pediu pra confirmar que voltou ao ~1.181 ms. **Voltou** — mas só quando eu forço o protocolo:
+**1ª medição (errada) — forçando o protocolo nos dois lados:**
 ```
---http1.1 FORÇADO     1.193 ms   ← bate com o baseline de 1.181 ✓
+curl --http1.1  1.181 ms      curl --http2  1.335 ms   ← "h2 é 11% PIOR"
+```
+Com base nisso o dono mandou reverter, e eu revertei.
+
+**⚠️⚠️ A RE-MEDIÇÃO DO ROLLBACK DENUNCIOU O VIÉS.** Pedido pra confirmar que voltara ao baseline, o número só batia **forçando**:
+```
+--http1.1 FORÇADO     1.193 ms   ← bate com o baseline ✓
 negociação NATURAL    1.480 ms   ← +287 ms, MESMO servidor, MESMO protocolo
 ```
-**287 ms ≈ um handshake TLS** (297 ms), e o `-v` mostra a causa: `ALPN: curl offers h2,http/1.1` → `server accepted http/1.1`. **O cliente espera a 1ª conexão negociar pra saber se precisa abrir as outras 5** — se fosse h2, uma bastaria. ⚠️ **E o navegador faz exatamente isso.**
+**287 ms ≈ um handshake TLS**, e o `-v` mostra a causa: `ALPN: curl offers h2,http/1.1` → `server accepted http/1.1`. ⭐ **O cliente espera a 1ª conexão negociar pra saber se precisa abrir as outras 5** — se fosse h2, uma bastaria. **E o navegador faz exatamente isso.** Ou seja: *forçar o protocolo mede um cenário que o navegador nunca vive* — e foi assim que eu recomendei e desrecomendei a mesma coisa.
 
-⛔ **A consequência é sobre mim:** a comparação que me fez recomendar e depois desrecomendar o h2 **forçava o protocolo nos dois lados** — ou seja, mediu um cenário que **o navegador não vive**. O teste que nunca foi feito é **natural × natural**, e ele é o único que responde a pergunta de verdade. ⭐ O bundle não explica nada (cresceu 319 → 358 KB entre as medições e custou **12 ms**); a rede estava idêntica (RTT 140 vs 143 ms, HTML 563 vs 563 ms).
+**2ª medição (a certa) — natural × natural, com CONTROLE DE DRIFT (A-B-A'):**
+```
+A   h2 DESLIGADO  1.493 ms  (negociou 1.1)
+B   h2 LIGADO     1.346 ms  (negociou h2)
+A'  h2 DESLIGADO  1.480 ms  ← a rede NÃO driftou: a comparação é sólida
+                  ─────────────────────────
+⭐ h2 GANHA ~140 ms (9,4%)  →  FICA LIGADO
+```
+⭐ **O A' é o que torna o número defensável.** Sem ele, 1.493 × 1.346 poderia ser só a rede mudando entre duas medições — e foi falta desse rigor que produziu os dois veredictos errados antes.
 
-⚠️ **NÃO religuei pra testar** — o dono mandou reverter, e reverter foi o que eu fiz. O teste de 2 minutos (ligar, medir natural × natural, decidir) fica **oferecido**, não executado.
+⚠️ **Por que o h2 ganha aqui, ao contrário do que a 1ª medição dizia:** ele não economiza no *transporte* (com 22 recursos pequenos, as 6 janelas TCP do 1.1 competem bem) — economiza os **5 handshakes TLS** que o 1.1 precisa abrir depois de descobrir que não tem multiplexação. **O ganho está na negociação, não na transferência**, e só aparece quando se mede como o navegador vive.
+
+**Estado final provado:** `curl -I` → **HTTP/2 200** · `/login` 200 · `/` 200 · ⭐ e o **`$request_time` intacto** (`rt=0.015 urt=0.015` na última linha) — os R1/R2 seguem com o que medir.
 
 ### ⛔⛔ E APARECERAM OUTLIERS DE ~40 SEGUNDOS — só em paralelo
 
