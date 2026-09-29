@@ -1415,6 +1415,52 @@ AS FRASES MORTAS, no HTML servido:
 
 **10.959 verdes · TS 0 · deploy 4/4 (`h4DGvUzf7576pWfXPxQLS`) · Δ bundle +0 KB.**
 
+## ⛔⛔⛔ A DOSE EM DÉCIMO DE GRAMA — 3 CASAS PROIBIAM A VERDADE (29/09/2026)
+
+**O dono, com o caso na mão:** *"a dose verdadeira do fermento é **0,0003 KG** (0,3 g por metade; 5 g fazem 17 metades, fermento seco instantâneo). O campo SÓ ACEITA 3 casas — não dá pra digitar. Pra item em KG/LT com dose em décimos de grama, o campo proíbe a verdade — e a ficha fica gorda 10×. **Foi isso que derreteu o fermento virtual.**"*
+
+⭐ **E o teto de 3 casas era uma SUPOSIÇÃO MINHA sobre a cozinha** — o comentário de 28/08 dizia *"grama é o menor que a cozinha usa"*. Fermento seco, essência e tempero concentrado se dosam em **décimos de grama**, e o campo cortando em `0,000` empurrava a ficha pro valor 10× maior: exatamente o número que fez o mapa de 28/09 ler *"a ficha pede 3 g"*.
+
+### ⭐⭐ ERAM QUATRO CORTES, NÃO UM — e o guard percorre o caminho inteiro
+
+| # | onde | o que cortava |
+|---|---|---|
+| 1 | `sanitizarQtd` | 3ª casa (`0,0003` → `"0,000"`) |
+| 2 | `stepDaUnidade` | `0.001` — e `<input type=number>` **recusa sozinho, sem erro, sem log** |
+| 3 | motor da **SEPARAÇÃO** | `round4` no planejado · `round2` no separado |
+| 4 | motor da **BAIXA DE VENDA** | `round2` na explosão → dose pequena virava **0,00**, e movimento com quantidade zero **o ledger RECUSA**: a venda simplesmente não baixava aquele componente |
+| + | **17 telas** | `maximumFractionDigits: 3` — o **defeito gêmeo**: o campo proibia digitar a verdade *e* a tela não saberia mostrá-la (`0,0003` aparecia como **"0"**) |
+
+**`MAX_CASAS` 3 → 6 (1 mg / 1 µl).** ⛔ O teto continua existindo de propósito: sem ele um dedo escorregando num zero grava `0,00000001` e o custo por unidade vira ruído de ponto flutuante.
+
+⚠️ **MEDIDO ANTES DE MEXER (as duas perguntas do dono):** `qtdPlanejada`, `quantidade` do ledger e `qtdSeparada` são **`Float`** (double precision, 15 dígitos) — **sem `@db.Decimal` em lugar nenhum do módulo**; e o zod das duas rotas de ficha é `z.number().positive()`, **sem `.int()` nem `multipleOf`**. **O servidor e a coluna SEMPRE aceitaram** — o que proibia era a digitação e o arredondamento cedo.
+
+### ⭐⭐ `formatarQtd` — O DONO ÚNICO DA EXIBIÇÃO
+
+*"A tela mostra na unidade natural: dose < 1 g exibe «0,3 g», não «0,0003 KG» — o padeiro lê grama."* Aplicado nas **4 telas onde a dose aparece** (separação · cardápio · ficha do item · extrato de movimentos). ⛔ **A GRAVAÇÃO SEGUE EM KG** — guardar grama seria criar uma segunda unidade pro mesmo item, o oposto da reunitização. ⭐ E é **UMA** função porque a mesma dose aparece em quatro lugares: quatro formatações divergiriam na primeira casa, e o dono veria `0,3 g` num lugar e `0` noutro. `descreverQtd` delega — **uma conversão KG→g no projeto, não duas**.
+
+⚠️ A precisão da unidade menor é **`MAX_CASAS − 3` por construção** (1.000× menor = 3 casas menos = 1 µg), mais fina que o piso de 1 mg que o campo aceita — então o grama nunca perde dose válida.
+
+⭐ **E o extrato passou a DERIVAR o tipo de `MovimentoLinha`**: era a dívida de 01/09 (*"interface escrita à mão sobre payload é promessa, não prova"*) que deixou o `itemUnidade` novo **invisível pro `tsc`** — o campo existia no payload e a tela não podia usá-lo.
+
+### ⚠️⚠️ REGRA 11 REPROVOU DOIS DOS MEUS GUARDS — e os dois pelo mesmo motivo
+
+Repondo o `round4` no motor e o teto de 3 casas na exibição, **os 30 testes ficaram VERDES**: `0,0003` e `0,0801` **cabem em 4 casas**, e `"0,3 g"` cabe em 3. **Eu tinha escolhido casos que o defeito ainda segurava.** O que separa é:
+- **o PISO que o campo passou a aceitar** — `1 mg`, que o `round4` **zera** (e planejado zero faz a tela pré-preencher a separação com ZERO: a pessoa confirma sem o componente, e o insumo sai do lote sem sair do estoque);
+- **o valor exibido na PRÓPRIA unidade** (`1,000001 KG` → com 3 casas, `"1 KG"`).
+
+Apertados, os quatro defeitos mordem: **12 · 1 · 1 · 1 vermelhos**.
+
+⚠️ **E uma asserção minha caiu no caminho:** eu afirmei `0,0000005 KG → "0,0005 g"` — **está abaixo do piso do campo** (0,5 µg contra 1 mg), ou seja asserção sobre um valor que a digitação nunca produz. *Teste sobre valor inalcançável é teste que não prova nada.*
+
+⚠️ **2 testes invertidos com o motivo escrito** (o `step` de `0.001` e o *"não passa de 3 casas: a balança dá GRAMA"*). **A metade certa dos dois continua mordendo:** *existe um passo, e ele não é 1* · *existe um teto*.
+
+⚠️ **E a minha sonda da REGRA 11 deu falso verde três vezes** antes de medir: `grep -cE "^\s+×"` não casava a linha do vitest (ANSI + formato), e função em `$( )` com `npx` perdia a saída. **Só a rodada gravada em ARQUIVO e lida depois deu número confiável** — a cicatriz do `$G` sem aspas de 23/09, com outra roupa.
+
+**11.040 verdes · TS 0.**
+
+📋 **FICA PRO DONO:** ajustar a ficha do fermento pro valor real (**0,0003 KG**, que a tela vai mostrar como *0,3 g*) e contar o fermento — lembrando que o **saldo −2,97 KG é falta de ENTRADA** (nenhuma nota desde 16/09), não excesso de saída.
+
 ## ⭐⭐⭐ AS 4 DECISÕES DO MAPA (28-29/09/2026) — e a varredura do mapa estava ERRADA
 
 ### ⭐⭐ 1. A TELA DE RECEITAS: 4.909 ms → 97 ms · 1.786 consultas → 11
