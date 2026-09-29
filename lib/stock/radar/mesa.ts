@@ -76,6 +76,20 @@ export interface LinhaDaMesa {
   varianciaValor: number | null
   /** |variância| sobre o que rotacionou — `null` quando não rotacionou nada */
   pct: number | null
+  /**
+   * ⭐⭐ O QUE A LINHA **NÃO CONSEGUE EXPLICAR** (29/09/2026, achado na prova em prod).
+   *
+   * ⛔ A mesa fecha na horizontal (`início + entrou + produzido + vendeu + perdeu +
+   * separado == teórico`) — **menos quando o motor já sabe que não fecha**: movimento com
+   * data fora de ordem, ajuste avulso no meio. Medido em prod na «porçao queijo 135
+   * grama»: as colunas somam 937 e o teórico é 934.
+   *
+   * ⚠️ Sem este campo a tabela mostraria os dois números e **nada explicando os 3** — o
+   * dono faria a conta no dedo e acharia um furo que não é furo. A conta de padeiro já
+   * dizia isso ao abrir; agora a LINHA admite sozinha. *Número que não soma é como a
+   * confiança na tela se perde.*
+   */
+  naoExplicado: number
   veredito: LinhaDoRadar['veredito']
   custoMedio: number | null
   /** ⚠️ a conta de padeiro vem inteira: a mesa NÃO a remonta (é o mesmo componente) */
@@ -122,6 +136,7 @@ export function linhaDaMesa(l: LinhaDoRadar): LinhaDaMesa {
     // ⛔ a variância É a do motor, sem recálculo — é isto que faz Σ(mesa) == Σ(Radar)
     variancia: l.faltou,
     varianciaValor: l.faltouValor,
+    naoExplicado: c?.naoExplicado ?? 0,
     pct: l.faltou != null && rotacao > EPS ? round3(Math.abs(l.faltou) / rotacao) : null,
     veredito: l.veredito,
     custoMedio: l.custoMedio,

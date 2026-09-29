@@ -133,6 +133,22 @@ describe('⭐ as colunas e o que cada uma diz', () => {
     expect(l.vendeu).toBe(-5) // ⭐ o sinal é o do ledger — é ele que faz a conta fechar
   })
 
+  it('⛔⛔ a linha que NÃO fecha carrega o "sem explicação" — não deixa o dono somar no dedo', async () => {
+    /**
+     * ⚠️ Achado na PROVA EM PROD: a «porçao queijo 135 grama» tinha as colunas somando 937
+     * e o teórico 934. O motor já sabia (`naoExplicado`), mas a MESA não carregava o campo
+     * — a tabela mostraria os dois números e nada explicando os 3.
+     */
+    await contar(coca, '2026-09-16', 88, 86, 3)
+    // um ajuste avulso no meio da janela: o motor EXCLUI AJUSTE dos baldes, então a conta
+    // horizontal não fecha — e é exatamente o estado que o campo existe pra nomear
+    const radar = await rodarRadar()
+    const l = linhaDaMesa(radar.revenda[0])
+    const horizontal = (l.inicio ?? 0) + l.entrou + l.produziu + l.vendeu + l.perdeu + l.separado
+    expect(Math.round((horizontal + l.naoExplicado) * 1000) / 1000,
+      'início + baldes + naoExplicado tem que dar o teórico, sempre').toBe(l.teorico)
+  })
+
   it('⛔⛔ REAL sem contagem é null — NUNCA número inventado', async () => {
     const radar = await rodarRadar() // ninguém contou
     for (const l of montarMesa(radar).flatMap((s) => s.linhas)) {

@@ -369,7 +369,20 @@ function Secao({ s, cols, mostra, empresaId, aberta, aoAbrir }: {
                 {mostra('produziu') && <td className="px-3 py-0 text-right"><Qtd v={l.produziu || l.separado} un={l.unidade} /></td>}
                 {mostra('vendeu') && <td className="px-3 py-0 text-right"><Qtd v={l.vendeu} un={l.unidade} /></td>}
                 {mostra('perdeu') && <td className="px-3 py-0 text-right"><Qtd v={l.perdeu} un={l.unidade} /></td>}
-                {mostra('teorico') && <td className="px-3 py-0 text-right"><Qtd v={l.teorico} un={l.unidade} forte /></td>}
+                {mostra('teorico') && (
+                  <td className="px-3 py-0 text-right">
+                    <Qtd v={l.teorico} un={l.unidade} forte />
+                    {/* ⛔ a linha que NÃO fecha DIZ — nunca deixa o dono somar no dedo e achar
+                        um furo que não é furo (achado na prova em prod: 937 × 934) */}
+                    {l.naoExplicado !== 0 && (
+                      <span className="ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                        title="esta janela tem movimento que a conta não explica (lançamento com data fora de ordem, ou ajuste avulso no meio) — toque a linha pra ver"
+                        style={{ background: RADAR.ambarBg, color: RADAR.ambar }}>
+                        {l.naoExplicado > 0 ? '+' : '−'}{formatarQtd(Math.abs(l.naoExplicado), l.unidade)} s/ explicação
+                      </span>
+                    )}
+                  </td>
+                )}
                 {mostra('real') && (
                   <td className="px-3 py-0 text-right">
                     {/* ⛔ sem contagem NUNCA vira número — "falta contar" é estado próprio */}
@@ -419,6 +432,7 @@ function Secao({ s, cols, mostra, empresaId, aberta, aoAbrir }: {
                 {mostra('vendeu') && l.vendeu !== 0 && <span>vendeu <b style={{ color: RADAR.ink }}>{formatarQtd(l.vendeu, l.unidade)}</b></span>}
                 {mostra('perdeu') && l.perdeu !== 0 && <span>perdeu <b style={{ color: RADAR.ink }}>{formatarQtd(l.perdeu, l.unidade)}</b></span>}
                 {mostra('teorico') && <span>teórico <b style={{ color: RADAR.ink }}>{formatarQtd(l.teorico, l.unidade)}</b></span>}
+                {l.naoExplicado !== 0 && <span style={{ color: RADAR.ambar }}>⚠️ {formatarQtd(Math.abs(l.naoExplicado), l.unidade)} sem explicação</span>}
                 {mostra('real') && <span>real <b style={{ color: l.real == null ? RADAR.mudo : RADAR.ink }}>{l.real == null ? 'falta contar' : formatarQtd(l.real, l.unidade)}</b></span>}
                 {mostra('valor') && l.varianciaValor != null && <span>R$ <b style={{ color: l.varianciaValor < 0 ? RADAR.coral : RADAR.verde }}>{brl(Math.abs(l.varianciaValor))}</b></span>}
               </div>
