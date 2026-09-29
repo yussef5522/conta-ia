@@ -38,7 +38,11 @@ describe('⭐ a régua vem da UNIDADE, não de um toggle', () => {
   })
 
   it('⛔⛔ o `step` que faltava: sem ele o HTML assume 1 e o navegador recusa 0,6', () => {
-    expect(stepDaUnidade('KG')).toBe('0.001')
+    // ⚠️ INVERTIDO EM 29/09/2026, com o motivo escrito: o step era `0.001` e o dono provou
+    // que 3 casas PROÍBEM A VERDADE — a dose real do fermento é 0,0003 KG (0,3 g por
+    // metade). O passo virou 1 mg. A metade CERTA deste teste — *existe um passo, e ele
+    // não é 1* — é o que continua mordendo.
+    expect(stepDaUnidade('KG')).toBe('0.000001')
     expect(stepDaUnidade('UN')).toBe('1')
   })
 })
@@ -64,8 +68,22 @@ describe('⭐ o caso que motivou: 0,600 KG', () => {
     expect(sanitizarQtd('0,600', 'KG')).toBe('0,600')
   })
 
-  it('não passa de 3 casas: a balança dá GRAMA', () => {
-    expect(sanitizarQtd('0,6001', 'KG')).toBe('0,600')
+  it('⛔⛔ existe TETO, e ele passou de 3 pra 6 casas (1 mg) — 29/09/2026', () => {
+    /**
+     * ⚠️ INVERTIDO com o motivo escrito. O teto era 3 casas, justificado como *"grama é o
+     * menor que a cozinha usa"* — **suposição minha sobre a cozinha**, e o dono a refutou
+     * com o caso real: fermento seco a **0,3 g por metade** de bolinha (0,0003 KG). Com 3
+     * casas o campo cortava em 0,000 e empurrava a ficha pro valor **10× maior**, que foi
+     * exatamente o número que derreteu o fermento virtual.
+     *
+     * ⭐ A metade que NÃO mudou é a que importa: **o teto existe**. Sem ele um dedo
+     * escorregando num zero grava 0,00000001 e o custo por unidade vira ruído de ponto
+     * flutuante.
+     */
+    expect(sanitizarQtd('0,0003', 'KG')).toBe('0,0003')   // ⭐ a dose real do fermento
+    expect(sanitizarQtd('0,000001', 'KG')).toBe('0,000001') // 1 mg, o piso honesto
+    expect(sanitizarQtd('0,0000001', 'KG')).toBe('0,000000') // o teto morde na 7ª casa
+    expect(digitar('0,0003', 'KG')).toBe(0.0003)
   })
 
   it('e a confirmação visual evita o erro de UM ZERO', () => {

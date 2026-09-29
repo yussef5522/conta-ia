@@ -15,7 +15,7 @@ import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface Rel { de: string; ate: string; totalValor: number; totalItens: number; porMotivo: { motivo: string; label: string; tipo: string; quantidade: number; valor: number; n: number }[]; porItem: { itemId: string; nome: string; quantidade: number; valor: number; n: number }[] }
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 
 export default function PerdasPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)

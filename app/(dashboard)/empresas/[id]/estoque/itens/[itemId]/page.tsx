@@ -7,6 +7,7 @@
 
 import { useEffect, useState, use, useMemo, Fragment } from 'react'
 import type { FichaItem } from '@/lib/stock/ficha-item'
+import { formatarQtd } from '@/lib/stock/quantidade'
 import { Card, CardContent } from '@/components/ui/card'
 import { Package, Loader2, ArrowLeft, TrendingUp, ChevronDown, Ruler, ExternalLink, History, AlertTriangle, PackagePlus } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
@@ -27,7 +28,7 @@ type Ficha = FichaItem
 
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 const fmtDia = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—')
 
 /**
@@ -253,7 +254,7 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                           <td className="px-3 py-1 text-[12px] text-slate-500">{d.chip}</td>
                           <td className="px-3 py-1 text-[12px] text-slate-500">{d.detalhe}</td>
                           <td className="px-3 py-1 text-[12px] text-slate-500">{d.quem ?? '—'}</td>
-                          <td className="px-3 py-1 text-right text-[12px] tabular-nums text-slate-500">{d.quantidade > 0 ? '+' : ''}{num(d.quantidade)} {ficha.item.unidadeControle}</td>
+                          <td className="px-3 py-1 text-right text-[12px] tabular-nums text-slate-500">{d.quantidade > 0 ? '+' : ''}{formatarQtd(d.quantidade, ficha.item.unidadeControle)}</td>
                           <td className="hidden px-3 py-1 text-right text-[12px] tabular-nums text-slate-400 sm:table-cell">{brl(d.custoUnitario)}</td>
                           <td className="px-3 py-1 text-right text-[12px] tabular-nums text-slate-500">{brl(d.custoTotal)}</td>
                           {/* ⛔ o par não mexeu no saldo — a célula fica vazia de propósito */}
@@ -295,7 +296,7 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                     </td>
                     <td className="px-3 py-0 text-[13px] text-slate-600">{l.quem ?? <span className="text-slate-300">—</span>}</td>
                     <td className={`px-3 py-0 text-right text-[13px] tabular-nums ${l.quantidade < 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-                      {l.quantidade > 0 ? '+' : ''}{num(l.quantidade)} {ficha.item.unidadeControle}
+                      {l.quantidade > 0 ? '+' : ''}{formatarQtd(l.quantidade, ficha.item.unidadeControle)}
                     </td>
                     <td className="hidden px-3 py-0 text-right text-[12px] tabular-nums text-slate-400 sm:table-cell">
                       {brl(l.custoUnitario)}

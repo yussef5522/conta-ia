@@ -17,6 +17,20 @@ type Db = PrismaClient | Prisma.TransactionClient
 export class OrdemError extends Error {}
 
 const round4 = (n: number) => Math.round((n + 1e-9) * 10000) / 10000
+/**
+ * ⭐⭐ 6 CASAS NA QUANTIDADE (29/09/2026) — o mesmo teto da digitação (`MAX_CASAS`).
+ *
+ * ⛔ **Aqui havia `round4` no planejado e `round2` no separado, e os dois cortavam dose
+ * pequena ANTES de a tela poder escolher como mostrar.** Com a dose real do fermento
+ * (0,0003 KG), `round4` a escala 1 devolvia **0,0003** — mas a 1 mg (0,000001) devolvia
+ * **ZERO**, e `round2` no separado transformava 0,008 KG em 0,01. É a mesma lição de 01/09,
+ * quando o `round2` do `porLote` fazia a porção de 0,135 virar 0,14: *"em 1 porção é nada;
+ * em 370 porções é 1,85 kg de diferença"*.
+ *
+ * ⚠️ O arredondamento continua existindo pra matar lixo de ponto flutuante
+ * (`0.30000000000000004`); o que muda é o degrau — 1 mg em vez de 100 mg.
+ */
+const round6 = (n: number) => Math.round((n + 1e-9) * 1_000_000) / 1_000_000
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
 export const TIPO_SEPARACAO = 'SEPARACAO_SAIDA'
@@ -90,7 +104,7 @@ export async function separadoPorItem(companyId: string, ordemId: string, db: Db
   for (const mv of movs) {
     const abs = Math.abs(mv.quantidade)
     const delta = mv.tipo === TIPO_SEPARACAO ? abs : -abs // separou entra; devolveu/consumiu sai
-    m.set(mv.itemId, round2((m.get(mv.itemId) ?? 0) + delta))
+    m.set(mv.itemId, round6((m.get(mv.itemId) ?? 0) + delta))
   }
   return m
 }
@@ -124,8 +138,8 @@ export async function explodirSeparacao(companyId: string, ordemId: string, db: 
       // pessoa digitou (`qtdSeparada`), nunca este planejado. Quem formata é a tela, com a
       // precisão da ficha.
       porLote: c.qtdPlanejada,
-      qtdPlanejada: round4(c.qtdPlanejada * ordem.escalaReceitas),
-      qtdSeparada: round2(separado.get(c.itemId) ?? 0),
+      qtdPlanejada: round6(c.qtdPlanejada * ordem.escalaReceitas),
+      qtdSeparada: round6(separado.get(c.itemId) ?? 0),
       saldoDisponivel: saldo.saldo,
       custoMedio: custoMap.get(c.itemId) ?? null,
       fichaIdComponente: fichaDoItem.get(c.itemId) ?? null,

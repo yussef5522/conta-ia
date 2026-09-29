@@ -28,7 +28,7 @@ interface Situacao {
 interface Item { id: string; nome: string; unidadeControle: string; categoria: string; categoriaLabel: string; produzido: boolean; ativo: boolean; saldo: number; custoMedio: number | null; estoqueMin: number | null; estoqueMax: number | null; criadoVia: string; ehReceita: boolean; baixaEm: { itemId: string; nome: string } | null; componentes: number; fichaId: string | null }
 const CATS = [{ v: 'MATERIA_PRIMA', l: 'Matéria-prima' }, { v: 'REVENDA', l: 'Revenda' }, { v: 'EMBALAGEM', l: 'Embalagem' }, { v: 'LIMPEZA', l: 'Limpeza' }, { v: 'USO_INTERNO', l: 'Uso interno' }]
 const brl = (n: number | null) => (n == null ? 'a definir' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
-const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 type Campo = 'nome' | 'categoria' | 'saldo' | 'custo' | 'minmax'
 const parseNum = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return s.trim() === '' || !Number.isFinite(n) ? null : n }
 

@@ -1,5 +1,8 @@
 'use client'
 
+import { formatarQtd } from '@/lib/stock/quantidade'
+import type { MovimentoLinha } from '@/lib/stock/movimentos'
+
 // ESTOQUE FASE 1 item 2 — MOVIMENTAÇÃO (o extrato do estoque). Filtros item/tipo/período,
 // referência clicável (nota/conferência), estorno destacado, quem lançou, export CSV.
 // Mesma família visual do resto. Mobile em cards.
@@ -10,20 +13,21 @@ import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { ArrowLeftRight, Loader2, Download, FileText } from 'lucide-react'
 
-interface Mov {
-  id: string; data: string; tipo: string; estorno: boolean; itemNome: string; itemEncerrado?: string | null
-  quantidade: number; custoUnitario: number; custoTotal: number
-  referencia: { tipo: 'nota' | 'conferencia' | null; label: string; nfeId: string | null }; quem: string
-  /** ⭐ par lançamento+estorno que se anula, colapsado (null = linha normal) */
-  anulado: { frase: string } | null
-  /** ⭐ quanto o ITEM tinha depois desta linha (null = o recorte não permite afirmar) */
-  saldoApos: number | null
-}
+/**
+ * ⭐⭐ A FORMA VEM DO SERVIDOR (29/09/2026) — `MovimentoLinha` é o dono do contrato.
+ *
+ * ⛔ Aqui havia a interface reescrita À MÃO, e ela é a dívida que este doc registra desde
+ * 01/09: *"interface escrita à mão sobre payload é promessa, não prova"*. Foi ela que
+ * deixou o `itemUnidade` novo invisível pro `tsc` — o campo existia no payload e a tela
+ * não podia usá-lo. Derivando, campo novo aparece de graça e campo renomeado **não
+ * compila**, em vez de virar um widget vazio em silêncio.
+ */
+type Mov = MovimentoLinha & { itemEncerrado?: string | null }
 interface ItemOpt { id: string; nome: string }
 type Campo = 'data' | 'tipo' | 'item' | 'qtd' | 'total'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 const fmtDia = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
 const TIPO_LABEL: Record<string, string> = { ENTRADA_NF: 'Entrada (nota)', ESTORNO: 'Estorno', ENTRADA_MANUAL: 'Entrada manual', PRODUCAO_CONSUMO: 'Consumo produção', PRODUCAO_GERACAO: 'Geração produção', BAIXA_VENDA: 'Baixa venda', AJUSTE_CONTAGEM: 'Ajuste contagem', PERDA: 'Perda', USO_INTERNO: 'Uso interno' }
 const tipoBadge = (t: string) => (t === 'ESTORNO' ? 'bg-rose-50 text-rose-700' : t === 'ENTRADA_NF' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600')
@@ -130,7 +134,7 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
                         </span>
                       )}
                     </td>
-                    <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${m.quantidade < 0 ? 'text-rose-600' : 'text-slate-700'}`}>{num(m.quantidade)}</td>
+                    <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${m.quantidade < 0 ? 'text-rose-600' : 'text-slate-700'}`}>{formatarQtd(m.quantidade, m.itemUnidade)}</td>
                     <td className="hidden px-3 py-0 text-[12px] text-right tabular-nums text-slate-400 sm:table-cell">{brl(m.custoUnitario)}</td>
                     <td className={`px-3 py-0 text-[13px] text-right font-medium tabular-nums ${m.custoTotal < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{brl(m.custoTotal)}</td>
                     <td className="px-3 py-0 text-[13px]">{m.referencia.nfeId ? <a href={`/empresas/${id}/estoque/recebimentos/${m.referencia.nfeId}`} className="inline-flex items-center gap-1 text-[#185FA5] hover:underline"><FileText className="h-3.5 w-3.5" />{m.referencia.label}</a> : <span className="text-slate-500">{m.referencia.label}</span>}</td>
@@ -158,7 +162,7 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
                   </div>
                   <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tipoBadge(m.tipo)}`}>{TIPO_LABEL[m.tipo] ?? m.tipo}</span>
-                    <span>{num(m.quantidade)}{m.saldoApos != null && <> · saldo <b className="font-semibold text-slate-600">{num(m.saldoApos)}</b></>} · {fmtDia(m.data)}</span>
+                    <span>{formatarQtd(m.quantidade, m.itemUnidade)}{m.saldoApos != null && <> · saldo <b className="font-semibold text-slate-600">{num(m.saldoApos)}</b></>} · {fmtDia(m.data)}</span>
                   </div>
                   <div className="mt-1 text-xs text-slate-400">{m.referencia.nfeId ? <a href={`/empresas/${id}/estoque/recebimentos/${m.referencia.nfeId}`} className="text-[#185FA5]">{m.referencia.label}</a> : m.referencia.label} · {m.quem}</div>
                 </div>

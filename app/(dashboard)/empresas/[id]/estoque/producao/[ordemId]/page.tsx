@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useState, use } from 'react'
 import { escalaDoConsumo, preverSaida, insumoParaSaida, reguaDoRendimento, avaliarVariacao } from '@/lib/stock/producao/previsao-rendimento'
+import { formatarQtd } from '@/lib/stock/quantidade'
 import { Card, CardContent } from '@/components/ui/card'
 import { EtapasDaOrdem } from '@/components/estoque/etapas-da-ordem'
 import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, Undo2, X, Tag, TrendingUp } from 'lucide-react'
@@ -19,7 +20,9 @@ interface Colaborador { id: string; nome: string }
 interface EtapaAbertaNaTela { nome: string; executorNome: string | null }
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
-const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
+// ⭐ dose pequena em KG/LT sai na unidade natural ("0,3 g", não "0,0003 KG") — o padeiro
+// lê grama. Dono único em lib/stock/quantidade: quatro formatações divergiriam.
 const fmtDia = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
 const PASSOS = ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO', 'CONCLUIDA']
 const PASSO_LABEL: Record<string, string> = { PLANEJADA: 'Planejada', SEPARADA: 'Separada', EM_PRODUCAO: 'Em produção', CONCLUIDA: 'Concluída' }
@@ -233,7 +236,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
               <div className="min-w-[15rem] text-xs">
                 <p className="text-slate-500">Preciso tirar</p>
                 <p className="mt-1 text-sm font-semibold tabular-nums text-slate-900">
-                  {linhas.length === 0 ? '—' : linhas.map((l) => `${num(parseNum(sep[l.itemId]))} ${l.unidade} de ${l.nome.toLowerCase()}`).join(' · ')}
+                  {linhas.length === 0 ? '—' : linhas.map((l) => `${formatarQtd(parseNum(sep[l.itemId]), l.unidade)} de ${l.nome.toLowerCase()}`).join(' · ')}
                 </p>
                 <p className="mt-0.5 text-[11px] text-slate-400">
                   {regua.daMedia
@@ -276,14 +279,14 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                     <p className="font-medium text-slate-900">{l.nome}</p>
                     <p className="text-[11.5px] text-slate-400">{l.custoMedio != null ? `${brl(l.custoMedio)}/${l.unidadeControle}` : 'sem custo (a definir)'}</p>
                   </td>
-                  <td className="px-3 py-0 text-right text-[14px] font-medium tabular-nums text-slate-700">{num(l.qtdPlanejada)} {l.unidade}</td>
+                  <td className="px-3 py-0 text-right text-[14px] font-medium tabular-nums text-slate-700">{formatarQtd(l.qtdPlanejada, l.unidade)}</td>
                   <td className="px-3 py-0 text-[13px] text-right">
                     {planejada ? (
                       <div className="flex items-center justify-end gap-1">
                         <input value={sep[l.itemId] ?? ''} onChange={(e) => setSep((s) => ({ ...s, [l.itemId]: e.target.value }))} inputMode="decimal" className={`w-20 rounded-lg border py-1.5 px-2 text-right text-sm tabular-nums ${faltou ? 'border-rose-300 bg-rose-50' : 'border-slate-300'}`} />
                         <span className="w-6 text-xs text-slate-400">{l.unidade}</span>
                       </div>
-                    ) : <span className="tabular-nums font-medium text-slate-800">{num(l.qtdSeparada)} {l.unidade}</span>}
+                    ) : <span className="tabular-nums font-medium text-slate-800">{formatarQtd(l.qtdSeparada, l.unidade)}</span>}
                   </td>
                   <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${l.saldoDisponivel < 0 ? 'text-rose-600' : 'text-slate-500'}`}>{num(l.saldoDisponivel)}</td>
                   {!planejada && !encerrada && (
@@ -322,7 +325,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
             <p className="mb-1 flex items-center gap-1 font-medium"><AlertTriangle className="h-3.5 w-3.5" /> Falta insumo produzido pra esta ordem:</p>
             {faltas.map((l) => (
               <div key={l.itemId} className="flex items-center justify-between py-0.5">
-                <span>{l.nome}: tem {num(l.saldoDisponivel)}, precisa {num(parseNum(sep[l.itemId] ?? String(l.qtdPlanejada)))} {l.unidade}</span>
+                <span>{l.nome}: tem {formatarQtd(l.saldoDisponivel, l.unidade)}, precisa {formatarQtd(parseNum(sep[l.itemId] ?? String(l.qtdPlanejada)), l.unidade)}</span>
                 <button onClick={() => produzirAntes(l.fichaIdComponente!)} disabled={busy} className="ml-2 inline-flex items-center gap-1 rounded border border-amber-400 px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"><Factory className="h-3 w-3" /> produzir antes</button>
               </div>
             ))}

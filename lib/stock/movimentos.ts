@@ -25,6 +25,9 @@ export interface MovimentoLinha {
   estornoDeId: string | null
   itemId: string
   itemNome: string
+  /** ⭐ a unidade de controle do item — o extrato precisa dela pra mostrar dose pequena
+   *  na unidade natural ("0,3 g", não "0,0003"). 29/09/2026. */
+  itemUnidade: string
   quantidade: number
   custoUnitario: number
   custoTotal: number
@@ -85,7 +88,7 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
   const itemIds = [...new Set(movs.map((m) => m.itemId))]
   const chaves = [...new Set(movs.map((m) => m.nfeChave).filter((c): c is string => !!c))]
   const [items, notas, explicadasCruas, saldosHoje] = await Promise.all([
-    itemIds.length ? db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true } }) : Promise.resolve([]),
+    itemIds.length ? db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true, unidadeControle: true } }) : Promise.resolve([]),
     chaves.length ? db.stockNfe.findMany({ where: { companyId, chave: { in: chaves } }, select: { id: true, chave: true } }) : Promise.resolve([]),
     explicarMovimentos(companyId, movs, db).then(dobrarProducao).then((ls) => (filtro.forense ? ls : colapsarAnulados(ls))),
     contiguo ? saldosDaEmpresa(db, companyId) : Promise.resolve([]),
@@ -94,6 +97,7 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
     ? anotarSaldo(explicadasCruas, new Map(saldosHoje.map((s) => [s.itemId, s.saldo])))
     : explicadasCruas
   const itemNome = new Map(items.map((i) => [i.id, i.nome]))
+  const itemUn = new Map(items.map((i) => [i.id, i.unidadeControle]))
   /**
    * ⭐ O SELO DO ITEM ENCERRADO (19/09) — *"o passado fica legível"*.
    *
@@ -123,6 +127,7 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
       estornoDeId: e.estornoDe?.movimentoId ?? null,
       itemId: e.itemId,
       itemNome: itemNome.get(e.itemId) ?? '(item removido)',
+      itemUnidade: itemUn.get(e.itemId) ?? '',
       // ⭐ a frase mora num lugar só (`fraseDoSelo`) — telas diferentes diriam coisas diferentes
       itemEncerrado: selos.has(e.itemId) ? fraseDoSelo(selos.get(e.itemId)!) : null,
       quantidade: e.quantidade,

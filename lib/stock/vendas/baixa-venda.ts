@@ -17,6 +17,18 @@ import { BaixaComItemBarradoError, semOsPendentes, type ItemBarrado } from './it
 import { MovementInvalidError } from '../movement'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+/**
+ * ⭐⭐ A QUANTIDADE ANDA EM 6 CASAS (29/09/2026), o dinheiro continua em 2.
+ *
+ * ⛔ **Este era o SEGUNDO motor com o mesmo defeito** (REGRA 4 — achar todas as cópias): a
+ * explosão da ficha somava com `round2`, então componente dosado em décimo de grama
+ * (fermento 0,0003 KG) virava **0,00** na baixa de uma unidade — e movimento com quantidade
+ * zero o ledger RECUSA. A venda simplesmente não baixaria aquele componente.
+ *
+ * ⚠️ Só a QUANTIDADE muda de degrau; `custoTotal` segue em 2 casas, porque dinheiro tem 2
+ * casas e o CHECK do ledger tolera ±0,01 por linha.
+ */
+const round6 = (n: number) => Math.round((n + 1e-9) * 1_000_000) / 1_000_000
 const TIPO_BAIXA = 'BAIXA_VENDA'
 
 // ⭐ EXPORTADOS (27/08) pro hub do cardápio calcular o custo do produto pela MESMA explosão
@@ -53,7 +65,7 @@ export async function montarCtx(companyId: string, db: PrismaClient): Promise<Ct
  *  intermediário/raw/revenda baixa direto. Recursão limitada (o ciclo já é bloqueado na ficha). */
 export function explodir(alvo: { tipo: 'REVENDA'; itemId: string } | { tipo: 'FICHA'; fichaId: string }, qtd: number, ctx: Ctx, acc: Map<string, number>, depth = 0): void {
   if (depth > 12) throw new Error('Explosão de venda muito profunda (ciclo?).')
-  if (alvo.tipo === 'REVENDA') { acc.set(alvo.itemId, round2((acc.get(alvo.itemId) ?? 0) + qtd)); return }
+  if (alvo.tipo === 'REVENDA') { acc.set(alvo.itemId, round6((acc.get(alvo.itemId) ?? 0) + qtd)); return }
   const comps = ctx.componentesByFicha.get(alvo.fichaId) ?? []
   for (const c of comps) {
     const fichaComp = ctx.fichaByItemProduzido.get(c.itemId)
@@ -61,9 +73,9 @@ export function explodir(alvo: { tipo: 'REVENDA'; itemId: string } | { tipo: 'FI
     // sabor usado como componente baixaria o item-invólucro — que ninguém produz — e o
     // saldo dele ficaria negativo pra sempre num item fantasma.
     if (fichaComp && montaNaVenda(fichaComp.tipoProduto)) {
-      explodir({ tipo: 'FICHA', fichaId: fichaComp.id }, round2(qtd * c.qtdPlanejada), ctx, acc, depth + 1) // monta na venda → explode
+      explodir({ tipo: 'FICHA', fichaId: fichaComp.id }, round6(qtd * c.qtdPlanejada), ctx, acc, depth + 1) // monta na venda → explode
     } else {
-      acc.set(c.itemId, round2((acc.get(c.itemId) ?? 0) + qtd * c.qtdPlanejada)) // pack/raw/revenda → baixa direto
+      acc.set(c.itemId, round6((acc.get(c.itemId) ?? 0) + qtd * c.qtdPlanejada)) // pack/raw/revenda → baixa direto
     }
   }
 }
@@ -117,14 +129,14 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
     const acc = new Map<string, number>()
     if (m.alvoTipo === 'FICHA' && m.fichaId) explodir({ tipo: 'FICHA', fichaId: m.fichaId }, l.quantidade, ctx, acc)
     else if (m.alvoTipo === 'REVENDA' && m.itemId) explodir({ tipo: 'REVENDA', itemId: m.itemId }, l.quantidade, ctx, acc)
-    const baixa = [...acc.entries()].map(([itemId, qtd]) => ({ itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round2(qtd), custoMedio: custoMap.get(itemId) ?? null }))
-    for (const [itemId, qtd] of acc) agregada.set(itemId, round2((agregada.get(itemId) ?? 0) + qtd))
+    const baixa = [...acc.entries()].map(([itemId, qtd]) => ({ itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round6(qtd), custoMedio: custoMap.get(itemId) ?? null }))
+    for (const [itemId, qtd] of acc) agregada.set(itemId, round6((agregada.get(itemId) ?? 0) + qtd))
     produtos.push({ nome: l.produto, quantidade: l.quantidade, alvoTipo: m.alvoTipo as 'FICHA' | 'REVENDA', alvoNome: nomeAlvo(m), baixa })
   }
 
   return {
     data, produtos, pendentes, fora, ignorados,
-    agregada: [...agregada.entries()].map(([itemId, qtd]) => { const c = custoMap.get(itemId) ?? null; return { itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round2(qtd), custoMedio: c, valor: c != null ? round2(qtd * c) : null } }),
+    agregada: [...agregada.entries()].map(([itemId, qtd]) => { const c = custoMap.get(itemId) ?? null; return { itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round6(qtd), custoMedio: c, valor: c != null ? round2(qtd * c) : null } }),
     totalUnidades: linhas.reduce((s, l) => s + l.quantidade, 0),
     totalMapeados: produtos.length,
     totalPendentes: pendentes.length,

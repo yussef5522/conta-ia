@@ -31,7 +31,7 @@ interface PosItem {
 interface Posicao { itens: PosItem[]; valorTotal: number; porCategoria: { categoria: string; label: string; valor: number; itens: number }[] }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 type Campo = 'nome' | 'categoria' | 'saldo' | 'custo' | 'valor' | 'idade'
 
 // Passe de densidade: texto CURTO ("hoje" · "2d" · "23d") — a coluna deixa de

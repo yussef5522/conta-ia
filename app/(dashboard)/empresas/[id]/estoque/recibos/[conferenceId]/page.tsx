@@ -38,7 +38,7 @@ interface ParcelaComEstado {
 }
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
-const num = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 3 }))
+const num = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 6 }))
 const fmtData = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—')
 const fmtDia = (d: string | null) => (d ? d.split('-').reverse().join('/') : '—')
 

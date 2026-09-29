@@ -26,7 +26,7 @@ export interface ItemTrilho {
   contado: { qtdContada: number } | null
 }
 
-const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 
 export function TrilhoFila({
   itens, atualId, onIr, onMover, podeReordenar,

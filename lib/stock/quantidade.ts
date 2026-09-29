@@ -27,7 +27,31 @@
 // movimentos do ledger já são fracionados** (vieram do `qCom` da nota). Só a DIGITAÇÃO era
 // impossível.
 
-const MAX_CASAS = 3
+/**
+ * ⛔⛔⛔ 29/09/2026 — 3 CASAS PROIBIAM A VERDADE, E ISSO DERRETEU O FERMENTO VIRTUAL.
+ *
+ * **O dono:** *"a dose verdadeira do fermento é **0,0003 KG** (0,3 g por metade; 5 g fazem
+ * 17 metades, fermento seco instantâneo). O campo só aceita 3 casas — não dá pra digitar.
+ * Pra item em KG/LT com dose em décimos de grama, o campo proíbe a verdade — e a ficha fica
+ * gorda 10×."*
+ *
+ * ⭐ **Ele está certo, e o teto de 3 casas era uma suposição minha sobre a cozinha** — o
+ * comentário original dizia *"grama/mililitro é o menor que a cozinha usa"*. Fermento seco,
+ * essência e tempero concentrado são dosados em **décimos de grama**, e o campo cortando em
+ * 0,000 empurrava a ficha pro valor 10× maior que caberia — que é exatamente o número que
+ * fez o mapa de 28/09 achar que a receita pedia 3 g quando pede 0,3 g.
+ *
+ * ⭐ **6 casas = 1 mg / 1 µl.** É folga honesta (nenhuma cozinha dosa abaixo disso) e o
+ * limite tem que existir: sem teto, um dedo escorregando num zero grava 0,00000001 e o
+ * custo por unidade vira ruído de ponto flutuante.
+ *
+ * ⚠️ **A COLUNA AGUENTA E FOI CONFERIDA:** `qtdPlanejada`, `quantidade` do ledger e
+ * `qtdSeparada` são `Float` (double precision no Postgres) — 15 dígitos significativos, sem
+ * `@db.Decimal(p,s)` em lugar nenhum do módulo. E o zod das duas rotas de ficha é
+ * `z.number().positive()`, **sem `.int()` nem `multipleOf`**: o servidor sempre aceitou.
+ * O que proibia era a DIGITAÇÃO e o arredondamento cedo dos motores.
+ */
+export const MAX_CASAS = 6
 
 export type UnidadeQtd = 'KG' | 'LT' | 'UN' | string
 
@@ -98,21 +122,63 @@ export function textoQtd(n: number | null | undefined): string {
 }
 
 /**
- * ⭐ CONFIRMAÇÃO VISUAL — "0,050 KG = 50 g". Existe pra o dono não errar UM ZERO: 0,05 e
- * 0,005 são visualmente parecidos e 10× diferentes no custo. Só faz sentido abaixo de 1
- * (acima disso "1,5 KG" já se lê sozinho).
+ * ⭐⭐⭐ O DONO ÚNICO DA EXIBIÇÃO DE QUANTIDADE (29/09/2026).
+ *
+ * **A ordem do dono:** *"a TELA MOSTRA na unidade natural: dose < 1 g exibe «0,3 g», não
+ * «0,0003 KG» — o padeiro lê grama, não fração de quilo."*
+ *
+ * ⛔⛔ **E o defeito de exibição era GÊMEO do da digitação, com outra cara:** as telas
+ * formatavam com `maximumFractionDigits: 3`, então a dose de 0,0003 KG aparecia como **"0"**
+ * — o campo proibia digitar a verdade *e* a tela não saberia mostrá-la.
+ *
+ * ⚠️ **A GRAVAÇÃO SEGUE EM KG/LT.** Isto é só leitura: `unidadeControle` continua sendo a
+ * régua do item, o ledger continua em KG, e nada aqui volta pro banco. Guardar grama seria
+ * criar uma segunda unidade pro mesmo item — o oposto da reunitização.
+ *
+ * ⭐ E ela é UMA função porque a mesma dose aparece no editor, na ficha, na separação e no
+ * histórico: quatro formatações divergiriam na primeira casa decimal, e o dono veria a
+ * receita dizer 0,3 g num lugar e 0 noutro.
  */
-export function descreverQtd(valor: number | null, unidade: UnidadeQtd): string | null {
-  if (valor == null || valor <= 0 || valor >= 1) return null
+export function formatarQtd(valor: number | null | undefined, unidade: UnidadeQtd): string {
+  if (valor == null || !Number.isFinite(valor)) return '—'
+  const menor = unidadeMenor(unidade)
+  if (menor && Math.abs(valor) > 0 && Math.abs(valor) < 1) {
+    // ⭐ a unidade menor é 1.000× — então as casas caem 3, e a PRECISÃO TOTAL é a mesma
+    // (6 casas em KG == 3 casas em g == 1 µg, mais fino que o 1 mg que o campo aceita).
+    return `${numeroBR(valor * 1000, MAX_CASAS - 3)} ${menor}`
+  }
+  return `${numeroBR(valor, MAX_CASAS)} ${(unidade ?? '').trim()}`.trim()
+}
+
+/** a unidade natural mil vezes menor, quando ela existe (KG→g, LT→ml) */
+function unidadeMenor(unidade: UnidadeQtd): string | null {
   const u = (unidade ?? '').trim().toUpperCase()
-  if (u === 'KG') return `${arredonda(valor * 1000)} g`
-  if (u === 'LT' || u === 'L') return `${arredonda(valor * 1000)} ml`
+  if (u === 'KG') return 'g'
+  if (u === 'LT' || u === 'L') return 'ml'
   return null
 }
 
-function arredonda(n: number): string {
-  const r = Math.round(n * 100) / 100
-  return String(r).replace('.', ',')
+/**
+ * ⚠️ Sem zero à direita e SEM CORTAR casa significativa: `maximumFractionDigits` do
+ * `Intl` arredonda, e era ele que transformava 0,0003 em "0". O teto é o mesmo
+ * `MAX_CASAS` da digitação — a tela nunca mostra menos precisão do que o campo aceita.
+ */
+function numeroBR(n: number, casas: number): string {
+  return n.toLocaleString('pt-BR', { maximumFractionDigits: casas })
+}
+
+/**
+ * ⭐ CONFIRMAÇÃO VISUAL — "0,050 KG = 50 g". Existe pra o dono não errar UM ZERO: 0,05 e
+ * 0,005 são visualmente parecidos e 10× diferentes no custo. Só faz sentido abaixo de 1
+ * (acima disso "1,5 KG" já se lê sozinho).
+ *
+ * ⚠️ Delega a conversão pro `formatarQtd` — uma conversão KG→g no projeto, não duas
+ * (a régua do B1 aplicada a 1.000).
+ */
+export function descreverQtd(valor: number | null, unidade: UnidadeQtd): string | null {
+  if (valor == null || valor <= 0 || valor >= 1) return null
+  if (!unidadeMenor(unidade)) return null
+  return formatarQtd(valor, unidade)
 }
 
 /** Validação na hora de salvar: devolve o erro em pt-BR, ou null se está bom. */

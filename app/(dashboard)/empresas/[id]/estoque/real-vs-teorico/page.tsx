@@ -28,7 +28,7 @@ interface Resumo {
 interface Relatorio { resumo: Resumo; linhas: Linha[] }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 const pct = (n: number | null) => (n == null ? '—' : `${(n * 100).toFixed(1)}%`)
 const PISO = '2026-08-12'
 const hoje = () => diaEmSaoPaulo()

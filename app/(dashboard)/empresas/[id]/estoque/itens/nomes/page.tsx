@@ -21,7 +21,7 @@ interface Linha {
   apelidos: string[]
 }
 
-const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 
 export default function RevisarNomesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)

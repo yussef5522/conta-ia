@@ -36,7 +36,7 @@ export interface LinhaContar {
   contado: { qtdContada: number } | null
 }
 
-const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 const dataCurta = (iso: string) => {
   const d = new Date(iso)
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`

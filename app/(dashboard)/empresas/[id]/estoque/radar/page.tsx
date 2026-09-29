@@ -26,7 +26,7 @@ import type { Lista } from '@/lib/stock/radar/watchlist'
 import type { ChavePeriodo } from '@/lib/stock/radar/periodo'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const qtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const qtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 const br = (d: string) => d.split('-').reverse().slice(0, 2).join('/')
 /** ⚠️ o dia do BRASIL — o rótulo "AGORA" não pode virar ontem às 21h */
 const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())

@@ -67,7 +67,7 @@ const ESTADO: Record<string, { label: string; cls: string }> = {
   CANCELADA: { label: 'Cancelada', cls: 'bg-rose-50 text-rose-600' },
 }
 const PAGINA = 25
-const fmtQtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const fmtQtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 const fmtDia = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
 
 export default function ProducaoPage({ params }: { params: Promise<{ id: string }> }) {

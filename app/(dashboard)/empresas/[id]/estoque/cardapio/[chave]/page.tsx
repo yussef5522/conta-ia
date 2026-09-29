@@ -16,6 +16,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { FichaEditor } from '@/components/estoque/ficha-editor'
 import { podeAtenderProdutoDoPdv } from '@/lib/stock/tipos-ficha'
+import { formatarQtd } from '@/lib/stock/quantidade'
 import { ArrowLeft, Loader2, UtensilsCrossed, TrendingUp, CircleDollarSign, Percent, Factory, AlertTriangle, Check, Pencil, PackageSearch, ChevronRight } from 'lucide-react'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
@@ -45,7 +46,7 @@ interface Detalhe {
 }
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
-const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 const parseNum = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return s.trim() === '' || !Number.isFinite(n) ? null : n }
 
 export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: string; chave: string }> }) {
@@ -339,7 +340,7 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-600">{num(c.qtdPorUnidade)} {c.unidade}</td>
+                      <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-600">{formatarQtd(c.qtdPorUnidade, c.unidade)}</td>
                       <td className="px-3 py-0 text-right text-[13px] tabular-nums">
                         {c.subtotal != null ? <span className="text-slate-700">{brl(c.subtotal)}</span> : <span className="text-amber-600">a definir</span>}
                       </td>
