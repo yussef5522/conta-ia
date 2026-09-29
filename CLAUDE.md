@@ -1415,6 +1415,85 @@ AS FRASES MORTAS, no HTML servido:
 
 **10.959 verdes · TS 0 · deploy 4/4 (`h4DGvUzf7576pWfXPxQLS`) · Δ bundle +0 KB.**
 
+## 🔬 PERÍCIA DAS RECEITAS DE PRODUÇÃO (28/09/2026) — mapa medido, NADA corrigido
+
+Ordem do dono: *"me traz o mapa SEM mexer no histórico; acerto retroativo só com preview + meu OK"*. **Nenhum movimento foi tocado.**
+
+### ⛔⛔ 1. A TELA DE RECEITAS: 4,9 s, e a causa é N+1 sequencial
+
+**Medido com contador REAL de queries** (`$on('query')` do Prisma, não estimativa):
+```
+tempo total    4.909 ms          queries  1.786   ⛔ 9,4 POR FICHA × 189 fichas
+tempo em SQL   1.200 ms (24%)    ← os outros 76% são round-trip, não banco
+payload          155 KB
+por tabela: stock_movement 567 · stock_item 378 · ficha_versao 189 · componente 189 · etapa 189 · order 189
+```
+⛔ **A causa é uma linha:** `listFichas` faz `for (const f of fichas) await versaoView(...)` — **sequencial**, e cada `versaoView` dispara 6+ queries (versão, componentes, etapas, item, custo médio, rendimento medido). ⭐ *"Antes abria na hora"* porque era O(N) com N pequeno; hoje N = **189**.
+
+**⭐⭐ E O VIGIA NOVO PROVOU O VALOR DELE NO PRIMEIRO DIA — ele pegou o dono esperando:**
+```
+rt=6.979 urt=5.377   Safari/Mac      ← o dono, 7 SEGUNDOS
+rt=4.654 urt=4.655   Chrome/Windows  ← a máquina do estoque
+```
+⚠️ E o `rt` − `urt` = **1,6 s só pra empurrar os 159 KB pela rede**. A rota já está no **top 5 do R1 com p95 6,979 s**; ela acende sozinha quando passar de 20 chamadas. *Sem o `$request_time` de hoje, este número não existiria.*
+
+### ⭐⭐⭐ 2. FERMENTO — o motor está CERTO; a FICHA ANTIGA é que pedia 20× mais
+
+**A ficha teve 5 versões, e o fermento mudou de dose:**
+```
+v1..v4   0,059 KG por lote-base  (= 59 g)
+v5 ⭐    0,003 KG                (= 3 g)   ← 59 ÷ 3 = 19,7×
+```
+
+**As 18 separações, ordem por ordem** (`separado ÷ o que a versão usada pedia`):
+```
+16 separações recentes (v5)   razão 0,74 a 1,90   dose efetiva 2 g/un   ✓ BATEM com a ficha
+11/09 (v3, escala 260)        15,340 KG · razão 1.00  ← a ficha v3 pedia isso MESMO
+10/09 (v1, escala 200)         5,900 KG · razão 0.50
+                              ────────────────────────
+as DUAS antigas = 21,24 de 35,46 KG = 60% do consumo total
+```
+⭐ **A conta que o dono pediu fecha a favor do sistema:** `978 g ÷ 456 unidades = 2,1 g/un` contra os **3 g** da ficha. **A dose está certa.** E **1 kg/dia é o esperado** — a padaria produz ~400 unidades/dia × 3 g = 1,2 kg. *Não há multiplicação errada hoje: (a) a dose efetiva bate, (b) não há escala dupla na v5, (c) as unidades não estão infladas.*
+
+**⛔ O saldo negativo é inteiramente das duas separações com a ficha velha:**
+```
+saldo hoje                                   −2,970 KG   (o dono viu −2,97 ✓)
+excesso das 2 separações com a ficha v1-v4  +19,860 KG
+⭐ saldo se a dose de 3 g valesse sempre     +16,890 KG   ← "tem bastante na prateleira" ✓
+```
+⚠️⚠️ **E eu errei essa conta na 1ª tentativa:** somei `PRODUCAO_CONSUMO` no saldo e deu −38,43 KG. Ele **não conta na prateleira** (é transferência interna — a régua de 09/09); o saldo vem de `saldosDaEmpresa`, a porta da casa. *Soma crua de ledger não é saldo, e este doc já registrava isso.*
+
+### ⛔⛔⛔ 3. VARREDURA (73 linhas) — e a MAIONESE tem ESCALA DUPLA, como o dono suspeitou
+
+**55 de 73 linhas BATEM** (razão 0,6–1,5). As 9 que estouram, por dinheiro:
+```
+receita                    componente                dose   separado    pedido  razão  veredito
+CUBA MAIONESE              OLEO DE SOJA              3,000     96,196    57,047  1.69   ⛔ ESTOURA   R$ 314
+beef aparmegiana de carne  Patinho                   0,120     19,690    13,115  1.50   ⛔ ESTOURA   R$ 300
+Parmigiana de frango 150g  FILE DE PEITO DE FRANGO   0,150     23,802    14,964  1.59   ⛔ ESTOURA   R$ 162
+CUBA MAIONESE              OVO BRANCO CARTELA        7,000    224,457   133,109  1.69   ⛔ ESTOURA    R$ 54
+```
+⭐ **As duas linhas da maionese têm a MESMA razão 1.69** — razão idêntica em componentes diferentes é assinatura de **ESCALA**, nunca de componente.
+
+**E ordem por ordem ela se explica ao centavo:**
+```
+12/09  v1  escala 2.7992  →  TODOS os componentes com razão 2.87   ⛔
+13/09  v4  escala 4.1987  →  TODOS com razão 2.86                  ⛔
+14/09  v5  em diante      →  razão 1.00                            ✓ já corrigido
+```
+⛔⛔ **O número 2,858 é o LOTE BASE da ficha** — e ele aparece em tudo: `escala consumida 8,024 ÷ escala da ordem 2,7992 = 2,867`. **A separação multiplicou a escala PELO LOTE BASE** (escala × loteBase em vez de escala). É exatamente a *"escala dupla"* que o dono suspeitou no item (b). ⭐ **Sanado de 14/09 em diante** (razão 1.00 em todas as ordens desde então) — as duas ordens antigas ficaram no histórico.
+
+**⛔ ACHADO ADICIONAL, e ele liga os três itens:** as **duas conclusões de 22.864 unidades** (14 e 16/09) estão **AINDA VIVAS** — `stock_conclusao_estornada` tem **0 linhas**. ⚠️ O doc de 19/09 registra o estorno como *"PENDENTE, decisão do dono (preview pronto, NADA gravado)"*: **o OK nunca veio**. Enquanto elas vivem, envenenam o **rendimento médio** da maionese (2.855 un/receita-base), logo o **custo por unidade** da ficha — e o `listFichas` calcula isso em **toda** a lista, o que soma no 4,9 s do item 1.
+
+⚠️ **3 linhas com razão 0.01** (`porcao de carne 100 grama`: separado 1,000 vs pedido 100,000) são o **contrário** — separou 100× MENOS. É a 1ª produção de teste (21/08), e o "dinheiro" negativo delas na tabela é dinheiro que **deixou de sair**, não estouro. *A coluna mistura sobra e falta; o sinal diz qual.*
+
+### 📋 O QUE FICA PRO DONO DECIDIR (nada feito)
+
+1. **Tela de receitas** — o conserto é tirar o N+1 (as 189 `versaoView` viram ~6 queries em lote). Barato e sem mexer em dado.
+2. **Fermento** — o histórico tem **19,86 KG** de excesso das 2 separações com a ficha de 59 g. Acerto retroativo = estorno+novo pela porta da casa, **com preview**.
+3. **Maionese** — **21,7 LT de óleo + 91 ovos** de excesso nas 2 ordens de 12-13/09 (escala dupla). Mesmo tratamento.
+4. **As 2 conclusões de 22.864** seguem esperando o OK de 19/09 — e são a raiz do custo torto da maionese.
+
 ## 🩺 CHECK-UP DE SAÚDE (28/09/2026) — o mapa antes de otimizar, e o que ele refutou
 
 **O dono:** *"páginas às vezes demoram e ficam no «carregando». Quero o mapa ANTES de qualquer otimização."*
