@@ -1415,6 +1415,53 @@ AS FRASES MORTAS, no HTML servido:
 
 **10.959 verdes · TS 0 · deploy 4/4 (`h4DGvUzf7576pWfXPxQLS`) · Δ bundle +0 KB.**
 
+## ⭐⭐⭐ REAL × TEÓRICO v2 — A MESA DE PERÍCIA, E A LEI DE UM MOTOR SÓ (29/09/2026)
+
+**A lei 0 do dono:** *"a tela passa a ler EXCLUSIVAMENTE o motor do Radar (`calcularFechamentoDoDia`) — o cálculo próprio que ela tem hoje MORRE. **Guard de página: Σ(Real×Teórico) == Σ(Radar) pro mesmo recorte.** Duas telas, uma verdade."*
+
+### ⛔⛔ E AS DUAS DISCORDAVAM DE VERDADE — não era preferência de estilo
+
+O `calcularRealVsTeorico` somava **TODOS os `AJUSTE_CONTAGEM` do período**; o Radar usa a **ÚLTIMA contagem** de cada item (`refPorItem` sobrescreve). Item contado **duas vezes** no mesmo período dava **−18 num lado e −3 no outro**, e **nenhuma tela dizia qual valia**. Está medido no guard, com o contrafactual rodando o motor velho ao lado do novo.
+
+⭐ **`lib/stock/radar/mesa.ts` é TRADUÇÃO, não conta:** zero acesso ao banco, zero soma sobre o ledger, e `variancia` é **campo do motor** (`l.faltou`). É isso que faz o Σ bater **por construção** — se alguém puser uma conta ali, o teste fica vermelho no mesmo commit. ⚠️ O que continua vindo de `real-vs-teorico.ts` são `TIPOS` e `PISO_DADOS` — **o vocabulário do módulo**, que o próprio Radar importa; proibir o arquivo inteiro seria confundir *a segunda conta* com *o dicionário*.
+
+⚠️⚠️ **E O PLACAR DO RADAR É `Math.abs` + `tom`** (desenho de 20/09). Descobri porque o guard ficou vermelho comparando **−6 com 6** — e o certo era **ALINHAR a comparação com a régua dele**, não "consertar" o placar. A mesa devolve os dois: o número assinado, que ela mostra, e o par `absoluto`+`tom`, que é o que se compara campo a campo.
+
+### ⭐ O QUE A MESA TEM
+
+**Período livre** (presets + calendário de intervalo, dia do Brasil) — janela e rótulo saem do **mesmo** `janelaDoPeriodo`, nunca escritos na tela. **Filtros**: chips de produto com a `casaBusca` da casa, e **colunas liga/desliga com R$ e % DESLIGADOS por padrão** (*"esta tela olha QUANTIDADE"*). **As 3 seções** com as **MESMAS watchlists** do Radar, subtotal com **UN ≠ KG** (nunca soma cruzada) e *"falta contar"* **fora dos totais e dito no rodapé**. Tocar a linha abre a **conta de padeiro**.
+
+⛔ **A preferência de colunas é TABELA, não `localStorage`** (migration CREATE-only, unique por `companyId+userId`): localStorage é por **navegador**, e o dono confere no celular e no notebook — a escolha feita num sumiria no outro. *"Salva por usuário" só é verdade se for no banco.*
+
+⭐⭐ **A CONTA DE PADEIRO FOI EXTRAÍDA** pra `components/estoque/radar/conta-de-padeiro.tsx` e as duas telas importam a MESMA. Copiá-la seria a segunda derivação da mesma explicação — e as duas divergiriam no primeiro balde novo, com o dono vendo a mesma janela contada de dois jeitos.
+
+**⭐⭐ O CONFRONTO VIVE NA TELA, não só no teste:** o Σ do Radar viaja no payload, e sem filtro a mesa **diz** quando os dois discordam. Sem isso, a divergência só apareceria com as duas telas abertas lado a lado.
+
+### ⛔⛔ E A PROVA EM PROD ACHOU UMA LINHA QUE NÃO FECHAVA NA HORIZONTAL
+
+```
+⭐ A LEI 0, no dado real (12→18/09):  mesa R$ 3.790,41 (FALTOU · 53 contados)
+                                      Radar R$ 3.790,41 (FALTOU · 53 contados)  ⭐ AO CENTAVO
+⛔ «porçao queijo 135 grama»: as colunas somam 937 e o teórico é 934
+```
+O motor **já sabia** (`conta.naoExplicado` — movimento com data fora de ordem, ou ajuste avulso no meio) e a conta de padeiro dizia **ao abrir**; a MESA não carregava o campo. Resultado: a tabela mostraria os dois números e **nada explicando os 3**, e o dono somaria no dedo e acharia um furo que não é furo. Agora **a linha admite sozinha**, nos dois viewports, e o teste exige `início + baldes + naoExplicado == teórico, sempre`.
+
+### ⚠️⚠️ NÃO EXISTE MOCK DESTE SPRINT — e isso está declarado, não disfarçado
+
+O pedido diz *"visual aprovado no mock"*, mas **o arquivo não chegou**: procurei em `docs/mocks/`, no Downloads e no repo. ⛔ Inventar um visual e chamá-lo de *"o mock aprovado"* seria exatamente o erro que o sprint de 10/09 existe pra impedir (*"enquanto ele vivia numa pasta de downloads, «igual ao mock» era MEMÓRIA MINHA"*). ⭐ Como o pedido amarra esta tela ao Radar em **tudo** (mesmas watchlists, mesmos degraus, mesmo componente da conta), a régua que segui foi **`docs/mocks/radar-do-estoque-mock.html`**, pelos mesmos tokens de `radar-tokens.ts` — a tela irmã usando a paleta versionada da irmã. **Se o mock aprovado for outro, a pintura troca: os tokens estão num lugar só.**
+
+**REGRA 11 — os 3 becos do pedido, 1 vermelho cada:** cálculo paralelo reposto na rota · a coluna "real" inventando número sem contagem · subtotal somando UN com KG.
+
+⚠️ **1 GUARD REAPONTADO, e ele quebrou COM O CÓDIGO CERTO:** o `radar-bate-com-o-mock` procurava *"DEVIA TER"* na página do Radar, e o texto **mudou de arquivo** na extração — *grep não distingue "refatorei" de "quebrei"*, que é a razão de existir da REGRA 3. **Reapontado e mais forte:** agora exige que as DUAS telas **importem** o componente compartilhado, então colar a conta de volta numa delas fica vermelho.
+
+⚠️ **E o guard estrutural de rotas pegou o `PUT` da preferência** (*"nenhuma escrita se contenta com `stock.view`"*). **Exceção NOMEADA por arquivo+verbo, com o motivo escrito** — preferência de TELA não é dado de estoque, e exigir `stock.operate` faria o papel `LEITURA_ESTOQUE` ver a mesa e **não conseguir configurá-la** (a tela aceitaria o clique e esqueceria a escolha, a família do *"salvo que mentia"*). A lista é vigiada por dois testes: a exceção tem que existir de verdade, e a régua continua mordendo em rota de dado.
+
+⚠️ **E A MINHA SONDA DE SHELL DEU FALSO VERDE DUAS VEZES** antes de medir: `grep -cE "^\s+×"` não casa a linha do vitest (ANSI + formato), e **passar dois caminhos de teste por uma VARIÁVEL faz o vitest ler tudo como UM filtro** (`No test files found`, com cara de "passou"). É a cicatriz do `$G` de 23/09 em roupa nova. *Só a rodada gravada em arquivo, com o ANSI limpo e caminhos explícitos, deu número confiável.*
+
+**11.068 verdes · TS 0 · migration CREATE-only (isolamento verde) · `pos-mesa-20260929181305.dump` (7,2 MB) · deploys 4/4 (`zQD5a5HIo5-FjmezdQWFd` e `nUj51H0oOIdEm6Lmszgn4`) · Δ bundle +20 KB.**
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** abrir a mesa nos dois viewports, escolher 12→18/09 no calendário, filtrar queijo 135 g + Coca 600 ml, desligar R$ e tocar a linha pra ver a conta de padeiro. ⚠️ E **mandar o mock**, se o visual aprovado for outro.
+
 ## ⛔⛔⛔ A DOSE EM DÉCIMO DE GRAMA — 3 CASAS PROIBIAM A VERDADE (29/09/2026)
 
 **O dono, com o caso na mão:** *"a dose verdadeira do fermento é **0,0003 KG** (0,3 g por metade; 5 g fazem 17 metades, fermento seco instantâneo). O campo SÓ ACEITA 3 casas — não dá pra digitar. Pra item em KG/LT com dose em décimos de grama, o campo proíbe a verdade — e a ficha fica gorda 10×. **Foi isso que derreteu o fermento virtual.**"*
