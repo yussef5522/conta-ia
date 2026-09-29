@@ -61,17 +61,64 @@ export interface ConcluirResult {
  * diferentes: *"custo é 'quanto custou', previsão é 'quanto vai sair'"*.
  */
 export async function rendimentoMedidoDaFicha(companyId: string, fichaId: string, db: PrismaClient = defaultPrisma, exceptConclusaoId?: string): Promise<{ media: number | null; lotes: number }> {
-  const ordens = await db.stockProductionOrder.findMany({ where: { companyId, fichaId }, select: { id: true } })
-  const ids = ordens.map((o) => o.id)
-  if (!ids.length) return { media: null, lotes: 0 }
+  const m = await rendimentoMedidoDeFichas(companyId, [fichaId], db, exceptConclusaoId)
+  return m.get(fichaId) ?? { media: null, lotes: 0 }
+}
+
+/** quantas conclusões compõem a média móvel — o mesmo teto pra uma ficha ou pra 189 */
+export const LOTES_NA_MEDIA = 5
+
+/**
+ * ⭐⭐ A MÉDIA DE N FICHAS NUMA CONSULTA (28/09/2026) — e ela é o DONO da pergunta.
+ *
+ * ⛔ **O N+1 que isto mata era o mais caro da tela de receitas:** a versão de uma só ficha
+ * faz 3 idas ao banco (ordens, estornadas, conclusões) e era chamada **189 vezes** dentro
+ * do laço do `listFichas` — 567 round-trips pra responder o que cabe em 3.
+ *
+ * ⚠️ **O `take: 5` é POR FICHA, nunca global.** Buscar as 5 mais recentes do conjunto
+ * inteiro daria a média da ficha mais produzida a todas as outras — o tipo de erro que a
+ * tela não denuncia, porque o número sai plausível. Aqui a consulta traz tudo ordenado e o
+ * corte é feito **por ficha**, em memória.
+ *
+ * ⛔ A régua do estornado (19/09) continua valendo igual: lote estornado NUNCA entra.
+ */
+export async function rendimentoMedidoDeFichas(
+  companyId: string, fichaIds: string[], db: PrismaClient = defaultPrisma, exceptConclusaoId?: string,
+): Promise<Map<string, { media: number | null; lotes: number }>> {
+  const out = new Map<string, { media: number | null; lotes: number }>()
+  for (const id of fichaIds) out.set(id, { media: null, lotes: 0 })
+  if (!fichaIds.length) return out
+
+  const ordens = await db.stockProductionOrder.findMany({
+    where: { companyId, fichaId: { in: fichaIds } }, select: { id: true, fichaId: true },
+  })
+  if (!ordens.length) return out
+  const fichaDaOrdem = new Map(ordens.map((o) => [o.id, o.fichaId]))
+
   // ⛔⛔ LOTE ESTORNADO NUNCA ENTRA NA MÉDIA (19/09). Sem isto o rendimento podre de 2858
   // continuaria sendo "o histórico" da maionese e envenenaria toda conclusão seguinte —
   // inclusive o guard de plausibilidade, que passaria a aprovar o erro por ele ser a norma.
   const estornadas = await idsDeConclusoesEstornadas(companyId, db)
   const fora = [...estornadas, ...(exceptConclusaoId ? [exceptConclusaoId] : [])]
-  const cs = await db.stockProducaoConclusao.findMany({ where: { companyId, ordemId: { in: ids }, ...(fora.length ? { id: { notIn: fora } } : {}) }, orderBy: { criadoEm: 'desc' }, take: 5, select: { rendimento: true } })
-  if (!cs.length) return { media: null, lotes: 0 }
-  return { media: round4(cs.reduce((s, c) => s + c.rendimento, 0) / cs.length), lotes: cs.length }
+  const cs = await db.stockProducaoConclusao.findMany({
+    where: { companyId, ordemId: { in: [...fichaDaOrdem.keys()] }, ...(fora.length ? { id: { notIn: fora } } : {}) },
+    orderBy: { criadoEm: 'desc' }, select: { ordemId: true, rendimento: true },
+  })
+
+  const porFicha = new Map<string, number[]>()
+  for (const c of cs) {
+    const fichaId = fichaDaOrdem.get(c.ordemId)
+    if (!fichaId) continue
+    const lista = porFicha.get(fichaId) ?? []
+    if (lista.length >= LOTES_NA_MEDIA) continue // ⚠️ o corte é POR FICHA
+    lista.push(c.rendimento)
+    porFicha.set(fichaId, lista)
+  }
+  for (const [fichaId, rends] of porFicha) {
+    if (!rends.length) continue
+    out.set(fichaId, { media: round4(rends.reduce((s, r) => s + r, 0) / rends.length), lotes: rends.length })
+  }
+  return out
 }
 
 /** casca fina histórica — só a média, pros callers que não precisam da contagem. */

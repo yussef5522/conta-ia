@@ -6,13 +6,13 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { fichaInativaComNome, ReceitaHomonimaError } from './receita-ja-existe'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { normalizarEtapas, gravarEtapasDaVersao, etapasDaVersao, type EtapaDaReceita } from './etapas'
+import { normalizarEtapas, gravarEtapasDaVersao, etapasDaVersao, etapasDeVersoes, type EtapaDaReceita } from './etapas'
 import { ehTipoDeFicha, seContaFisicamente, type TipoFicha } from '@/lib/stock/tipos-ficha'
 import { detectaCicloFicha, type GrafoFichas } from './ciclo'
 import { calcularCustoTeorico, calcularMargem, type ComponenteCusto } from './custo-teorico'
 import { custoMedioPorItem } from '../saldo'
 import { normalizarBusca } from '@/lib/busca-texto'
-import { rendimentoMedidoDaFicha } from './conclusao'
+import { rendimentoMedidoDeFichas } from './conclusao'
 
 type Db = PrismaClient | Prisma.TransactionClient
 import { planoDeAgrupamento, aplicarAgrupamento } from '@/lib/stock/vendas/aplicar-agrupamento'
@@ -386,35 +386,106 @@ async function custoMedioDosItens(companyId: string, itemIds: string[], db: Db):
   return new Map(its.map((i) => [i.id, { custoMedio: derivado.get(i.id) ?? null, nome: i.nome, unidade: i.unidadeControle }]))
 }
 
-async function versaoView(companyId: string, ficha: { id: string; itemProduzidoId: string; tipoProduto: string; setorId: string | null; versaoAtual: number; valorVenda: number | null; ativo: boolean }, versao: number, db: Db): Promise<FichaView | null> {
-  const v = await db.stockFichaVersao.findFirst({ where: { companyId, fichaId: ficha.id, versao } })
-  if (!v) return null
-  const comps = await db.stockFichaComponente.findMany({ where: { companyId, versaoId: v.id }, orderBy: { posicao: 'asc' } })
-  const etapas = await etapasDaVersao(companyId, v.id, db)
-  const produzido = await db.stockItem.findFirst({ where: { companyId, id: ficha.itemProduzidoId }, select: { nome: true, unidadeControle: true } })
-  const custoMap = await custoMedioDosItens(companyId, comps.map((c) => c.itemId), db)
+/** o cabeçalho da ficha, do jeito que as duas portas (uma e N) já o têm em mão */
+type FichaHead = { id: string; itemProduzidoId: string; tipoProduto: string; setorId: string | null; versaoAtual: number; valorVenda: number | null; ativo: boolean }
 
-  const componentes: FichaComponenteView[] = comps.map((c) => {
-    const meta = custoMap.get(c.itemId)
-    const custoMedio = meta?.custoMedio ?? null
-    return { itemId: c.itemId, nome: meta?.nome ?? '(item removido)', unidade: c.unidade, qtdPlanejada: c.qtdPlanejada, custoMedio, subtotal: custoMedio != null ? round2(custoMedio * c.qtdPlanejada) : null, unidadeControle: meta?.unidade ?? '—' }
+/**
+ * ⭐⭐⭐ A MONTAGEM DE N FICHAS EM ~6 CONSULTAS — o conserto do N+1 de 28/09/2026.
+ *
+ * **O que estava medido:** `/estoque/producao/receitas` levava **4.909 ms** e disparava
+ * **1.786 consultas** — **9,4 por ficha × 189 fichas** —, das quais só **1.200 ms eram
+ * SQL**: os outros 76% eram **round-trip**. O vigia novo (`$request_time`) pegou o dono
+ * esperando **7 segundos** (`rt=6.979`).
+ *
+ * ⭐ **A cura não é cache: é parar de perguntar 189 vezes o que se pergunta uma.** Cada
+ * leitura virou uma consulta em lote, e a montagem por ficha é feita em memória.
+ *
+ * ⛔⛔ **E `versaoView` (uma ficha) passou a ser CASCA disto, nunca um segundo caminho.**
+ * Duas montagens da mesma `FichaView` divergiriam no primeiro campo novo, e aí a lista
+ * mostraria um custo e a tela da ficha outro — a doença que este módulo mais paga.
+ *
+ * ⚠️ **Ordem preservada:** devolve as views na ORDEM das fichas recebidas (a lista é
+ * ordenada por `criadoEm desc` na porta), e ficha cuja versão não existe **sai de fora**,
+ * exatamente como o `null` do caminho antigo.
+ */
+async function montarFichaViews(companyId: string, fichas: FichaHead[], db: Db): Promise<FichaView[]> {
+  if (!fichas.length) return []
+
+  // 1. as versões (todas as das fichas pedidas; a que vale é a `versaoAtual` de cada uma)
+  const versoes = await db.stockFichaVersao.findMany({
+    where: { companyId, fichaId: { in: fichas.map((f) => f.id) } },
   })
-
-  // ⭐ LIGADO EM 01/09 — aqui havia `const rendimentoMedio = null // 2.0: a apurar`, cravado
-  // desde a Fase 2.0. A função que mede já existia (`rendimentoMedidoDaFicha`) e **nada a
-  // chamava daqui**: era o "tem o dado e não usa" que fez o dono ver "a apurar" numa ficha
-  // com produção concluída. ⚠️ O CUSTO usa a medida desde o 1º lote (decisão do dono):
-  // *"uma medição real é melhor que 'a definir'"* — o piso de 2 lotes vale só pra PREVISÃO.
-  const medido = await rendimentoMedidoDaFicha(companyId, ficha.id, db as PrismaClient)
-  const rendimentoMedio = medido.media
-  const custo = calcularCustoTeorico(componentes.map<ComponenteCusto>((c) => ({ custoMedio: c.custoMedio, qtdPlanejada: c.qtdPlanejada })), rendimentoMedio)
-  return {
-    id: ficha.id, itemProduzidoId: ficha.itemProduzidoId, nomeProduzido: produzido?.nome ?? '(item removido)', unidadeProduzido: produzido?.unidadeControle ?? '—',
-    tipoProduto: ficha.tipoProduto, setorId: ficha.setorId, versaoAtual: ficha.versaoAtual, valorVenda: ficha.valorVenda, ativo: ficha.ativo,
-    loteBase: v.loteBase, unidadeLoteBase: v.unidadeLoteBase, modoPreparo: v.modoPreparo, tempoPreparoMin: v.tempoPreparoMin, validadeDias: v.validadeDias,
-    componentes, etapas, custoLote: custo.custoLote, custoPorUnidade: custo.custoPorUnidade, custoADefinir: custo.custoADefinir, rendimentoMedio, rendimentoLotes: medido.lotes,
-    margem: ficha.tipoProduto === 'PRODUTO_FINAL' ? calcularMargem(ficha.valorVenda, custo.custoPorUnidade) : null,
+  const versaoDaFicha = new Map<string, (typeof versoes)[number]>()
+  for (const v of versoes) {
+    const ficha = fichas.find((f) => f.id === v.fichaId)
+    if (ficha && v.versao === ficha.versaoAtual) versaoDaFicha.set(v.fichaId, v)
   }
+  const versaoIds = [...versaoDaFicha.values()].map((v) => v.id)
+
+  // 2. componentes e 3. etapas de TODAS as versões
+  const [compsTodos, etapasPorVersao] = await Promise.all([
+    db.stockFichaComponente.findMany({ where: { companyId, versaoId: { in: versaoIds } }, orderBy: { posicao: 'asc' } }),
+    etapasDeVersoes(companyId, versaoIds, db),
+  ])
+  const compsPorVersao = new Map<string, typeof compsTodos>()
+  for (const c of compsTodos) {
+    const lista = compsPorVersao.get(c.versaoId) ?? []
+    lista.push(c)
+    compsPorVersao.set(c.versaoId, lista)
+  }
+
+  // 4. os itens (produzidos + componentes) e 5. o custo médio derivado — duas consultas pro
+  //    conjunto inteiro. ⚠️ O custo vem de `custoMedioPorItem`, a MESMA fonte da Posição.
+  const itemIds = [...new Set([...fichas.map((f) => f.itemProduzidoId), ...compsTodos.map((c) => c.itemId)])]
+  const [itens, derivado, rendimentos] = await Promise.all([
+    db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true, unidadeControle: true } }),
+    custoMedioPorItem(db, companyId),
+    // 6. o rendimento medido de TODAS as fichas (era 3 consultas por ficha)
+    rendimentoMedidoDeFichas(companyId, fichas.map((f) => f.id), db as PrismaClient),
+  ])
+  const itemPorId = new Map(itens.map((i) => [i.id, i]))
+
+  const out: FichaView[] = []
+  for (const ficha of fichas) {
+    const v = versaoDaFicha.get(ficha.id)
+    if (!v) continue // ⚠️ mesma decisão do `null` antigo: ficha sem a versão atual não entra
+    const comps = compsPorVersao.get(v.id) ?? []
+
+    const componentes: FichaComponenteView[] = comps.map((c) => {
+      const item = itemPorId.get(c.itemId)
+      const custoMedio = derivado.get(c.itemId) ?? null
+      return { itemId: c.itemId, nome: item?.nome ?? '(item removido)', unidade: c.unidade, qtdPlanejada: c.qtdPlanejada, custoMedio, subtotal: custoMedio != null ? round2(custoMedio * c.qtdPlanejada) : null, unidadeControle: item?.unidadeControle ?? '—' }
+    })
+
+    // ⭐ LIGADO EM 01/09 — aqui havia `const rendimentoMedio = null // 2.0: a apurar`, cravado
+    // desde a Fase 2.0. A função que mede já existia (`rendimentoMedidoDaFicha`) e **nada a
+    // chamava daqui**: era o "tem o dado e não usa" que fez o dono ver "a apurar" numa ficha
+    // com produção concluída. ⚠️ O CUSTO usa a medida desde o 1º lote (decisão do dono):
+    // *"uma medição real é melhor que 'a definir'"* — o piso de 2 lotes vale só pra PREVISÃO.
+    const medido = rendimentos.get(ficha.id) ?? { media: null, lotes: 0 }
+    const rendimentoMedio = medido.media
+    const custo = calcularCustoTeorico(componentes.map<ComponenteCusto>((c) => ({ custoMedio: c.custoMedio, qtdPlanejada: c.qtdPlanejada })), rendimentoMedio)
+    const produzido = itemPorId.get(ficha.itemProduzidoId)
+    out.push({
+      id: ficha.id, itemProduzidoId: ficha.itemProduzidoId, nomeProduzido: produzido?.nome ?? '(item removido)', unidadeProduzido: produzido?.unidadeControle ?? '—',
+      tipoProduto: ficha.tipoProduto, setorId: ficha.setorId, versaoAtual: ficha.versaoAtual, valorVenda: ficha.valorVenda, ativo: ficha.ativo,
+      loteBase: v.loteBase, unidadeLoteBase: v.unidadeLoteBase, modoPreparo: v.modoPreparo, tempoPreparoMin: v.tempoPreparoMin, validadeDias: v.validadeDias,
+      componentes, etapas: etapasPorVersao.get(v.id) ?? [], custoLote: custo.custoLote, custoPorUnidade: custo.custoPorUnidade, custoADefinir: custo.custoADefinir, rendimentoMedio, rendimentoLotes: medido.lotes,
+      margem: ficha.tipoProduto === 'PRODUTO_FINAL' ? calcularMargem(ficha.valorVenda, custo.custoPorUnidade) : null,
+    })
+  }
+  return out
+}
+
+/**
+ * ⭐ UMA ficha — casca fina sobre `montarFichaViews` (REGRA 4).
+ *
+ * ⚠️ O parâmetro `versao` só faz sentido como a `versaoAtual` do cabeçalho: era o que os
+ * dois chamadores sempre passaram (`ficha.versaoAtual`), e é o que o lote resolve.
+ */
+async function versaoView(companyId: string, ficha: FichaHead, versao: number, db: Db): Promise<FichaView | null> {
+  const [view] = await montarFichaViews(companyId, [{ ...ficha, versaoAtual: versao }], db)
+  return view ?? null
 }
 
 export async function getFicha(companyId: string, fichaId: string, db: Db = defaultPrisma): Promise<{ ficha: FichaView; versoes: { versao: number; criadoEm: string }[] } | null> {
@@ -445,10 +516,7 @@ export async function listFichas(
     where: { companyId, ...(opts.incluirInativas ? {} : { ativo: true }) },
     orderBy: { criadoEm: 'desc' },
   })
-  const out: FichaView[] = []
-  for (const f of fichas) {
-    const v = await versaoView(companyId, f, f.versaoAtual, db)
-    if (v) out.push(v)
-  }
-  return out
+  // ⭐ EM LOTE desde 28/09: o laço `for (… await versaoView …)` custava 9,4 consultas por
+  // ficha (4,9 s com 189 fichas). Uma linha de diferença, ~1.780 round-trips a menos.
+  return montarFichaViews(companyId, fichas, db)
 }

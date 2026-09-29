@@ -69,13 +69,36 @@ export function normalizarEtapas(nomes: { nome: string; setorId?: string | null 
   return limpos
 }
 
+/**
+ * ⭐⭐ AS ETAPAS DE N VERSÕES NUMA CONSULTA (28/09/2026).
+ *
+ * ⛔ **Nasceu do N+1 que fez a tela de receitas levar 4,9 s** com 189 fichas: a versão de
+ * um só (`etapasDaVersao`) era chamada dentro de um laço, e 189 idas ao banco custam
+ * **round-trip**, não SQL (76% do tempo medido era rede).
+ *
+ * ⚠️ **O dono da pergunta é ESTE** — `etapasDaVersao` virou casca de UMA versão sobre ele
+ * (REGRA 4). Duas implementações da mesma leitura divergiriam no primeiro campo novo.
+ */
+export async function etapasDeVersoes(
+  companyId: string, versaoIds: string[], db: Db = defaultPrisma,
+): Promise<Map<string, EtapaDaReceita[]>> {
+  const mapa = new Map<string, EtapaDaReceita[]>()
+  if (!versaoIds.length) return mapa
+  const rows = await db.stockFichaEtapa.findMany({
+    where: { companyId, versaoId: { in: versaoIds } }, orderBy: { posicao: 'asc' },
+    select: { versaoId: true, posicao: true, nome: true, setorId: true },
+  })
+  for (const r of rows) {
+    const lista = mapa.get(r.versaoId) ?? []
+    lista.push({ posicao: r.posicao, nome: r.nome, setorId: r.setorId })
+    mapa.set(r.versaoId, lista)
+  }
+  return mapa
+}
+
 /** as etapas DECLARADAS de uma versão (sem resolver a ausência — quem resolve é quem lê) */
 export async function etapasDaVersao(companyId: string, versaoId: string, db: Db = defaultPrisma): Promise<EtapaDaReceita[]> {
-  const rows = await db.stockFichaEtapa.findMany({
-    where: { companyId, versaoId }, orderBy: { posicao: 'asc' },
-    select: { posicao: true, nome: true, setorId: true },
-  })
-  return rows
+  return (await etapasDeVersoes(companyId, [versaoId], db)).get(versaoId) ?? []
 }
 
 /** grava as etapas de uma versão RECÉM-CRIADA (versão é imutável: nunca reescreve as de uma antiga) */
