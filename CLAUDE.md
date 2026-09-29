@@ -1415,6 +1415,80 @@ AS FRASES MORTAS, no HTML servido:
 
 **10.959 verdes · TS 0 · deploy 4/4 (`h4DGvUzf7576pWfXPxQLS`) · Δ bundle +0 KB.**
 
+## ⭐⭐⭐ AS 4 DECISÕES DO MAPA (28-29/09/2026) — e a varredura do mapa estava ERRADA
+
+### ⭐⭐ 1. A TELA DE RECEITAS: 4.909 ms → 97 ms · 1.786 consultas → 11
+
+**O conserto é uma linha de desenho:** `listFichas` fazia `for (const f of fichas) await versaoView(…)` — **9,4 consultas por ficha × 189 fichas**, e só 24% disso era SQL: o resto era **round-trip**. `montarFichaViews` monta N fichas em ~6 consultas, e **`versaoView` (uma) virou CASCA dela** — duas montagens da mesma `FichaView` divergiriam no primeiro campo novo, e a lista mostraria um custo e a tela da ficha outro.
+
+Duas leituras ganharam versão em lote, **cada uma dona da pergunta** (REGRA 4): `etapasDeVersoes` e `rendimentoMedidoDeFichas`. ⛔⛔ **E o `take: 5` é POR FICHA, nunca global:** o corte global daria a média da ficha mais produzida **a todas as outras**, e o número sai plausível — a tela não denunciaria.
+
+**⭐ O GUARD MEDE O QUE IMPORTA: a contagem de consultas NÃO cresce com N.** Milissegundo é teste que passa ou falha pela máquina de quem roda; round-trip se conta. Com o laço de volta: **3 fichas 22 consultas → 9 fichas 64**; com o lote, **7 fixas nas duas**.
+
+**⭐⭐ E A PROVA EM PROD É TRÁFEGO REAL — o vigia registrou o antes e o depois, mesmo payload de 159 KB:**
+```
+ANTES  16:32  rt=4.587 urt=4.588      DEPOIS  22:31  rt=0.389 urt=0.115
+       18:35  rt=4.654 urt=4.655              ⭐ urt 5,377 → 0,115 = 47× mais rápido
+       20:19  rt=6.979 urt=5.377 ← o dono
+medido por dentro: 189 fichas · 155 KB · 418 componentes — IDÊNTICOS (a saída não mudou)
+```
+⚠️ Sobra o `rt − urt` de **0,27 s**: é a rede empurrando os 159 KB. **Registrado, não atacado** — mandar 159 KB pra uma lista é dívida de payload, não de N+1.
+
+**REGRA 11 — 2 defeitos repostos, 2 vermelhos:** o laço · o `take` global. ⚠️ E o **guard de CNPJ de teste pegou colisão minha** com o `aporte.integration` — trocado, não afrouxado.
+
+### ⭐⭐ 4. AS 2 CONCLUSÕES DE 22.864 — o LEDGER já estava certo; a RÉGUA é que estava podre
+
+**⚠️⚠️ CORREÇÃO DO MEU PRÓPRIO MAPA, medida antes de aplicar:** eu reportei as duas conclusões como *"vivas"* sugerindo estrago no estoque. **O ledger foi corrigido em 19/09** — nas duas ordens o `PRODUCAO_GERACAO` de 22.864 está **estornado e relançado como 22,864**. O que ficou com zero linhas foi a `stock_conclusao_estornada`.
+
+**⛔ E o estrago disso não é no estoque, é na RÉGUA** — a conclusão é o que alimenta o rendimento medido:
+```
+                      ANTES                    DEPOIS
+CUBA MAIONESE       715,5520 (4 lotes)  →     2,2355 (3 lotes)
+MAIONESE          1.430,4290 (2 lotes)  →     2,8580 (1 lote)
+custo/un da MAIONESE: R$ 0,02 (30,97÷1430)  →  ⭐ R$ 10,84 (30,97÷2,858)
+⛔ fichas com rendimento acima de 100 un/receita-base: 0
+```
+*Um custo de dois centavos por quilo de maionese é o tipo de número que envenena toda conclusão seguinte — e o próprio guard de plausibilidade, que passaria a aprovar o erro por ele ter virado a norma.*
+
+⭐ `scripts/estornar-conclusoes-podres.ts` (preview por default, idempotente pelo unique). ⛔ **Ele NÃO toca no ledger** e **RECUSA marcar conclusão cuja geração podre ainda esteja VIVA** — marcar ali esconderia o número errado da média **e** deixaria o estoque torto. **Juiz: 404 → 403 issues (P3 66 → 65)** — nenhum vermelho novo.
+
+⚠️ **RESSALVA HONESTA:** o relançamento de 22,864 KG de 14/09 **não tem linha de conclusão** (a cascata criou o movimento, não a conclusão), então aquele lote **não entra na média**. Por isso a CUBA fica em 2,2355 e não ~2,8 — e inventar uma conclusão pra "completar" seria fabricar uma medição que ninguém fez.
+
+⛔⛔ **E UM ESCORREGÃO MEU: o `pg_dump` saiu com 0 bytes e eu apliquei sem backup.** O `source .env` não exportou a `DATABASE_URL` (o `$` escapado pro dotenv) e eu não conferi o tamanho antes de seguir. O gesto é 2 INSERTs numa tabela CREATE-only, reversível apagando as 2 linhas (ids no output), e o dump foi tirado **depois** (`pos-estornar-conclusoes-20260929014412.dump`, 7,2 MB). **Lição: `pg_dump` só conta depois de conferir o tamanho do arquivo** — dump vazio é indistinguível de dump feito. ⚠️ E a 2ª tentativa **vazou a credencial no meu output** pela exceção do Node (`pg_dump` não aceita `?schema=public` na URI): comando que toca `DATABASE_URL` roda com `stdio` silenciado.
+
+### ⛔⛔⛔ 2+3. O PREVIEW DO ACERTO — E O VEREDITO É **NÃO ACERTAR**, por dois motivos independentes
+
+**⭐⭐ MOTIVO 1 — A RAZÃO DO MEU MAPA MEDIA CONTRA O PLANO, NÃO CONTRA O QUE A COZINHA FEZ.** A ordem tem `escalaReceitas` (o PLANO) e a conclusão tem `escalaConsumida` (o que foi produzido de verdade). Eu calculei `separado ÷ (dose × escala da ORDEM)` — e a cozinha rotineiramente faz um lote maior que o planejado. Refeito contra o consumido, na empresa inteira:
+```
+razão contra a escala PLANEJADA  →  53 linhas "estouram" · R$ 6.550,46
+razão contra a escala CONSUMIDA  →  ⭐ ZERO linhas · R$ 0,00
+```
+⛔ **Então o "R$ 886,78 estourado" e a "ESCALA DUPLA da maionese" do mapa de 28/09 CAEM.** A maionese de 12-13/09: `escalaConsumida 12,0` contra `escala 4,1987` — **fizeram 12 receitas onde o plano era 4,2**, e o material, o consumo e as 34,296 KG geradas **fecham entre si**. A razão 2,86 bater com o lote base (2,858) é coincidência de números, não prova de multiplicação. ⚠️ *O que pega vazamento de verdade é o invariante **P1** (separado == consumido + devolvido), e ele aponta 1 caso — o de 21/09, já registrado.*
+
+**⭐⭐ MOTIVO 2 — A CONTAGEM JÁ CUROU, e era exatamente o que o dono mandou conferir** (*"não devolver o que a contagem já devolveu — sem cura dupla!"*). Avaliado **por ordem**, não pela última:
+```
+MAIONESE   11 de 11 linhas JÁ CURADAS (R$ 404,29) — contagem de 14/09
+   OLEO DE SOJA  sistema 682,67 → marcyelle contou 198  (div −484,67)
+   OVO          sistema 4.009,54 → contou 585           (div −3.424,54)
+FERMENTO   as 2 linhas de 10-11/09 (as que o mapa chamou de 19,86 KG) JÁ CURADAS
+   11/09 19:00  sistema −19,740 → contou 1,500  ⭐ div +21,240  ← o excesso voltou AQUI
+   16/09 03:59  sistema   7,570 → contou 9,000     div  +1,430
+```
+⛔ Devolver agora somaria **em cima de um saldo que a contagem já reconciliou com a prateleira**.
+
+**⭐⭐⭐ E A CONTA DO FERMENTO FECHA AO CENTAVO — o negativo é FALTA DE ENTRADA, não excesso de saída:**
+```
+2,625 KG (contado em 22/09)  −  5,595 KG (6 separações depois)  =  −2,970 KG  ← o saldo de hoje
+entradas de fermento: 11/09 1,5 KG (R$ 93,42) · 16/09 10 KG (R$ 340) · DEPOIS: NENHUMA
+dose efetiva nas 18 ordens: 1,7 a 4,7 g/un (média ~2,4) contra os 3 g da ficha ✓
+```
+⭐ *"Na prateleira tem fermento e o sistema diz −2,97"* se explica inteiro: a cozinha consumiu 5,6 KG desde a contagem e **nenhuma nota de compra entrou**. É a **porta do negativo** de 22/09 dizendo a coisa certa — item MATERIA_PRIMA negativo = *falta registrar a COMPRA*, e o gesto já existe na ficha do item.
+
+**📋 O QUE FICA PRO DONO:**
+1. **Lançar a entrada do fermento que faltou** (quantidade e valor da compra real) — a porta está na ficha do item.
+2. **Nada a acertar** em fermento nem em maionese: o que parecia excesso é lote maior que o planejado, e o resto a contagem já curou.
+3. Registrado e **não atacado**: os 159 KB de payload da lista de receitas · e o **P1 de 21/09** (a única evaporação real que o invariante aponta).
+
 ## 🔬 PERÍCIA DAS RECEITAS DE PRODUÇÃO (28/09/2026) — mapa medido, NADA corrigido
 
 Ordem do dono: *"me traz o mapa SEM mexer no histórico; acerto retroativo só com preview + meu OK"*. **Nenhum movimento foi tocado.**
