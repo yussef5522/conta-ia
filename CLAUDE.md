@@ -1415,6 +1415,28 @@ AS FRASES MORTAS, no HTML servido:
 
 **10.959 verdes · TS 0 · deploy 4/4 (`h4DGvUzf7576pWfXPxQLS`) · Δ bundle +0 KB.**
 
+## 🎨 A MESA v2 — CADA PRODUTO VIRA UMA FAIXA PRÓPRIA (29/09/2026, SÓ pintura)
+
+**Ordem do dono:** *"SÓ pintura, motor e dados intocados"* — e o item 6 dele fecha a pendência que a volta anterior deixou aberta: **`docs/mocks/real-vs-teorico-mock.html` nasceu versionado nesta volta e É a régua.** O guard `mesa-bate-com-o-mock.test.ts` **LÊ o `:root{}` do arquivo** e compara ao caractere; tom ajustado "no olho" fica vermelho **apontando o valor que o mock manda**. ⭐ Nomes e números do mock são **reais** (Caçula, 12→18/09, read-only) — *mock com nome inventado faz o dono aprovar uma tela que ele nunca vê*.
+
+| # | o que mudou | por quê |
+|---|---|---|
+| 1 | **divisória INTEIRA** (1px `#dcdae8`) em cima e embaixo de cada linha + **zebrado** (`#faf9fd`) | ⛔ com a `line` de antes (`#eae9f2`) a separação **existia no CSS e não se via** — o mesmo que não existir. Cada produto passa a ser uma faixa, em vez de "tudo junto" |
+| 2 | **peso por PAPEL**: nome, TEÓRICO e REAL em **500/13,5px**; contexto (início/entrou/produzido/vendeu) em normal | o olho vai direto no que decide, em vez de varrer oito números do mesmo tamanho |
+| 3 | **faixa colorida por família**: caros **âmbar** · porções **azul** · revenda **TEAL** | ⭐ a terceira cor **nasceu agora**: as três seções precisavam de tons distintos e o **roxo já é a cor da marca** (período, links). ⛔ `FAMILIA` é o **dono único** — a faixa e o **SUBTOTAL** leem do mesmo mapa, senão a seção deixa de se ler como um bloco só |
+| 4 | pílula **4px 10px · 12,5px** e **13px** de respiro por linha | o veredito é o que o olho procura |
+| 5 | **os dois viewports** — no celular os cards ganham a MESMA divisória e o MESMO zebrado | REGRA 12 |
+
+⚠️ **A mesa saiu do `density-normal` de propósito:** o dono especificou o respiro **desta** tela e ela não oferece seletor de densidade. **O CSS global segue intocado** — aqui só não se consome (a régua *"não editar o `.density-*`, só consumir"* continua valendo pro resto).
+
+**REGRA 11 — 4 becos repostos:** linha sem divisória inteira (**2 vermelhos**) · seção sem faixa colorida (**1**) · duas famílias com o mesmo fundo (**1**) · tipografia plana (**1**). ⭐ E o guard tem **auto-teste do detector** contra a versão antiga — senão ele passaria por cegueira, que já custou 7 guards nesta casa.
+
+**PROVADO NO BUNDLE QUE PROD SERVE:** `#dcdae8` ✓ · `#faf9fd` ✓ · âmbar/azul/**teal** ✓ · 13px ✓ · 12,5px ✓ · 13,5px ✓ · peso 500 ✓ · páginas **307** nos dois viewports (rota viva e protegida) · `/login` 200.
+
+⚠️ **E um escorregão meu no caminho:** o **backtick** dentro da mensagem de commit virou **substituição de comando** no zsh e engoliu a palavra `density-normal` do texto gravado. Corrigido com `--amend`. *Crase em mensagem de commit é comando, não citação.*
+
+**11.081 verdes · TS 0 · deploy 4/4 (`A_DKybJWhN2sK8LSz7Fss`) · Δ bundle +0 KB.**
+
 ## ⭐⭐⭐ REAL × TEÓRICO v2 — A MESA DE PERÍCIA, E A LEI DE UM MOTOR SÓ (29/09/2026)
 
 **A lei 0 do dono:** *"a tela passa a ler EXCLUSIVAMENTE o motor do Radar (`calcularFechamentoDoDia`) — o cálculo próprio que ela tem hoje MORRE. **Guard de página: Σ(Real×Teórico) == Σ(Radar) pro mesmo recorte.** Duas telas, uma verdade."*
