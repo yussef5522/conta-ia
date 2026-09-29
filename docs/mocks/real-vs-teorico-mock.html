@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Real × Teórico — a mesa de perícia · mock v2 (29/09/2026)</title>
+<!--
+  ⭐⭐⭐ REAL × TEÓRICO — MOCK VERSIONADO DA CASA (v2, 29/09/2026)
+
+  **A ordem do dono:** *"o mock versionado (real-vs-teorico-mock) atualizado pra ESTA
+  versão, que vira a referência."*
+
+  ⚠️ **ESTE ARQUIVO É A RÉGUA** (a disciplina de 10/09): enquanto o desenho vive só em
+  palavras, *"igual ao mock"* é memória minha — e memória foi o que falhou nas duas voltas
+  da Conciliação. Versionado, ele é DADO: o guard
+  `__tests__/regras-ui/mesa-bate-com-o-mock.test.ts` LÊ o `:root{}` e as medidas daqui e
+  compara com a tela. Tom ajustado "no olho" fica vermelho apontando o valor que o arquivo
+  manda.
+
+  ⭐ **OS NOMES E OS NÚMEROS SÃO REAIS** — lidos da Caçula em 29/09 (período 12→18/09,
+  read-only): a mesa fechou em R$ 3.790,41 com 53 itens contados, batendo AO CENTAVO com o
+  placar do Radar. Mock com nome inventado faz o dono aprovar uma tela que ele nunca vê.
+
+  ⛔ **O MOTOR NÃO SE MEXE NESTA VOLTA** (ordem do dono: *"SÓ pintura, motor e dados
+  intocados"*). O que este arquivo define é APARÊNCIA: divisória, zebrado, peso de fonte,
+  cor por família e tamanho da pílula.
+
+  ⚠️ **DOIS VIEWPORTS NUM ARQUIVO SÓ, por `@container`** — igual ao mock do Radar: o botão
+  📱/🖥 troca a largura do container, então o dono vê o layout do computador NO CELULAR. Na
+  tela real o container É a página, então lá o Tailwind usa `lg:` — e o comportamento é o
+  mesmo dos dois lados.
+-->
+<style>
+  /* ═══ TOKENS — a MESMA paleta do Radar e do mock v3 da Conciliação ═══
+     ⛔ A casa tem UMA paleta. Um terceiro arquivo de tons "quase iguais" é como o verde do
+     cartão ≍ e o do card de 10/09 acabaram diferentes. */
+  :root{
+    --bg:#f6f5fb; --card:#fff; --ink:#171a26; --sub:#7b8194; --line:#eae9f2;
+    --roxo:#534AB7; --roxo-bg:#efedfb;
+    --verde:#0f9d58; --verde-bg:#e7f7ee;
+    --coral:#e5484d; --coral-bg:#fdecec;
+    --ambar:#c47b0a; --ambar-bg:#fdf3e0;
+    --azul:#2563eb; --azul-bg:#e8effd;
+    /* ⭐ A TERCEIRA FAMÍLIA (v2): o teal da revenda. Faltava na paleta — as três seções
+       precisavam de cores DISTINTAS e o roxo já é a cor da marca (períodos, links). */
+    --teal:#0d7c74; --teal-bg:#e4f5f2;
+    --mudo:#94a0b8; --mudo-bg:#f1f3f8;
+    --sombra:0 1px 2px rgba(23,26,38,.05),0 8px 28px rgba(83,74,183,.08);
+
+    /* ═══ AS MEDIDAS QUE O GUARD CONFERE (v2) ═══ */
+    /* ⭐ a divisória de CADA produto: inteira, 1px, mais escura que a --line de antes */
+    --divisoria:#dcdae8;
+    /* ⭐ o zebrado: linha alternada com fundo suave (surface-1) */
+    --zebra:#faf9fd;
+    --linha-py:13px;      /* respiro vertical por linha */
+    --pilula-py:4px;
+    --pilula-px:10px;
+    --pilula-fs:12.5px;
+    --item-fs:13.5px;     /* nome do item */
+    --item-peso:500;      /* nome do item, TEÓRICO e REAL */
+    --contexto-peso:400;  /* início/entrou/produzido/vendeu — contexto */
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{container-type:inline-size;max-width:1200px;margin:0 auto;padding:16px}
+  .wrap[data-vp="celular"]{max-width:420px}
+
+  /* ── cabeçalho da tela ─────────────────────────────────────────────── */
+  .topo{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .topo h1{font-size:16px;font-weight:800;margin:0}
+  .chip-periodo{background:var(--roxo-bg);color:var(--roxo);border-radius:999px;
+                padding:2px 8px;font-size:11.5px;font-weight:700}
+  .legenda{color:var(--sub);font-size:12px}
+  .vp{margin-left:auto;display:flex;gap:4px}
+  .vp button{border:0;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;
+             background:#fff;color:var(--sub);box-shadow:var(--sombra);cursor:pointer}
+  .vp button[aria-pressed="true"]{background:var(--roxo);color:#fff}
+
+  /* ── barra de filtros ──────────────────────────────────────────────── */
+  .filtros{display:flex;flex-wrap:wrap;gap:6px;background:#fff;border-radius:14px;
+           padding:8px;box-shadow:var(--sombra);margin-bottom:12px}
+  .pill{height:32px;border:0;border-radius:999px;padding:0 12px;font-size:12.5px;
+        font-weight:700;background:var(--bg);color:var(--sub);cursor:pointer}
+  .pill[aria-pressed="true"]{background:var(--roxo);color:#fff}
+
+  /* ── a seção: faixa COLORIDA por família ───────────────────────────── */
+  .secao{background:#fff;border-radius:16px;box-shadow:var(--sombra);
+         overflow:hidden;margin-bottom:12px}
+  .faixa{display:flex;align-items:center;gap:8px;padding:10px 16px;
+         font-size:13px;font-weight:800;letter-spacing:.02em;text-transform:uppercase}
+  .faixa .quantos{font-weight:600;text-transform:none;letter-spacing:0;opacity:.75;font-size:11.5px}
+  /* ⭐ UMA FAMÍLIA, UMA COR — a faixa e o SUBTOTAL da seção usam o MESMO fundo.
+     ⛔ Se o subtotal usasse outro tom, a seção deixaria de se ler como um bloco só. */
+  .secao[data-familia="caros"]   .faixa,.secao[data-familia="caros"]   .subtotal{background:var(--ambar-bg);color:var(--ambar)}
+  .secao[data-familia="porcoes"] .faixa,.secao[data-familia="porcoes"] .subtotal{background:var(--azul-bg); color:var(--azul)}
+  .secao[data-familia="revenda"] .faixa,.secao[data-familia="revenda"] .subtotal{background:var(--teal-bg); color:var(--teal)}
+
+  /* ── a mesa ─────────────────────────────────────────────────────────── */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{color:var(--sub);font-size:11px;font-weight:500;text-transform:uppercase;
+           letter-spacing:.04em;padding:8px 12px;text-align:right}
+  thead th:first-child{text-align:left}
+  /* ⭐⭐ CADA PRODUTO É UMA FAIXA PRÓPRIA: divisória INTEIRA em cima e embaixo + zebrado.
+     ⛔ Sem isso a tabela vira "tudo junto" e o olho não separa um item do outro. */
+  tbody tr{border-top:1px solid var(--divisoria);border-bottom:1px solid var(--divisoria)}
+  tbody tr:nth-child(odd){background:var(--zebra)}
+  tbody td{padding:var(--linha-py) 12px;text-align:right;font-variant-numeric:tabular-nums}
+  tbody td:first-child{text-align:left}
+  /* ⭐ HIERARQUIA: o nome e o que DECIDE (teórico/real) em 500; o contexto em normal */
+  .item{font-size:var(--item-fs);font-weight:var(--item-peso)}
+  .janela{color:var(--mudo);font-size:11px;font-weight:400;margin-left:6px}
+  .decide{font-weight:var(--item-peso)}
+  .contexto{font-weight:var(--contexto-peso);color:var(--ink)}
+  .zero{color:var(--mudo)}
+  .faltacontar{color:var(--mudo);font-size:12px;font-weight:600}
+
+  /* ── a pílula do veredito (maior na v2) ────────────────────────────── */
+  .pilula{display:inline-block;border-radius:999px;
+          padding:var(--pilula-py) var(--pilula-px);font-size:var(--pilula-fs);font-weight:700}
+  .faltou-grande{background:var(--coral-bg);color:var(--coral)}
+  .faltou-pequeno{background:var(--ambar-bg);color:var(--ambar)}
+  .sobrou{background:var(--verde-bg);color:var(--verde)}
+  .bateu{background:var(--verde-bg);color:var(--verde)}
+  .sem-contagem{background:var(--mudo-bg);color:var(--mudo)}
+
+  .subtotal{padding:8px 16px;font-size:11.5px;font-weight:700}
+  .rodape{background:#fff;border-radius:14px;box-shadow:var(--sombra);
+          padding:12px 16px;font-size:12.5px;color:var(--sub)}
+
+  /* ── celular: cards com a MESMA separação por faixa e zebrado ──────── */
+  .cards{display:none}
+  @container (max-width:640px){
+    table{display:none}
+    .cards{display:block}
+    .card{border-top:1px solid var(--divisoria);border-bottom:1px solid var(--divisoria);
+          padding:var(--linha-py) 16px}
+    .card:nth-child(odd){background:var(--zebra)}
+    .card .linha1{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+    .card .campos{margin-top:4px;display:flex;flex-wrap:wrap;gap:2px 12px;
+                  font-size:11.5px;color:var(--sub)}
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap" data-vp="computador">
+
+  <div class="topo">
+    <span style="color:var(--roxo);font-size:18px">🔬</span>
+    <h1>Real × Teórico</h1>
+    <span class="chip-periodo">12/09 a 18/09</span>
+    <span class="legenda">a mesa lê o motor do Radar — mesma conta, mesmas listas</span>
+    <span class="vp">
+      <button onclick="vp('celular',this)">📱 celular</button>
+      <button onclick="vp('computador',this)" aria-pressed="true">🖥 computador</button>
+    </span>
+  </div>
+
+  <div class="filtros">
+    <button class="pill">hoje</button>
+    <button class="pill">7 dias</button>
+    <button class="pill">mês</button>
+    <button class="pill" aria-pressed="true">12/09 até 18/09</button>
+    <button class="pill">🔍 produtos</button>
+    <button class="pill">▦ colunas</button>
+  </div>
+
+  <!-- ══ 🥤 REVENDA — teal ══ -->
+  <section class="secao" data-familia="revenda">
+    <div class="faixa">🥤 revenda <span class="quantos">31 itens</span></div>
+    <table>
+      <thead><tr>
+        <th>item</th><th>início</th><th>entrou</th><th>produzido</th><th>vendeu</th>
+        <th>teórico</th><th>real</th><th>variância</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="item">COCA COLA LATA Zero 350ml</span><span class="janela">desde 17/09</span></td>
+          <td class="contexto">24 UN</td><td class="zero">0 UN</td><td class="zero">0 UN</td><td class="zero">0 UN</td>
+          <td class="decide">23 UN</td><td class="decide">20 UN</td>
+          <td><span class="pilula faltou-pequeno">faltou 3 UN</span></td>
+        </tr>
+        <tr>
+          <td><span class="item">COCA COLA Zero 600ml</span><span class="janela">desde 17/09</span></td>
+          <td class="contexto">74 UN</td><td class="zero">0 UN</td><td class="zero">0 UN</td><td class="contexto">-4 UN</td>
+          <td class="decide">70 UN</td><td class="decide">69 UN</td>
+          <td><span class="pilula faltou-pequeno">faltou 1 UN</span></td>
+        </tr>
+        <tr>
+          <td><span class="item">BRAHMA CHOPP 600ML</span><span class="janela">desde 17/09</span></td>
+          <td class="contexto">82 UN</td><td class="zero">0 UN</td><td class="zero">0 UN</td><td class="contexto">-1 UN</td>
+          <td class="decide">81 UN</td><td class="decide">82 UN</td>
+          <td><span class="pilula sobrou">sobrou 1 UN</span></td>
+        </tr>
+        <tr>
+          <td><span class="item">FANTA UVA 2L</span><span class="janela">desde 17/09</span></td>
+          <td class="contexto">17 UN</td><td class="zero">0 UN</td><td class="zero">0 UN</td><td class="contexto">-1 UN</td>
+          <td class="decide">16 UN</td><td class="decide">15 UN</td>
+          <td><span class="pilula faltou-pequeno">faltou 1 UN</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="cards">
+      <div class="card"><div class="linha1"><span class="item">COCA COLA LATA Zero 350ml</span><span class="pilula faltou-pequeno">faltou 3 UN</span></div>
+        <div class="campos"><span>início <b>24 UN</b></span><span>teórico <b>23 UN</b></span><span>real <b>20 UN</b></span></div></div>
+      <div class="card"><div class="linha1"><span class="item">COCA COLA Zero 600ml</span><span class="pilula faltou-pequeno">faltou 1 UN</span></div>
+        <div class="campos"><span>início <b>74 UN</b></span><span>vendeu <b>-4 UN</b></span><span>teórico <b>70 UN</b></span><span>real <b>69 UN</b></span></div></div>
+      <div class="card"><div class="linha1"><span class="item">BRAHMA CHOPP 600ML</span><span class="pilula sobrou">sobrou 1 UN</span></div>
+        <div class="campos"><span>início <b>82 UN</b></span><span>teórico <b>81 UN</b></span><span>real <b>82 UN</b></span></div></div>
+    </div>
+    <div class="subtotal">└─ faltou 7 UN · sobrou 5 UN</div>
+  </section>
+
+  <!-- ══ 💰 OS CAROS — âmbar ══ -->
+  <section class="secao" data-familia="caros">
+    <div class="faixa">💰 os caros <span class="quantos">6 itens</span></div>
+    <table>
+      <thead><tr>
+        <th>item</th><th>início</th><th>entrou</th><th>produzido</th><th>vendeu</th>
+        <th>teórico</th><th>real</th><th>variância</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="item">QUEIJO MUSSARELA FATIADO 2KG</span><span class="janela">desde 14/09</span></td>
+          <td class="contexto">4,62 KG</td><td class="contexto">75,2 KG</td><td class="zero">0 KG</td><td class="contexto">-6,3 KG</td>
+          <td class="decide">66,2 KG</td><td class="decide">26 KG</td>
+          <td><span class="pilula faltou-grande">faltou 40,2 KG</span></td>
+        </tr>
+        <tr>
+          <td><span class="item">FILE DE PEITO DE FRANGO</span><span class="janela">desde 14/09</span></td>
+          <td class="contexto">74,2 KG</td><td class="contexto">120 KG</td><td class="contexto">-139,256 KG</td><td class="zero">0 KG</td>
+          <td class="decide">54,95 KG</td><td class="decide">44,4 KG</td>
+          <td><span class="pilula faltou-grande">faltou 10,55 KG</span></td>
+        </tr>
+        <tr>
+          <td><span class="item">Acém</span><span class="janela">desde 14/09</span></td>
+          <td class="contexto">20,55 KG</td><td class="contexto">133,42 KG</td><td class="contexto">-90,959 KG</td><td class="zero">0 KG</td>
+          <td class="decide">63,01 KG</td><td class="decide">65,8 KG</td>
+          <td><span class="pilula sobrou">sobrou 2,79 KG</span></td>
+        </tr>
+        <tr>
+          <td><span class="item">Coxão Mole</span><span class="janela">desde 14/09</span></td>
+          <td class="contexto">26,4 KG</td><td class="contexto">124,75 KG</td><td class="contexto">-71,681 KG</td><td class="zero">0 KG</td>
+          <td class="decide">79,47 KG</td><td class="decide">79,15 KG</td>
+          <td><span class="pilula faltou-pequeno">faltou 320 g</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="cards">
+      <div class="card"><div class="linha1"><span class="item">QUEIJO MUSSARELA FATIADO 2KG</span><span class="pilula faltou-grande">faltou 40,2 KG</span></div>
+        <div class="campos"><span>início <b>4,62 KG</b></span><span>entrou <b>75,2 KG</b></span><span>teórico <b>66,2 KG</b></span><span>real <b>26 KG</b></span></div></div>
+      <div class="card"><div class="linha1"><span class="item">FILE DE PEITO DE FRANGO</span><span class="pilula faltou-grande">faltou 10,55 KG</span></div>
+        <div class="campos"><span>início <b>74,2 KG</b></span><span>produzido <b>-139,256 KG</b></span><span>teórico <b>54,95 KG</b></span><span>real <b>44,4 KG</b></span></div></div>
+    </div>
+    <div class="subtotal">└─ faltou 51,87 KG · sobrou 7,48 KG</div>
+  </section>
+
+  <!-- ══ 🍳 PORÇÕES — azul ══ -->
+  <section class="secao" data-familia="porcoes">
+    <div class="faixa">🍳 porções <span class="quantos">24 itens</span></div>
+    <table>
+      <thead><tr>
+        <th>item</th><th>início</th><th>entrou</th><th>produzido</th><th>vendeu</th>
+        <th>teórico</th><th>real</th><th>variância</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="item">porçao frango frito 200 grama</span><span class="janela">desde 14/09</span></td>
+          <td class="zero">0 UN</td><td class="zero">0 UN</td><td class="contexto">499 UN</td><td class="zero">0 UN</td>
+          <td class="decide">499 UN</td><td class="decide">99 UN</td>
+          <td><span class="pilula faltou-grande">faltou 400 UN</span></td>
+        </tr>
+        <tr>
+          <td><span class="item">porçao queijo 135 grama</span><span class="janela">desde 17/09</span></td>
+          <td class="contexto">820 UN</td><td class="zero">0 UN</td><td class="contexto">163 UN</td><td class="contexto">-46 UN</td>
+          <td class="decide">934 UN <span class="pilula faltou-pequeno" style="font-size:10px;padding:1px 6px">+3 s/ explicação</span></td>
+          <td class="decide">901 UN</td>
+          <td><span class="pilula faltou-grande">faltou 33 UN</span></td>
+        </tr>
+        <tr>
+          <td><span class="item">beef de hamburger</span><span class="janela">desde 14/09</span></td>
+          <td class="contexto">159 UN</td><td class="zero">0 UN</td><td class="zero">0 UN</td><td class="contexto">-56 UN</td>
+          <td class="decide">103 UN</td><td class="decide">73 UN</td>
+          <td><span class="pilula faltou-grande">faltou 30 UN</span></td>
+        </tr>
+        <tr>
+          <td><span class="item">porcao aneis de cebola</span><span class="janela">—</span></td>
+          <td class="contexto">12 UN</td><td class="zero">0 UN</td><td class="zero">0 UN</td><td class="zero">0 UN</td>
+          <td class="decide">12 UN</td><td class="faltacontar">falta contar</td>
+          <td><span class="pilula sem-contagem">falta contar</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="cards">
+      <div class="card"><div class="linha1"><span class="item">porçao frango frito 200 grama</span><span class="pilula faltou-grande">faltou 400 UN</span></div>
+        <div class="campos"><span>produzido <b>499 UN</b></span><span>teórico <b>499 UN</b></span><span>real <b>99 UN</b></span></div></div>
+      <div class="card"><div class="linha1"><span class="item">porcao aneis de cebola</span><span class="pilula sem-contagem">falta contar</span></div>
+        <div class="campos"><span>início <b>12 UN</b></span><span>teórico <b>12 UN</b></span><span>real <b>falta contar</b></span></div></div>
+    </div>
+    <div class="subtotal">└─ faltou 593 UN · sobrou 76 UN · 8 sem contagem — fora dos totais</div>
+  </section>
+
+  <div class="rodape">
+    <b style="color:var(--ink)">53</b> itens contados no período ·
+    a mesa fecha em <b style="color:var(--coral)">R$ 3.790,41</b> ·
+    <span style="color:var(--verde)">✓ bate com o Radar</span>
+  </div>
+
+  <p style="color:var(--sub);font-size:11px;margin-top:10px">
+    ⚠️ Nomes e variâncias lidos da Caçula em 29/09 (12→18/09, read-only). O “+3 s/ explicação”
+    da porção de queijo é real: a janela tem movimento que a conta não explica, e a linha diz
+    em vez de deixar o dono somar no dedo.
+  </p>
+</div>
+
+<script>
+  function vp(qual, btn){
+    document.getElementById('wrap').dataset.vp = qual
+    for (const b of document.querySelectorAll('.vp button')) b.removeAttribute('aria-pressed')
+    btn.setAttribute('aria-pressed','true')
+  }
+</script>
+</body>
+</html>

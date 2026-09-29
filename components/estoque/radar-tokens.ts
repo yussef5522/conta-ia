@@ -30,6 +30,20 @@ export const RADAR = {
   /** ⭐ o cinza do "falta contar" — estado PRÓPRIO, nunca um verde pálido */
   mudo: '#94a0b8',
   mudoBg: '#f1f3f8',
+  /**
+   * ⭐⭐ AS CORES DE FAMÍLIA DA MESA (v2, 29/09/2026) — *"faixa colorida de verdade por
+   * família"*. `azul` já existia no `:root{}` dos mocks e faltava aqui; o **teal** é a
+   * terceira, e ela nasceu porque as três seções precisavam de cores DISTINTAS e o roxo já
+   * é a cor da marca (período, links, seleção).
+   *
+   * ⛔ Vieram pro arquivo de tokens, não pra a tela: a casa tem UMA paleta, e um tom
+   * "quase igual" escrito direto no componente é como o verde do cartão ≍ e o do card de
+   * 10/09 acabaram diferentes.
+   */
+  azul: '#2563eb',
+  azulBg: '#e8effd',
+  teal: '#0d7c74',
+  tealBg: '#e4f5f2',
   sombra: '0 1px 2px rgba(23,26,38,.05),0 8px 28px rgba(83,74,183,.08)',
 } as const
 
@@ -41,3 +55,44 @@ export const TOM: Record<string, { bg: string; cor: string }> = {
   BATEU: { bg: RADAR.verdeBg, cor: RADAR.verde },
   SEM_CONTAGEM: { bg: RADAR.mudoBg, cor: RADAR.mudo },
 }
+
+
+/**
+ * ⭐⭐⭐ UMA FAMÍLIA, UMA COR — e a faixa da seção e o SUBTOTAL dela leem daqui (29/09/2026).
+ *
+ * **A ordem do dono:** *"cabeçalho de seção com cor de verdade por família — os caros =
+ * âmbar · porções = azul · revenda = teal — com ícone e texto no tom escuro da mesma
+ * família; o SUBTOTAL da seção repete o fundo da faixa dela."*
+ *
+ * ⛔ Por isso é UM mapa, não duas escolhas: se a faixa e o subtotal pegassem a cor em
+ * lugares diferentes, divergiriam no primeiro ajuste de tom e a seção deixaria de se ler
+ * como um bloco só. É a régua do mock (`docs/mocks/real-vs-teorico-mock.html`), onde os
+ * dois seletores CSS compartilham a mesma declaração.
+ */
+export const FAMILIA: Record<'caros' | 'porcoes' | 'revenda', { bg: string; cor: string }> = {
+  caros: { bg: RADAR.ambarBg, cor: RADAR.ambar },
+  porcoes: { bg: RADAR.azulBg, cor: RADAR.azul },
+  revenda: { bg: RADAR.tealBg, cor: RADAR.teal },
+}
+
+/**
+ * ⭐ AS MEDIDAS DA MESA v2, copiadas do mock — *"cada produto vira uma faixa própria"*.
+ *
+ * ⚠️ `divisoria` é mais escura que a `line` de antes de propósito: com a `line` (#eae9f2) a
+ * separação existia no CSS e **não se via**, que é o mesmo que não existir.
+ */
+export const MESA = {
+  /** a divisória INTEIRA de cada produto (1px, em cima e embaixo) */
+  divisoria: '#dcdae8',
+  /** o zebrado: linha alternada com fundo suave (surface-1) */
+  zebra: '#faf9fd',
+  linhaPy: '13px',
+  pilulaPy: '4px',
+  pilulaPx: '10px',
+  pilulaFs: '12.5px',
+  itemFs: '13.5px',
+  /** ⭐ nome do item, TEÓRICO e REAL — o que decide */
+  pesoForte: 500,
+  /** início/entrou/produzido/vendeu — contexto */
+  pesoContexto: 400,
+} as const

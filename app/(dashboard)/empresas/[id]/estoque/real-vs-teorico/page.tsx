@@ -27,7 +27,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, use } from 'react'
 import Link from 'next/link'
 import { FlaskConical, Loader2, ChevronDown, ChevronRight, Columns3, Search, X, Download } from 'lucide-react'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
-import { RADAR, TOM } from '@/components/estoque/radar-tokens'
+import { RADAR, TOM, FAMILIA, MESA } from '@/components/estoque/radar-tokens'
 import { ContaDePadeiro } from '@/components/estoque/radar/conta-de-padeiro'
 import { formatarQtd } from '@/lib/stock/quantidade'
 import { casaBusca } from '@/lib/busca-texto'
@@ -71,19 +71,27 @@ function Pilula({ l }: { l: LinhaDaMesa }) {
       ? 'bateu'
       : `${l.variancia < 0 ? 'faltou' : 'sobrou'} ${formatarQtd(Math.abs(l.variancia), l.unidade)}`
   return (
-    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11.5px] font-bold"
-      style={{ background: tom.bg, color: tom.cor }}>
+    // ⭐ v2: a pílula cresceu (4px 10px · 12,5px) — é o veredito, o que o olho procura
+    <span className="inline-flex items-center rounded-full font-bold"
+      style={{ background: tom.bg, color: tom.cor, padding: `${MESA.pilulaPy} ${MESA.pilulaPx}`, fontSize: MESA.pilulaFs }}>
       {texto}
     </span>
   )
 }
 
-/** ⚠️ célula de quantidade: o sinal é o do ledger, e o zero fica APAGADO (não é notícia) */
+/**
+ * ⚠️ célula de quantidade: o sinal é o do ledger, e o zero fica APAGADO (não é notícia).
+ *
+ * ⭐ v2 — **HIERARQUIA POR PAPEL** (ordem do dono): `forte` é o que DECIDE (teórico e real)
+ * e vai em peso 500; o contexto (início/entrou/produzido/vendeu) fica em peso normal, pra
+ * o olho ir direto no que importa em vez de varrer oito números do mesmo tamanho.
+ */
 function Qtd({ v, un, forte }: { v: number | null; un: string; forte?: boolean }) {
   if (v == null) return <span style={{ color: RADAR.mudo }}>—</span>
   const zero = Math.abs(v) < 0.0000005
   return (
-    <span className={`tabular-nums ${forte ? 'font-bold' : ''}`} style={{ color: zero ? RADAR.mudo : undefined }}>
+    <span className="tabular-nums"
+      style={{ color: zero ? RADAR.mudo : undefined, fontWeight: forte ? MESA.pesoForte : MESA.pesoContexto }}>
       {formatarQtd(v, un)}
     </span>
   )
@@ -327,16 +335,22 @@ function Secao({ s, cols, mostra, empresaId, aberta, aoAbrir }: {
 }) {
   if (!s.linhas.length) return null
   const frases = frasesDoRodape(s.total)
+  const fam = FAMILIA[s.chave]
   return (
     <section className="mb-3 overflow-hidden rounded-[16px]" style={{ background: '#fff', boxShadow: RADAR.sombra }}>
-      <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: RADAR.bg }}>
+      {/* ⭐⭐ v2 — A FAIXA COLORIDA DA FAMÍLIA. Ícone e texto no tom escuro DELA, e o
+          subtotal lá embaixo repete este mesmo fundo (FAMILIA é o dono único dos dois). */}
+      <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: fam.bg, color: fam.cor }}>
         <span className="text-[15px]">{s.icone}</span>
-        <h2 className="text-[13px] font-extrabold uppercase tracking-wide" style={{ color: RADAR.ink }}>{s.titulo}</h2>
-        <span className="text-[11.5px]" style={{ color: RADAR.sub }}>{s.linhas.length} item(ns)</span>
+        <h2 className="text-[13px] font-extrabold uppercase tracking-wide">{s.titulo}</h2>
+        <span className="text-[11.5px] font-semibold opacity-75">{s.linhas.length} item(ns)</span>
       </div>
 
       {/* ── computador: a mesa ─────────────────────────────────────────────── */}
-      <table className="hidden w-full text-[13px] lg:table density-normal">
+      {/* ⚠️ sem `density-normal` de propósito: o dono especificou o respiro desta mesa
+          (~13px por linha, MESA.linhaPy) e esta tela não oferece o seletor de densidade.
+          O CSS global segue intocado — aqui só não se consome. */}
+      <table className="hidden w-full text-[13px] lg:table">
         <thead>
           <tr style={{ color: RADAR.sub }}>
             <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide">item</th>
@@ -352,25 +366,34 @@ function Secao({ s, cols, mostra, empresaId, aberta, aoAbrir }: {
             {mostra('pct') && <th className="px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wide">%</th>}
           </tr>
         </thead>
-        <tbody className="divide-y" style={{ borderColor: RADAR.line }}>
-          {s.linhas.map((l) => (
+        <tbody>
+          {s.linhas.map((l, i) => (
             <>
-              <tr key={l.itemId} onClick={() => aoAbrir(l.itemId)} className="cursor-pointer hover:bg-slate-50/60">
-                <td className="px-3 py-0 text-[13px]">
+              {/* ⭐⭐ v2 — CADA PRODUTO É UMA FAIXA PRÓPRIA: divisória INTEIRA em cima e
+                  embaixo + zebrado na alternada. ⛔ Sem isso a mesa vira "tudo junto" e o
+                  olho não separa um item do outro. */}
+              <tr key={l.itemId} onClick={() => aoAbrir(l.itemId)} className="cursor-pointer"
+                style={{
+                  borderTop: `1px solid ${MESA.divisoria}`,
+                  borderBottom: `1px solid ${MESA.divisoria}`,
+                  background: i % 2 === 0 ? MESA.zebra : '#fff',
+                }}>
+                <td className="px-3 text-[13px]" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}>
                   <span className="inline-flex items-center gap-1">
                     {aberta === l.itemId ? <ChevronDown className="h-3.5 w-3.5" style={{ color: RADAR.sub }} /> : <ChevronRight className="h-3.5 w-3.5" style={{ color: RADAR.sub }} />}
-                    <span style={{ color: RADAR.ink }}>{l.nome}</span>
+                    {/* ⭐ v2 — o NOME é o que ancora a linha: 500 · 13,5px */}
+                    <span style={{ color: RADAR.ink, fontSize: MESA.itemFs, fontWeight: MESA.pesoForte }}>{l.nome}</span>
                   </span>
                   {/* ⭐ a JANELA da linha, escrita — duas linhas podem cobrir janelas diferentes */}
                   {l.desde && <span className="ml-1.5 text-[11px]" style={{ color: RADAR.mudo }}>desde {br(l.desde)}</span>}
                 </td>
-                {mostra('inicio') && <td className="px-3 py-0 text-right"><Qtd v={l.inicio} un={l.unidade} /></td>}
-                {mostra('entrou') && <td className="px-3 py-0 text-right"><Qtd v={l.entrou} un={l.unidade} /></td>}
-                {mostra('produziu') && <td className="px-3 py-0 text-right"><Qtd v={l.produziu || l.separado} un={l.unidade} /></td>}
-                {mostra('vendeu') && <td className="px-3 py-0 text-right"><Qtd v={l.vendeu} un={l.unidade} /></td>}
-                {mostra('perdeu') && <td className="px-3 py-0 text-right"><Qtd v={l.perdeu} un={l.unidade} /></td>}
+                {mostra('inicio') && <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}><Qtd v={l.inicio} un={l.unidade} /></td>}
+                {mostra('entrou') && <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}><Qtd v={l.entrou} un={l.unidade} /></td>}
+                {mostra('produziu') && <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}><Qtd v={l.produziu || l.separado} un={l.unidade} /></td>}
+                {mostra('vendeu') && <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}><Qtd v={l.vendeu} un={l.unidade} /></td>}
+                {mostra('perdeu') && <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}><Qtd v={l.perdeu} un={l.unidade} /></td>}
                 {mostra('teorico') && (
-                  <td className="px-3 py-0 text-right">
+                  <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}>
                     <Qtd v={l.teorico} un={l.unidade} forte />
                     {/* ⛔ a linha que NÃO fecha DIZ — nunca deixa o dono somar no dedo e achar
                         um furo que não é furo (achado na prova em prod: 937 × 934) */}
@@ -384,22 +407,23 @@ function Secao({ s, cols, mostra, empresaId, aberta, aoAbrir }: {
                   </td>
                 )}
                 {mostra('real') && (
-                  <td className="px-3 py-0 text-right">
+                  <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}>
                     {/* ⛔ sem contagem NUNCA vira número — "falta contar" é estado próprio */}
                     {l.real == null
-                      ? <span className="text-[12px] font-semibold" style={{ color: RADAR.mudo }}>falta contar</span>
+                      ? <span className="text-[12px]" style={{ color: RADAR.mudo, fontWeight: MESA.pesoForte }}>falta contar</span>
                       : <Qtd v={l.real} un={l.unidade} forte />}
                   </td>
                 )}
-                {mostra('variancia') && <td className="px-3 py-0 text-right"><Pilula l={l} /></td>}
+                {mostra('variancia') && <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}><Pilula l={l} /></td>}
                 {mostra('valor') && (
-                  <td className="px-3 py-0 text-right tabular-nums"
-                    style={{ color: l.varianciaValor == null ? RADAR.mudo : l.varianciaValor < 0 ? RADAR.coral : RADAR.verde }}>
+                  <td className="px-3 text-right tabular-nums"
+                    style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy, color: l.varianciaValor == null ? RADAR.mudo : l.varianciaValor < 0 ? RADAR.coral : RADAR.verde }}>
                     {l.varianciaValor == null ? '—' : brl(Math.abs(l.varianciaValor))}
                   </td>
                 )}
                 {mostra('pct') && (
-                  <td className="px-3 py-0 text-right tabular-nums" style={{ color: RADAR.sub }}>
+                  <td className="px-3 text-right tabular-nums"
+                    style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy, color: RADAR.sub }}>
                     {l.pct == null ? '—' : `${(l.pct * 100).toFixed(1)}%`}
                   </td>
                 )}
@@ -417,12 +441,20 @@ function Secao({ s, cols, mostra, empresaId, aberta, aoAbrir }: {
       </table>
 
       {/* ── celular: cards, sem scroll lateral (REGRA 12) ──────────────────── */}
-      <div className="divide-y lg:hidden" style={{ borderColor: RADAR.line }}>
-        {s.linhas.map((l) => (
-          <div key={l.itemId}>
-            <button onClick={() => aoAbrir(l.itemId)} className="w-full px-4 py-2.5 text-left">
+      {/* ⭐ v2 — no celular a separação é a MESMA: faixa por produto (divisória inteira em
+          cima e embaixo) + zebrado, e o cabeçalho colorido da seção é o mesmo lá em cima. */}
+      <div className="lg:hidden">
+        {s.linhas.map((l, i) => (
+          <div key={l.itemId}
+            style={{
+              borderTop: `1px solid ${MESA.divisoria}`,
+              borderBottom: `1px solid ${MESA.divisoria}`,
+              background: i % 2 === 0 ? MESA.zebra : '#fff',
+            }}>
+            <button onClick={() => aoAbrir(l.itemId)} className="w-full px-4 text-left"
+              style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}>
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[13.5px] font-semibold" style={{ color: RADAR.ink }}>{l.nome}</span>
+                <span style={{ color: RADAR.ink, fontSize: MESA.itemFs, fontWeight: MESA.pesoForte }}>{l.nome}</span>
                 <Pilula l={l} />
               </div>
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px]" style={{ color: RADAR.sub }}>
@@ -431,9 +463,9 @@ function Secao({ s, cols, mostra, empresaId, aberta, aoAbrir }: {
                 {mostra('produziu') && (l.produziu !== 0 || l.separado !== 0) && <span>produzido <b style={{ color: RADAR.ink }}>{formatarQtd(l.produziu || l.separado, l.unidade)}</b></span>}
                 {mostra('vendeu') && l.vendeu !== 0 && <span>vendeu <b style={{ color: RADAR.ink }}>{formatarQtd(l.vendeu, l.unidade)}</b></span>}
                 {mostra('perdeu') && l.perdeu !== 0 && <span>perdeu <b style={{ color: RADAR.ink }}>{formatarQtd(l.perdeu, l.unidade)}</b></span>}
-                {mostra('teorico') && <span>teórico <b style={{ color: RADAR.ink }}>{formatarQtd(l.teorico, l.unidade)}</b></span>}
+                {mostra('teorico') && <span>teórico <b style={{ color: RADAR.ink, fontWeight: MESA.pesoForte }}>{formatarQtd(l.teorico, l.unidade)}</b></span>}
                 {l.naoExplicado !== 0 && <span style={{ color: RADAR.ambar }}>⚠️ {formatarQtd(Math.abs(l.naoExplicado), l.unidade)} sem explicação</span>}
-                {mostra('real') && <span>real <b style={{ color: l.real == null ? RADAR.mudo : RADAR.ink }}>{l.real == null ? 'falta contar' : formatarQtd(l.real, l.unidade)}</b></span>}
+                {mostra('real') && <span>real <b style={{ color: l.real == null ? RADAR.mudo : RADAR.ink, fontWeight: MESA.pesoForte }}>{l.real == null ? 'falta contar' : formatarQtd(l.real, l.unidade)}</b></span>}
                 {mostra('valor') && l.varianciaValor != null && <span>R$ <b style={{ color: l.varianciaValor < 0 ? RADAR.coral : RADAR.verde }}>{brl(Math.abs(l.varianciaValor))}</b></span>}
               </div>
             </button>
@@ -445,9 +477,9 @@ function Secao({ s, cols, mostra, empresaId, aberta, aoAbrir }: {
       </div>
 
       {/* ⛔ o rodapé honesto: UN≠KG, e o que falta contar fica FORA e é DITO */}
-      <div className="px-4 py-2 text-[11.5px] font-semibold" style={{ background: RADAR.bg, color: RADAR.sub }}>
+      <div className="px-4 py-2 text-[11.5px] font-semibold" style={{ background: fam.bg, color: fam.cor }}>
         └─ {frases.join(' · ')}
-        {s.total.faltouValor > 0 && <span style={{ color: RADAR.coral }}> · {brl(s.total.faltouValor)}</span>}
+        {s.total.faltouValor > 0 && <span className="opacity-80"> · {brl(s.total.faltouValor)}</span>}
       </div>
     </section>
   )
