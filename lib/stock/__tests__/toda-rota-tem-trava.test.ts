@@ -95,9 +95,46 @@ describe('toda rota de estoque tem trava', () => {
     }
   })
 
+  /**
+   * ⭐⭐ ESCRITA QUE NÃO É DADO DE ESTOQUE — exceção NOMEADA, nunca regra afrouxada (29/09).
+   *
+   * ⚠️ A régua *"escrita nunca se contenta com view"* existe porque escrita mexe no que a
+   * cozinha e o dono conferem. **Preferência de TELA não é isso**: ela grava a escolha de
+   * colunas de quem está olhando, e nada dela chega a item, movimento ou contagem.
+   *
+   * ⛔ E exigir `stock.operate` aqui teria um custo real: o papel `LEITURA_ESTOQUE` veria a
+   * mesa e **não conseguiria configurá-la** — a tela aceitaria o clique e esqueceria a
+   * escolha, que é a família do *"salvo que mentia"*.
+   *
+   * ⛔⛔ A exceção é por ARQUIVO + VERBO e cada uma carrega o porquê; e o teste logo abaixo
+   * exige que ela exista de verdade, pra a lista não virar paisagem.
+   */
+  const ESCRITA_DE_PREFERENCIA: Record<string, string> = {
+    'real-vs-teorico/route.ts PUT':
+      'grava só a escolha de COLUNAS da mesa de perícia, por usuário/empresa (stock_mesa_preferencia). '
+      + 'Não toca item, movimento nem contagem — e quem só LÊ o estoque precisa poder configurar a própria tela',
+  }
+
   it('nenhuma escrita (POST/PATCH/PUT/DELETE) se contenta com stock.view', () => {
-    const errados = hs.filter((h) => h.verbo !== 'GET' && h.perms.includes('stock.view'))
+    const errados = hs.filter((h) => h.verbo !== 'GET' && h.perms.includes('stock.view')
+      && !ESCRITA_DE_PREFERENCIA[`${h.arquivo} ${h.verbo}`])
     expect(errados.map((h) => `${h.arquivo} ${h.verbo} → ${h.perms.join(',')}`)).toEqual([])
+  })
+
+  it('⚠️ e toda escrita-de-preferência declarada existe de verdade (a lista não vira paisagem)', () => {
+    for (const chave of Object.keys(ESCRITA_DE_PREFERENCIA)) {
+      const [arquivo, verbo] = chave.split(' ')
+      expect(hs.some((h) => h.arquivo === arquivo && h.verbo === verbo),
+        `exceção declarada pra rota que não existe mais: ${chave}`).toBe(true)
+    }
+  })
+
+  it('⛔ e a exceção NÃO vale pra escrita de dado — o resto da régua continua de pé', () => {
+    // repor a forma antiga numa rota de dado tem que continuar vermelho
+    const falsa = [{ arquivo: 'contagem/linha/route.ts', verbo: 'POST', perms: ['stock.view'] }]
+    const pegou = falsa.filter((h) => h.verbo !== 'GET' && h.perms.includes('stock.view')
+      && !ESCRITA_DE_PREFERENCIA[`${h.arquivo} ${h.verbo}`])
+    expect(pegou).toHaveLength(1)
   })
 
   // ⛔⛔ A CERCA DA CHAVE NOVA (06/09). `stock.executar` é o papel mais fraco do sistema — o

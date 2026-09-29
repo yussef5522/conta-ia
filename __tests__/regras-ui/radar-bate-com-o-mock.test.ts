@@ -17,7 +17,22 @@ const raiz = process.cwd()
 const MOCK = readFileSync(join(raiz, 'docs/mocks/radar-do-estoque-mock.html'), 'utf-8')
 const semComentario = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '')
-const TELA = semComentario(readFileSync(join(raiz, 'app/(dashboard)/empresas/[id]/estoque/radar/page.tsx'), 'utf-8'))
+/**
+ * ⭐⭐ A TELA DO RADAR É A PÁGINA **MAIS** O QUE ELA RENDERIZA (29/09/2026).
+ *
+ * ⚠️ Este guard ficou vermelho **com o código CERTO** quando a `ContaDePadeiro` foi
+ * extraída pra `components/estoque/radar/conta-de-padeiro.tsx` (pra o Real × Teórico usar
+ * o MESMO componente, em vez de uma cópia). Os textos não sumiram — mudaram de arquivo, e
+ * *grep não distingue "refatorei" de "quebrei"* (a razão de existir da REGRA 3).
+ *
+ * ⛔ **REAPONTADO, NÃO AFROUXADO — e ficou mais forte:** além de ler os dois arquivos, ele
+ * agora exige que a página **IMPORTE** o componente compartilhado. Se alguém colar a conta
+ * de volta dentro da página, volta a existir uma segunda cópia da mesma explicação, e o
+ * teste acusa.
+ */
+const PAGINA = semComentario(readFileSync(join(raiz, 'app/(dashboard)/empresas/[id]/estoque/radar/page.tsx'), 'utf-8'))
+const CONTA = semComentario(readFileSync(join(raiz, 'components/estoque/radar/conta-de-padeiro.tsx'), 'utf-8'))
+const TELA = `${PAGINA}\n${CONTA}`
 /**
  * ⚠️⚠️ **O MOTOR TAMBÉM É LIDO SEM COMENTÁRIO — e isso custou a REGRA 11 do v1.2.**
  * Repondo dois defeitos (a ressalva voltando a dizer "hoje"; os dias somindo do balde) o
@@ -67,6 +82,20 @@ describe('⭐ as CORES do Radar saem do :root{} do mock, ao caractere', () => {
     for (const k of ['bg', 'card', 'ink', 'sub', 'line', 'roxo', 'verde', 'coral', 'ambar'] as const) {
       expect(RADAR[k], `o Radar inventou um tom próprio pra "${k}"`).toBe(V3[k])
     }
+  })
+})
+
+describe('⛔⛔ a conta de padeiro é UM componente, servindo as DUAS telas', () => {
+  it('⭐ a página do Radar IMPORTA o componente — não tem cópia dentro dela', () => {
+    expect(PAGINA).toContain("from '@/components/estoque/radar/conta-de-padeiro'")
+    expect(PAGINA, 'a conta voltou a ser definida DENTRO da página — cópia nº 2')
+      .not.toMatch(/function ContaDePadeiro\s*\(/)
+  })
+
+  it('⭐ e o Real × Teórico usa o MESMO componente (a ordem do dono)', () => {
+    const mesa = semComentario(readFileSync(join(raiz, 'app/(dashboard)/empresas/[id]/estoque/real-vs-teorico/page.tsx'), 'utf-8'))
+    expect(mesa).toContain("from '@/components/estoque/radar/conta-de-padeiro'")
+    expect(mesa, 'a mesa remontou a conta em vez de reusar').not.toMatch(/function ContaDePadeiro\s*\(/)
   })
 })
 

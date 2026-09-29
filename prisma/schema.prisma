@@ -4189,6 +4189,19 @@ model StockRadarItem {
 // ⚠️ Lista é CONFIGURAÇÃO do dono, não dado derivado: o que ele escolhe vigiar hoje não
 // pode mudar sozinho porque o estoque mudou. Por isso é tabela, não heurística de "os N
 // mais caros" — heurística trocaria a lista dele sem ninguém pedir.
+/// ⭐ A escolha de colunas da mesa de perícia (Real × Teórico), por pessoa e empresa.
+/// ⚠️ `colunas` é lista separada por vírgula; chave desconhecida é descartada na leitura.
+model StockMesaPreferencia {
+  id           String   @id @default(cuid())
+  companyId    String // REGRA 8 — valor, sem @relation
+  userId       String
+  colunas      String
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([companyId, userId])
+  @@map("stock_mesa_preferencia")
+}
+
 model StockRadarWatchlist {
   id          String   @id @default(cuid())
   companyId   String // REGRA 8 — valor, sem @relation
