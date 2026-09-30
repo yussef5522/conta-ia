@@ -11,6 +11,8 @@ import { recordRuleOverride } from '@/lib/ai-categorizer/apply'
 import { autoMemorizeVendor } from '@/lib/categorization/auto-memorize-vendor'
 import { counterpartyRulePattern, CONTRAPARTE_TIPO_MATCH } from '@/lib/counterparty/rules'
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
+import { reAncorarContas } from '@/lib/balance/recalcular'
+import { prepararMudancaDeConta, MoverDeContaError } from '@/lib/transacoes/mover-de-conta'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -65,7 +67,31 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const body = await request.json()
     const data = transacaoUpdateSchema.parse(body)
 
-    const ajusteSaldo = calcularAjusteSaldo(antiga, data)
+    /**
+     * ⭐⭐⭐ TROCA DE CONTA (30/09/2026) — a porta que faltava, e ela é do lado do SERVIDOR.
+     *
+     * A tela tranca o seletor quando a linha não pode se mover, mas **a trava de verdade é
+     * aqui**: esconder o campo não impede a chamada, e a régua do FREIO da contagem (23/08)
+     * vale igual — aviso que mora no componente some no dia em que a rota for chamada por
+     * outro caminho.
+     *
+     * ⚠️ Recusa vira **422 com `code`**, nunca 500 — a tela age no código e mostra o motivo.
+     */
+    let mudanca: Awaited<ReturnType<typeof prepararMudancaDeConta>> | null = null
+    if (data.bankAccountId && data.bankAccountId !== antiga.bankAccountId) {
+      try {
+        mudanca = await prepararMudancaDeConta(prisma, {
+          transacaoId: id,
+          contaDestinoId: data.bankAccountId,
+          companyId: antiga.bankAccount.companyId,
+        })
+      } catch (e) {
+        if (e instanceof MoverDeContaError) {
+          return NextResponse.json({ erro: e.message, code: e.code }, { status: 422 })
+        }
+        throw e
+      }
+    }
 
     // Sprint Category-Combobox (29/06/2026) — DEFESA EM PROFUNDIDADE.
     //
@@ -130,6 +156,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
             : {}),
           ...(data.amount !== undefined ? { amount: data.amount } : {}),
           ...(data.type !== undefined ? { type: data.type } : {}),
+          // ⭐ a conta nova (já validada pela fronteira acima)
+          ...(mudanca ? { bankAccountId: mudanca.para.id } : {}),
           ...(data.notes !== undefined ? { notes: data.notes ?? null } : {}),
           // Sprint Category-Combobox: status enforced SEMPRE no fim,
           // sobrescreve qualquer tentativa do body. SEM exceção.
@@ -155,17 +183,27 @@ export async function PUT(request: NextRequest, { params }: Params) {
         },
         include: { category: { select: { id: true, name: true, color: true, type: true } } },
       })
-      if (ajusteSaldo !== 0) {
-        await tx.bankAccount.update({
-          where: { id: antiga.bankAccountId! },
-          data: { balance: { increment: ajusteSaldo } },
-        })
-      }
+      /**
+       * ⭐⭐⭐ RE-ANCORA, NUNCA SOMA DELTA (30/09/2026 — item 4, matar a classe do drift).
+       *
+       * ⛔ Aqui era `balance: { increment: ajusteSaldo }`. Isso drifta o cache sempre que a
+       * data da linha é ANTERIOR à âncora do banco: o dinheiro já está dentro do saldo que
+       * o banco declarou, e o delta o soma de novo. Foi assim que a Stone ficou 2.112,00
+       * acima da régua — e o import culpou o extrato por um drift que era nosso.
+       *
+       * ⭐ Re-derivar é IDEMPOTENTE: roda sempre, sem condição (`ajusteSaldo !== 0` era mais
+       * uma chance de esquecer — editar a DATA não muda o valor e mexe no saldo do mesmo
+       * jeito, porque a âncora corta por data).
+       *
+       * ⚠️ E vai nas DUAS contas quando a linha muda de lugar: uma só deixaria a outra
+       * errada na direção oposta.
+       */
+      await reAncorarContas(tx, [antiga.bankAccountId, mudanca?.para.id])
 
       const fieldsChanged = diffFields(
         antiga as unknown as Record<string, unknown>,
         updated as unknown as Record<string, unknown>,
-        ['description', 'amount', 'date', 'competenceDate', 'paymentDate', 'categoryId', 'type', 'status', 'notes'],
+        ['description', 'amount', 'date', 'competenceDate', 'paymentDate', 'categoryId', 'type', 'status', 'notes', 'bankAccountId'],
       )
 
       if (fieldsChanged) {
@@ -176,7 +214,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
             entityType: 'Transaction',
             entityId: updated.id,
             fieldsChanged,
-            metadata: { description: updated.description, amount: updated.amount },
+            metadata: {
+              description: updated.description,
+              amount: updated.amount,
+              // ⭐ o rastro em PALAVRAS: "movida de stone pra caixa loja/cofre". Sem ele, o
+              // audit guardaria dois cuids e ninguém saberia o que aconteceu em três meses.
+              ...(mudanca ? { mudancaDeConta: mudanca.rastro, deContaId: mudanca.de.id, paraContaId: mudanca.para.id } : {}),
+            },
             request,
           },
           tx,
@@ -286,7 +330,19 @@ export async function PUT(request: NextRequest, { params }: Params) {
       await recomputeVendasSeVenda(prisma, antiga.bankAccount.companyId, [antiga.categoryId, categoryIdFinal], 'PATCH /api/transacoes/[id]')
     }
 
-    return NextResponse.json({ transacao, vendorMemory })
+    /**
+     * ⭐ A COMPETÊNCIA ANDOU? A tela precisa DIZER, não descobrir depois. A régua de
+     * recebimento é POR CONTA (dinheiro no cofre é D+1 corrido, PIX na Stone é D+0), então
+     * a mesma venda vale por outro dia dependendo de onde o dinheiro entrou. Mexer no
+     * calendário em silêncio seria a família do "gravou e não disse".
+     */
+    return NextResponse.json({
+      transacao,
+      vendorMemory,
+      ...(mudanca
+        ? { mudancaDeConta: { ...mudanca, rastro: mudanca.rastro } }
+        : {}),
+    })
   } catch (error) {
     return handleApiError(error)
   }
@@ -307,15 +363,14 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     const ctx = await getAuthContext(request, transacao.bankAccount.companyId)
     ctx.requirePermission('transaction.delete')
 
-    // Reverte impacto no saldo
-    const reverso = transacao.type === 'CREDIT' ? -transacao.amount : transacao.amount
+    const contaAfetada = transacao.bankAccountId!
 
     await prisma.$transaction(async (tx) => {
       await tx.transaction.delete({ where: { id } })
-      await tx.bankAccount.update({
-        where: { id: transacao.bankAccountId! },
-        data: { balance: { increment: reverso } },
-      })
+      // ⭐ item 4: re-ancora em vez de somar o reverso. Apagar uma linha ANTERIOR à âncora
+      // com `increment` fazia o cache cair por um valor que o saldo declarado já não tinha —
+      // o drift do mesmo mecanismo, na direção oposta.
+      await reAncorarContas(tx, [contaAfetada])
       await logAudit(
         ctx,
         {
@@ -339,17 +394,8 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   }
 }
 
-function calcularAjusteSaldo(
-  antiga: { amount: number; type: string },
-  nova: { amount?: number; type?: string },
-): number {
-  const tipoAntigo = antiga.type
-  const tipoNovo = nova.type ?? tipoAntigo
-  const valorAntigo = antiga.amount
-  const valorNovo = nova.amount ?? valorAntigo
-
-  const impactoAntigo = tipoAntigo === 'CREDIT' ? valorAntigo : -valorAntigo
-  const impactoNovo = tipoNovo === 'CREDIT' ? valorNovo : -valorNovo
-
-  return impactoNovo - impactoAntigo
-}
+// ⛔⛔ `calcularAjusteSaldo` FOI REMOVIDA (30/09/2026) — ela calculava o DELTA pra somar no
+// cache, e é justamente o que o item 4 aposentou. Deixá-la aqui sem chamador seria o campo
+// decorativo que alguém religa por descuido (a lição do `registry.parse`, que ficou com
+// ZERO chamadores e escondeu o fallback silencioso do parser por semanas).
+// Quem responde "qual é o saldo?" agora é `recalcularSaldoConta`, derivando.

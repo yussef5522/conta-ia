@@ -2372,6 +2372,13 @@ model PersonalBankAccount {
   ledgerBal     Float?
   ledgerBalDate DateTime?
 
+  // ⭐⭐ ABERTURA CONFERIDA (30/09/2026) — o par que o PJ tem desde 01/09.
+  // O saldo é DERIVADO do ledger; conta criada com saldo DIGITADO precisa de um ponto de
+  // partida, senão o primeiro lançamento zera a abertura. Aqui ela é ÂNCORA, não movimento
+  // (lançamento de "saldo inicial" contaria como ENTRADA no resumo de 30 dias).
+  openingBalance Float?
+  openingDate    DateTime?
+
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

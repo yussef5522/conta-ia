@@ -7,6 +7,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 import { checkBalance, BalanceCheckError } from '@/lib/balance/check'
 import { NEEDS_REVIEW_WHERE_PRISMA } from '@/lib/transacoes/needs-review'
 
@@ -346,8 +347,20 @@ export async function POST(request: NextRequest) {
         : 'PENDING'
 
     // Cria transação e recalcula saldo em uma transaction
-    const [transacao] = await prisma.$transaction([
-      prisma.transaction.create({
+    /**
+     * ⭐⭐⭐ item 4 (30/09/2026) — A PORTA QUE CAUSOU O CASO DA STONE.
+     *
+     * Aqui era `$transaction([create, bankAccount.update({ balance: { increment } })])`.
+     * Uma venda em dinheiro de R$ 2.112,00 com data 17/09, lançada em 28/09 numa conta cuja
+     * âncora é 25/09, somou por cima de um saldo que o banco já declarou → o cache ficou
+     * 2.112,00 acima da régua, e o import seguinte culpou o extrato.
+     *
+     * ⚠️ A forma ARRAY do `$transaction` tinha que virar CALLBACK: re-ancorar é assíncrono
+     * e precisa do client transacional, pra o saldo ficar consistente no MESMO commit que
+     * criou a linha.
+     */
+    const transacao = await prisma.$transaction(async (tx) => {
+      const criada = await tx.transaction.create({
         data: {
           bankAccountId: data.bankAccountId,
           categoryId: data.categoryId ?? null,
@@ -360,16 +373,10 @@ export async function POST(request: NextRequest) {
           origin: 'MANUAL',
         },
         include: { category: { select: { id: true, name: true, color: true, type: true } } },
-      }),
-      prisma.bankAccount.update({
-        where: { id: data.bankAccountId },
-        data: {
-          balance: {
-            increment: data.type === 'CREDIT' ? data.amount : -data.amount,
-          },
-        },
-      }),
-    ])
+      })
+      await reAncorarContas(tx, [data.bankAccountId])
+      return criada
+    })
 
     await logAudit(ctx, {
       action: 'CREATE',

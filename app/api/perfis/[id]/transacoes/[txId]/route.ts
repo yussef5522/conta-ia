@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
+import { reAncorarContasPF } from '@/lib/balance/recalcular'
 import { getAuthUser } from '@/lib/auth'
 import {
   checkProfileAccess,
@@ -81,19 +82,16 @@ export async function PATCH(
       }
     }
 
-    // Recalcula saldo se valor/tipo/conta mudou
+    /**
+     * ⭐ item 4 (30/09) — o PF sofre do MESMO drift, e aqui em dose tripla (revertia a
+     * conta antiga, gravava, aplicava na nova). A conta PF tem `ledgerBal`/`ledgerBalDate`
+     * desde a FASE 1 (13/09), então lançamento retroativo soma por cima do que o banco
+     * declarou, igualzinho ao PJ.
+     *
+     * ⚠️ E aqui a edição JÁ trocava de conta (`bankAccountId` no body) — então este era o
+     * único lugar da casa que movia linha entre contas, e movia somando dois deltas.
+     */
     const updated = await prisma.$transaction(async (trx) => {
-      // Reverte impacto antigo
-      if (tx.bankAccountId) {
-        const oldDelta = tx.type === 'CREDIT' ? -tx.amount : tx.amount
-        await trx.personalBankAccount.update({
-          where: { id: tx.bankAccountId },
-          data: { balance: { increment: oldDelta } },
-        })
-      }
-      // Aplica updates
-      const newAmount = parsed.data.amount ?? tx.amount
-      const newType = parsed.data.type ?? tx.type
       const newAccountId =
         parsed.data.bankAccountId !== undefined
           ? parsed.data.bankAccountId
@@ -112,14 +110,8 @@ export async function PATCH(
         },
       })
 
-      // Aplica impacto novo
-      if (newAccountId) {
-        const newDelta = newType === 'CREDIT' ? newAmount : -newAmount
-        await trx.personalBankAccount.update({
-          where: { id: newAccountId },
-          data: { balance: { increment: newDelta } },
-        })
-      }
+      // ⭐ as DUAS contas (a de onde saiu e a pra onde foi) se re-ancoram
+      await reAncorarContasPF(trx, [tx.bankAccountId, newAccountId])
       return updatedTx
     })
 
@@ -140,15 +132,9 @@ export async function DELETE(
     await checkProfileAccess(user.sub, id, 'OWNER')
     const tx = await getTxInProfile(id, txId)
     await prisma.$transaction(async (trx) => {
-      // Reverte saldo
-      if (tx.bankAccountId) {
-        const delta = tx.type === 'CREDIT' ? -tx.amount : tx.amount
-        await trx.personalBankAccount.update({
-          where: { id: tx.bankAccountId },
-          data: { balance: { increment: delta } },
-        })
-      }
+      // ⭐ item 4: apaga e DEPOIS deriva — derivação precisa do ledger no estado final.
       await trx.personalTransaction.delete({ where: { id: txId } })
+      await reAncorarContasPF(trx, [tx.bankAccountId])
     })
     return NextResponse.json({ ok: true })
   } catch (err) {

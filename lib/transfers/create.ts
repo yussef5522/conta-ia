@@ -4,6 +4,7 @@
 import { randomUUID } from 'crypto'
 import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 import { logAudit } from '@/lib/audit'
 import type { AuthContext } from '@/lib/auth/rbac'
 import { checkBalance, BalanceCheckError } from '@/lib/balance/check'
@@ -91,21 +92,26 @@ export async function createTransfer(
   const groupId = randomUUID()
   const ops = buildTransferOperations(input, fromAccount, toAccount, groupId)
 
-  // 6. Atomic: 2 creates + 2 balance updates
-  const [debit, credit, fromUpdated, toUpdated] = await prisma.$transaction([
-    prisma.transaction.create({ data: ops.debitTx }),
-    prisma.transaction.create({ data: ops.creditTx }),
-    prisma.bankAccount.update({
-      where: { id: fromAccount.id },
-      data: { balance: { increment: ops.fromBalanceDelta } },
-      select: { id: true, name: true, balance: true },
-    }),
-    prisma.bankAccount.update({
-      where: { id: toAccount.id },
-      data: { balance: { increment: ops.toBalanceDelta } },
-      select: { id: true, name: true, balance: true },
-    }),
-  ])
+  /**
+   * 6. Atomic: 2 creates + as DUAS contas re-ancoradas.
+   *
+   * ⭐ item 4 (30/09): transferência é o gesto que mais expõe o drift — ele mexe em duas
+   * contas de uma vez, e um delta somado por cima da âncora deixava as duas erradas em
+   * direções OPOSTAS (uma alta, outra baixa), o que é justamente o que se cancela numa
+   * conferência agregada e não se cancela por conta.
+   */
+  const { debit, credit, fromUpdated, toUpdated } = await prisma.$transaction(async (tx) => {
+    const d = await tx.transaction.create({ data: ops.debitTx })
+    const c = await tx.transaction.create({ data: ops.creditTx })
+    const saldos = await reAncorarContas(tx, [fromAccount.id, toAccount.id])
+    const porId = new Map(saldos.map((s) => [s.bankAccountId, s]))
+    return {
+      debit: d,
+      credit: c,
+      fromUpdated: { id: fromAccount.id, name: fromAccount.name, balance: porId.get(fromAccount.id)!.saldoDepois },
+      toUpdated: { id: toAccount.id, name: toAccount.name, balance: porId.get(toAccount.id)!.saldoDepois },
+    }
+  })
 
   // 7. Audit log fora do $transaction (não é crítico estar atomic com os creates)
   await logAudit(ctx, {

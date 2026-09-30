@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
@@ -43,7 +44,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     // 1. Fetch conta
     const conta = await prisma.bankAccount.findUnique({
       where: { id: contaId },
-      select: { id: true, companyId: true, name: true, balance: true },
+      // ⚠️ os 4 campos da ÂNCORA entram no select porque a recusa depende deles — sem isso
+      // `conta.ledgerBal` viria `undefined` e a trava nasceria CEGA (a doença do PIX de
+      // 7.000: o motor decide com um campo que a consulta não trouxe, e não dá erro: dá
+      // silêncio). O `tsc` cobra os nomes, o select cobra a existência.
+      select: {
+        id: true, companyId: true, name: true, balance: true,
+        ledgerBal: true, ledgerBalDate: true, openingBalance: true, openingDate: true,
+      },
     })
     if (!conta) {
       return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
@@ -78,6 +86,42 @@ export async function POST(request: NextRequest, { params }: Params) {
       (txMaisAntiga?.date ?? new Date()).getTime() - 24 * 60 * 60 * 1000,
     )
 
+    /**
+     * ⛔⛔⛔ CONTA COM ÂNCORA NÃO SE "AJUSTA" (30/09/2026 — achado do item 4).
+     *
+     * ⚠️ Este gesto data o lançamento **um dia ANTES da transação mais antiga** (é um saldo
+     * de ABERTURA). Numa conta ancorada, o saldo é `âncora + Σ(depois dela)` — então um
+     * lançamento no passado profundo fica FORA da conta e **o ajuste não teria efeito
+     * nenhum**. Com o `increment` de antes ele "funcionava" mexendo no cache e deixando o
+     * cache discordar da régua: exatamente o drift que este sprint existe pra matar.
+     *
+     * ⭐ A saída não é fazer nada em silêncio nem voltar o `increment`: é DIZER que o saldo
+     * desta conta vem do que o banco declarou, e apontar a porta certa — a **âncora de
+     * abertura** (decisão do dono, com evento auditado, desenho de 01/09). *"Saldo declarado
+     * pelo banco é CONFERÊNCIA, não fonte"* vale nos dois sentidos: nem o extrato sobrescreve
+     * a abertura, nem um número digitado sobrescreve o extrato.
+     */
+    const temAncora =
+      (conta.ledgerBal != null && conta.ledgerBalDate != null) ||
+      (conta.openingBalance != null && conta.openingDate != null)
+    if (temAncora) {
+      const qual =
+        conta.openingBalance != null && conta.openingDate != null
+          ? `a abertura conferida de ${conta.openingDate!.toISOString().slice(0, 10)}`
+          : `o saldo que o banco declarou no extrato de ${conta.ledgerBalDate!.toISOString().slice(0, 10)}`
+      return NextResponse.json(
+        {
+          erro:
+            `o saldo da conta «${conta.name}» é derivado de ${qual} mais os lançamentos posteriores — ` +
+            `ele não se ajusta por um número digitado, senão o sistema passaria a discordar do extrato. ` +
+            `Se o saldo está errado, ou falta lançamento (importe o extrato) ou a ABERTURA da conta está ` +
+            `errada — e mudar a abertura é uma decisão registrada, não um ajuste.`,
+          code: 'CONTA_ANCORADA',
+        },
+        { status: 422 },
+      )
+    }
+
     // 5. find-or-create categoria "Ajuste de Saldo" da empresa
     let categoria = await prisma.category.findFirst({
       where: { companyId: conta.companyId, name: CATEGORIA_AJUSTE_NOME },
@@ -101,8 +145,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     // 6. Atomic: cria transação de ajuste + atualiza saldo cacheado
-    const [transacao, contaAtualizada] = await prisma.$transaction([
-      prisma.transaction.create({
+    const { transacao, contaAtualizada } = await prisma.$transaction(async (tx) => {
+      const criada = await tx.transaction.create({
         data: {
           bankAccountId: contaId,
           categoryId: categoria.id,
@@ -117,13 +161,16 @@ export async function POST(request: NextRequest, { params }: Params) {
           notes: motivo ?? null,
         },
         include: { category: { select: { id: true, name: true, color: true, type: true } } },
-      }),
-      prisma.bankAccount.update({
-        where: { id: contaId },
-        data: { balance: { increment: adjustment.balanceDelta } },
-        select: { id: true, name: true, balance: true },
-      }),
-    ])
+      })
+      // ⭐ item 4: a conta aqui é SEMPRE sem âncora (a recusa acima garante), então
+      // re-ancorar = Σ(todas), que INCLUI o ajuste recém-criado → chega no target sozinho.
+      // Nada de delta gravado: o saldo volta a ser derivação, não acumulação.
+      const [recalc] = await reAncorarContas(tx, [contaId])
+      return {
+        transacao: criada,
+        contaAtualizada: { id: contaId, name: conta.name, balance: recalc!.saldoDepois },
+      }
+    })
 
     // 7. Audit log
     await logAudit(ctx, {

@@ -35,7 +35,23 @@ beforeAll(async () => {
   const p = await prisma.personalProfile.create({ data: { name: `perfil ${marca}` }, select: { id: true } })
   profileId = p.id
   await prisma.userPersonalProfile.create({ data: { userId, profileId, role: 'OWNER' } })
-  const c = await prisma.personalBankAccount.create({ data: { profileId, name: 'banrisul pf', bankName: 'banrisul', balance: 1000 }, select: { id: true } })
+  /**
+   * ⚠️ FIXTURE ATUALIZADA (30/09/2026) — a conta declara a ABERTURA, não só um `balance`.
+   *
+   * Desde o sprint do drift o saldo é DERIVADO do ledger (`abertura + Σ(depois dela)`), e é
+   * assim que a criação de conta passou a gravar. Uma fixture com saldo digitado e nenhuma
+   * abertura representaria um estado que o produto **não produz mais** — e ela esconderia o
+   * caso real: conta nova com saldo informado pelo dono. (É a REGRA 10 pelo outro lado: o
+   * estado novo precisa de fixture, senão todo teste continua provando só o mundo antigo.)
+   */
+  const aberturaPF = new Date('2026-09-01T12:00:00.000Z')
+  const c = await prisma.personalBankAccount.create({
+    data: {
+      profileId, name: 'banrisul pf', bankName: 'banrisul',
+      balance: 1000, openingBalance: 1000, openingDate: aberturaPF,
+    },
+    select: { id: true },
+  })
   contaPFId = c.id
   const co = await prisma.company.create({ data: { name: `empresa ${marca}`, cnpj: `${Date.now()}`.slice(0, 14) }, select: { id: true } })
   companyId = co.id
@@ -97,7 +113,15 @@ describe('⛔⛔ o import do extrato PF não atravessa a fronteira', () => {
 
   it('⭐ e o dinheiro foi pro lado certo: saldo e transações no PF', async () => {
     const conta = await prisma.personalBankAccount.findUniqueOrThrow({ where: { id: contaPFId }, select: { balance: true, ledgerBal: true, bankCode: true, accountNumber: true } })
-    expect(conta.balance).toBe(1200)      // 1000 + 300 − 100
+    // ⭐ 1000 de abertura + 300 − 100 do extrato = 1200, DERIVADO do ledger
+    expect(conta.balance).toBe(1200)
+    /**
+     * ⭐⭐ E o `ledgerBal` (1500) fica gravado DIVERGINDO do saldo — de propósito. É o
+     * desenho de 01/09: *"saldo declarado pelo banco é CONFERÊNCIA, não fonte"*. Antes do
+     * sprint do drift, o import somava as novas no saldo velho **e** movia a âncora no mesmo
+     * update — os dois divergindo sem ninguém conferir. Agora a divergência é DADO: é
+     * exatamente ela que o B1/conferência aponta.
+     */
     expect(conta.ledgerBal).toBe(1500)
     // ⭐ o 1º import ENSINOU quem é a conta — é o que faz a trava morder no próximo
     // ⚠️ guarda o que o ARQUIVO diz ('041'), não uma forma normalizada: é a convenção da PJ

@@ -5,6 +5,7 @@
 // vínculo → NO_ACCESS. Sem exceção.
 
 import { prisma } from '@/lib/db'
+import { reAncorarContasPF } from '@/lib/balance/recalcular'
 import type {
   PersonalProfile,
   UserPersonalProfile,
@@ -164,20 +165,44 @@ export async function createAccount(
   input: CreateAccountInput,
 ): Promise<PersonalBankAccount> {
   await checkProfileAccess(input.userId, input.profileId, 'OWNER')
-  return prisma.personalBankAccount.create({
-    data: {
-      profileId: input.profileId,
-      name: input.name,
-      bankName: input.bankName ?? null,
-      bankCode: input.bankCode ?? null,
-      agency: input.agency ?? null,
-      accountNumber: input.accountNumber ?? null,
-      accountType: input.accountType ?? 'CHECKING',
-      balance: input.balance ?? 0,
-      allowNegativeBalance: input.allowNegativeBalance ?? true,
-      creditLimit: input.creditLimit ?? 0,
-      lowBalanceThreshold: input.lowBalanceThreshold ?? null,
-    },
+  /**
+   * ⭐⭐ A ABERTURA VIRA LANÇAMENTO TAMBÉM NO PF (30/09/2026) — ver o porquê longo em
+   * `app/api/contas-bancarias/route.ts`. Resumo: com o saldo DERIVADO do ledger (item 4),
+   * conta criada com saldo digitado e zero lançamentos seria zerada pelo primeiro gesto.
+   *
+   * ⚠️ No PF isto é MAIS necessário que no PJ, porque `PersonalBankAccount` não tem
+   * `openingBalance` (o PJ tem, desde 01/09) — aqui o lançamento é o ÚNICO jeito de a
+   * abertura existir.
+   */
+  const saldoInicial = input.balance ?? 0
+  const aberturaDeOntem = () => {
+    const d = new Date()
+    d.setUTCHours(12, 0, 0, 0)
+    d.setUTCDate(d.getUTCDate() - 1)
+    return d
+  }
+  return prisma.$transaction(async (tx) => {
+    const conta = await tx.personalBankAccount.create({
+      data: {
+        profileId: input.profileId,
+        name: input.name,
+        bankName: input.bankName ?? null,
+        bankCode: input.bankCode ?? null,
+        agency: input.agency ?? null,
+        accountNumber: input.accountNumber ?? null,
+        accountType: input.accountType ?? 'CHECKING',
+        balance: saldoInicial,
+        // ⭐ a abertura como ÂNCORA (ver o porquê em app/api/contas-bancarias/route.ts):
+        // lançamento de "saldo inicial" contaria como ENTRADA no resumo de 30 dias.
+        ...(Math.abs(saldoInicial) > 0.005
+          ? { openingBalance: saldoInicial, openingDate: aberturaDeOntem() }
+          : {}),
+        allowNegativeBalance: input.allowNegativeBalance ?? true,
+        creditLimit: input.creditLimit ?? 0,
+        lowBalanceThreshold: input.lowBalanceThreshold ?? null,
+      },
+    })
+    return conta
   })
 }
 
@@ -359,13 +384,9 @@ export async function createTransaction(
         origin: 'MANUAL',
       },
     })
-    // Atualiza saldo da conta (se vinculada)
+    // ⭐ item 4 (30/09): saldo DERIVADO, nunca delta somado (ver lib/balance/recalcular.ts).
     if (input.bankAccountId) {
-      const delta = input.type === 'CREDIT' ? input.amount : -input.amount
-      await tx.personalBankAccount.update({
-        where: { id: input.bankAccountId },
-        data: { balance: { increment: delta } },
-      })
+      await reAncorarContasPF(tx, [input.bankAccountId])
     }
     return created
   })

@@ -296,3 +296,136 @@ export function ondeDescolou(l: LeituraConta): { de: Date; ate: Date; diferenca:
   }
   return null
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⭐⭐⭐ O DIAGNÓSTICO PAROU DE MANDAR CAÇAR AGOSTO POR DRIFT DE ANTEONTEM (30/09/2026)
+//
+// **A queixa do dono:** o import da Stone acusou *"saldo previsto 2.199,53 × extrato 87,53
+// · causa não identificada"* **e** *"o descolamento começou entre 13/08 e 17/08 (122,37)"*.
+// Ele foi caçar agosto. **O problema tinha nascido dois dias antes**, e não no extrato: o
+// `balance` gravado estava 2.112,00 acima da régua por causa de uma venda em dinheiro
+// lançada à mão com data retroativa.
+//
+// ⛔ O `ondeDescolou` responde UMA pergunta — *"qual o primeiro intervalo de âncoras que
+// não fecha?"* — e a resposta dele é, por construção, o achado MAIS ANTIGO que existir.
+// Num histórico de seis semanas ele vai sempre apontar pro passado, mesmo quando o
+// problema é de hoje. **Não é um bug de cálculo: é a pergunta errada em cima da tela
+// errada.**
+//
+// ⭐ AS TRÊS COISAS SÃO DIFERENTES, e agora saem separadas:
+//
+//   1. **DRIFT DO CACHE** (o alarme NOVO, acionável hoje): `balance` ≠ âncora + posteriores.
+//      É o B2, que o juiz noturno já sabia checar — e que o import nunca olhou.
+//   2. **FRONTEIRA DE DATA** (explicado, não é alarme): dois intervalos vizinhos com
+//      diferenças que **se cancelam**. O banco lançou num dia e o extrato seguinte datou
+//      no outro; o dinheiro está lá. Na Stone são SEIS pares assim — e cada um deles
+//      apareceria como "descolamento" numa leitura ingênua.
+//   3. **INTERVALO ANTIGO QUE NÃO CANCELA** (aviso, não urgência): esse é real, mas é
+//      HISTÓRICO. O 122,37 de 13-17/08 está registrado desde 29/08 como aviso explicado.
+//      Ele entra na mensagem **dizendo que é anterior e que NÃO explica a diferença de
+//      hoje** — senão o dono some atrás dele de novo.
+//
+// ⚠️ *Alarme que aponta pro lugar errado é pior que alarme nenhum*: ele consome o dia de
+// quem foi atrás e ensina a desconfiar do próximo aviso.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface DiagnosticoDoDescolamento {
+  /** ⭐ o alarme NOVO: o cache driftou da régua. É o que se resolve HOJE. */
+  driftDoCache: { gravado: number; pelaRegua: number; diferenca: number; instrucao: string } | null
+  /** aviso HISTÓRICO: 1º intervalo que não fecha E não se cancela com o vizinho */
+  intervaloAntigo: { de: Date; ate: Date; diferenca: number; instrucao: string } | null
+  /** quantos pares vizinhos se cancelaram (fronteira de data — explicado, não alarme) */
+  fronteirasDeData: number
+  /** a frase pra tela, já na ordem de quem age: o de hoje primeiro */
+  instrucao: string
+}
+
+/** Duas diferenças "se cancelam" quando somam ~zero — assinatura de fronteira de data. */
+function seCancelam(a: number, b: number): boolean {
+  return Math.abs(round2(a + b)) <= TOLERANCIA_CENTAVO
+}
+
+export function diagnosticarDescolamento(l: LeituraConta): DiagnosticoDoDescolamento {
+  // ── 1. O CACHE (o alarme de hoje). Mesma conta do B2 — não uma segunda régua.
+  let driftDoCache: DiagnosticoDoDescolamento['driftDoCache'] = null
+  if (l.ledgerBalVigente != null) {
+    const pelaRegua = round2(l.ledgerBalVigente + l.somaPosAncora)
+    const dif = round2(l.balanceGravado - pelaRegua)
+    if (Math.abs(dif) > TOLERANCIA_CENTAVO) {
+      driftDoCache = {
+        gravado: l.balanceGravado,
+        pelaRegua,
+        diferenca: dif,
+        instrucao:
+          `O saldo GRAVADO da conta (${br(l.balanceGravado)}) está ${br(Math.abs(dif))} ` +
+          `${dif > 0 ? 'ACIMA' : 'ABAIXO'} do que a régua dá (${br(pelaRegua)} = o saldo que o banco ` +
+          `declarou${l.ledgerBalDataVigente ? ` em ${fmtDia(l.ledgerBalDataVigente)}` : ''} mais os lançamentos ` +
+          `posteriores). ⚠️ Isto NÃO é falta de transação no extrato — é o saldo em cache. ` +
+          `A causa típica é lançamento manual com data ANTERIOR ao último extrato: o dinheiro já ` +
+          `estava dentro do saldo declarado e foi somado de novo. Recalcular o saldo da conta resolve.`,
+      }
+    }
+  }
+
+  // ── 2/3. OS INTERVALOS: separa fronteira de data (cancela) do que é real.
+  const ancoras = [...l.ancoras].sort((a, b) => a.data.getTime() - b.data.getTime())
+  const difs: Array<{ de: Date; ate: Date; dif: number }> = []
+  for (let i = 1; i < ancoras.length; i++) {
+    const de = ancoras[i - 1]
+    const ate = ancoras[i]
+    if (dia(de.data) === dia(ate.data)) continue
+    const dif = round2(round2(l.somaNoIntervalo(de.data, ate.data)) - round2(ate.valor - de.valor))
+    if (Math.abs(dif) > TOLERANCIA_CENTAVO) difs.push({ de: de.data, ate: ate.data, dif })
+  }
+
+  /**
+   * ⚠️ O cancelamento é olhado nos VIZINHOS IMEDIATOS da lista de diferenças, não em
+   * qualquer par do histórico: duas diferenças iguais e opostas a três semanas de distância
+   * não são a mesma linha mudando de dia — são duas coisas distintas que coincidiram.
+   * Emparelhar à distância transformaria achado real em "explicado" por acaso, que é o
+   * modo de falha mais caro que um diagnóstico pode ter.
+   */
+  const explicado = new Set<number>()
+  let fronteirasDeData = 0
+  for (let i = 0; i + 1 < difs.length; i++) {
+    if (explicado.has(i)) continue
+    if (seCancelam(difs[i]!.dif, difs[i + 1]!.dif)) {
+      explicado.add(i)
+      explicado.add(i + 1)
+      fronteirasDeData++
+    }
+  }
+
+  const real = difs.find((_, i) => !explicado.has(i)) ?? null
+  const intervaloAntigo = real
+    ? {
+        de: real.de,
+        ate: real.ate,
+        diferenca: real.dif,
+        instrucao:
+          `Há também uma diferença ANTIGA entre ${fmtDia(real.de)} e ${fmtDia(real.ate)} ` +
+          `(${br(Math.abs(real.dif))}), que não se cancela com os dias vizinhos. ` +
+          `⚠️ Ela é anterior e **não explica a diferença de hoje** — se você já a conhece, ` +
+          `ignore; se não, o caminho é re-exportar o extrato cobrindo ${fmtDia(real.de)}–${fmtDia(real.ate)}.`,
+      }
+    : null
+
+  // ⭐ A ORDEM DA FRASE É A ORDEM DE QUEM AGE: o de hoje primeiro, o histórico como nota.
+  const partes: string[] = []
+  if (driftDoCache) partes.push(driftDoCache.instrucao)
+  if (fronteirasDeData > 0) {
+    partes.push(
+      `${fronteirasDeData} diferença(s) entre extratos se CANCELAM com o dia vizinho — ` +
+        `é o banco lançando num dia e datando no outro. O dinheiro está no sistema; nada a corrigir.`,
+    )
+  }
+  if (intervaloAntigo) partes.push(intervaloAntigo.instrucao)
+  if (partes.length === 0) {
+    partes.push(
+      'O saldo gravado bate com a régua e todos os intervalos entre extratos fecham — ' +
+        'a diferença não vem do histórico desta conta.',
+    )
+  }
+
+  return { driftDoCache, intervaloAntigo, fronteirasDeData, instrucao: partes.join(' ') }
+}

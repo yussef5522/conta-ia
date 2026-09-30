@@ -938,21 +938,48 @@ export async function POST(request: NextRequest, { params }: Params) {
       // import). O resultado é "22/22 dias fecham" ou "o dia X não fecha por R$ Y, eis as
       // linhas" — nunca mais "não identifiquei a causa".
 
-      let diagnostico: { de: string; ate: string; diferenca: number; instrucao: string } | null = null
+      /**
+       * ⭐⭐⭐ 30/09/2026 — O DIAGNÓSTICO PAROU DE APONTAR PRO PASSADO POR CONSTRUÇÃO.
+       *
+       * ⛔ Aqui chamava `ondeDescolou`, que devolve o PRIMEIRO intervalo de âncoras que não
+       * fecha — ou seja, **o achado mais antigo que existir no histórico**. Na Stone isso
+       * cuspiu *"o descolamento começou entre 13/08 e 17/08"* quando o problema tinha
+       * nascido dois dias antes e não estava no extrato: era o `balance` em cache, 2.112,00
+       * acima da régua, por uma venda em dinheiro lançada à mão com data retroativa.
+       * O dono foi caçar agosto.
+       *
+       * ⭐ `diagnosticarDescolamento` separa as três coisas e põe o de HOJE primeiro:
+       * drift do cache (acionável agora) · fronteiras de data que se cancelam (explicado,
+       * não é alarme) · intervalo antigo que sobra (aviso, dito COMO anterior).
+       */
+      let diagnostico: {
+        de: string | null
+        ate: string | null
+        diferenca: number
+        instrucao: string
+        driftDoCache: { gravado: number; pelaRegua: number; diferenca: number } | null
+        fronteirasDeData: number
+      } | null = null
       if (selo.rodaDiagnosticoLedgerBal && v2Payload.ledgerBalCheck.available && !v2Payload.ledgerBalCheck.bate) {
         try {
-          const [{ lerConta }, { ondeDescolou }] = await Promise.all([
+          const [{ lerConta }, { diagnosticarDescolamento }] = await Promise.all([
             import('@/lib/balance/ler-conferencia'),
             import('@/lib/balance/ledgerbal-invariants'),
           ])
           const leitura = await lerConta(contaId, prisma)
-          const d = leitura ? ondeDescolou(leitura) : null
-          if (d) {
+          const d = leitura ? diagnosticarDescolamento(leitura) : null
+          if (d && (d.driftDoCache || d.intervaloAntigo || d.fronteirasDeData > 0)) {
             diagnostico = {
-              de: d.de.toISOString().slice(0, 10),
-              ate: d.ate.toISOString().slice(0, 10),
-              diferenca: d.diferenca,
+              de: d.intervaloAntigo?.de.toISOString().slice(0, 10) ?? null,
+              ate: d.intervaloAntigo?.ate.toISOString().slice(0, 10) ?? null,
+              // ⭐ a diferença que a tela DESTACA é a do drift quando ele existe — é a que
+              // o dono consegue resolver hoje. A do intervalo antigo vai na frase.
+              diferenca: d.driftDoCache?.diferenca ?? d.intervaloAntigo?.diferenca ?? 0,
               instrucao: d.instrucao,
+              driftDoCache: d.driftDoCache
+                ? { gravado: d.driftDoCache.gravado, pelaRegua: d.driftDoCache.pelaRegua, diferenca: d.driftDoCache.diferenca }
+                : null,
+              fronteirasDeData: d.fronteirasDeData,
             }
           }
         } catch (e) {

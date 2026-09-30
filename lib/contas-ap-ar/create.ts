@@ -5,6 +5,7 @@
 // NÃO chama auto-categorizer ainda (Sprint 4.0.2 — quando wizard pós-OFX rodar).
 
 import { prisma } from '@/lib/db'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 import { logAudit } from '@/lib/audit'
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 import type { AuthContext } from '@/lib/auth/rbac'
@@ -149,13 +150,12 @@ export async function createContaPendente(
       },
     })
 
-    // Sprint Fix-Caixa-Vinculo: se lançada já paga, atualiza balance
+    // Sprint Fix-Caixa-Vinculo: se lançada já paga, o saldo muda.
+    // ⭐ item 4 (30/09): re-ancora em vez de somar delta. Conta "lançada já paga" com
+    // vencimento retroativo é o caso comum aqui (o dono lança a nota que já pagou) —
+    // ou seja, a porta que MAIS driftava, e em silêncio.
     if (lancaJaPaga && bankAccountIdEfetivo) {
-      const delta = type === 'CREDIT' ? input.amount : -input.amount
-      await tx.bankAccount.update({
-        where: { id: bankAccountIdEfetivo },
-        data: { balance: { increment: delta } },
-      })
+      await reAncorarContas(tx, [bankAccountIdEfetivo])
     }
     return created
   })

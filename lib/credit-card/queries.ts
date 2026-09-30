@@ -4,6 +4,7 @@
 
 import { randomUUID } from 'crypto'
 import { prisma } from '@/lib/db'
+import { reAncorarContasPF } from '@/lib/balance/recalcular'
 import type {
   CreditCard,
   CreditCardInvoice,
@@ -484,10 +485,9 @@ export async function payInvoice(input: PayInvoiceInput): Promise<{
         isInvoicePayment: true,
       },
     })
-    await tx.personalBankAccount.update({
-      where: { id: input.paymentAccountId },
-      data: { balance: { decrement: input.amount } },
-    })
+    // ⭐ item 4 (30/09): o pagamento da fatura acabou de virar linha na conta PF — o saldo
+    // se deriva dela, em vez de descontar o valor no cache.
+    await reAncorarContasPF(tx, [input.paymentAccountId])
 
     // 2. Atualiza invoice
     const newPaid = invoice.paidAmount + input.amount

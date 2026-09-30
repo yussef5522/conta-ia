@@ -3,6 +3,7 @@
 
 import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 import { logAudit } from '@/lib/audit'
 import type { AuthContext } from '@/lib/auth/rbac'
 import { TransferValidationError } from './validate'
@@ -58,20 +59,18 @@ export async function deleteTransferGroup(
   }
   ctx.requirePermission('transaction.delete')
 
-  // Reverte saldos: from recebe +amount (volta o que saiu), to recebe -amount.
-  // Atomic com os 2 deletes.
-  await prisma.$transaction([
-    prisma.bankAccount.update({
-      where: { id: fromSide.bankAccountId },
-      data: { balance: { increment: fromSide.amount } },
-    }),
-    prisma.bankAccount.update({
-      where: { id: toSide.bankAccountId },
-      data: { balance: { increment: -toSide.amount } },
-    }),
-    prisma.transaction.delete({ where: { id: fromSide.id } }),
-    prisma.transaction.delete({ where: { id: toSide.id } }),
-  ])
+  /**
+   * ⭐ item 4 (30/09): apaga as duas pontas e RE-ANCORA as duas contas.
+   *
+   * ⚠️ A ORDEM inverteu: antes o saldo era revertido ANTES dos deletes; derivação precisa
+   * do ledger no estado FINAL (as pontas já fora), senão ela recontaria o que está sendo
+   * apagado. Com delta a ordem não importava; com derivação, importa.
+   */
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.delete({ where: { id: fromSide.id } })
+    await tx.transaction.delete({ where: { id: toSide.id } })
+    await reAncorarContas(tx, [fromSide.bankAccountId, toSide.bankAccountId])
+  })
 
   await logAudit(ctx, {
     action: 'DELETE',

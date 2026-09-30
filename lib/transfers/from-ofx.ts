@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 import { logAudit } from '@/lib/audit'
 import type { AuthContext } from '@/lib/auth/rbac'
 import { checkBalance, BalanceCheckError } from '@/lib/balance/check'
@@ -154,26 +155,40 @@ export async function createTransferFromOfx(
   // 4. Atomic $transaction:
   //    revert saldo da conta da existingTx → delete existingTx →
   //    create par TRANSFER → update saldos finais das 2 contas
-  const [, , debitCreated, creditCreated, fromUpdated, toUpdated] =
-    await prisma.$transaction([
-      prisma.bankAccount.update({
-        where: { id: existingTx.bankAccount!.id },
-        data: { balance: { increment: ops.existingTxRevertDelta } },
-      }),
-      prisma.transaction.delete({ where: { id: existingTx.id } }),
-      prisma.transaction.create({ data: ops.debitTx }),
-      prisma.transaction.create({ data: ops.creditTx }),
-      prisma.bankAccount.update({
-        where: { id: ops.fromAccountId },
-        data: { balance: { increment: ops.fromBalanceDelta } },
-        select: { id: true, name: true, balance: true },
-      }),
-      prisma.bankAccount.update({
-        where: { id: ops.toAccountId },
-        data: { balance: { increment: ops.toBalanceDelta } },
-        select: { id: true, name: true, balance: true },
-      }),
-    ])
+  /**
+   * ⭐ item 4 (30/09) — e aqui o delta era TRIPLO: revertia a conta da tx existente,
+   * apagava, criava o par e somava nas duas pontas. **Três deltas encadeados sobre um
+   * cache ancorado**: bastava um deles cair do lado errado da âncora pra ninguém mais
+   * conseguir explicar o saldo. Agora são os fatos (delete + 2 creates) e UMA derivação
+   * das três contas envolvidas, no fim.
+   */
+  const { debitCreated, creditCreated, fromUpdated, toUpdated } = await prisma.$transaction(
+    async (tx) => {
+      await tx.transaction.delete({ where: { id: existingTx.id } })
+      const d = await tx.transaction.create({ data: ops.debitTx })
+      const c = await tx.transaction.create({ data: ops.creditTx })
+      const saldos = await reAncorarContas(tx, [
+        existingTx.bankAccount!.id,
+        ops.fromAccountId,
+        ops.toAccountId,
+      ])
+      const porId = new Map(saldos.map((s) => [s.bankAccountId, s]))
+      return {
+        debitCreated: d,
+        creditCreated: c,
+        fromUpdated: {
+          id: ops.fromAccountId,
+          name: porId.get(ops.fromAccountId)!.bankAccountName,
+          balance: porId.get(ops.fromAccountId)!.saldoDepois,
+        },
+        toUpdated: {
+          id: ops.toAccountId,
+          name: porId.get(ops.toAccountId)!.bankAccountName,
+          balance: porId.get(ops.toAccountId)!.saldoDepois,
+        },
+      }
+    },
+  )
 
   // 5. Audit log (fora do $transaction, consistente com createTransfer)
   await logAudit(ctx, {

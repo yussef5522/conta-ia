@@ -77,10 +77,25 @@ describe('b) FASE 2 — Backend: createBridge aceita spend inline atomic', () =>
     )
   })
 
-  it('decrementa balance PF (net zero quando amount == retirada)', () => {
-    // Update da personalBankAccount com decrement após criar DEBIT
-    expect(code).toMatch(
-      /personalBankAccount\.update[\s\S]{0,300}decrement:\s*Math\.abs\(spendAmount\)/,
+  it('o saldo PF acompanha o spend (net zero quando amount == retirada)', () => {
+    /**
+     * ⚠️⚠️ REAPONTADO em 30/09/2026, NÃO AFROUXADO — e ele quebrou COM O CÓDIGO CERTO, que
+     * é a razão de existir da REGRA 3 (*grep não distingue "refatorei" de "quebrei"*).
+     *
+     * A régua deste teste era `personalBankAccount.update … decrement: Math.abs(spendAmount)`.
+     * O sprint do drift (item 4) trocou TODO delta de saldo por DERIVAÇÃO do ledger —
+     * `reAncorarContasPF` — porque somar delta por cima de uma âncora drifta o cache (foi o
+     * que pôs a Stone R$ 2.112,00 acima da régua).
+     *
+     * ⭐ A PERGUNTA CONTINUA A MESMA: *"depois de criar o spend, o saldo da conta PF é
+     * atualizado no mesmo gesto?"* — o que mudou é a RESPOSTA (derivar em vez de decrementar).
+     * E ela ficou MAIS FORTE: o "net zero quando amount == retirada" antes dependia de dois
+     * deltas se anularem por aritmética; agora sai por construção, lendo as duas linhas.
+     */
+    expect(code).toMatch(/reAncorarContasPF\(tx,\s*\[spendAccountId\]\)/)
+    // ⛔ e o delta NÃO pode voltar: o guard morde se alguém reintroduzir o decrement
+    expect(code, 'voltou a somar delta no saldo PF').not.toMatch(
+      /personalBankAccount\.update[\s\S]{0,300}decrement:/,
     )
   })
 

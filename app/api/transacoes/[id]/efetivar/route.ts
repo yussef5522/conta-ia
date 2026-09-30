@@ -12,6 +12,7 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { efetivarSchema } from '@/lib/validations/contas-ap-ar'
 import { buildEffectivePatch, canTransition, LifecycleValidationError, type Lifecycle } from '@/lib/lifecycle'
 import { logAudit } from '@/lib/audit'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -107,12 +108,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         },
       })
 
-      // Ajusta balance: CREDIT entra, DEBIT sai
-      const delta = updated.type === 'CREDIT' ? updated.amount : -updated.amount
-      await trx.bankAccount.update({
-        where: { id: data.bankAccountId },
-        data: { balance: { increment: delta } },
-      })
+      /**
+       * ⭐ item 4 (30/09/2026) — RE-ANCORA, não soma delta. O `increment` só coincide com a
+       * régua quando a linha é POSTERIOR à âncora do banco; lançamento retroativo drifta o
+       * cache em silêncio (foi o que pôs a Stone 2.112,00 acima da régua). Derivar é
+       * idempotente, então roda sempre.
+       */
+      await reAncorarContas(trx, [data.bankAccountId])
 
       await logAudit(
         ctx,

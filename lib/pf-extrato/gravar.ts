@@ -7,6 +7,7 @@
 
 import { prisma as defaultPrisma } from '@/lib/db'
 import { stableKey } from '@/lib/reconciliation/stable-key'
+import { reAncorarContasPF } from '@/lib/balance/recalcular'
 import type { PreviewDoExtratoPF } from './orquestrador'
 
 type Db = typeof defaultPrisma
@@ -111,19 +112,24 @@ export async function gravarExtratoPF(input: {
     }
 
     // ⭐ 4 ── A ÂNCORA E O SALDO
+    //
+    // ⚠️⚠️ item 4 (30/09) — este era o pior da família no PF: ele somava as novas no saldo
+    // ANTERIOR **e movia a âncora no mesmo update**. Ou seja, o `balance` passava a ser
+    // "saldo velho + soma" enquanto o `ledgerBal` passava a ser outro marco — os dois
+    // divergindo no mesmo gesto. Agora a âncora entra primeiro e o saldo é DERIVADO dela.
     const soma = preview.novas.reduce((s, l) => s + l.valorComSinal, 0)
-    const conta = await tx.personalBankAccount.findUniqueOrThrow({ where: { id: input.contaId }, select: { balance: true } })
-    const saldoDepois = Math.round((conta.balance + soma) * 100) / 100
     await tx.personalBankAccount.update({
       where: { id: input.contaId },
       data: {
-        balance: saldoDepois,
         ...(input.ledgerBal ? { ledgerBal: input.ledgerBal.amount, ledgerBalDate: input.ledgerBal.asOfDate } : {}),
         // ⭐ o que o arquivo ensinou sobre a conta — é o que faz a trava funcionar no próximo
         ...(input.aprender?.bankCode ? { bankCode: input.aprender.bankCode } : {}),
         ...(input.aprender?.accountNumber ? { accountNumber: input.aprender.accountNumber } : {}),
       },
     })
+    // ⭐ o saldo SAI da âncora que acabou de entrar (a ordem é o que torna isto correto)
+    const [recalc] = await reAncorarContasPF(tx, [input.contaId])
+    const saldoDepois = recalc!.saldoDepois
 
     return {
       importId: imp.id, criadas, casadas: preview.casadas.length,

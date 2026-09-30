@@ -4,6 +4,7 @@ import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { Header } from '@/components/layout/header'
 import { TransacaoForm } from '@/components/transacoes/transacao-form'
+import { podeMoverDeConta } from '@/lib/transacoes/mover-de-conta'
 
 interface Props { params: Promise<{ id: string; contaId: string; transacaoId: string }> }
 
@@ -31,6 +32,30 @@ export default async function EditarTransacaoPage({ params }: Props) {
     select: { id: true, name: true, color: true, type: true },
   })
 
+  /**
+   * ⭐⭐⭐ 30/09/2026 — AS CONTAS DA EMPRESA + O VEREDITO DA FRONTEIRA.
+   *
+   * O formulário deixava trocar tipo, data, valor, categoria e status — **e não a conta**.
+   * Errar a conta é rotina (a venda em dinheiro de 17/09 foi lançada na stone em vez do
+   * cofre), e a única saída era apagar e lançar de novo.
+   *
+   * ⚠️ O veredito vem do SERVIDOR, pela MESMA função que a rota usa pra recusar
+   * (`podeMoverDeConta`). Se a tela tivesse régua própria, ela habilitaria o campo num caso
+   * que o PUT recusa — e o dono clicaria pra levar um "não". *Uma decisão, um lugar.*
+   */
+  const contas = await prisma.bankAccount.findMany({
+    where: { companyId: transacao.bankAccount.companyId, isActive: true },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true, bankName: true, accountType: true },
+  })
+  const fronteira = podeMoverDeConta({
+    origin: transacao.origin,
+    reconciledWithId: transacao.reconciledWithId,
+    transferGroupId: transacao.transferGroupId,
+    type: transacao.type,
+    lifecycle: transacao.lifecycle,
+  })
+
   return (
     <div className="space-y-6">
       <Header title="Editar Lançamento" description={transacao.description} />
@@ -38,6 +63,9 @@ export default async function EditarTransacaoPage({ params }: Props) {
         contaId={contaId}
         empresaId={empresaId}
         categories={categories}
+        contas={contas}
+        podeTrocarConta={fronteira.pode}
+        motivoContaTravada={fronteira.explicacao}
         transacao={{
           id: transacao.id,
           description: transacao.description,
@@ -47,6 +75,7 @@ export default async function EditarTransacaoPage({ params }: Props) {
           categoryId: transacao.categoryId,
           notes: transacao.notes,
           status: transacao.status,
+          bankAccountId: transacao.bankAccountId!,
         }}
       />
     </div>

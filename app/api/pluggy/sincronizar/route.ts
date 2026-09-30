@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 import { getAccounts, getTransactions, PLUGGY_ENABLED } from '@/lib/pluggy/client'
 
 // POST /api/pluggy/sincronizar
@@ -47,12 +48,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ mensagem: 'Todas as transações já estão sincronizadas.', inseridas: 0 })
   }
 
-  const ajusteSaldo = novas.reduce((acc, t) => {
-    return acc + (t.type === 'CREDIT' ? t.amount : -t.amount)
-  }, 0)
-
-  await prisma.$transaction([
-    prisma.transaction.createMany({
+  /**
+   * ⭐ item 4 (30/09) — re-ancora em vez de somar o delta das novas.
+   *
+   * ⚠️ Aqui o drift era CERTO, não eventual: o Pluggy puxa **90 dias** de histórico, então
+   * quase toda linha nova é anterior à âncora do último extrato — o `increment` somava por
+   * cima de um saldo que já continha aquele dinheiro, a cada sincronização.
+   */
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.createMany({
       data: novas.map((t) => ({
         bankAccountId: contaId,
         date: new Date(t.date),
@@ -63,12 +67,9 @@ export async function POST(request: NextRequest) {
         origin: 'PLUGGY',
         externalId: t.id,
       })),
-    }),
-    prisma.bankAccount.update({
-      where: { id: contaId },
-      data: { balance: { increment: ajusteSaldo } },
-    }),
-  ])
+    })
+    await reAncorarContas(tx, [contaId])
+  })
 
   return NextResponse.json({
     mensagem: `${novas.length} transaç${novas.length !== 1 ? 'ões sincronizadas' : 'ão sincronizada'}.`,

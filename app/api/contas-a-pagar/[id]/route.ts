@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { avisarEstoqueQueContaFoiRemovida } from '@/lib/stock/ponte/conta-removida'
 import { prisma } from '@/lib/db'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { logAudit, diffFields } from '@/lib/audit'
@@ -244,12 +245,10 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     await prisma.$transaction(async (innerTx) => {
       await innerTx.transaction.delete({ where: { id } })
-      if (reverso !== 0 && tx.bankAccountId) {
-        await innerTx.bankAccount.update({
-          where: { id: tx.bankAccountId },
-          data: { balance: { increment: reverso } },
-        })
-      }
+      // ⭐ item 4 (30/09): re-ancora em vez de somar o reverso. Apagar uma conta a pagar
+      // JÁ PAGA cuja data é anterior à âncora fazia o cache cair por um valor que o saldo
+      // declarado nem continha — drift do mesmo mecanismo, direção oposta.
+      if (tx.bankAccountId) await reAncorarContas(innerTx, [tx.bankAccountId])
       await logAudit(
         ctx,
         {

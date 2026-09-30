@@ -18,6 +18,7 @@
 //   - Convite volta a aparecer naturalmente (sistema respeita o user)
 
 import { prisma } from '@/lib/db'
+import { reAncorarContasPF } from '@/lib/balance/recalcular'
 import { checkProfileAccess, ProfileAccessError } from '@/lib/personal-profile/queries'
 import { BridgeError } from './types'
 import { Prisma } from '@prisma/client'
@@ -124,11 +125,8 @@ export async function createBridgeSpend(
         },
       })
 
-      // Atualiza saldo da conta PF (delta negativo, é despesa)
-      await tx.personalBankAccount.update({
-        where: { id: input.bankAccountId },
-        data: { balance: { decrement: input.amount } },
-      })
+      // ⭐ item 4 (30/09): saldo derivado do ledger, nunca decrementado.
+      await reAncorarContasPF(tx, [input.bankAccountId])
 
       // Vincula a bridge à despesa (UNIQUE protege contra dupla execução)
       await tx.pJtoPFBridge.update({

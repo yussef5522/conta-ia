@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -62,15 +63,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         return { newTxAlreadyDeleted: true, balanceReverted: 0 }
       }
 
-      // Reverte balance ANTES de deletar (signed inverso)
-      let balanceDelta = 0
-      if (newTx.bankAccountId) {
-        balanceDelta = newTx.type === 'CREDIT' ? -newTx.amount : newTx.amount
-        await tx.bankAccount.update({
-          where: { id: newTx.bankAccountId },
-          data: { balance: { increment: balanceDelta } },
-        })
-      }
+      // ⭐ item 4 (30/09): re-ancora DEPOIS de apagar, em vez de reverter o delta antes.
+      // ⚠️ A ordem inverteu de propósito: derivação precisa do estado FINAL do ledger (a
+      // linha já fora), senão ela recontaria a linha que está sendo removida.
+      const contaDaLinha = newTx.bankAccountId
 
       // Snapshot no audit ANTES de deletar
       await tx.auditLog.create({
@@ -86,7 +82,7 @@ export async function POST(request: NextRequest, { params }: Params) {
             context: 'Fase 4 — user revisou warning e confirmou que é duplicata. Tx nova deletada + balance revertido.',
             warningId: warning.id,
             deletedTxId: newTx.id,
-            balanceRevertedBy: balanceDelta,
+            saldoReancoradoNaConta: newTx.bankAccountId,
             bankAccountId: newTx.bankAccountId,
           }),
         },
@@ -106,8 +102,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       })
 
       await tx.transaction.delete({ where: { id: newTx.id } })
+      const [recalc] = await reAncorarContas(tx, [contaDaLinha])
 
-      return { newTxAlreadyDeleted: false, balanceReverted: balanceDelta }
+      return {
+        newTxAlreadyDeleted: false,
+        // ⭐ item 4: o número que volta é o SALDO derivado, não o delta revertido — quem
+        // pergunta "e o saldo?" quer o saldo, não o quanto mexeu.
+        saldoDepois: recalc?.saldoDepois ?? null,
+      }
     })
 
     return NextResponse.json({ ok: true, ...result })

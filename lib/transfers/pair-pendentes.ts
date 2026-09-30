@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 import { logAudit } from '@/lib/audit'
 import type { AuthContext } from '@/lib/auth/rbac'
 import { TransferValidationError } from './validate'
@@ -102,41 +103,43 @@ export async function pairPendentes(
     groupId,
   )
 
-  // 3. Atomic: revert deletes + delete ambas + create par + apply
-  //
-  // Por que separar revert + apply em vez de net direto: garante audit-trail
-  // explícito do que aconteceu com cada saldo, mesmo que matematicamente seja 0.
-  // E protege contra qualquer drift se Prisma tiver bug de ordering.
-  const [, , , , debit, credit, fromUpdated, toUpdated] =
-    await prisma.$transaction([
-      // Revert saldos
-      prisma.bankAccount.update({
-        where: { id: ops.fromAccountId },
-        data: { balance: { increment: ops.fromAccountRevertDelta } },
-      }),
-      prisma.bankAccount.update({
-        where: { id: ops.toAccountId },
-        data: { balance: { increment: ops.toAccountRevertDelta } },
-      }),
-      // Delete originais
-      prisma.transaction.delete({ where: { id: ops.deleteIdA } }),
-      prisma.transaction.delete({ where: { id: ops.deleteIdB } }),
-      // Create TRANSFER (debit na ordem antes do credit — convenção do
-      // deleteTransferGroup: createdAt ASC = saída primeiro)
-      prisma.transaction.create({ data: ops.debitTx }),
-      prisma.transaction.create({ data: ops.creditTx }),
-      // Apply TRANSFER nos saldos
-      prisma.bankAccount.update({
-        where: { id: ops.fromAccountId },
-        data: { balance: { increment: ops.fromAccountApplyDelta } },
-        select: { id: true, name: true, balance: true },
-      }),
-      prisma.bankAccount.update({
-        where: { id: ops.toAccountId },
-        data: { balance: { increment: ops.toAccountApplyDelta } },
-        select: { id: true, name: true, balance: true },
-      }),
-    ])
+  /**
+   * 3. Atomic: delete as duas originais + create o par + RE-ANCORA as 2 contas.
+   *
+   * ⭐⭐ item 4 (30/09) — e este caso é o mais instrutivo da leva. O comentário antigo dizia
+   * que separar *revert* e *apply* **"protege contra qualquer drift se Prisma tiver bug de
+   * ordering"**: quatro deltas encadeados pra tentar garantir uma soma. A derivação é
+   * estritamente mais forte — ela **não depende de ordem nenhuma**, porque não soma nada:
+   * lê o ledger final e diz qual é o saldo. O que os 4 deltas tentavam proteger deixou de
+   * poder acontecer.
+   *
+   * ⚠️ E o audit-trail que eles davam não se perde: ele vive no `logAudit` abaixo, com os
+   * ids das linhas e as contas — que é onde alguém vai procurar em três meses, não no
+   * encadeamento de increments.
+   */
+  const { debit, credit, fromUpdated, toUpdated } = await prisma.$transaction(async (tx) => {
+    await tx.transaction.delete({ where: { id: ops.deleteIdA } })
+    await tx.transaction.delete({ where: { id: ops.deleteIdB } })
+    // debit antes do credit — convenção do deleteTransferGroup (createdAt ASC = saída 1º)
+    const d = await tx.transaction.create({ data: ops.debitTx })
+    const c = await tx.transaction.create({ data: ops.creditTx })
+    const saldos = await reAncorarContas(tx, [ops.fromAccountId, ops.toAccountId])
+    const porId = new Map(saldos.map((s) => [s.bankAccountId, s]))
+    return {
+      debit: d,
+      credit: c,
+      fromUpdated: {
+        id: ops.fromAccountId,
+        name: porId.get(ops.fromAccountId)!.bankAccountName,
+        balance: porId.get(ops.fromAccountId)!.saldoDepois,
+      },
+      toUpdated: {
+        id: ops.toAccountId,
+        name: porId.get(ops.toAccountId)!.bankAccountName,
+        balance: porId.get(ops.toAccountId)!.saldoDepois,
+      },
+    }
+  })
 
   // 4. Audit log
   await logAudit(ctx, {

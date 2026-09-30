@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { logAudit } from '@/lib/audit'
@@ -68,34 +69,30 @@ export async function POST(request: NextRequest, { params }: Params) {
       ),
     )
 
-    const ajusteSaldo = transacoes.reduce((acc, t) => {
-      return acc + (t.type === 'CREDIT' ? t.amount : -t.amount)
-    }, 0)
-
-    await prisma.$transaction([
+    /**
+     * ⭐ item 4 (30/09) — a última porta. Reverter um import inteiro decrementando a soma
+     * das linhas era o delta de maior alcance da casa (centenas de linhas de uma vez);
+     * uma única fora da janela da âncora e o saldo ficava errado sem ninguém saber qual.
+     *
+     * ⚠️ Os deletes vêm ANTES da derivação, de propósito — ela lê o ledger final.
+     */
+    await prisma.$transaction(async (tx) => {
       // Se há transferências vinculadas, deletamos o par inteiro (preserva
       // consistência: não pode ficar "meia transferência")
-      ...(transferGroupIds.length > 0
-        ? [
-            prisma.transaction.deleteMany({
-              where: { transferGroupId: { in: transferGroupIds } },
-            }),
-          ]
-        : []),
-      prisma.transaction.deleteMany({ where: { importId } }),
-      prisma.bankAccount.update({
-        where: { id: imp.bankAccountId },
-        data: { balance: { decrement: ajusteSaldo } },
-      }),
-      prisma.ofxImport.update({
+      if (transferGroupIds.length > 0) {
+        await tx.transaction.deleteMany({ where: { transferGroupId: { in: transferGroupIds } } })
+      }
+      await tx.transaction.deleteMany({ where: { importId } })
+      await reAncorarContas(tx, [imp.bankAccountId])
+      await tx.ofxImport.update({
         where: { id: importId },
         data: {
           status: 'REVERTED',
           revertedAt: new Date(),
           revertedById: ctx.user.id,
         },
-      }),
-    ])
+      })
+    })
 
     await logAudit(ctx, {
       action: 'OFX_IMPORT_REVERTED',
@@ -106,7 +103,12 @@ export async function POST(request: NextRequest, { params }: Params) {
         bankAccountId: imp.bankAccountId,
         transacoesDeletadas: transacoes.length,
         transferenciasDeletadas: transferGroupIds.length,
-        ajusteSaldo: -ajusteSaldo,
+        // ⭐ o audit guarda o que as linhas VALIAM (o fato), não o delta aplicado no cache —
+        // o cache virou derivação e não tem mais delta pra registrar.
+        valorDasLinhasRemovidas: transacoes.reduce(
+          (acc, t) => acc + (t.type === 'CREDIT' ? t.amount : -t.amount),
+          0,
+        ),
       },
       request,
     })

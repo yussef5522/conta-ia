@@ -67,7 +67,15 @@ interface PreviewResult {
   // ⚠️ Export de mesmo dia (29/08/2026) — o extrato termina hoje, o dia não fechou.
   avisoExportMesmoDia?: { mesmoDia: boolean; linhasDoDiaAberto: number; aviso: string } | null
   // ⭐ Diagnóstico guiado (29/08/2026) — quando o saldo não fecha, DESDE QUANDO.
-  diagnostico?: { de: string; ate: string; diferenca: number; instrucao: string } | null
+  /** ⭐ 30/09: separa o DRIFT DO CACHE (de hoje, acionável) do intervalo ANTIGO */
+  diagnostico?: {
+    de: string | null
+    ate: string | null
+    diferenca: number
+    instrucao: string
+    driftDoCache: { gravado: number; pelaRegua: number; diferenca: number } | null
+    fronteirasDeData: number
+  } | null
   /** ⭐ 04/09: como este banco pode ser conferido (ver lib/ofx/selo-do-import.ts) */
   selo?: {
     modo: 'LEDGERBAL' | 'PDF_DIARIO' | 'SEM_CONFERENCIA'
@@ -973,15 +981,25 @@ export default function ImportarOFXPage() {
             <div className="flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
               <div className="flex-1">
+                {/* ⭐ 30/09: o TÍTULO muda com a causa. "Onde a conta começou a descolar"
+                    numa conta cujo problema é o cache de anteontem manda o dono pro
+                    histórico — foi exatamente o que aconteceu na Stone. */}
                 <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-                  Onde a conta começou a descolar
+                  {preview.diagnostico.driftDoCache
+                    ? 'O saldo gravado desta conta não bate com a régua'
+                    : 'Onde a conta começou a descolar'}
                 </p>
                 <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
                   {preview.diagnostico.instrucao}
                 </p>
+                {/* ⛔⛔ A NOTA DE PÉ ERA CRAVADA em "a divergência é ANTERIOR a este arquivo"
+                    — e no caso da Stone isso era FALSO: o drift tinha dois dias e era do
+                    cache, não do extrato. Frase que afirma a causa errada é pior que
+                    frase nenhuma, porque ela é convincente. */}
                 <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mt-1">
-                  ⚠️ A divergência é ANTERIOR a este arquivo — importar agora não piora nada,
-                  e o que faltar entra sem duplicar quando você trouxer o extrato do período.
+                  {preview.diagnostico.driftDoCache
+                    ? '⚠️ Isto NÃO é transação faltando no extrato: é o saldo em cache. Importar agora é seguro — e recalcular o saldo da conta acerta o número.'
+                    : '⚠️ A divergência é ANTERIOR a este arquivo — importar agora não piora nada, e o que faltar entra sem duplicar quando você trouxer o extrato do período.'}
                 </p>
               </div>
             </div>

@@ -224,3 +224,150 @@ export async function recalcularSaldoEmpresa(
 function roundCents(n: number): number {
   return Math.round(n * 100) / 100
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⭐⭐⭐ MATAR A CLASSE DO DRIFT (30/09/2026) — `re-ancorar` é a porta ÚNICA.
+//
+// ⛔⛔ O QUE ACONTECEU: a Stone ficou com o `balance` gravado 2.112,00 acima da régua, e o
+// import cuspiu *"saldo previsto 2.199,53 × extrato 87,53 · causa não identificada"* + um
+// aviso fóssil de 13-17/08 — mandando o dono caçar AGOSTO por um drift de ANTEONTEM.
+//
+// A causa não era o extrato: era **uma venda em dinheiro de R$ 2.112,00 lançada à mão com
+// data 17/09 e criada em 28/09**. O `POST /api/transacoes` fazia `balance: { increment }`,
+// e 17/09 já estava DENTRO do saldo que o banco declarou em 25/09 → o dinheiro entrou
+// duas vezes no cache.
+//
+// ⚠️ O sprint "o banco é a lei" (17/06) matou o drift NO IMPORT e deixou vivo em ~20 portas
+// (lançamento manual, edição, efetivar, contas a pagar, transferência, ponte, Pluggy,
+// ajustar-saldo, PF). **Increment só coincide com a régua quando a data do lançamento é
+// POSTERIOR à âncora** — todo lançamento retroativo drifta, e drift de cache é invisível
+// até alguém importar o extrato seguinte.
+//
+// ⭐ A CURA É REGRA 5: a porta não existe mais. Em vez de somar o delta, a operação
+// TERMINA re-derivando o saldo pela régua da casa. O drift deixa de ser improvável e passa
+// a ser IMPOSSÍVEL — não há o que driftar quando ninguém guarda delta.
+//
+// ⚠️ E ela é IDEMPOTENTE de propósito: chamar duas vezes dá o mesmo número (é derivação,
+// não acumulação). Isso é o que permite chamá-la no fim de qualquer gesto sem medo.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Re-ancora N contas de uma vez, no fim de um gesto. Ignora `null`/`undefined` e repetidas
+ * (mover uma linha entre duas contas pede as duas; um lançamento simples pede uma).
+ *
+ * ⚠️ Recebe o client TRANSACIONAL: o saldo tem que ficar consistente no MESMO commit que
+ * criou/moveu/apagou a linha. Fora da transação, uma falha no meio deixaria a linha
+ * gravada e o saldo velho — o estado pela metade que este módulo existe pra não ter.
+ */
+export async function reAncorarContas(
+  db: DbClient,
+  bankAccountIds: Array<string | null | undefined>,
+): Promise<RecalcResult[]> {
+  const ids = [...new Set(bankAccountIds.filter((x): x is string => !!x))]
+  const out: RecalcResult[] = []
+  for (const id of ids) out.push(await recalcularSaldoConta(db, id))
+  return out
+}
+
+export interface RecalcResultPF {
+  personalBankAccountId: string
+  modo: 'ABERTURA_CONFERIDA' | 'LEDGERBAL_ANCHOR' | 'SUM_TODAS'
+  saldoAntes: number
+  saldoDepois: number
+  delta: number
+  txCount: number
+}
+
+/**
+ * ⭐ O MESMO para conta de PERFIL (PF). **Não é uma segunda fórmula** — o núcleo puro
+ * (`calcularSaldo`) é o MESMO; o que muda é a tabela de onde as linhas vêm.
+ *
+ * ⚠️ A PF ganhou `ledgerBal`/`ledgerBalDate` na FASE 1 (13/09), então ela tem âncora e
+ * sofre do MESMO drift: lançamento retroativo com `increment` soma por cima do saldo que
+ * o banco já declarou. Sem este irmão, o item 4 deixaria metade da casa curada.
+ *
+ * ⛔ `PersonalTransaction` **não tem `lifecycle`** (registrado desde 07/08: no PF a linha
+ * nasce sempre realizada) e **não tem TRANSFER entre contas** — por isso o array vai com
+ * `lifecycle: 'EFFECTED'` e `transferGroupId: null`, que é a verdade do modelo, não um
+ * atalho. No dia em que o PF ganhar `lifecycle`, o filtro do núcleo passa a valer de graça.
+ */
+export async function recalcularSaldoContaPF(
+  db: DbClient,
+  personalBankAccountId: string,
+): Promise<RecalcResultPF> {
+  if (!personalBankAccountId) throw new Error('personalBankAccountId obrigatório')
+
+  const conta = await db.personalBankAccount.findUnique({
+    where: { id: personalBankAccountId },
+    select: {
+      id: true, balance: true, ledgerBal: true, ledgerBalDate: true,
+      openingBalance: true, openingDate: true,
+    },
+  })
+  if (!conta) throw new Error(`Conta PF ${personalBankAccountId} não encontrada`)
+
+  /**
+   * ⭐⭐ ABERTURA CONFERIDA MANDA (30/09/2026), igual ao PJ — e é ela que impede a derivação
+   * de zerar conta criada com saldo DIGITADO. Sem esta metade, `Σ(tx)` de uma conta nova
+   * seria ZERO e o primeiro lançamento apagaria a abertura em silêncio: a mina registrada
+   * neste projeto desde 31/07, que no PF estava viva porque o modelo não tinha o par.
+   */
+  const usaAbertura = conta.openingBalance != null && conta.openingDate != null
+  const usaAnchor = !usaAbertura && conta.ledgerBal != null && conta.ledgerBalDate != null
+
+  const txs = await db.personalTransaction.findMany({
+    where: {
+      bankAccountId: personalBankAccountId,
+      ...(usaAbertura
+        // ⛔ `gte` no DIA SEGUINTE (o dia da âncora inteiro já está dentro dela) — a mesma
+        // régua do PJ, pelo MESMO helper. Duas contagens de "depois da âncora" divergiriam.
+        ? { date: { gte: depoisDaAncora(conta.openingDate!) } }
+        : usaAnchor
+          ? { date: { gt: conta.ledgerBalDate! } }
+          : {}),
+    },
+    select: { id: true, date: true, createdAt: true, type: true, amount: true, bankAccountId: true },
+  })
+
+  const calc = calcularSaldo({
+    ledgerBal: usaAbertura ? conta.openingBalance : conta.ledgerBal,
+    usaAnchor: usaAbertura || usaAnchor,
+    txs: txs.map((t) => ({
+      id: t.id,
+      date: t.date,
+      createdAt: t.createdAt,
+      type: t.type,
+      amount: t.amount,
+      bankAccountId: t.bankAccountId!,
+      transferGroupId: null,
+      transferDirection: null,
+      lifecycle: 'EFFECTED',
+    })),
+    bankAccountId: personalBankAccountId,
+  })
+
+  await db.personalBankAccount.update({
+    where: { id: personalBankAccountId },
+    data: { balance: calc.saldo },
+  })
+
+  return {
+    personalBankAccountId,
+    modo: usaAbertura ? 'ABERTURA_CONFERIDA' : usaAnchor ? 'LEDGERBAL_ANCHOR' : 'SUM_TODAS',
+    saldoAntes: roundCents(conta.balance),
+    saldoDepois: calc.saldo,
+    delta: roundCents(calc.saldo - conta.balance),
+    txCount: calc.txConsideradas,
+  }
+}
+
+/** Irmã do `reAncorarContas` pro PF. */
+export async function reAncorarContasPF(
+  db: DbClient,
+  ids: Array<string | null | undefined>,
+): Promise<RecalcResultPF[]> {
+  const unicos = [...new Set(ids.filter((x): x is string => !!x))]
+  const out: RecalcResultPF[] = []
+  for (const id of unicos) out.push(await recalcularSaldoContaPF(db, id))
+  return out
+}

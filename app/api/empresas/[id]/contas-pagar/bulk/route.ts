@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { reAncorarContas } from '@/lib/balance/recalcular'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { logAudit } from '@/lib/audit'
@@ -208,18 +209,11 @@ export async function POST(request: NextRequest, { params }: Params) {
         })
 
         // Sprint Caixa — Atualiza balance da conta de pagamento
-        if (payAccount) {
-          const delta = allowedTxs.reduce(
-            (s, t) => s + (t.type === 'DEBIT' ? -t.amount : t.amount),
-            0,
-          )
-          if (delta !== 0) {
-            await tx.bankAccount.update({
-              where: { id: payAccount.id },
-              data: { balance: { increment: delta } },
-            })
-          }
-        }
+        // ⭐ item 4 (30/09): re-ancora a conta de pagamento. Somar o delta do LOTE era o
+        // caso mais perigoso da classe — um lote com contas de datas variadas, algumas
+        // antes da âncora, driftava o cache por um valor que ninguém conseguiria explicar
+        // depois (não dá pra saber qual das N linhas causou).
+        if (payAccount) await reAncorarContas(tx, [payAccount.id])
 
         await logAudit(
           ctx,
@@ -278,13 +272,9 @@ export async function POST(request: NextRequest, { params }: Params) {
           where: { id: { in: found.map((t) => t.id) } },
         })
 
-        for (const [bankId, delta] of reverseByBank) {
-          if (delta === 0) continue
-          await tx.bankAccount.update({
-            where: { id: bankId },
-            data: { balance: { increment: delta } },
-          })
-        }
+        // ⭐ item 4: as contas tocadas se re-ancoram (o mapa `reverseByBank` deixou de ser
+        // a fonte do saldo e virou só a LISTA de quem precisa recalcular).
+        await reAncorarContas(tx, [...reverseByBank.keys()])
 
         await logAudit(
           ctx,

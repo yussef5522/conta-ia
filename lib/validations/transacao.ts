@@ -20,6 +20,16 @@ export const transacaoSchema = z.object({
   createCounterpartyRule: z.boolean().optional(),
 })
 
-export const transacaoUpdateSchema = transacaoSchema.partial().omit({ bankAccountId: true })
+/**
+ * ⭐⭐ A CONTA VOLTOU PRO UPDATE (30/09/2026) — ela era `omit` desde sempre, e por isso a
+ * tela de editar lançamento **não tinha como consertar conta errada**. Errar a conta no
+ * seletor é rotina (a venda em dinheiro de R$ 2.112,00 de 17/09 foi lançada na stone em
+ * vez do cofre), e a única saída era apagar e lançar de novo.
+ *
+ * ⛔ Aceitar o campo NÃO afrouxa nada: quem decide se a linha PODE se mover é
+ * `podeMoverDeConta` (lib/transacoes/mover-de-conta.ts), no servidor — linha de extrato
+ * nunca troca de conta. O schema só deixa de recusar a PERGUNTA.
+ */
+export const transacaoUpdateSchema = transacaoSchema.partial()
 
 export type TransacaoInput = z.infer<typeof transacaoSchema>

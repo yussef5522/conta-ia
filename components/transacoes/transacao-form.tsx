@@ -12,11 +12,20 @@ import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 import { useToast } from '@/components/ui/use-toast'
 
 interface Category { id: string; name: string; color: string; type: string; dreGroup?: string | null }
+interface Conta { id: string; name: string; bankName?: string | null; accountType?: string | null }
 
 interface TransacaoFormProps {
   contaId: string
   empresaId: string
   categories: Category[]
+  /** ⭐ 30/09: as contas da empresa, pra consertar conta errada sem apagar o lançamento */
+  contas?: Conta[]
+  /**
+   * ⭐ o veredito vem do SERVIDOR (`podeMoverDeConta`), nunca de régua da tela — senão a
+   * tela habilitaria o campo num caso que o PUT recusa, e o dono clicaria pra levar um "não".
+   */
+  podeTrocarConta?: boolean
+  motivoContaTravada?: string | null
   transacao?: {
     id: string
     description: string
@@ -26,10 +35,19 @@ interface TransacaoFormProps {
     categoryId?: string | null
     notes?: string | null
     status: string
+    bankAccountId?: string
   }
 }
 
-export function TransacaoForm({ contaId, empresaId, categories, transacao }: TransacaoFormProps) {
+export function TransacaoForm({
+  contaId,
+  empresaId,
+  categories,
+  contas = [],
+  podeTrocarConta = false,
+  motivoContaTravada = null,
+  transacao,
+}: TransacaoFormProps) {
   const router = useRouter()
   const { toast } = useToast()
   const isEditing = !!transacao
@@ -46,7 +64,18 @@ export function TransacaoForm({ contaId, empresaId, categories, transacao }: Tra
     categoryId: transacao?.categoryId ?? '',
     notes: transacao?.notes ?? '',
     status: transacao?.status ?? 'PENDING',
+    bankAccountId: transacao?.bankAccountId ?? contaId,
   })
+  /**
+   * ⭐ o que o SERVIDOR devolveu sobre a mudança de conta. A competência de venda é POR
+   * CONTA (dinheiro no cofre é D+1 corrido, PIX na Stone é D+0), então a mesma venda pode
+   * valer por outro dia. Mexer no calendário em silêncio seria a família do "gravou e não
+   * disse" — aqui a tela DIZ, depois de gravar, com os dois dias na frente.
+   */
+  const [mudouDeConta, setMudouDeConta] = useState<{
+    rastro: string
+    competencia: { antes: { inicio: string | null }; depois: { inicio: string | null }; mudou: boolean }
+  } | null>(null)
 
   function set(field: string, value: string) {
     setForm((p) => ({ ...p, [field]: value }))
@@ -69,7 +98,13 @@ export function TransacaoForm({ contaId, empresaId, categories, transacao }: Tra
       const method = isEditing ? 'PUT' : 'POST'
 
       const body = {
-        ...(!isEditing ? { bankAccountId: contaId } : {}),
+        // ⭐ 30/09: na EDIÇÃO a conta vai no corpo quando ela pode mudar — quem valida é o
+        // servidor. Quando não pode, o campo nem é enviado (nada a pedir).
+        ...(!isEditing
+          ? { bankAccountId: contaId }
+          : podeTrocarConta && form.bankAccountId !== transacao?.bankAccountId
+            ? { bankAccountId: form.bankAccountId }
+            : {}),
         description: form.description,
         amount: parseFloat(form.amount) || 0,
         type: form.type,
@@ -90,6 +125,24 @@ export function TransacaoForm({ contaId, empresaId, categories, transacao }: Tra
       if (!res.ok) {
         if (data.campos) { setErrors(data.campos); return }
         toast({ variant: 'destructive', title: 'Erro', description: data.erro })
+        return
+      }
+
+      /**
+       * ⭐⭐ A MUDANÇA DE CONTA NÃO NAVEGA EMBORA EM SILÊNCIO.
+       *
+       * ⚠️ Ela mexe em DUAS contas e pode mexer no dia da venda no calendário. Sair da tela
+       * com um "Sucesso!" genérico esconderia os dois efeitos — e o dono descobriria o dia
+       * mudado semanas depois, no relatório. Fica na tela, dizendo o que aconteceu, e o
+       * "voltar pra lista" é dele.
+       */
+      if (data.mudancaDeConta) {
+        setMudouDeConta({
+          rastro: data.mudancaDeConta.rastro,
+          competencia: data.mudancaDeConta.competencia,
+        })
+        toast({ variant: 'success', title: 'Conta trocada', description: data.mudancaDeConta.rastro })
+        router.refresh()
         return
       }
 
@@ -130,6 +183,44 @@ export function TransacaoForm({ contaId, empresaId, categories, transacao }: Tra
               ))}
             </div>
           </div>
+
+          {/* ⭐ CONTA (30/09/2026) — só na edição; no lançamento novo a conta é a da tela. */}
+          {isEditing && contas.length > 0 && (
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="bankAccountId">Conta</Label>
+              {podeTrocarConta ? (
+                <>
+                  <Select value={form.bankAccountId} onValueChange={(v) => set('bankAccountId', v)}>
+                    <SelectTrigger id="bankAccountId"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {contas.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}{c.bankName ? ` · ${c.bankName}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {form.bankAccountId !== transacao?.bankAccountId && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      ao salvar, o saldo das duas contas é recalculado e a troca fica registrada no histórico
+                    </p>
+                  )}
+                </>
+              ) : (
+                /* ⛔ TRAVADO COM O MOTIVO ESCRITO, nunca escondido: esconder o campo tira a
+                   explicação junto, e o dono fica sem saber por que não dá — foi a lição
+                   do "desativar" que não oferecia "sumir" no Catálogo. */
+                <div className="rounded-lg border border-input bg-muted/40 px-3 py-2">
+                  <p className="text-sm font-medium">
+                    {contas.find((c) => c.id === (transacao?.bankAccountId ?? contaId))?.name ?? '—'}
+                  </p>
+                  {motivoContaTravada && (
+                    <p className="text-xs text-muted-foreground mt-1">🔒 {motivoContaTravada}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Data */}
           <div className="space-y-2">
@@ -191,6 +282,33 @@ export function TransacaoForm({ contaId, empresaId, categories, transacao }: Tra
           </div>
         </CardContent>
       </Card>
+
+      {mudouDeConta && (
+        <Card className="border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/30">
+          <CardContent className="py-4 space-y-1">
+            <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+              ✓ {mudouDeConta.rastro}
+            </p>
+            <p className="text-xs text-emerald-800 dark:text-emerald-300">
+              o saldo das duas contas foi recalculado pela régua do banco (não somado) e a troca
+              está no histórico do lançamento.
+            </p>
+            {/* ⭐ O DIA DA VENDA ANDOU? É a pergunta que a troca de conta levanta, e ela só
+                tem resposta do servidor (a régua de recebimento é por conta). */}
+            {mudouDeConta.competencia.mudou ? (
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                ⚠️ no calendário de vendas, esta entrada mudou de dia:{' '}
+                {mudouDeConta.competencia.antes.inicio ?? '—'} → {mudouDeConta.competencia.depois.inicio ?? '—'}{' '}
+                (a régua de recebimento é por conta)
+              </p>
+            ) : (
+              <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80">
+                o dia no calendário de vendas não mudou.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex items-center gap-3 justify-end">
         <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading}>Cancelar</Button>

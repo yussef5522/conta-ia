@@ -172,6 +172,25 @@ export async function POST(request: NextRequest) {
       lowBalanceThreshold: data.lowBalanceThreshold ?? null,
     })
 
+    /**
+     * ⭐⭐⭐ A ABERTURA VIRA LANÇAMENTO (30/09/2026) — a porta que fecha a mina do item 4.
+     *
+     * ⚠️ **A MINA, medida:** o saldo passou a ser DERIVADO do ledger em todas as portas
+     * (item 4, pra matar o drift que pôs a Stone 2.112,00 acima da régua). Mas conta criada
+     * com saldo digitado e NENHUM lançamento correspondente teria `Σ(tx) = 0` — e o primeiro
+     * lançamento manual **zeraria o saldo de abertura em silêncio**. É a mina que este doc
+     * registra desde 31/07 (*"contas com abertura digitada seriam ZERADAS por um recalc
+     * ingênuo"*), e ela estava VIVA nas duas criações de conta (PJ e PF).
+     *
+     * ⭐ **Medido em prod antes de escolher o conserto: exposição ZERO.** As 5 contas sem
+     * âncora (cofre, banco caixa, e as 3 de outras empresas) têm `balance == Σ(tx)` ao
+     * centavo — na prática o dono sempre lançou a abertura como transação. Ou seja: derivar
+     * é seguro HOJE, e o risco era só pra conta NOVA.
+     *
+     * ⛔ Então a cura é na ORIGEM, não um caso especial no cálculo: o saldo digitado nasce
+     * como um LANÇAMENTO de abertura. Aí `Σ(tx)` é a verdade pra sempre, em qualquer conta,
+     * e a derivação não tem exceção pra lembrar (REGRA 5).
+     */
     const conta = await prisma.bankAccount.create({
       data: {
         name: data.name,
@@ -187,6 +206,25 @@ export async function POST(request: NextRequest) {
         agency: safe.agency,
         accountNumber: safe.accountNumber,
         accountKind: data.accountKind ?? 'PJ',
+        /**
+         * ⭐⭐ A ABERTURA É ÂNCORA, NÃO MOVIMENTO (30/09/2026).
+         *
+         * ⚠️ Minha 1ª tentativa foi criar um LANÇAMENTO de "saldo inicial" — e os testes
+         * pegaram o efeito colateral: ele contava como **ENTRADA nos últimos 30 dias** no
+         * resumo do perfil. Abertura de conta não é receita; ela é o ponto de partida.
+         * Materializá-la como movimento poluiria todo relatório de entrada/saída.
+         *
+         * ⭐ A casa já tem o lugar certo pra isso: `openingBalance`/`openingDate`, o desenho
+         * de 01/09 (*"saldo declarado é CONFERÊNCIA, não fonte"*). Com a abertura ali, o
+         * `recalcularSaldoConta` entra em ABERTURA_CONFERIDA e deriva **exato**, sem
+         * lançamento nenhum e sem sujar nada.
+         *
+         * ⛔ Datada em ONTEM porque o ledger conta do dia SEGUINTE à âncora — a abertura
+         * tem que ficar ANTES do primeiro lançamento que a conta vai receber hoje.
+         */
+        ...(Math.abs(data.balance) > 0.005
+          ? { openingBalance: data.balance, openingDate: aberturaDeHoje() }
+          : {}),
       },
     })
 
@@ -206,4 +244,18 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return handleApiError(error)
   }
+}
+
+/**
+ * O dia da âncora de abertura: ONTEM ao meio-dia UTC.
+ *
+ * ⚠️ Meio-dia é a convenção de data desta casa (o `date` das transações é carimbado assim);
+ * meia-noite faria a comparação de âncora escorregar um dia em fuso negativo — a cicatriz
+ * de 01/09, quando as 10 tx de 31/07 entraram duas vezes no saldo por causa disso.
+ */
+function aberturaDeHoje(): Date {
+  const d = new Date()
+  d.setUTCHours(12, 0, 0, 0)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d
 }

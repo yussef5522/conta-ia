@@ -1,6 +1,7 @@
 // Sprint PF Fatia 4 — Delete da ponte (2 modos A/B do plano §4.4).
 
 import { prisma } from '@/lib/db'
+import { reAncorarContasPF } from '@/lib/balance/recalcular'
 import { BridgeError, type BridgeDeleteMode, BRIDGE_DELETE_MODES } from './types'
 import { checkProfileAccess, ProfileAccessError } from '@/lib/personal-profile/queries'
 
@@ -70,14 +71,9 @@ export async function deleteBridge(
         where: { id: bridge.pfTransactionId },
         select: { bankAccountId: true, amount: true, type: true },
       })
-      if (pfTx?.bankAccountId) {
-        const delta = pfTx.type === 'CREDIT' ? -pfTx.amount : pfTx.amount
-        await tx.personalBankAccount.update({
-          where: { id: pfTx.bankAccountId },
-          data: { balance: { increment: delta } },
-        })
-      }
+      // ⭐ item 4 (30/09): apaga e DEPOIS deriva (a ordem importa na derivação).
       await tx.personalTransaction.delete({ where: { id: bridge.pfTransactionId } })
+      if (pfTx?.bankAccountId) await reAncorarContasPF(tx, [pfTx.bankAccountId])
       pfDeleted = true
     }
 

@@ -6,6 +6,7 @@
 // 3. tx PJ pertence à companyId — aqui
 
 import { prisma } from '@/lib/db'
+import { reAncorarContasPF } from '@/lib/balance/recalcular'
 import { checkProfileAccess, ProfileAccessError } from '@/lib/personal-profile/queries'
 import { BridgeError, type BridgeKind, type CreatedVia, BRIDGE_KINDS, CREATED_VIA } from './types'
 import { getKindDefaults } from './kind-defaults'
@@ -231,14 +232,10 @@ export async function createBridge(
         },
       })
 
-      // Sprint Retirada-Despesa-PF/saldo-fix: incrementa balance da conta PF
-      // (a entrada CREDIT precisa refletir no saldo cacheado, igual
-      // createTransaction faz). Sem isso, Saldo Total do dashboard PF
-      // ignora distribuições recebidas via ponte e fica negativo.
-      await tx.personalBankAccount.update({
-        where: { id: input.pfBankAccountId },
-        data: { balance: { increment: pjTx.amount } },
-      })
+      // O saldo da conta PF tem que refletir a entrada da ponte (sem isso, o Saldo Total
+      // do dashboard PF ignorava distribuições recebidas e ficava negativo).
+      // ⭐ item 4 (30/09): DERIVADO, não incrementado.
+      await reAncorarContasPF(tx, [input.pfBankAccountId])
 
       // 5a. Sprint Retirada-Conciliação-Fix: seta categoryId na tx PJ pra que
       // o filtro Conciliação (categoryId IS NULL) deixe de retornar. Resolve
@@ -356,13 +353,10 @@ export async function createBridge(
           },
         })
 
-        // Ajusta saldo da conta PF (débito): decrementa. Como o mesmo balance
-        // já foi incrementado no passo 4 (entrada), o net final é zero quando
-        // spendAmount == pjTx.amount (caso típico "atravessou o PF").
-        await tx.personalBankAccount.update({
-          where: { id: spendAccountId },
-          data: { balance: { decrement: Math.abs(spendAmount) } },
-        })
+        // ⭐ item 4: deriva de novo (a despesa acabou de nascer). O net "zero quando
+        // spendAmount == pjTx.amount" continua saindo certo — mas agora **por construção**,
+        // lendo as duas linhas, em vez de por dois deltas que se anulam por aritmética.
+        await reAncorarContasPF(tx, [spendAccountId])
 
         // Liga bridge ↔ despesa. UNIQUE em spendTransactionId protege contra
         // race duplicada (P2002 abaixo).
