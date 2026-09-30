@@ -1415,6 +1415,111 @@ AS FRASES MORTAS, no HTML servido:
 
 **10.959 verdes · TS 0 · deploy 4/4 (`h4DGvUzf7576pWfXPxQLS`) · Δ bundle +0 KB.**
 
+## ⭐⭐⭐ O SALDO VIROU DERIVADO EM TODAS AS PORTAS · E DÁ PRA TROCAR A CONTA DE UM LANÇAMENTO (30/09/2026)
+
+**Nasceu da perícia da Stone.** O import acusou *"saldo previsto 2.199,53 × extrato 87,53 · causa não identificada"* e apontou **13-17/08**. O dono foi caçar agosto. **Não era o extrato: era o cache, e tinha dois dias.**
+
+```
+ledgerBal declarado 25/09      R$   168,36
+linhas nossas depois disso     R$     0,00
+⭐ o balance DEVERIA ser       R$   168,36
+   o balance GRAVADO era       R$ 2.280,36
+   ──────────────────────────────────────
+   DRIFT                       R$ 2.112,00   ← ao centavo
+```
+
+⛔ O culpado: **venda em dinheiro de R$ 2.112,00, data 17/09, criada em 28/09** — anterior à âncora, somada por cima de um saldo que o banco já declarava. `POST /api/transacoes` fazia `balance: { increment }` **sem olhar a âncora**.
+
+### ⭐⭐ ITEM 1 — TROCAR A CONTA DE UM LANÇAMENTO (a porta que faltava)
+
+A tela deixava trocar tipo, data, valor, categoria e status — **e não a conta**. Errar a conta é ROTINA (as outras 14 vendas em dinheiro do mês estão todas no cofre; só essa foi pra stone), e a única saída era apagar e lançar de novo, perdendo rastro, categoria e vínculo.
+
+**`lib/transacoes/mover-de-conta.ts`:** fronteira PURA + orquestrador. ⛔⛔ **ALLOWLIST, não denylist:** só `MANUAL` (e o legado sem `origin`) se move; **origem nova cai no lado que RECUSA**, sem ninguém cadastrar nada — *quem leva um "não" com o motivo escrito vem perguntar; quem move linha de extrato sem perceber só descobre quando o saldo para de fechar.* Linha de extrato **nunca** troca de conta e a frase diz o caminho (*"reimportar o extrato na conta certa"*); conciliada pede desfazer **nomeando com o quê**; perna de par, não (quebraria o par).
+
+⭐ **A COMPETÊNCIA MUDA COM A CONTA e a tela DIZ.** A régua de recebimento é POR CONTA — dinheiro no cofre é **D+1 corrido**, PIX na Stone é **D+0** —, então a MESMA venda vale por outro dia dependendo de onde o dinheiro entrou. Reusa `computeCompetencia` (a mesma do recompute e do juiz); régua própria aqui faria a tela prometer um dia e o calendário gravar outro. **E a tela não navega embora em silêncio:** fica mostrando o que aconteceu, com os dois dias na frente.
+
+⚠️ **A trava é do SERVIDOR** (`podeMoverDeConta` no PUT, 422 com `code`), não do campo desabilitado — esconder não impede a chamada (a régua do FREIO da contagem, 23/08). E o **veredito da tela vem da MESMA função**: régua própria habilitaria o campo num caso que o PUT recusa, e o dono clicaria pra levar um "não".
+
+### ⛔⛔⛔ ITEM 4 — A CLASSE DO DRIFT, MORTA POR CONSTRUÇÃO
+
+**21 portas** trocaram `balance: { increment }` por **`reAncorarContas`/`reAncorarContasPF`**: lançamento manual · edição · delete · efetivar · contas a pagar (individual e lote) · contas-ap-ar · transferência (criar/apagar/from-ofx/parear) · import-warnings · ajustar-saldo · Pluggy · revert de import · ponte PJ→PF (×3) · cartão PF · import PF.
+
+⭐ **A régua:** `increment` só coincide com a derivação quando a linha é POSTERIOR à âncora. **Lançamento retroativo é rotina** (o dono lança a nota que já pagou, o Pluggy puxa 90 dias, o ajuste de abertura é datado no passado) — então a coincidência era a exceção. Derivar é **idempotente**: não existe delta guardado, logo não há o que driftar.
+
+⚠️ **4 `$transaction([...])` viraram callback** — derivar é assíncrono e precisa do client transacional, pro saldo ficar no MESMO commit do fato.
+
+⭐⭐ **O caso mais instrutivo:** `pair-pendentes` tinha **quatro deltas encadeados** com o comentário *"protege contra qualquer drift se Prisma tiver bug de ordering"*. A derivação é **estritamente mais forte** — ela não depende de ordem nenhuma, porque não soma nada.
+
+**⛔ `ajustar-saldo` RECUSA conta ancorada, nomeando a porta certa.** O gesto data o lançamento **um dia antes da tx mais antiga** (é abertura); numa conta ancorada ele ficaria fora da conta e **não teria efeito nenhum**. Com o `increment` ele "funcionava" mexendo no cache e deixando o cache discordar da régua — o drift em pessoa. A saída não é fazer nada em silêncio: é dizer que aquele saldo vem do que o banco declarou e apontar a **âncora de abertura**.
+
+**GUARD REGRA 11** (`__tests__/regras-saldo/`): zero `increment` de saldo em `app/` e `lib/`, exceções nomeadas (**lista vazia de propósito**), e auto-teste do detector. ⚠️⚠️ **E o auto-teste me pegou:** a 1ª versão lia **linha a linha** e a porta que CAUSOU o incidente estava escrita em **multilinha** (`balance: {` numa linha, `increment:` na seguinte) — *o detector nascia cego justamente na porta do caso*. Repondo o defeito lá: **vermelho apontando arquivo:linha**.
+
+### ⭐ ITEM 4b — O DETECTOR PAROU DE MANDAR CAÇAR AGOSTO
+
+`ondeDescolou` responde *"qual o PRIMEIRO intervalo de âncoras que não fecha?"* — por construção, **o achado mais antigo que existir**. Num histórico de seis semanas ele aponta sempre pro passado, mesmo quando o problema é de hoje. *Não é bug de cálculo: é a pergunta errada na tela errada.*
+
+**`diagnosticarDescolamento` separa TRÊS coisas e põe o de hoje primeiro:** **(1) DRIFT DO CACHE** (acionável agora) · **(2) FRONTEIRA DE DATA** — intervalos vizinhos que **se cancelam**, o banco lançando num dia e datando no outro (na Stone são **seis pares assim**, e cada um apareceria como "descolamento" numa leitura ingênua) · **(3) INTERVALO ANTIGO que sobra**, dito **COMO anterior** e avisando que **não explica a diferença de hoje**. ⚠️ O cancelamento é olhado nos **vizinhos imediatos**: emparelhar à distância transformaria achado real em "explicado" por acaso.
+
+⛔ **E a tela tinha a frase CRAVADA** *"a divergência é ANTERIOR a este arquivo"* — **falsa** no caso da Stone. Título e nota de pé agora seguem a causa.
+
+### ⚠️⚠️ A MINA ACHADA NO CAMINHO (medida, não suposta)
+
+**Criação de conta (PJ e PF) gravava `balance` digitado sem abertura.** Com o saldo derivado, `Σ(tx) = 0` e o primeiro lançamento **zeraria a abertura em silêncio** — a mina registrada neste doc desde 31/07, viva nas duas criações.
+
+⭐ **Medido em prod ANTES de escolher o conserto: exposição ZERO.** As 5 contas PJ e as 5 PF sem âncora têm `balance == Σ(tx)` ao centavo — na prática a abertura sempre foi lançada. O risco era só pra conta NOVA.
+
+⛔ **Fechado na ORIGEM, e a abertura é ÂNCORA, não movimento.** Minha 1ª tentativa criou um LANÇAMENTO de "saldo inicial" e **os testes pegaram o efeito colateral: ele contava como ENTRADA nos últimos 30 dias** no resumo do perfil. Abertura não é receita. Agora vai em `openingBalance`/`openingDate` (o desenho de 01/09) — migration **ADITIVA PURA** no PF (2 colunas nullable; o PJ já tinha).
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU UM DEFEITO ANTIGO QUE A DERIVAÇÃO REVELOU
+
+O Banrisul tinha `balance −13.531,57` e a derivação dava outro número. A causa: uma venda de R$ 716,40 **lançada à mão e CONCILIADA com a linha do extrato** do mesmo valor — conta a pagar/receber é uma `Transaction`, então conciliar deixa a ex-payable **e** a linha do banco convivendo. **O mesmo dinheiro em duas linhas.**
+
+⚠️⚠️ **E A RÉGUA CERTA JÁ EXISTIA:** `lib/balance/ler-conferencia.ts` filtra `reconciledWithId: null` desde 29/09, com o comentário *"o saldo e o fluxo já descontavam a conciliada; o B1 não"*. **`recalcularSaldoConta` era o QUARTO leitor da pergunta "o que conta como caixa?" e o único com a régua errada** — e o `increment` escondia isso, porque ele nunca somou as duas pontas. Fix: um `where`.
+
+**⭐ E A CORREÇÃO EXPÔS R$ 5.234,00 DE ERRO REAL NO SALDO DO BANRISUL, provado pelo bloqueio:**
+```
+abertura conferida (PDF) ..... −22.188,17 em 31/07
+régua corrigida .............. −8.297,57   ← o CONTÁBIL
+banco declarou (disponível) ... −9.997,57 em 25/09
+diferença .....................  1.700,00  = o BLOQUEADO +24h do Banrisul
+```
+A mania documentada desde 15/08 fecha **ao centavo**. O `balance` gravado conta o **aluguel de 5.234,00 duas vezes** (a manual + a linha do OFX conciliada), desde 14/09 — e a conferência diária (26/26 dias até 04/09) confirma que o erro é posterior a ela.
+
+⚠️ **O saldo do Banrisul se corrige SOZINHO no próximo gesto naquela conta** (qualquer porta re-ancora). Isso é consequência do item 4, não do fix da conciliada — o que o fix faz é o número novo nascer **certo** em vez de errado.
+
+### ⭐ ITEM 2 — OS 2.112,00 MOVIDOS PELA PORTA NOVA (pela rota real)
+
+```
+PUT /api/transacoes/… → HTTP 200 · "movida de stone pra caixa loja/cofre"
+competência 18/09 → 17/09 · mudou: true · meio PIX → DINHEIRO
+stone ......... 87,53 → 87,53      (a linha é anterior à âncora: o extrato manda)
+cofre ..... 45.566,63 → 47.678,63  (+2.112,00 ao centavo)
+RASTRO: audit por Yussef · "movida de stone pra caixa loja/cofre" + as duas contas
+CALENDÁRIO: 17/09 agora tem 4.994,00, e a linha dos 2.112,00 está dentro ⭐
+```
+
+⭐ **E o import de 30/09, confirmado pelo dono no meio do sprint, provou o diagnóstico ao centavo:** 64 linhas novas, `ledgerBal 87,53`, **`ledgerBalMatched = true`** — o confirm re-ancorou e o drift de 2.112,00 desapareceu sozinho. *Se fosse falta de transação no extrato, teria fechado false.*
+
+### ITEM 5 — FECHAMENTO
+
+```
+banco caixa        SUM_TODAS            -3.248,46  ✓ zero
+caixa loja/cofre   SUM_TODAS            47.678,63  ✓ zero
+sicredi            ÂNCORA 25/09        -79.938,88  ✓ zero
+stone              ÂNCORA 30/09             87,53  ✓ zero
+banrisul           ABERTURA 31/07      -13.531,57  ⛔ -5.234,00 → decisão do dono
+```
+
+**REGRA 12 nos dois viewports** (celular 360ms · desktop 81ms): seletor de Conta na edição de manual · linha de OFX **travada com o motivo e a saída escritos** (🔒) · e a recusa do servidor provada (**422 `VEIO_DO_EXTRATO`**, linha **intacta**). As frases de interação conferidas **no bundle que prod serve** (⚠️ a 1ª sonda mediu o HTML do servidor e deu 3 falsos vermelhos — aquelas frases só nascem depois de interagir).
+
+**857 arquivos · 11.108 verdes · TS 0 · `pg_dump pre-saldo-derivado-20260930-182943.dump` (7.685.222 bytes, tamanho conferido) · deploys 4/4 (`aEIIlkQ7eCf87O_Ecu-jQ` e `8ysJzewYr6EzliPyp17Na`) · Δ bundle +0 KB.**
+
+⚠️ **E o servidor estava com um commit LOCAL nunca empurrado** (`c37f1161`, do sprint de 29/09 — resquício do `--amend` da crase), o que fez o `git pull` abortar. Conteúdo conferido: idêntico ao que já estava no origin (que tinha até 22 linhas **mais** de CLAUDE.md). Alinhado com `reset --hard origin/main` depois de provar que nada modificado se perdia. *Commit feito no servidor é commit que divergiu.*
+
+📋 **FICA PRO DONO:** (a) o Banrisul — o número certo é **−8.297,57** e ele vai virar isso sozinho no próximo lançamento naquela conta; (b) ⛔ **NÃO apagar a manual de 716,40**: ela está conciliada com a linha do extrato, é o par normal do fluxo. ⚠️ Sob a régua ERRADA a medição dizia *"apagar zera o drift: SIM"* — exatamente a armadilha que o dono desconfiou; com a régua certa a resposta é **NÃO**, e apagar destruiria uma linha legítima.
+
+📋 **DÉBITO REGISTRADO:** o **lançamento manual grava a data à MEIA-NOITE UTC** (`new Date("2026-09-18").toISOString()`), enquanto a convenção da casa é **MEIO-DIA** (o import carimba assim). Em fuso negativo, meia-noite UTC **volta um dia** na exibição — foi por isso que a linha dos 2.112,00 aparece como 17/09 na perícia e 18/09 no dado cru. Não mexido: acertar move competências históricas.
+
 ## 🎨 A MESA v2 — CADA PRODUTO VIRA UMA FAIXA PRÓPRIA (29/09/2026, SÓ pintura)
 
 **Ordem do dono:** *"SÓ pintura, motor e dados intocados"* — e o item 6 dele fecha a pendência que a volta anterior deixou aberta: **`docs/mocks/real-vs-teorico-mock.html` nasceu versionado nesta volta e É a régua.** O guard `mesa-bate-com-o-mock.test.ts` **LÊ o `:root{}` do arquivo** e compara ao caractere; tom ajustado "no olho" fica vermelho **apontando o valor que o mock manda**. ⭐ Nomes e números do mock são **reais** (Caçula, 12→18/09, read-only) — *mock com nome inventado faz o dono aprovar uma tela que ele nunca vê*.
