@@ -130,9 +130,26 @@ export async function recalcularSaldoConta(
   // Tx pra considerar:
   //   - COM âncora: só date > ledgerBalDate
   //   - SEM âncora: todas
+  /**
+   * ⛔⛔⛔ A PONTA CONCILIADA FICA FORA — achado ao provar em prod (30/09/2026).
+   *
+   * **O caso:** o Banrisul tinha `balance −13.531,57` (CERTO) e a derivação dava
+   * `−12.815,17` — **716,40 a mais**. A causa: uma venda de R$ 716,40 lançada à mão e
+   * **conciliada com a linha do extrato** do mesmo valor. São o MESMO dinheiro em duas
+   * linhas (conta a pagar/receber é uma `Transaction`, então conciliar deixa a ex-payable
+   * e a linha do banco convivendo) — e somar as duas conta o dinheiro duas vezes.
+   *
+   * ⚠️⚠️ E A RÉGUA JÁ EXISTIA EM OUTRO LUGAR: `lib/balance/ler-conferencia.ts` filtra
+   * `reconciledWithId: null` desde 29/09, com o comentário *"o saldo e o fluxo já
+   * descontavam a conciliada; o B1 não"*. Ou seja — **esta função era o QUARTO leitor da
+   * pergunta "o que conta como caixa?", e o único com a régua errada.** O cache escondia
+   * isso porque o `increment` nunca somava as duas pontas; ao trocar por derivação, o
+   * defeito velho apareceu de cara. *Uma decisão, um lugar* — e aqui faltava um `where`.
+   */
   const txs = await prisma.transaction.findMany({
     where: {
       bankAccountId,
+      reconciledWithId: null,
       ...(usaAbertura
         // ⛔ `gte` no DIA SEGUINTE, não `gt` na âncora: o dia da âncora inteiro já está
         // dentro do saldo declarado (ver `depoisDaAncora`).

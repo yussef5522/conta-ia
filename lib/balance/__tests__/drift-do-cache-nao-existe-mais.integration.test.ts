@@ -170,6 +170,62 @@ describe('⛔⛔⛔ lançamento RETROATIVO não drifta mais o saldo (o caso da S
     expect(await saldo(contaSemAncora)).toBe(300)
   })
 
+  it('⛔⛔⛔ a PONTA CONCILIADA não conta duas vezes (o caso do Banrisul, R$ 716,40)', async () => {
+    /**
+     * ⭐⭐ ACHADO NA PROVA EM PROD (30/09/2026), e ele era um defeito ANTIGO que a derivação
+     * revelou: o Banrisul tinha `balance −13.531,57` (certo) e a régua dava `−12.815,17`.
+     *
+     * A causa: uma venda de R$ 716,40 **lançada à mão e conciliada com a linha do extrato**
+     * do mesmo valor. Conta a pagar/receber é uma `Transaction`, então conciliar deixa a
+     * ex-payable E a linha do banco convivendo — o MESMO dinheiro em duas linhas. Somar as
+     * duas conta em dobro.
+     *
+     * ⚠️ A régua certa já existia em `ler-conferencia.ts` (*"o saldo e o fluxo já descontavam
+     * a conciliada"*). O `recalcularSaldoConta` era o quarto leitor da pergunta e o único
+     * errado — e o `increment` escondia isso, porque ele nunca somou as duas pontas.
+     */
+    const doExtrato = await prisma.transaction.create({
+      data: {
+        bankAccountId: contaAncorada,
+        date: dia('2026-09-29'), // depois da âncora, pra entrar na conta
+        description: 'PIX RECEBIDO',
+        amount: 716.4,
+        type: 'CREDIT',
+        status: 'RECONCILED',
+        lifecycle: 'EFFECTED',
+        origin: 'OFX',
+        dedupHash: 'h-716-ofx',
+      },
+    })
+    await reAncorarContas(prisma, [contaAncorada])
+    const comUmaLinha = await saldo(contaAncorada)
+    expect(comUmaLinha).toBe(1384.76) // 668,36 + 716,40
+
+    // a MESMA venda, lançada à mão e CONCILIADA com a linha do extrato
+    const manual = await prisma.transaction.create({
+      data: {
+        bankAccountId: contaAncorada,
+        date: dia('2026-09-29'),
+        description: 'venda de food',
+        amount: 716.4,
+        type: 'CREDIT',
+        status: 'RECONCILED',
+        lifecycle: 'EFFECTED',
+        origin: 'MANUAL',
+        reconciledWithId: doExtrato.id,
+      },
+    })
+    await reAncorarContas(prisma, [contaAncorada])
+
+    // ⛔ sem o `reconciledWithId: null` no where, aqui daria 2.101,16 — o dinheiro 2×
+    expect(await saldo(contaAncorada)).toBe(1384.76)
+
+    await prisma.transaction.delete({ where: { id: manual.id } })
+    await prisma.transaction.delete({ where: { id: doExtrato.id } })
+    await reAncorarContas(prisma, [contaAncorada])
+    expect(await saldo(contaAncorada)).toBe(668.36)
+  })
+
   it('⛔⛔ CONTRAFACTUAL — com o `increment` de volta, o saldo drifta 2.112,00', () => {
     /**
      * ⭐ O contrafactual é o que impede este arquivo de ser uma afirmação sobre o mundo bom.
