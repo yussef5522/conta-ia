@@ -36,6 +36,7 @@ import {
 } from './pagamento-em-lote'
 import { podeConferirPorLedgerbal, resolveBankProfile } from '@/lib/bank-profiles'
 import { contarFilas, type ContagemDasFilas } from './filas-da-tela'
+import { WHERE_ORIGEM_DO_EXTRATO } from './origem-do-extrato'
 
 type Db = PrismaClient
 
@@ -63,7 +64,16 @@ const JANELA_DIAS = 15
  * pediu — o corte é do que a tela OFERECE.
  */
 export const LINHA_DISPONIVEL_WHERE = {
-  origin: 'OFX',
+  /**
+   * ⭐⭐⭐ A ORIGEM VEM DO DONO ÚNICO DA PERGUNTA (01/10) — era `'OFX'` cravado aqui também.
+   *
+   * ⛔⛔ **E este era o leitor que doía mais no caso real:** com `'OFX'` cravado, os 2
+   * pagamentos de empréstimo do banco caixa (`DEBITO PRESTA SIEMP`, R$ 2.927,02 e
+   * R$ 7.526,06, origem `PDF`) **nunca seriam oferecidos pra casar com a parcela**. Consertar
+   * só a `lerCaixa` os deixaria visíveis na caixa e **sem palpite** — *metade do conserto é
+   * pior que nenhum, porque parece resolvido.*
+   */
+  ...WHERE_ORIGEM_DO_EXTRATO,
   lifecycle: 'EFFECTED',
   reconciledWithId: null,
   reconciledFrom: { none: {} },
@@ -451,7 +461,8 @@ export async function duplicatasSuspeitas(
 ): Promise<DuplicataSuspeita[]> {
   const linhas = await db.transaction.findMany({
     where: {
-      bankAccount: { companyId }, origin: 'OFX', lifecycle: 'EFFECTED',
+      // ⭐ 01/10 — a mesma régua de origem: duplicata de PDF é duplicata igual
+      bankAccount: { companyId }, ...WHERE_ORIGEM_DO_EXTRATO, lifecycle: 'EFFECTED',
       externalId: { not: null }, date: { gte: desde }, ignoredAt: null,
     },
     select: {
@@ -562,7 +573,9 @@ export async function filaDeConciliacao(
     transferenciasEsperandoPar(companyId, db),
     duplicatasSuspeitas(companyId, db),
     db.transaction.findFirst({
-      where: { bankAccount: { companyId }, origin: 'OFX' },
+      // ⚠️ "até quando o extrato cobre" tem que contar o PDF também — senão a frase
+      // "N contas esperando ARQUIVO" mente pra toda conta que só tem extrato em PDF.
+      where: { bankAccount: { companyId }, ...WHERE_ORIGEM_DO_EXTRATO },
       orderBy: { date: 'desc' }, select: { date: true },
     }),
   ])

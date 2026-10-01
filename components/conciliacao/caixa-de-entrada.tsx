@@ -111,7 +111,7 @@ interface LinhaDTO {
 interface CaixaDTO {
   contadores: { saidas: number; entradas: number; arquivo: number; total: number }
   /** ⭐ 30/09: até onde o teto de leitura alcançou */
-  cobertura?: { lidas: number; totalNoPeriodo: number; truncado: boolean; desde: string | null }
+  cobertura?: { lidas: number; totalNoPeriodo: number; truncado: boolean; desde: string | null; periodoInteiro?: boolean }
   progresso: { pct: number; resolvidas: number; naCaixa: number; frase: string }
   corte: string | null
   linhas: LinhaDTO[]
@@ -521,14 +521,28 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
           <span>
             {c.arquivo} no arquivo · {c.total} {caixa.cobertura?.truncado ? 'lidas' : 'no período'}
           </span>
-          {/* ⛔ O TETO DIZ O QUE NÃO ALCANÇOU (30/09) — senão "400 no período" afirma que se
-              olhou tudo quando existem 452. A 4ª vez que um teto esconde linha nesta casa. */}
+          {/*
+            ⭐⭐ O TETO PASSOU A SER SÓ DO ARQUIVO (01/10) — e a frase mudou com ele.
+            ⛔ Antes era um `take` único e o corte vinha pela linha MAIS ANTIGA: das 7 do
+            extrato do banco caixa ele alcançava 5, escondendo os juros de 02/09 que PEDIAM
+            decisão. Hoje a varredura cobre o período inteiro e **só a LISTA do arquivo** é
+            aparada — então o contador fala do período, não das linhas lidas.
+          */}
           {caixa.cobertura?.truncado && (
             <span className="text-[11px]" style={{ color: V3.sub }}>
-              · de {caixa.cobertura.totalNoPeriodo} no período, a tela lê as {caixa.cobertura.lidas} mais
-              recentes{caixa.cobertura.desde ? ` (até ${caixa.cobertura.desde.split('-').reverse().join('/')})` : ''} —
-              as mais antigas já estão resolvidas no arquivo
+              · o arquivo é longo: a tela desenha {caixa.cobertura.lidas} das {caixa.cobertura.totalNoPeriodo} do
+              período{caixa.cobertura.desde ? ` (até ${caixa.cobertura.desde.split('-').reverse().join('/')})` : ''} —
+              nenhuma que pede decisão fica de fora
             </span>
+          )}
+          {/*
+            ⛔⛔ E SE A VARREDURA NÃO ALCANÇOU O PERÍODO INTEIRO, a tela GRITA: aí pode haver
+            trabalho invisível, e sussurrar isso é a doença que este arquivo inteiro combate.
+          */}
+          {caixa.cobertura?.periodoInteiro === false && (
+            <b className="ml-1.5" style={{ color: V3.coral }}>
+              ⛔ o período é maior que a varredura — pode haver linha esperando decisão fora desta tela
+            </b>
           )}
           {/* ⛔ o invariante VISÍVEL: número que fecha por fora é promessa */}
           {!fecha && <b className="ml-1.5" style={{ color: V3.coral }}>⛔ a soma não fecha</b>}

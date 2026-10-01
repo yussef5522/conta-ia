@@ -14,6 +14,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { contarEstacoes, type ContadoresDoBalcao, type LinhaParaEstacao } from './caixa-de-entrada'
+import { WHERE_ORIGEM_DO_EXTRATO } from './origem-do-extrato'
 
 /** ⚠️ o que basta ler pra a lei das estações decidir — nada além disso */
 export const SELECT_DA_CAIXA = {
@@ -46,6 +47,28 @@ export const SELECT_DA_CAIXA = {
  * com teto diferente da tela é a divergência de novo, com outra roupa.
  */
 export const TETO_DA_CAIXA = 400
+
+/**
+ * ⛔⛔⛔ **A FILA DE TRABALHO NUNCA TRUNCA O TRABALHO — O ARQUIVO SIM (01/10/2026).**
+ *
+ * **O defeito que isto conserta, medido em prod:** com o `take: 400` único e `date desc`, o
+ * teto cortava pela linha **MAIS ANTIGA** — e das 7 linhas do extrato do banco caixa ele
+ * alcançava **5**. As duas de 02/09 (a **COBRANÇA DE JUROS de R$ 1.148,05** e o **IOF de
+ * R$ 25,34**) ficariam invisíveis *mesmo depois de consertado o filtro de origem*.
+ *
+ * ⚠️ Em 30/09 a decisão foi *"não subir o teto; a leitura DIZER quantas ficaram fora"* — e
+ * ela foi tomada com uma medição que dizia **ZERO das invisíveis pedem decisão**. Hoje
+ * **duas pedem**, e o mesmo raciocínio leva a outro lugar: *dizer que escondeu trabalho não
+ * é o mesmo que não esconder*.
+ *
+ * ⭐ A varredura vai até **esgotar o período**, e o que ela guarda é assimétrico de
+ * propósito: **toda** linha que está na CAIXA (o trabalho) e o ARQUIVO até o teto de
+ * exibição. Os CONTADORES saem da varredura inteira — é isso que faz
+ * `Σ período == caixa + arquivo` fechar **por conta**.
+ */
+export const TETO_DE_VARREDURA = 4000
+/** quantas páginas de leitura por vez — 484 linhas hoje cabem numa só */
+const PAGINA = 1000
 
 export type LinhaCrua = {
   id: string; type: string; amount: number; date: Date
@@ -98,6 +121,13 @@ export interface CoberturaDaCaixa {
   totalNoPeriodo: number
   truncado: boolean
   desde: Date | null
+  /**
+   * ⭐⭐ O INVARIANTE NA FRENTE DO DONO: a varredura alcançou o período INTEIRO?
+   *
+   * ⛔ Quando `false`, o teto duro de varredura bateu e **pode haver trabalho invisível** —
+   * a tela tem que gritar, não sussurrar. Hoje é sempre `true` (484 de 4000).
+   */
+  periodoInteiro: boolean
 }
 
 export interface CaixaLida {
@@ -123,64 +153,90 @@ export async function lerCaixa(empresaId: string, db: PrismaClient = defaultPris
   const empresa = await db.company.findUnique({ where: { id: empresaId }, select: { conciliarAPartirDe: true } })
   const corte = empresa?.conciliarAPartirDe ?? null
 
-  const rows = (await db.transaction.findMany({
-    where: {
-      bankAccountId: { in: contas.map((c) => c.id) },
-      origin: 'OFX', lifecycle: 'EFFECTED',
-      ...(corte ? { date: { gte: corte } } : {}),
-    },
-    select: SELECT_DA_CAIXA,
-    orderBy: { date: 'desc' },
-    take: TETO_DA_CAIXA,
-  })) as unknown as LinhaCrua[]
+  /**
+   * ⭐⭐⭐ O UNIVERSO — e a origem vem do **dono único da pergunta** (01/10).
+   *
+   * ⛔ Era `origin: 'OFX'` cravado, e por isso o extrato do **banco caixa** (que o banco só
+   * entrega em PDF) ficou **inteiro invisível**: 7 linhas gravadas certas e nenhuma na
+   * conciliação. *O formato do arquivo decidia se a linha existia.*
+   */
+  const where = {
+    bankAccountId: { in: contas.map((c) => c.id) },
+    ...WHERE_ORIGEM_DO_EXTRATO,
+    lifecycle: 'EFFECTED' as const,
+    ...(corte ? { date: { gte: corte } } : {}),
+  }
+
+  const totalNoPeriodo = await db.transaction.count({ where })
 
   /**
-   * ⭐ UMA consulta pra todas as linhas, não uma por linha — a lição do badge que virou
-   * 1,3 s (11/09). E ela roda depois do `take`, então só busca o que a tela vai desenhar.
+   * ⭐⭐ A VARREDURA — **o trabalho nunca é truncado; o arquivo sim.**
+   *
+   * ⚠️ As avulsas são buscadas **por página**, não numa consulta global: a tabela cresce com
+   * o tempo e puxá-la inteira seria o oposto da lição do badge que virou 1,3 s (11/09).
    */
-  const avulsas = rows.length
-    ? new Set((await db.conciliacaoAvulsaConfirmada.findMany({
-        where: { companyId: empresaId, transactionId: { in: rows.map((r) => r.id) } },
+  const rows: LinhaCrua[] = []
+  let escaneadas = 0
+  let saidas = 0
+  let entradas = 0
+  let arquivo = 0
+  let arquivoGuardado = 0
+  let maisAntigaEscaneada: Date | null = null
+
+  for (let pulo = 0; pulo < TETO_DE_VARREDURA; pulo += PAGINA) {
+    const pagina = (await db.transaction.findMany({
+      where, select: SELECT_DA_CAIXA, orderBy: { date: 'desc' }, skip: pulo, take: PAGINA,
+    })) as unknown as LinhaCrua[]
+    if (pagina.length === 0) break
+
+    const avulsas = new Set(
+      (await db.conciliacaoAvulsaConfirmada.findMany({
+        where: { companyId: empresaId, transactionId: { in: pagina.map((r) => r.id) } },
         select: { transactionId: true },
-      })).map((a) => a.transactionId))
-    : new Set<string>()
-  for (const r of rows) r.avulsaConfirmada = avulsas.has(r.id)
+      })).map((a) => a.transactionId),
+    )
+
+    for (const r of pagina) {
+      r.avulsaConfirmada = avulsas.has(r.id)
+      escaneadas++
+      maisAntigaEscaneada = r.date
+      const c = contarEstacoes([paraLei(r)])
+      saidas += c.saidas
+      entradas += c.entradas
+      arquivo += c.arquivo
+      if (c.arquivo === 0) {
+        rows.push(r) // ⭐ está na CAIXA: entra SEMPRE, custe o que custar
+      } else if (arquivoGuardado < TETO_DA_CAIXA) {
+        rows.push(r) // o ARQUIVO é que cede espaço — ele não pede decisão
+        arquivoGuardado++
+      }
+    }
+    if (pagina.length < PAGINA) break
+  }
 
   /**
-   * ⭐⭐⭐ O TETO PASSOU A MORDER — e a tela tem que DIZER (30/09/2026).
-   *
-   * ⚠️ **Medido em prod:** 452 linhas ≥ corte e o teto lê 400 → **52 invisíveis**. O contador
-   * dizia *"12 na caixa · 388 no arquivo · 400 no período"* como se 400 fosse tudo que
-   * existe. **O número estava certo sobre as 400 lidas e errado sobre o período.**
-   *
-   * ⭐ Medido também o que importa: das 52 invisíveis, **ZERO pedem decisão** (todas já
-   * resolvidas) — então o teto **não está escondendo trabalho hoje**. Mas é a 4ª vez que um
-   * teto de leitura esconde linha nesta casa (o fermento em 16/09, a ordem do ano 202 em
-   * 19/09, o recebimento em 23/09), e as três anteriores só apareceram quando alguém
-   * reclamou de um sumiço.
-   *
-   * ⛔ **O conserto não é subir o teto** (ele protege a consulta e a tela); é a leitura DIZER
-   * quantas ficaram fora, como o detector de transferência já faz com `coverage/truncated`
-   * desde 13/09. *Truncar em silêncio é afirmar que se olhou tudo.*
+   * ⭐ ORDEM RESTAURADA (data desc): a varredura guarda caixa e arquivo em ritmos
+   * diferentes, então a lista sairia embaralhada — e a tela mostra isso ao dono.
    */
-  const totalNoPeriodo = await db.transaction.count({
-    where: {
-      bankAccountId: { in: contas.map((c) => c.id) },
-      origin: 'OFX', lifecycle: 'EFFECTED',
-      ...(corte ? { date: { gte: corte } } : {}),
-    },
-  })
-  const cobertura = {
+  rows.sort((a, b) => +b.date - +a.date)
+
+  const cobertura: CoberturaDaCaixa = {
     lidas: rows.length,
     totalNoPeriodo,
     truncado: totalNoPeriodo > rows.length,
-    /** ⭐ o dia mais ANTIGO que o teto alcança — é o que diz ATÉ ONDE a tela olhou */
-    desde: rows.length ? rows[rows.length - 1]!.date : null,
+    /** ⭐ o dia mais ANTIGO que a varredura alcançou — é o que diz ATÉ ONDE se olhou */
+    desde: maisAntigaEscaneada,
+    periodoInteiro: escaneadas >= totalNoPeriodo,
   }
 
   return {
     rows,
-    contadores: contarEstacoes(rows.map(paraLei)),
+    /**
+     * ⭐⭐ OS CONTADORES SAEM DA VARREDURA INTEIRA, não das linhas guardadas — é isto que faz
+     * `Σ período == caixa + arquivo` fechar **por conta**, que era o invariante que o dono
+     * pediu. Contar só o que a tela desenha diria *"388 no arquivo"* quando há 465.
+     */
+    contadores: { saidas, entradas, arquivo, total: escaneadas },
     corte,
     cobertura,
     nomeConta: new Map(contas.map((c) => [c.id, c.name])),

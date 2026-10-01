@@ -180,7 +180,57 @@ describe('⛔ 4. O TETO DE LEITURA DIZ O QUE NÃO ALCANÇOU', () => {
     const LEITURA = semComentario(ler('lib/conciliacao/leitura-da-caixa.ts'))
     expect(LEITURA).toMatch(/truncado:\s*totalNoPeriodo > rows\.length/)
     expect(CAIXA_UI).toMatch(/caixa\.cobertura\?\.truncado/)
-    expect(CAIXA_UI).toContain('no período, a tela lê as')
+    /**
+     * ⚠️ REAPONTADO EM 01/10 **COM O MOTIVO**: a frase mudou porque o TETO mudou de
+     * natureza. Era um `take` único que cortava pela linha **mais antiga** — e foi assim que
+     * os juros de 02/09 do banco caixa ficariam invisíveis *mesmo pedindo decisão*. Agora a
+     * varredura cobre o período inteiro e **só a LISTA do arquivo** é aparada, então o
+     * contador fala do PERÍODO. A régua (*"o teto diz o que não alcançou"*) é a mesma.
+     */
+    expect(CAIXA_UI).toContain('das {caixa.cobertura.totalNoPeriodo} do')
+  })
+
+  /**
+   * ⭐⭐⭐ ...E A METADE QUE NASCEU HOJE: **a fila de trabalho nunca trunca o trabalho.**
+   *
+   * ⛔ O que o guard afirma é a FORMA que torna isso verdade: a linha que está na CAIXA é
+   * guardada **sem condição**, e só o ARQUIVO disputa o teto de exibição. Inverter isso
+   * (condicionar a caixa e soltar o arquivo) é exatamente o defeito de 01/10.
+   */
+  it('⛔⛔⛔ a CAIXA entra sem condição; só o ARQUIVO cede espaço ao teto', () => {
+    const LEITURA = semComentario(ler('lib/conciliacao/leitura-da-caixa.ts'))
+    // ⭐ o ramo da caixa é um push SEM `if` de teto
+    expect(LEITURA, 'a caixa voltou a disputar o teto com o arquivo').toMatch(
+      /if \(c\.arquivo === 0\) \{\s*\n\s*rows\.push\(r\)/,
+    )
+    // ⭐ e é o arquivo que tem o contador próprio de espaço
+    expect(LEITURA).toMatch(/else if \(arquivoGuardado < TETO_DA_CAIXA\)/)
+    // ⛔ e os CONTADORES saem da varredura, não das linhas guardadas
+    expect(LEITURA, 'o contador voltou a contar só o que a tela desenha').toMatch(
+      /contadores:\s*\{\s*saidas,\s*entradas,\s*arquivo,\s*total:\s*escaneadas\s*\}/,
+    )
+    // ⭐ e a tela GRITA se a varredura não alcançou o período inteiro
+    expect(CAIXA_UI).toMatch(/periodoInteiro === false/)
+    expect(CAIXA_UI).toContain('pode haver linha esperando decisão fora desta tela')
+  })
+
+  /**
+   * ⭐⭐⭐ E A ORIGEM TEM UM DONO SÓ — o defeito do extrato do banco caixa (01/10).
+   *
+   * ⛔ `origin: 'OFX'` cravado em DOIS leitores fez o extrato em PDF ficar **inteiro
+   * invisível**: 7 linhas gravadas certas, nenhuma na conciliação. *O formato do arquivo
+   * decidia se a linha existia.*
+   */
+  it('⛔⛔ nenhum leitor da conciliação crava `origin` na mão', () => {
+    for (const f of ['lib/conciliacao/leitura-da-caixa.ts', 'lib/conciliacao/fila-de-conciliacao.ts']) {
+      const fonte = semComentario(ler(f))
+      expect(fonte, `${f} voltou a cravar a origem`).not.toMatch(/origin:\s*'OFX'/)
+      expect(fonte, `${f} deixou de consumir o dono da pergunta`).toContain('WHERE_ORIGEM_DO_EXTRATO')
+    }
+    // ⛔ e a lista é FECHADA: origem que não é extrato não entra de carona
+    const dono = semComentario(ler('lib/conciliacao/origem-do-extrato.ts'))
+    expect(dono).toMatch(/ORIGENS_DO_EXTRATO = \['OFX', 'PDF'\] as const/)
+    for (const nao of ['MANUAL', 'ESTOQUE_NF', 'ADJUSTMENT']) expect(dono).not.toContain(`'${nao}'`)
   })
 })
 
