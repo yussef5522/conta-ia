@@ -178,6 +178,11 @@ describe('⭐⭐ A RÉGUA TEM UM DONO — e ele é o MESMO do confirm', () => {
   })
 })
 
+/** Σ de todos os baldes da tela — usado pra provar que ninguém conta duas vezes. */
+const somaDosBaldes = (p: ReturnType<typeof buildEnrichmentPreview>) =>
+  p.counts.willReceive + p.counts.ambiguousTx + p.counts.jaResolvidas +
+  p.counts.notApplicable + p.counts.outOfPeriod + p.counts.noPdfLine
+
 describe('⭐⭐ O PROGRESSO DIZ DE QUE RECORTE ELE FALA', () => {
   const parsed = (lines: BankStatementLine[], start: string, end: string) =>
     ({ bank: 'BANRISUL', period: { start, end }, header: { agencia: null, conta: null }, lines, errors: [] }) as unknown as ParsedBankStatement
@@ -229,10 +234,50 @@ describe('⭐⭐ O PROGRESSO DIZ DE QUE RECORTE ELE FALA', () => {
     expect(p.counts.notApplicable, 'a pulada foi contada DUAS vezes na mesma tela').toBe(0)
     expect(p.counts.noPdfLine).toBe(0)
     expect(p.counts.outOfPeriod).toBe(0)
-    // ⛔ o INVARIANTE: cada linha num balde só — a soma fecha com o total
-    const soma = p.counts.willReceive + p.counts.ambiguousTx + p.counts.jaResolvidas +
-      p.counts.notApplicable + p.counts.outOfPeriod + p.counts.noPdfLine
-    expect(soma, 'a soma dos baldes não fecha com as linhas lidas').toBe(txs.length)
+    expect(somaDosBaldes(p), 'a soma dos baldes não fecha com as linhas lidas').toBe(txs.length)
+  })
+
+  /**
+   * ⛔⛔⛔ O INVARIANTE QUE IMPORTA — e a 1ª versão dele era FORTE DEMAIS.
+   *
+   * ⚠️ Eu tinha escrito `Σ baldes == total de linhas`, e **em prod isso deu 562 de 592**. As
+   * 30 que faltavam são de **AGOSTO, já nomeadas na rodada do PDF de agosto**: elas não são
+   * pendência deste PDF nem foram alcançadas por ele, então **legitimamente não pertencem a
+   * balde nenhum desta tela**. *Invariante que falha no caso legítimo é pior que invariante
+   * nenhum — alguém "conserta" o DADO pra bater com a régua errada.*
+   *
+   * ⭐ O enunciado honesto é mais estreito e mais útil: ***nenhuma linha que ainda PODE
+   * receber nome fica fora dos contadores***. Medido em prod: **66 aptos = 66 `outOfPeriod`
+   * + 0 `noPdfLine`**, ao centavo.
+   */
+  it('⛔⛔⛔ nenhuma linha que ainda PODE receber nome fica invisível', () => {
+    const txs: EnrichTx[] = [
+      // apta, no período, o PDF a alcança → willReceive
+      etx({ id: 'apta', date: new Date('2026-09-02T12:00:00Z'), externalId: '3EB0FE', amount: 403.83 }),
+      // apta, mas de OUTRO mês → outOfPeriod (pede o PDF de junho)
+      etx({ id: 'outroMes', date: new Date('2026-06-10T12:00:00Z'), externalId: 'XXXXXX', amount: 55 }),
+      // apta, no período, o PDF NÃO traz nome pra ela → noPdfLine
+      etx({ id: 'semLinha', date: new Date('2026-09-12T12:00:00Z'), externalId: 'YYYYYY', amount: 77 }),
+      // ⭐ já nomeada e FORA do alcance deste PDF (o caso das 30 de agosto)
+      etx({ id: 'agosto', date: new Date('2026-08-05T12:00:00Z'), externalId: 'ZZZZZZ', amount: 99, counterpartyName: 'ALGUÉM', counterpartySource: 'OFX' }),
+    ]
+    const p = buildEnrichmentPreview(parsed(pdfDosReais, '2026-09-01', '2026-09-30'), txs, { altKey: true })
+
+    const aptas = txs.filter((t) => podeReceberNomeDoPdf({ ...t, description: t.description }).pode)
+    expect(aptas.map((t) => t.id).sort()).toEqual(['apta', 'outroMes', 'semLinha'])
+    const contadas = p.counts.willReceive + p.counts.ambiguousTx + p.counts.outOfPeriod + p.counts.noPdfLine
+    expect(contadas, 'uma linha que ainda pode receber nome ficou fora dos contadores').toBe(aptas.length)
+    expect(p.counts.willReceive).toBe(1)
+    expect(p.counts.outOfPeriod).toBe(1)
+    expect(p.counts.noPdfLine).toBe(1)
+
+    /**
+     * ⭐ E a já-nomeada-fora-do-alcance **não entra em balde nenhum, de propósito**: ela não
+     * é pendência (tem nome) nem foi alcançada (está fora do período). Contá-la em
+     * `jaResolvidas` faria a tela afirmar que ESTE PDF resolveu algo que ele nem viu.
+     */
+    expect(p.counts.jaResolvidas, 'a de agosto entrou como se este PDF a tivesse resolvido').toBe(0)
+    expect(somaDosBaldes(p), 'a soma mudou de significado').toBe(txs.length - 1)
   })
 
   it('⛔ e com nome também vive num balde só', () => {
