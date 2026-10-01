@@ -138,3 +138,107 @@ describe('escolherParcela', () => {
     expect(escolherParcela(PARCELAS.map((p) => ({ ...p, status: 'PAID' })), d('2026-08-25'))).toBeNull()
   })
 })
+
+describe('⛔⛔⛔ DEBITO PRESTA SIEMP — a conta e a parcela exata desempatam (01/10/2026)', () => {
+  /**
+   * **O caso real do banco caixa:** o dono importou o extrato e a linha
+   * `DEBITO PRESTA SIEMP · 26/09 · R$ 2.927,02` ficava **sem palpite**, porque o banco
+   * **não escreve o número do contrato** e o detector devolvia **os 10 contratos da
+   * empresa** — Banrisul e Sicredi inclusos, que não têm como ser debitados ali.
+   *
+   * ⚠️ E o comentário do próprio detector já dizia *"palavra-chave + **a conta** tem
+   * empréstimo ativo"* — o código nunca olhou a conta, e `palpitesDaCaixa` tinha o
+   * `bankAccountId` no `select` e o **descartava no map**.
+   */
+  const CAIXA = 'conta-banco-caixa'
+  const SICREDI = 'conta-sicredi'
+  const d = (iso: string) => new Date(`${iso}T12:00:00.000Z`)
+
+  const OS_CONTRATOS = [
+    { id: 'L1837311', contractNumber: '000000000001837311', lender: 'Caixa Econômica Federal', status: 'ACTIVE', dueDay: null, bankAccountId: CAIXA },
+    { id: 'L1827478', contractNumber: '000000000001827478', lender: 'Caixa Econômica Federal', status: 'ACTIVE', dueDay: null, bankAccountId: CAIXA },
+    { id: 'LSic1', contractNumber: 'C41022227-1', lender: 'Sicredi', status: 'ACTIVE', dueDay: null, bankAccountId: SICREDI },
+    { id: 'LSic2', contractNumber: 'C41033828-8', lender: 'Sicredi', status: 'ACTIVE', dueDay: null, bankAccountId: SICREDI },
+    { id: 'LMutuo', contractNumber: null, lender: 'Arafat (arafet thalji)', status: 'ACTIVE', dueDay: null, bankAccountId: null },
+  ]
+  /** as parcelas abertas REAIS medidas em prod */
+  const AS_PARCELAS = {
+    L1837311: [
+      { number: 32, dueDate: d('2026-09-26'), payment: 2927.02, status: 'OPEN' },
+      { number: 33, dueDate: d('2026-10-26'), payment: 2927.02, status: 'OPEN' },
+    ],
+    L1827478: [
+      { number: 33, dueDate: d('2026-09-24'), payment: 7093.19, status: 'OPEN' },
+      { number: 34, dueDate: d('2026-10-24'), payment: 7093.19, status: 'OPEN' },
+    ],
+    LSic1: [{ number: 26, dueDate: d('2026-09-25'), payment: 2927.02, status: 'OPEN' }],
+  }
+
+  const aLinha = { description: 'DEBITO PRESTA SIEMP', type: 'DEBIT', date: d('2026-09-26'), amount: 2927.02 }
+
+  it('⛔⛔⛔ a linha de 2.927,02 vira PALPITE da #32 do 1837311', () => {
+    const s = sugerirVinculoEmprestimo({ ...aLinha, bankAccountId: CAIXA }, OS_CONTRATOS, AS_PARCELAS)
+    expect(s?.kind, 'voltou a pedir pro dono escolher numa linha que casa ao centavo e no dia').toBe('SUGERIDO')
+    if (s?.kind !== 'SUGERIDO') return
+    expect(s.contractNumber).toBe('000000000001837311')
+    expect(s.installmentNumber).toBe(32)
+  })
+
+  it('⛔⛔ sem a CONTA, o Sicredi de 2.927,02 empata e o palpite MORRE — e é o certo', () => {
+    /**
+     * ⭐ Este teste é a prova de que a régua da conta é o que faz o palpite existir: há um
+     * contrato do SICREDI com parcela de valor idêntico. Sem estreitar por conta, duas
+     * parcelas fecham → *"não sei qual foi"*, e o sistema não chuta.
+     */
+    const s = sugerirVinculoEmprestimo({ ...aLinha, bankAccountId: null }, OS_CONTRATOS, AS_PARCELAS)
+    expect(s?.kind).toBe('ESCOLHER')
+  })
+
+  it('⛔ dois contratos da MESMA conta fechando o mesmo valor → ESCOLHER (não chuta)', () => {
+    const empate = {
+      ...AS_PARCELAS,
+      L1827478: [{ number: 33, dueDate: d('2026-09-26'), payment: 2927.02, status: 'OPEN' }],
+    }
+    const s = sugerirVinculoEmprestimo({ ...aLinha, bankAccountId: CAIXA }, OS_CONTRATOS, empate)
+    expect(s?.kind, 'escolheu um contrato no escuro').toBe('ESCOLHER')
+  })
+
+  it('⛔ valor que não casa EXATO não vira palpite — "perto" não compra identidade', () => {
+    const s = sugerirVinculoEmprestimo(
+      { ...aLinha, amount: 2900, bankAccountId: CAIXA }, OS_CONTRATOS, AS_PARCELAS,
+    )
+    expect(s?.kind).toBe('ESCOLHER')
+  })
+
+  it('⛔ fora da janela de 5 dias também não — a #33 de outubro não é a de hoje', () => {
+    const s = sugerirVinculoEmprestimo(
+      { ...aLinha, date: d('2026-10-10'), bankAccountId: CAIXA }, OS_CONTRATOS, AS_PARCELAS,
+    )
+    expect(s?.kind).toBe('ESCOLHER')
+  })
+
+  it('⭐ a conta NUNCA estreita até zero: conta sem contrato nenhum mantém a lista', () => {
+    /**
+     * ⚠️ O `bankAccountId` do contrato pode simplesmente não ter sido preenchido. *Sumir com
+     * o candidato é pior que oferecer um a mais* — o de sobra o dono descarta; o que falta
+     * ele não tem como adivinhar.
+     */
+    const s = sugerirVinculoEmprestimo(
+      { ...aLinha, amount: 999, bankAccountId: 'conta-sem-contrato' }, OS_CONTRATOS, AS_PARCELAS,
+    )
+    expect(s?.kind).toBe('ESCOLHER')
+    if (s?.kind !== 'ESCOLHER') return
+    expect(s.candidates.length, 'a conta estreitou até zero candidato').toBe(OS_CONTRATOS.length)
+  })
+
+  it('⭐⭐ e o NÚMERO continua mandando — identidade não se discute com desempate', () => {
+    const s = sugerirVinculoEmprestimo(
+      { description: 'LIQUIDACAO DE PARCELA-C41022227', type: 'DEBIT', date: d('2026-09-25'), amount: 2927.02, bankAccountId: CAIXA },
+      OS_CONTRATOS, AS_PARCELAS,
+    )
+    expect(s?.kind).toBe('SUGERIDO')
+    if (s?.kind !== 'SUGERIDO') return
+    // ⭐ o contrato do número ganha, MESMO estando noutra conta
+    expect(s.contractNumber).toBe('C41022227-1')
+  })
+})

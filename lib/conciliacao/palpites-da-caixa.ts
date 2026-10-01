@@ -191,9 +191,16 @@ export async function palpitesDaCaixa(
          * auxiliar de ranking e não existe em `Loan`; vai `null` explícito, que é o que
          * ele significa aqui (a identificação vem do NÚMERO do contrato na descrição).
          */
+        /**
+         * ⭐⭐ 01/10 — a CONTA vai junto nas duas pontas, e ela era o campo descartado.
+         *
+         * ⛔ O `bankAccountId` já estava no `select` dos contratos e **morria neste `map`**.
+         * Medido: a linha `DEBITO PRESTA SIEMP` do banco caixa voltava com os **10**
+         * contratos da empresa (Banrisul e Sicredi inclusos) → `ESCOLHER`, zero palpite.
+         */
         const s = sugerirVinculoEmprestimo(
-          { description: descricao, type: l.type, date: l.date, amount: l.amount },
-          loans.map((x) => ({ id: x.id, contractNumber: x.contractNumber, lender: x.lender, status: x.status, dueDay: null })),
+          { description: descricao, type: l.type, date: l.date, amount: l.amount, bankAccountId: l.bankAccountId },
+          loans.map((x) => ({ id: x.id, contractNumber: x.contractNumber, lender: x.lender, status: x.status, dueDay: null, bankAccountId: x.bankAccountId })),
           parcelasPorLoan,
         )
         if (s && s.kind === 'SUGERIDO') {

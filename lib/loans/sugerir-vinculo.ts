@@ -44,6 +44,12 @@ export type SugestaoVinculo =
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const TOL = 0.02
+/**
+ * ⚠️ ±5 dias do vencimento. O banco debita no dia ou logo depois (conta sem saldo atrasa),
+ * e a janela larga transformaria *"valor exato"* em coincidência: duas parcelas iguais de
+ * meses diferentes casariam, e aí o empate mata o palpite — que é o certo, mas inútil.
+ */
+const JANELA_DE_DIAS = 5
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 /**
@@ -66,7 +72,7 @@ export function escolherParcela(parcelas: ParcelaLite[], dataTx: Date): ParcelaL
 }
 
 export function sugerirVinculoEmprestimo(
-  tx: { description: string; type: string; date: Date; amount: number },
+  tx: { description: string; type: string; date: Date; amount: number; bankAccountId?: string | null },
   loans: DetectLoanLite[],
   parcelasPorLoan: Record<string, ParcelaLite[]>,
 ): SugestaoVinculo {
@@ -74,6 +80,48 @@ export function sugerirVinculoEmprestimo(
   if (!det) return null
   if (det.kind === 'NOT_REGISTERED') return { kind: 'NAO_CADASTRADO', contractNumber: det.contractNumber }
   if (det.kind === 'CANDIDATES') {
+    /**
+     * ⭐⭐⭐ A PARCELA EXATA DESEMPATA (01/10/2026) — e é o sinal mais forte do domínio.
+     *
+     * **O caso real:** `DEBITO PRESTA SIEMP · 26/09 · R$ 2.927,02` no banco caixa. O banco
+     * **não escreve o número do contrato**, então a descrição empata os 2 contratos da
+     * Caixa — e o dono ficava sem palpite numa linha que casa ***ao centavo e no dia*** com
+     * a parcela **#32 do 1837311** (venc 26/09, R$ 2.927,02). O outro contrato tem parcela
+     * de R$ 7.093,19: não casa nem de perto.
+     *
+     * ⛔⛔ **A TRAVA É O EMPATE, e ela é o que separa isto de chute:** só sugere com **UMA**
+     * parcela aberta, de **UM** contrato, casando **valor EXATO** (±2 centavos, o ruído de
+     * arredondamento) dentro de **±5 dias** do vencimento. Dois candidatos que fecham é
+     * *"não sei qual foi"* — e aí o dono escolhe, como hoje. É a mesma régua do PAO DE MEL,
+     * do pagamento de fatura (valor exato, 25/09) e do pagamento em lote.
+     *
+     * ⚠️ E ela **só roda no empate**: contrato identificado pelo NÚMERO continua mandando —
+     * número na descrição é identidade, não semelhança, e não se discute com ele.
+     */
+    const exatas = det.candidates.flatMap((c) =>
+      (parcelasPorLoan[c.loanId] ?? [])
+        .filter((p) => {
+          if (p.status === 'PAID') return false
+          const falta = round2(p.payment - round2(p.paidTotal ?? 0))
+          const valorBate = Math.abs(falta - tx.amount) <= TOL
+          const dias = Math.abs(p.dueDate.getTime() - tx.date.getTime()) / 86_400_000
+          return valorBate && dias <= JANELA_DE_DIAS
+        })
+        .map((p) => ({ c, p })),
+    )
+    if (exatas.length === 1) {
+      const { c, p } = exatas[0]
+      return {
+        kind: 'SUGERIDO',
+        loanId: c.loanId,
+        contractNumber: c.contractNumber ?? '',
+        lender: c.lender,
+        installmentNumber: p.number,
+        rotulo: `Pgto empréstimo ${c.contractNumber ?? c.lender} — parcela ${p.number}`,
+        parcial: false,
+        faltaDepois: 0,
+      }
+    }
     return { kind: 'ESCOLHER', candidates: det.candidates.map((c) => ({ loanId: c.loanId, contractNumber: c.contractNumber, lender: c.lender })) }
   }
 
