@@ -425,6 +425,31 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       )
     })
 
+    /**
+     * ⛔⛔⛔ O GATILHO DE VENDAS NO DELETE — e ele FALTAVA (30/09/2026).
+     *
+     * **Achado na execução real:** o dono excluiu a duplicata de R$ 2.112,00 do cofre; o
+     * saldo caiu certo (47.678,63 → 45.566,63) e a **`VendaDiaria` do 17/09 continuou
+     * gravada em 4.994,00**, com uma origem apontando pra uma transação que não existe
+     * mais. *O dinheiro saiu do saldo e ficou no calendário de vendas.*
+     *
+     * ⚠️⚠️ É a classe ***"N caminhos, 1 esquecido"*** pela enésima vez, e a lista de 25/08
+     * (que nasceu exatamente deste defeito na CRIAÇÃO manual) cobria POST, PATCH, lote,
+     * import, conciliação e `createContaPendente` — **e não cobria o DELETE**. Aquele dia
+     * ensinou *"listar os caminhos que CRIAM, não só os que importam"*; **apagar é a
+     * terceira coisa, e ela ficou de fora**.
+     *
+     * ⭐ Fora da `$transaction` de propósito: o recompute abre transação própria, e o
+     * `fail-soft` do hook garante que uma falha dele não desfaça a exclusão que já gravou
+     * — o juiz V1/V2 pega de manhã (foi assim que ele pegou a venda-fantasma de 25/08).
+     */
+    await recomputeVendasSeVenda(
+      prisma,
+      transacao.bankAccount.companyId,
+      [transacao.categoryId],
+      'DELETE /api/transacoes/[id]',
+    )
+
     return NextResponse.json({ mensagem: 'Transação excluída com sucesso' })
   } catch (error) {
     return handleApiError(error)

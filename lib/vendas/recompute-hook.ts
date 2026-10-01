@@ -33,6 +33,18 @@ type Db = PrismaClient | Prisma.TransactionClient
 export type OrigemHook =
   | 'POST /api/transacoes'
   | 'PATCH /api/transacoes/[id]'
+  /**
+   * ⛔⛔ **APAGAR TAMBÉM MEXE NO CALENDÁRIO (30/09) — e esta porta faltava.**
+   *
+   * Medido na execução real: excluir a duplicata de R$ 2.112,00 do cofre derrubou o SALDO
+   * (47.678,63 → 45.566,63) e deixou a `VendaDiaria` do 17/09 **gravada em 4.994,00**, com
+   * uma origem apontando pra uma transação inexistente. O dinheiro saiu do saldo e **ficou
+   * no calendário de vendas**.
+   *
+   * ⚠️ A lição de 25/08 foi *"listar os caminhos que CRIAM, não só os que importam"* —
+   * **apagar é a terceira coisa**, e ela ficou de fora da lista daquele dia.
+   */
+  | 'DELETE /api/transacoes/[id]'
   | 'POST /api/transacoes/lote'
   | 'import-ofx/confirm'
   /** ⭐ o balcão da caixa de entrada (15/09) — o 7º caminho que CRIA venda */
