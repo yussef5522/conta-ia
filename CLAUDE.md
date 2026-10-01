@@ -1520,6 +1520,88 @@ banrisul           ABERTURA 31/07      -13.531,57  ⛔ -5.234,00 → decisão do
 
 📋 **DÉBITO REGISTRADO:** o **lançamento manual grava a data à MEIA-NOITE UTC** (`new Date("2026-09-18").toISOString()`), enquanto a convenção da casa é **MEIO-DIA** (o import carimba assim). Em fuso negativo, meia-noite UTC **volta um dia** na exibição — foi por isso que a linha dos 2.112,00 aparece como 17/09 na perícia e 18/09 no dado cru. Não mexido: acertar move competências históricas.
 
+## ⛔⛔⛔ O EXTRATO DO BANCO CAIXA NÃO CHEGOU NA CONCILIAÇÃO — O FORMATO DO ARQUIVO DECIDIA (01/10/2026)
+
+**O dono:** *"Importei hoje o extrato do BANCO CAIXA com 2 pagamentos de EMPRÉSTIMO + juros/tarifa + outras. Na Conciliação não apareceu NADA — nem na caixa, nem nos contadores; só UMA transferência apareceu."*
+
+### ⭐ 1. O IMPORT GRAVOU PERFEITO — o defeito era de LEITURA
+
+```
+import 01/10 02:58 · SUCCESS · 7 novas · 0 dup · "Comprovante_2026-09-30_235031.pdf"
+as 7 linhas: lifecycle EFFECTED ✓ · status PENDING ✓ · dedupHash ✓ · categoria nenhuma
+```
+⚠️ **E não era OFX: era PDF.** Aquele banco só entrega extrato em PDF. **Esta conta já recebeu OFX uma vez** (06/06, 4 linhas) — o resto da história dela é PDF. **Nada a ver com as 12 `RECEIVABLE` de junho na sicredi:** o `lifecycle` está certo.
+
+### ⛔⛔⛔ 2. A CAUSA ERA UMA PALAVRA — e o diagnóstico (a) do dono está certo
+
+A `lerCaixa` filtrava **`origin: 'OFX'`**, e o import de PDF de extrato grava **`origin: 'PDF'`**.
+
+***O formato do arquivo decidia se a linha existia pra conciliação.***
+
+```
+banco caixa        32 linhas · só 4 OFX · 0 no universo da caixa
+caixa loja/cofre  374 linhas · 0 OFX    · 0  ← manual, correto
+```
+⭐ A única que o dono viu (a transferência de R$ 10.000) apareceu porque **o detector de par roda por outro caminho**.
+
+**⚠️⚠️ E ERAM DOIS LEITORES VIVOS (REGRA 4):** a `lerCaixa` **e** a `LINHA_DISPONIVEL_WHERE` da fila. Consertar um deixaria os 2 pagamentos de empréstimo **visíveis na caixa e sem palpite** — ***metade do conserto é pior que nenhum, porque parece resolvido.*** Os outros 4 lugares com `origin: 'OFX'` cravado foram medidos: `ofx-pendentes` e `bulk-dry-run` são **código morto** (zero chamador; o modal nem é renderizado), `find-pre-existing-matches` é **critério de dedup** (outra pergunta), e `auto-conciliacao` é caminho de **escrita** no import de OFX — registrado, não mexido.
+
+**⭐ A régua virou um dono só** (`origem-do-extrato.ts`), e a **lista é FECHADA**: `MANUAL` (o dono digitou), `ESTOQUE_NF` (a conta da nota) e `ADJUSTMENT` **não são linha de banco**. Medido: incluí-las jogaria **369 linhas** na fila de trabalho, e *fila que cobra o que já foi decidido é como o dono aprende a não olhar a fila*.
+
+⚠️ **E não há risco novo de duplicata:** o choke-point do dedup (`reconcileImportLines`) filtra `bankAccountId + EFFECTED + data`, **sem origem** — então linha de PDF já está no universo dele e um OFX do mesmo período não duplica.
+
+### ⛔⛔⛔ 3. E A MEDIÇÃO ACHOU UM SEGUNDO DEFEITO: O TETO CORTAVA O TRABALHO
+
+Com o `take: 400` único e `date desc`, o teto cortava pela linha **MAIS ANTIGA** — e das 7 ele alcançava **5**. A **COBRANÇA DE JUROS de R$ 1.148,05** e o **IOF de R$ 25,34** (02/09) ficariam invisíveis ***mesmo depois de consertada a origem*** — justamente os juros que o dono pediu pra aparecer.
+
+⚠️ Em 30/09 a decisão foi *"não subir o teto; a leitura DIZER quantas ficaram fora"*, e ela foi tomada com uma medição que dizia **ZERO das invisíveis pedem decisão**. Hoje **duas pedem**, e o mesmo raciocínio leva a outro lugar: ***dizer que escondeu trabalho não é o mesmo que não esconder.***
+
+**⭐⭐ A REGRA NOVA: A FILA DE TRABALHO NUNCA TRUNCA O TRABALHO — O ARQUIVO SIM.** A varredura é paginada até esgotar o período, e o que ela guarda é assimétrico de propósito: **toda** linha da CAIXA entra **sem condição**; só o ARQUIVO disputa o teto de exibição. ⭐ E os **CONTADORES saem da varredura inteira** — é isso que faz `Σ período == caixa + arquivo` fechar **por conta**. A tela ganhou o alarme do `periodoInteiro`: se o teto duro de varredura bater, ela **grita**.
+
+### ⭐⭐⭐ 4. O PALPITE 🏦 — a conta estava no comentário, não no código
+
+A linha `DEBITO PRESTA SIEMP · 26/09 · R$ 2.927,02` casa **ao centavo e no dia** com a parcela **#32 do 1837311** (venc 26/09, R$ 2.927,02) — e ficava **sem palpite**. O banco não escreve o número do contrato, então o detector cai no ramo da palavra-chave e devolvia **OS 10 CONTRATOS DA EMPRESA**, Banrisul e Sicredi inclusos.
+
+⚠️⚠️ **E o comentário do próprio ramo dizia:** *"palavra-chave + **a conta** tem empréstimo ativo → candidatos"*. **O código nunca olhou a conta.** Pior: `palpitesDaCaixa` tinha o `bankAccountId` **no `select`** e o **descartava no `map`** — a doença do select incompleto ao contrário: *o dado chega e ninguém usa*.
+
+**Duas regras entraram, e a segunda é o que torna o palpite possível:**
+1. **a CONTA estreita os candidatos** (10 → 2) e **nunca estreita até zero**: sem contrato daquela conta, vale a lista inteira. *Sumir com candidato é pior que oferecer um a mais* — o de sobra o dono descarta; o que falta ele não adivinha.
+2. **a PARCELA EXATA desempata:** UMA parcela aberta, de UM contrato, **valor exato** (±2 centavos) dentro de **±5 dias** do vencimento. Dois que fecham é *"não sei qual foi"* — a trava do PAO DE MEL, a mesma do pagamento de fatura de 25/09.
+
+⛔ **E o NÚMERO continua mandando:** identidade não se discute com desempate. ⭐ A prova de que a régua da conta é o que faz o palpite existir está num teste: **há um contrato do Sicredi com parcela de valor IDÊNTICO** — sem estreitar por conta, duas fecham e o palpite morre (que é o certo, mas inútil).
+
+### ⭐⭐ O RED-THEN-GREEN EM PROD, NAVEGANDO
+
+```
+celular /conciliacao 200 (458ms) · desktop 200 (39ms) · a rota 200 nos dois
+
+contadores: saídas 11 · entradas 1 · arquivo 472 · total 484 · Σ fecha ✓
+cobertura:  desenha 412 de 484 · período INTEIRO ✓ · só o arquivo aparado
+
+⭐ O BANCO CAIXA NA TELA (eram ZERO):
+   02/09   1.148,05  COBRANCA DE JUROS           → CAIXA
+   02/09      25,34  DEBITO DE IOF               → CAIXA
+   10/09     669,31  CONSORCIO - Xs5             → CAIXA
+   12/09     632,00  CRED PIX QR COD EST         → CAIXA
+   26/09   2.927,02  DEBITO PRESTA SIEMP         → CAIXA  ⭐ 🏦 Contrato 1837311 — parcela 32
+   28/09   7.526,06  DEBITO PRESTA SIEMP         → CAIXA
+   28/09  10.000,00  CRED PIX QR COD EST         → ARQUIVO [transferência entre contas]
+
+⛔ O INVARIANTE POR CONTA — 5 de 5 fecham:
+   banrisul 100 == 0+100 ✓ · sicredi 74 == 1+73 ✓ · banco caixa 7 == 6+1 ✓
+   caixa loja/cofre 0 == 0+0 ✓ · stone 303 == 5+298 ✓
+```
+
+**⚠️ A de R$ 7.526,06 NÃO ganhou palpite, e o motivo é honesto (medido, não suposto):** o contrato **1827478 é POS** e suas parcelas abertas têm **`juros 0,00`** — amortização pura, que é o estado honesto do pós-fixado (*"o juros do mês só se conhece no vencimento"*). A #33 agendada diz **7.093,19**; o débito real traz **432,87 de encargos**. Valor não casa → **o sistema não chuta**, e o gesto 🏦 está na fileira pro dono escolher. 📋 Registrado: **o desempate por valor exato não alcança contrato POS** enquanto a agenda for amort-only — a saída seria comparar com a **última parcela CASADA** (o `forecast.ts` já faz isso pra exibir), e não foi construído.
+
+**REGRA 11 — 8 defeitos repostos: 3 · 1 · 1 · 1 (a caixa) + 1 · 1 · 1 · 1 (o palpite).** ⚠️ E **a 1ª reposição do teto veio VERDE**: eu mexi no ramo do ARQUIVO quando o defeito estava no `take` do SQL — *reposição que não reproduz o defeito é um verde de graça*.
+
+⚠️ **1 guard reapontado com o motivo escrito e MAIS FORTE:** a régua do teto (*"ele diz o que não alcançou"*) é a mesma, mas ganhou a segunda metade — **a caixa entra sem condição, só o arquivo cede**, os contadores saem da varredura, e a tela grita se o período não for alcançado. Mais um guard novo proibindo qualquer leitor da conciliação de cravar `origin` na mão.
+
+**862 arquivos · 11.168 verdes · TS 0 · deploys 4/4 (`RsTavRWg9bCPMkngG06dC`, `zZkoIwmK-DvoBnZrrNRPM`) · Δ bundle +0 KB.** ⛔ **Zero escrita em prod** — investigação read-only + conserto de código.
+
+📋 **FICA PRO DONO (o clique é dele):** as 6 linhas estão na caixa — a de **2.927,02** com o palpite 🏦 de 1 toque; a de **7.526,06** precisa dele escolher o contrato (os 432,87 de encargos impedem o palpite); e **juros, IOF, consórcio e o PIX de 632,00** pedem categoria.
+
 ## ⛔⛔⛔ O PDF RE-OFERECIA O QUE JÁ ESTAVA FEITO — DOIS NÍVEIS, DUAS RÉGUAS (30/09/2026)
 
 **O dono:** *"semana passada mandei o PDF do Banrisul de 01 até ~20/09 e completei os nomes. HOJE mandei o de 01–30/09 e a lista «vão receber nome (12)» traz de novo lançamentos de 02/09, 08/09 e 16/09. E o progresso diz 28 de 94, baixo pra quem já rodou o período até o dia 20."*
