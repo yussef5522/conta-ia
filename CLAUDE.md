@@ -1520,6 +1520,92 @@ banrisul           ABERTURA 31/07      -13.531,57  ⛔ -5.234,00 → decisão do
 
 📋 **DÉBITO REGISTRADO:** o **lançamento manual grava a data à MEIA-NOITE UTC** (`new Date("2026-09-18").toISOString()`), enquanto a convenção da casa é **MEIO-DIA** (o import carimba assim). Em fuso negativo, meia-noite UTC **volta um dia** na exibição — foi por isso que a linha dos 2.112,00 aparece como 17/09 na perícia e 18/09 no dado cru. Não mexido: acertar move competências históricas.
 
+## ⛔⛔⛔ O PDF RE-OFERECIA O QUE JÁ ESTAVA FEITO — DOIS NÍVEIS, DUAS RÉGUAS (30/09/2026)
+
+**O dono:** *"semana passada mandei o PDF do Banrisul de 01 até ~20/09 e completei os nomes. HOJE mandei o de 01–30/09 e a lista «vão receber nome (12)» traz de novo lançamentos de 02/09, 08/09 e 16/09. E o progresso diz 28 de 94, baixo pra quem já rodou o período até o dia 20."*
+
+### ⭐ A INVESTIGAÇÃO (item 1) — e a resposta é **(a)**, com uma correção na premissa
+
+```
+2026-09-02 · R$ 403,83  "HUB INSTITUICAO DE PAGAMENTO SA" · fonte OFX
+2026-09-08 · R$ 40.000  "CACULA MIX"                      · fonte OFX
+2026-09-16 · R$ 521,80  "HUB INSTITUICAO DE PAGAMENTO SA" · fonte OFX
+```
+
+**As três TÊM contraparte gravada** → é o defeito (a): a lista re-oferece o que já está feito. ⚠️ **Mas o nome veio do `OFX`, não do PDF** — e isso muda o diagnóstico: **ZERO linhas de setembro foram gravadas por `PDF_STATEMENT`** (os últimos lotes são de 13/08 e 26/08). *A rodada da semana passada não gravou nada porque não tinha o que gravar — o OFX do Banrisul passou a trazer o favorecido.*
+
+**⛔⛔ E ISSO FECHA UM LAÇO QUE RODAVA PRA SEMPRE:**
+```
+canApplyCounterparty('OFX', 'PDF_STATEMENT') → FALSE
+   a LISTA oferece → o CONFIRM pula por precedência → grava ZERO → a lista oferece de novo
+```
+A tela do fim **era honesta** (*"N preservados"*); quem mentia era a **LISTA** — e é nela que o dono gasta o olho.
+
+### ⛔⛔⛔ A CAUSA: OS DOIS NÍVEIS DO CASAMENTO TINHAM RÉGUAS DIFERENTES PRA "QUEM É CANDIDATO"
+
+```
+NÍVEL 1 (FITID, o PREFERENCIAL) → filtrava SÓ `counterpartySource === 'MANUAL'`
+NÍVEL 2 (DATE_AMOUNT)           → filtrava manual + já-tem-nome + elegibilidade
+```
+
+**O nível preferencial era o frouxo.** Medido executando o `buildEnrichmentPreview` real contra prod: **`VÃO RECEBER NOME: 22 (FITID 22 · DATA+VALOR 0)` — 22 de 22 já com nome.**
+
+⚠️⚠️ **E o contrato da própria interface declarava a regra que o Nível 1 não cumpria:** `counterpartyName?: string | null // se já tem nome, não propõe`. ***"Menção, não uso"*** — agora no comentário de um campo.
+
+**⭐⭐ A CURA É ESTRUTURAL, e tem uma linha que é o coração:** `podeReceberNomeDoPdf` (dono único da pergunta) consulta **`canApplyCounterparty` — A MESMA do confirm**. Com isso a lista **deixa de poder** oferecer o que a gravação recusa: não por disciplina, **por construção** (REGRA 5). Um teste casa as duas **fonte por fonte**, em vez de prometer que concordam.
+
+⚠️ **E as condições do Nível 2 eram uma SEGUNDA LISTA, correta por coincidência** — passaram a ser a mesma função; senão a assimetria renasce no primeiro critério novo, no nível que ninguém olhar.
+
+### ⭐⭐ O BALDE QUE FALTAVA — contadas e com o PORQUÊ
+
+*"N deste PDF já estavam resolvidas — não são re-oferecidas"*, expansível, com **data · valor · nome gravado · por quê**. ⛔ Antes elas simplesmente **desapareciam** da tela, e *arquivo que some é indistinguível de trabalho que não aconteceu* — era a dúvida exata do dono. É o mesmo desenho do import de OFX com linha repetida. ⚠️ **Some quando não há nenhuma**: móvel zerado treina o dono a não olhar.
+
+⭐ **Três motivos, três frases** (`PRECEDENCIA` · `JA_TEM_NOME` · `NAO_ELEGIVEL`), e a **ordem é deliberada**: precedência primeiro porque é **o que o servidor VAI fazer** — dizer *"já tem nome"* numa linha recusada por FONTE esconderia a razão real, e no dia em que o dono apagasse o nome ela continuaria recusada sem ele entender por quê.
+
+### ⛔ 14 DAS 22 NEM ERAM ELEGÍVEIS — a terceira assimetria
+
+O Nível 1 também não checava elegibilidade: **a lista as oferecia e o progresso não as contava**. ⚠️ **E o motivo expõe a dívida de 01/09, que segue viva:** essas 14 têm `description = "CACULA MIX"` (o favorecido!) e `counterpartyName = "PIX"` (texto genérico) — o Banrisul **inverteu os campos do OFX**, e como `isCounterpartyEligible` lê a DESCRIÇÃO procurando `PIX|TED|DOC`, elas deixaram de ser elegíveis. O conserto disso é **na origem** (o mapeamento NAME/MEMO), não aqui.
+
+### ⭐⭐ O PROGRESSO (item 2) — a aritmética estava CERTA; a pergunta, não
+
+```
+2026-06:  0 de 23 com nome  ← falta PDF      2026-08: 20 de 20 ✓
+2026-07:  0 de 43 com nome  ← falta PDF      2026-09:  8 de  8 ✓
+                                             20 + 8 = 28 de 94  ⭐ o número que ele viu
+```
+
+**"28 de 94" não é bug de conta: é a CONTA INTEIRA respondida ao lado de um PDF de UM MÊS.** Os 66 que faltam são jun+jul, e o `outOfPeriodMonths` já sabia dizer isso. Agora a tela mostra **os dois, com o do período primeiro**: *"Neste período: 8 de 8 · Na conta inteira: 28 de 94"*, e o vazio deixou de dizer *"este PDF não cobre nada"* (que soa como falha pra quem acabou de completar o mês) e passou a dizer ***"este período já está completo"***.
+
+### ⭐⭐ O RED-THEN-GREEN EM PROD (item 3), pelo motor real
+
+```
+RE-ANEXANDO O MESMO PDF (01–30/09, 22 linhas com nome)
+   ⛔ VÃO RECEBER NOME ......  0     (era 22)
+   ⭐ JÁ ESTAVAM RESOLVIDAS .. 22     contadas, NÃO re-oferecidas
+   PROGRESSO neste período ... 8 de 8
+   PROGRESSO na conta inteira. 28 de 94
+   falta o PDF de ............ 2026-06 (23) · 2026-07 (43)
+
+   as 3 que ele nomeou → "nome de fonte mais forte (manual/extrato) — preservado"
+```
+E a **idempotência** travada em teste: 1ª passada oferece 3, o confirm grava, **2ª passada do MESMO PDF oferece 0**.
+
+### ⛔⛔⛔ E O MEU PRIMEIRO INVARIANTE ERA FORTE DEMAIS — a prova em prod pegou
+
+Eu afirmei `Σ baldes == total de linhas` e em prod deu **562 de 592**. As 30 que faltavam são de **AGOSTO, já nomeadas na rodada do PDF de agosto**: não são pendência deste PDF nem foram alcançadas por ele, então **legitimamente não pertencem a balde nenhum desta tela**. ⚠️ ***Invariante que falha no caso legítimo é pior que invariante nenhum*** — alguém "conserta" o DADO pra bater com a régua errada (a lição da REGRA 7, de novo).
+
+⭐ **O enunciado honesto é mais estreito e mais útil:** ***nenhuma linha que ainda PODE receber nome fica fora dos contadores***. Medido em prod ao centavo: **66 aptos = 66 `outOfPeriod` + 0 `noPdfLine`**.
+
+**REGRA 11 — 5 defeitos repostos: 9 · 3 · 1 · 1 · 3 vermelhos.** ⚠️ **E um teste meu não mordeu na 1ª versão:** eu escolhi uma linha **COM nome** pra provar a dupla contagem, e ali quem a tirava dos baldes era o `if (t.counterpartyName) continue` que **já existia** — o guard que eu queria provar era **inalcançável**. O caso que isola é a pulada **SEM nome** (o IOF que o PDF alcança).
+
+**REGRA 12 — os dois viewports, no bundle que prod serve:** celular 200 (397 ms) · desktop 200 (94 ms) · *"já estavam resolvidas"* ✓ · *"não são re-oferecidas"* ✓ · *"Neste período"* ✓ · *"Na conta inteira"* ✓ · *"Nome gravado"* / *"Por quê"* ✓ · *"já está completo"* ✓.
+
+**861 arquivos · 11.152 verdes · TS 0 · deploys 4/4 (`kwIYkrAfxefjA2uxqT8Or`, `jdQAjOrEU7vlU5pzufVOP`) · Δ bundle +4 KB.** ⛔ **Zero escrita em prod** — investigação read-only + conserto de código; o `pg_dump` do dia (`pre-3frentes-20260930-220632.dump`, 7.703.158 bytes) cobre.
+
+⚠️ **E eu adiantei arquivo por `scp` pro servidor pra medir, e o `git pull` do deploy recusou sobrescrever** (a cicatriz de 20/09, outra roupa). *Sonda vive fora do raiz do repo, ou sai antes do deploy.*
+
+📋 **FICA REGISTRADO, NÃO CONSERTADO — e é a dívida de 01/09 cobrando juros:** o OFX do Banrisul grava `description` = favorecido e `counterpartyName` = histórico genérico (*"PIX"*). Efeito medido: **14 linhas de setembro com `counterpartyName = "PIX"`** (nome lixo) e o favorecido real na descrição, e elas caem fora da elegibilidade porque a régua lê a DESCRIÇÃO. ⛔ **E não dá pra consertar pelo PDF:** oferecer sobrescrita em lote de linha já nomeada é exatamente como um nome bom é trocado por um genérico em silêncio. O conserto é **no mapeamento NAME/MEMO do import**, conferido contra dois downloads — sprint próprio.
+
 ## ⛔⛔⛔ OS TRÊS BECOS DO DESFECHO — E A PORTA DE APAGAR (30/09/2026)
 
 **A REGRA 11 que o dono ditou:** *"gesto de desfecho sem confirmação = vermelho; arquivo inescontrável = vermelho; categoria-com-ponte que não dispara = vermelho."* **Os três nasceram do MESMO par de cliques dele**, e a medição conta a história inteira.
