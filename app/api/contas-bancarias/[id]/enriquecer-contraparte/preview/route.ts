@@ -96,6 +96,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     byDateAmount: preview.counts.exactByDateAmount, ambiguousTx: preview.counts.ambiguousTx,
     outOfPeriod: preview.counts.outOfPeriod, notApplicable: preview.counts.notApplicable,
     noPdfLine: preview.counts.noPdfLine,
+    // ⭐ 30/09: sem este número, "o dono refez o mesmo trabalho" é invisível no log
+    jaResolvidas: preview.counts.jaResolvidas,
+    noPeriodo: preview.progressoNoPeriodo,
   })
 
   return NextResponse.json({

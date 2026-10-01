@@ -18,6 +18,7 @@
 
 import { normalizeCounterparty } from './normalize'
 import { isCounterpartyEligible } from './gap'
+import { podeReceberNomeDoPdf, type MotivoDaPulada } from './pode-receber-nome'
 import type { BankStatementLine } from '@/lib/bank-statement-pdf/types'
 
 export type MatchKey = 'FITID' | 'DATE_AMOUNT'
@@ -49,10 +50,25 @@ export interface AmbiguousKey {
   /** FITID = mesmo documento; DATE_AMOUNT = mesma data+valor (Nível 2). */
   via: MatchKey
 }
+/**
+ * ⭐ A LINHA QUE O PDF ALCANÇOU mas que NÃO entra na lista — **contada e explicada**.
+ *
+ * ⛔ Sem isto a linha simplesmente desaparecia da tela, e *arquivo que some é
+ * indistinguível de trabalho que não aconteceu*. Era a dúvida exata do dono.
+ */
+export interface PuladaComNome {
+  txId: string
+  motivo: MotivoDaPulada
+  /** o nome que o PDF traria — pra a tela mostrar que o PDF CONCORDA (ou não) */
+  nomeDoPdf: string
+}
+
 export interface JoinResult {
   exact: CounterpartyAssignment[]
   ambiguous: AmbiguousKey[]
   noMatchTxIds: string[]
+  /** ⭐ 30/09 — as que o PDF alcançou e já estavam resolvidas (ou são do banco) */
+  puladas: PuladaComNome[]
   stats: {
     txTotal: number
     exactCount: number
@@ -62,6 +78,8 @@ export interface JoinResult {
     ambiguousTxCount: number
     noMatchCount: number
     manualProtected: number
+    /** ⭐ quantas o PDF alcançou e já estavam feitas — o número que faltava na tela */
+    jaResolvidas: number
   }
 }
 
@@ -95,6 +113,7 @@ export function joinPdfStatement(
   const exact: CounterpartyAssignment[] = []
   const ambiguous: AmbiguousKey[] = []
   const noMatchTxIds: string[] = []
+  const puladas: PuladaComNome[] = []
   let manualProtected = 0
   const handled = new Set<string>() // txIds já resolvidos (exact ou ambiguous)
 
@@ -109,13 +128,29 @@ export function joinPdfStatement(
 
   for (const [k, group] of txByFitid) {
     const names = pdfByFitid.get(k)
-    const candidatos = group.filter((t) => {
-      if (t.counterpartySource === 'MANUAL') {
-        manualProtected++
-        return false
+    /**
+     * ⛔⛔⛔ ERA AQUI O DEFEITO DE 30/09 — este filtro olhava SÓ `MANUAL`.
+     *
+     * Resultado medido em prod: o PDF de 01–30/09 re-ofereceu **22 de 22** linhas que JÁ
+     * tinham nome, todas `via FITID`, e o confirm as pulava por precedência gravando ZERO.
+     * *Oferecer → preservar → oferecer de novo*, pra sempre.
+     *
+     * ⭐ Agora os DOIS níveis consultam `podeReceberNomeDoPdf` — que por dentro chama a
+     * MESMA `canApplyCounterparty` do confirm. A lista não tem como oferecer o que a
+     * gravação recusa.
+     */
+    const candidatos: JoinTxInput[] = []
+    for (const t of group) {
+      const v = podeReceberNomeDoPdf(t)
+      if (v.pode) { candidatos.push(t); continue }
+      if (v.motivo === 'PRECEDENCIA') manualProtected++
+      // ⚠️ só é "pulada COM nome" se o PDF realmente alcançou a chave — senão ela é
+      // simplesmente uma linha que o PDF não cobre, e dizer "pulada" seria inventar.
+      if (names && names.size > 0) {
+        puladas.push({ txId: t.id, motivo: v.motivo!, nomeDoPdf: [...names.values()][0] })
+        handled.add(t.id)
       }
-      return true
-    })
+    }
     if (!names || names.size === 0) continue // deixa pro Nível 2 / no-match
     if (names.size === 1) {
       const display = [...names.values()][0]
@@ -141,14 +176,12 @@ export function joinPdfStatement(
   if (opts.altKey) {
     // candidatos: elegível (PIX/TED/DOC não-tarifa), sem nome, não-manual, com
     // data, e ainda não resolvido pelo FITID.
-    const altCandidates = txs.filter(
-      (t) =>
-        !handled.has(t.id) &&
-        !t.counterpartyName &&
-        t.counterpartySource !== 'MANUAL' &&
-        t.dateIso &&
-        isCounterpartyEligible(t.description),
-    )
+    /**
+     * ⚠️ ESTAS CONDIÇÕES ERAM UMA SEGUNDA LISTA, correta **por coincidência**. Passaram a
+     * ser a MESMA `podeReceberNomeDoPdf` do Nível 1 — senão a assimetria que causou o
+     * defeito de 30/09 renasce no primeiro critério novo, no nível que ninguém olhar.
+     */
+    const altCandidates = txs.filter((t) => !handled.has(t.id) && t.dateIso && podeReceberNomeDoPdf(t).pode)
     const txByDate = new Map<string, JoinTxInput[]>()
     for (const t of altCandidates) {
       const k = dateKey(t.dateIso!, Math.abs(t.amount))
@@ -190,6 +223,7 @@ export function joinPdfStatement(
     exact,
     ambiguous,
     noMatchTxIds,
+    puladas,
     stats: {
       txTotal: txs.length,
       exactCount: exact.length,
@@ -199,6 +233,7 @@ export function joinPdfStatement(
       ambiguousTxCount: ambiguous.reduce((s, a) => s + a.txIds.length, 0),
       noMatchCount: noMatchTxIds.length,
       manualProtected,
+      jaResolvidas: puladas.length,
     },
   }
 }

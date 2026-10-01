@@ -35,6 +35,7 @@ interface Preview {
     ambiguousTx: number
     outOfPeriod: number
     notApplicable: number
+    jaResolvidas: number
     noPdfLine: number
     exactByFitid: number
     exactByDateAmount: number
@@ -44,6 +45,11 @@ interface Preview {
     manualProtected: number
   }
   progress: { named: number; totalEligible: number }
+  progressoNoPeriodo: { named: number; totalEligible: number } | null
+  puladas: Array<{
+    txId: string; date: string; description: string; amount: number
+    currentName: string | null; nomeDoPdf: string; motivo: string; selo: string
+  }>
   outOfPeriodMonths: Array<{ month: string; count: number }>
   exact: Array<PreviewTx & { proposedName: string; documento: string; matchKey: MatchKey }>
   ambiguous: Array<{
@@ -261,8 +267,25 @@ export function EnrichContrapartePanel({ contaId, onDone, onCancel, doneLabel }:
                 <span className="text-amber-700">Período não identificado (ver aviso acima).</span>
               )}
             </span>
-            <span className="text-xs text-slate-500 tabular-nums">
-              Progresso da conta: <strong className="text-slate-700">{preview.progress.named} de {preview.progress.totalEligible}</strong> PIX/TED com nome
+            {/*
+              ⭐⭐ DOIS PROGRESSOS, e o do PERÍODO vem PRIMEIRO (30/09).
+              ⛔ O dono rodou o período até 20/09 e leu "28 de 94" — achou baixo, com razão.
+              A aritmética estava certa (a CONTA inteira), mas respondia outra pergunta ao
+              lado de um PDF de um mês. O que falta são jun/jul, que pedem OUTRO PDF.
+            */}
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 tabular-nums">
+              {preview.progressoNoPeriodo && (
+                <span>
+                  Neste período:{' '}
+                  <strong className="text-emerald-700">
+                    {preview.progressoNoPeriodo.named} de {preview.progressoNoPeriodo.totalEligible}
+                  </strong>{' '}
+                  com nome
+                </span>
+              )}
+              <span>
+                Na conta inteira: <strong className="text-slate-700">{preview.progress.named} de {preview.progress.totalEligible}</strong>
+              </span>
             </span>
           </div>
 
@@ -300,10 +323,62 @@ export function EnrichContrapartePanel({ contaId, onDone, onCancel, doneLabel }:
             </Card>
           </div>
 
+          {/*
+            ⭐⭐⭐ O BALDE QUE FALTAVA: as que o PDF alcançou e JÁ ESTAVAM FEITAS (30/09).
+            ⛔ Antes elas vinham em "vão receber nome" — 22 de 22 no caso real — e o confirm
+            as pulava por precedência, gravando ZERO. O dono refazia o trabalho todo mês sem
+            saber que o anterior tinha pegado. Agora aparecem CONTADAS e com o PORQUÊ, como o
+            import de OFX faz com linha repetida. ⚠️ Some quando não há nenhuma: móvel zerado
+            treina o dono a não olhar.
+          */}
+          {preview.counts.jaResolvidas > 0 && (
+            <details className="rounded-md border border-slate-200 bg-slate-50/60">
+              <summary className="cursor-pointer px-3 py-2 text-sm text-slate-700">
+                <strong className="tabular-nums">{preview.counts.jaResolvidas}</strong> deste PDF já estavam
+                resolvidas — <span className="text-slate-500">não são re-oferecidas</span>
+              </summary>
+              <div className="max-h-64 overflow-y-auto border-t px-3 py-2">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500">
+                      <th className="px-2 py-1">Data</th>
+                      <th className="px-2 py-1 text-right">Valor</th>
+                      <th className="px-2 py-1">Nome gravado</th>
+                      <th className="px-2 py-1">Por quê</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.puladas.map((x) => (
+                      <tr key={x.txId} className="border-t border-slate-100">
+                        <td className="px-2 py-1 tabular-nums">{fmtDate(x.date)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{formatBRL(x.amount)}</td>
+                        <td className="px-2 py-1">{x.currentName ?? '—'}</td>
+                        <td className="px-2 py-1 text-slate-500">{x.selo}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
+
           {/* Nada a enriquecer neste PDF → diz claramente (não lista vazia) */}
           {preview.counts.willReceive === 0 && preview.counts.ambiguousTx === 0 && (
             <div className="rounded-md border border-sky-200 bg-sky-50/60 p-3 text-sm text-sky-900">
-              {preview.counts.outOfPeriod > 0 ? (
+              {/*
+                ⭐ A ORDEM IMPORTA: "já está tudo feito neste período" vem ANTES de "anexe o
+                PDF de outro mês". ⛔ Dizer "este PDF não cobre nada" pra quem acabou de
+                completar o mês soa como falha — era exatamente a leitura do dono.
+              */}
+              {preview.counts.jaResolvidas > 0 && preview.counts.noPdfLine === 0 ? (
+                <>
+                  Este período já está completo — as {preview.counts.jaResolvidas} transações que este PDF
+                  alcança <strong>já têm nome</strong>.
+                  {preview.counts.outOfPeriod > 0 && (
+                    <> O que falta é de outro período: anexe o PDF de {preview.outOfPeriodMonths.map((m) => fmtMonth(m.month)).join(', ')}.</>
+                  )}
+                </>
+              ) : preview.counts.outOfPeriod > 0 ? (
                 <>Este PDF não cobre nenhuma transação sem nome. As {preview.counts.outOfPeriod} pendentes são de outro período — anexe o PDF de {preview.outOfPeriodMonths.map((m) => fmtMonth(m.month)).join(', ')}.</>
               ) : preview.counts.noPdfLine > 0 ? (
                 <>Há {preview.counts.noPdfLine} transação(ões) no período mas o PDF não trouxe o nome delas (ex: PIX sem favorecido no extrato).</>

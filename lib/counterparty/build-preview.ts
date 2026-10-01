@@ -11,6 +11,7 @@
 import type { ParsedBankStatement, StatementPeriod } from '@/lib/bank-statement-pdf/types'
 import { joinPdfStatement, type JoinTxInput, type MatchKey } from './join-pdf-statement'
 import { isCounterpartyEligible } from './gap'
+import { podeReceberNomeDoPdf, seloDaPulada, type MotivoDaPulada } from './pode-receber-nome'
 
 export interface EnrichTx {
   id: string
@@ -41,6 +42,15 @@ export interface EnrichmentPreview {
     ambiguousTx: number // ambíguas — você escolhe
     outOfPeriod: number // elegível sem nome, mas de OUTRO período (falta o PDF do mês)
     notApplicable: number // IOF/tarifa/antecipação — nunca têm contraparte
+    /**
+     * ⭐⭐ 30/09 — AS QUE O PDF ALCANÇOU E JÁ ESTAVAM FEITAS. **Contadas, não re-oferecidas.**
+     *
+     * ⛔ Era este número que faltava: sem ele o dono mandava o PDF do mês, via *"vão receber
+     * nome (12)"* com lançamentos que ele tinha nomeado na semana anterior, e não tinha como
+     * saber se o trabalho passado pegou. *Arquivo que some é indistinguível de trabalho que
+     * não aconteceu.*
+     */
+    jaResolvidas: number
     // ── detalhe ──
     noPdfLine: number // elegível, no período, mas o PDF não tem nome pra ela
     exactByFitid: number
@@ -50,10 +60,24 @@ export interface EnrichmentPreview {
     pdfWithName: number
     manualProtected: number
   }
-  progress: { named: number; totalEligible: number } // "N de M com nome"
+  progress: { named: number; totalEligible: number } // "N de M com nome" — a CONTA INTEIRA
+  /**
+   * ⭐⭐ 30/09 — O PROGRESSO **DO PERÍODO DESTE PDF**, ao lado do da conta inteira.
+   *
+   * ⛔⛔ **O defeito que isto conserta:** o dono rodou o período até 20/09 e leu
+   * *"28 de 94 com nome"* — e achou baixo, com razão. **A aritmética estava certa** (20 de
+   * agosto + 8 de setembro = 28 de 94 elegíveis da conta), mas ela respondia *"a conta
+   * inteira"* ao lado de um PDF de **um mês**. Os 66 que faltam são **jun (23) e jul (43)**,
+   * que precisam de OUTRO PDF — e isso o `outOfPeriodMonths` já sabia dizer.
+   *
+   * ⭐ `null` quando o PDF não declara período: inventar um recorte seria pior que não ter.
+   */
+  progressoNoPeriodo: { named: number; totalEligible: number } | null
   // meses fora do período que ainda têm elegíveis sem nome (pra sugerir o PDF)
   outOfPeriodMonths: Array<{ month: string; count: number }>
   exact: Array<PreviewTxView & { proposedName: string; documento: string; matchKey: MatchKey }>
+  /** ⭐ as puladas, COM o porquê — a tela mostra o selo em vez de esconder a linha */
+  puladas: Array<PreviewTxView & { nomeDoPdf: string; motivo: MotivoDaPulada; selo: string }>
   ambiguous: Array<{
     documento: string
     amount: number
@@ -125,6 +149,18 @@ export function buildEnrichmentPreview(
         x !== null,
     )
 
+  /**
+   * ⭐ AS PULADAS COM NOME — contadas e explicadas, como o OFX faz com linha repetida.
+   * ⚠️ Ordenadas por DATA (não pela ordem do mapa interno), senão a lista parece aleatória.
+   */
+  const puladas = r.puladas
+    .map((p) => {
+      const t = byId.get(p.txId)
+      return t ? { ...view(t), nomeDoPdf: p.nomeDoPdf, motivo: p.motivo, selo: seloDaPulada(p.motivo) } : null
+    })
+    .filter((x): x is PreviewTxView & { nomeDoPdf: string; motivo: MotivoDaPulada; selo: string } => x !== null)
+    .sort((a, b) => a.date.localeCompare(b.date))
+
   const ambiguous = r.ambiguous.map((a) => ({
     documento: a.documento,
     amount: a.amount,
@@ -143,13 +179,24 @@ export function buildEnrichmentPreview(
   let totalEligible = 0
   let named = 0
 
+  // ⭐ as puladas NÃO entram nos baldes de pendência — elas têm balde próprio
+  const puladasIds = new Set(puladas.map((p) => p.txId))
+  // ⭐ o progresso DO PERÍODO: mesma régua, recorte do PDF
+  let eligNoPeriodo = 0
+  let namedNoPeriodo = 0
+
   for (const t of txs) {
     const elig = isCounterpartyEligible(t.description)
     if (elig) {
       totalEligible++
       if (t.counterpartyName) named++
+      if (inPeriod(isoOf(t.date), period)) {
+        eligNoPeriodo++
+        if (t.counterpartyName) namedNoPeriodo++
+      }
     }
     if (t.counterpartyName) continue // já resolvida
+    if (puladasIds.has(t.id)) continue // tem balde próprio (já resolvida / precedência)
     if (resolved.has(t.id)) continue // virou willReceive ou ambígua
     if (t.counterpartySource === 'MANUAL') continue
     if (!elig) {
@@ -171,6 +218,7 @@ export function buildEnrichmentPreview(
       ambiguousTx: r.stats.ambiguousTxCount,
       outOfPeriod,
       notApplicable,
+      jaResolvidas: r.stats.jaResolvidas,
       noPdfLine,
       exactByFitid: r.stats.exactByFitid,
       exactByDateAmount: r.stats.exactByDateAmount,
@@ -180,10 +228,12 @@ export function buildEnrichmentPreview(
       manualProtected: r.stats.manualProtected,
     },
     progress: { named, totalEligible },
+    progressoNoPeriodo: period ? { named: namedNoPeriodo, totalEligible: eligNoPeriodo } : null,
     outOfPeriodMonths: [...outMonths.entries()]
       .map(([month, count]) => ({ month, count }))
       .sort((a, b) => a.month.localeCompare(b.month)),
     exact,
+    puladas,
     ambiguous,
   }
 }
