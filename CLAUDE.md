@@ -1520,6 +1520,116 @@ banrisul           ABERTURA 31/07      -13.531,57  ⛔ -5.234,00 → decisão do
 
 📋 **DÉBITO REGISTRADO:** o **lançamento manual grava a data à MEIA-NOITE UTC** (`new Date("2026-09-18").toISOString()`), enquanto a convenção da casa é **MEIO-DIA** (o import carimba assim). Em fuso negativo, meia-noite UTC **volta um dia** na exibição — foi por isso que a linha dos 2.112,00 aparece como 17/09 na perícia e 18/09 no dado cru. Não mexido: acertar move competências históricas.
 
+## ⛔⛔⛔ OS TRÊS BECOS DO DESFECHO — E A PORTA DE APAGAR (30/09/2026)
+
+**A REGRA 11 que o dono ditou:** *"gesto de desfecho sem confirmação = vermelho; arquivo inescontrável = vermelho; categoria-com-ponte que não dispara = vermelho."* **Os três nasceram do MESMO par de cliques dele**, e a medição conta a história inteira.
+
+### ⭐⭐ 1. O EXCLUIR — e a duplicata dos 2.112 estava onde ele disse
+
+**O contexto que o freio não alcançou:** a linha *"receita de venda dinheiro"* de R$ 2.112,00 era **DUPLICATA** — dias depois de 17/09 ele viu o cofre sem a venda do dia e lançou o **TOTAL COMPLETO (2.882)**; os 2.112 estão **DENTRO** dos 2.882. O item 2 da perícia a moveu da stone pro cofre, e o dia 17/09 passou a somar 4.994.
+
+**⭐ MEDIR ANTES DE ACREDITAR (ordem dele: *"se o retrato contradisser, me pergunta"*) — o retrato confirmou AO MINUTO:**
+```
+a DUPLICATA  2.112,00 · criada 28/09 20:42
+o COMPLETO   2.882,00 · criada 28/09 20:49   ⭐ 7 MINUTOS DEPOIS, e depois do dia 17
+competência 17/09 · DINHEIRO 4.994,00 = 2.112,00@cofre + 2.882,00@cofre
+   (CARTAO 6.085,05@banrisul e PIX 6.299,13@sicredi intactos — outros meios)
+```
+
+**A tela de edição ganhou EXCLUIR, com a MESMA fronteira do mover** (`podeExcluirLancamento`, allowlist): linha de OFX **nunca** exclui (botão travado **com o motivo e a saída escritos**), conciliada pede desconciliar primeiro, perna de par protegida. Confirmação leve + **motivo no rastro** + re-ancoragem por `reAncorarContas`.
+
+**⛔⛔ E O `DELETE` NÃO TINHA FRONTEIRA NENHUMA** — ele apagaria linha de extrato, que é o espelho do que o banco registrou. A trava é do **SERVIDOR** (422 com `code`), não do botão desabilitado: esconder não impede a chamada.
+
+### ⛔⛔⛔ E A EXECUÇÃO REAL ACHOU UM DEFEITO QUE NENHUM TESTE PEGARIA: O DELETE NÃO MEXIA NO CALENDÁRIO DE VENDAS
+
+Excluí a duplicata pela porta nova: `HTTP 200`, **saldo do cofre 47.678,63 → 45.566,63** ao centavo. E a `VendaDiaria` do 17/09 **continuou gravada em 4.994,00**, com uma origem apontando pra uma transação **que não existe mais**.
+
+***O dinheiro saiu do saldo e ficou no calendário de vendas.***
+
+**⚠️⚠️ É a classe *"N caminhos, 1 esquecido"* — e o duro é que ela já cobrou NESTA MESMA função.** Em 25/08 o gatilho faltava na **CRIAÇÃO** manual (as vendas em dinheiro do cofre de 24 e 25/08 ficaram órfãs). A lição escrita naquele dia foi ***"listar os caminhos que CRIAM, não só os que importam"***, e a lista que nasceu dela cobriu POST, PATCH, lote, import, conciliação e `createContaPendente`. **APAGAR é a terceira coisa, e ficou de fora.**
+
+⭐ **Fix:** o hook entra no DELETE, **fora da `$transaction`** (ele é fail-soft; dentro, uma falha dele desfaria a exclusão que o dono já confirmou). A porta entrou na **lista FECHADA** `OrigemHook` — REGRA 5: porta nova sem nome **não compila**, e *"não logou"* volta a significar uma coisa só. ⚠️ O self-heal rodou pelo **script da casa** (`recompute-vendas-cacula.ts`, REGRA 4 — não escrevi um segundo recompute): **DINHEIRO 4.994,00 → 2.882,00**, 1 origem, 1 viva, **zero órfã**, e o **GOLDEN intacto ao centavo** (12/08 = 11.919,65 · 13/08 = 10.468,80 · fds 14-16/08 = 62.090,93).
+
+### ⭐⭐ 2. A AVULSA PASSOU A EXIGIR CATEGORIA — o furo do selo renascendo
+
+**Medido em prod: 1 de 1 avulsa confirmada estava SEM categoria.** O gesto era marcado `ESTRUTURAL` com a premissa *"ela só existe depois de a linha já ter categoria"* — **falsa**: o chip é oferecido a QUALQUER linha da caixa. Resultado: a linha saía pro ARQUIVO com `categoryId = null` e **não entrava em DRE nenhum** — o furo do selo *"categorizada"* que já tinha escondido R$ 16.201,01.
+
+⛔ **E o caso real é pior:** o dono **tinha escolhido** «Distribuição de Lucros» no seletor e a avulsa **jogou a escolha no lixo**. Agora o gesto GRAVA a categoria — ele responde *"não tem nota"* **e** carrega a resposta de *"o que é isto"*. `AVULSA_CONFIRMADA` saiu de `ESTRUTURAL` pra `ESCOLHER`.
+
+⚠️ **E o selo continua PRÓPRIO:** quem arquiva é a **DECISÃO do dono**, não a categoria — a de fornecedor não quita (régua de 24/09), e há teste tirando só a decisão pra provar que a linha **volta** a pedir trabalho.
+
+### ⭐⭐ 3. ARQUIVO INENCONTRÁVEL — a avulsa ganhou volta
+
+`DESFAZER_AVULSA` + seção *"Arquivadas como despesa avulsa (N)"* em **"Já conciliadas"** (que é **aba** de `/conciliacao`, não rota própria), com `[↩ trazer de volta pra caixa]` e a avulsa **sem categoria marcada em rose**. ⚠️ A lista vem de consulta **À PARTE**: `where: { reconciledWithId: { not: null } }` **nunca alcançaria a avulsa**, porque ela não tem vínculo — era literalmente o beco.
+
+### ⛔⛔⛔ E O TESTE DE COMPORTAMENTO ACHOU QUE O GESTO DE VOLTA NASCERIA QUEBRADO EM PROD
+
+`DESFAZER_AVULSA` numa saída era **recusado pelo gate do SENTIDO** com ***"Esta linha é dinheiro que SAIU — ela não recebe"***. A causa: a volta **não é chip de sentido nenhum**, de propósito (há guard proibindo que ela vire chip da fileira) — e `acaoValePraSentido` pergunta *"esta ação é um dos chips DESTE sentido?"*.
+
+**⚠️⚠️ É a cicatriz de 25/09 pela SEGUNDA vez.** Lá o `z.enum` da rota repetia a lista à mão e **dois gestos ficaram mortos por dias**. Eu liguei o enum (`ACOES_ACEITAS`) e **esqueci deste segundo portão** — ***duas portas, uma consertada***, a doença que esta casa mais paga. ⭐ A isenção **DERIVA de `ACOES_DE_VOLTA`** (`precisaCasarComOSentido`), nunca de uma lista à mão: gesto de volta novo passa de graça.
+
+### ⭐⭐⭐ 4. A PONTE PJ→PF DISPARA — decidida no SERVIDOR
+
+**O beco, nas palavras dele:** *"linha → seletor de categoria → Distribuição de Lucros → NADA acontece (nem ponte, nem erro)"*.
+
+**A causa:** o convite era **derivado no CLIENTE** (`categorias.find(...)` + `conviteDaPonte(cat)`). Isso amarrava uma **CONSEQUÊNCIA DE DINHEIRO** a duas coisas frágeis — a lista de categorias ter carregado (`cargas.categorias` pode dizer FALHOU e a tela segue) e o `dreGroup` estar no payload. Faltando qualquer uma, **a retirada ficava meia-ponte EM SILÊNCIO**.
+
+⭐ Agora quem sabe é **quem GRAVOU**: `ResolverResultado.consequencia` é decidida **UMA vez, no wrapper que envolve o switch** dos 12 gestos. Dentro de um ramo, o próximo gesto que gravasse categoria nasceria sem disparar a ponte — *"N caminhos, 1 esquecido"* de novo. A tela só desenha o que o servidor devolveu, e o guard **proíbe** ela de voltar a derivar.
+
+### ⭐⭐ O RED-THEN-GREEN EM PROD, PELAS ROTAS REAIS
+
+```
+FRENTE 2 — retrato ANTES (e o relato era MEIO certo):
+   COOPERATIVA  −100,00 · 30/09 · ARQUIVO · avulsa=true · categoria NENHUMA   ⛔ o furo
+   RONE MESSA   −250,00 · 29/09 · ⭐ JÁ ESTAVA NA CAIXA, avulsa=false
+      (o dono relatou que as DUAS sumiram; só uma sumiu)
+
+   POST /resolver DESFAZER_AVULSA → HTTP 200
+      "de volta na caixa de entrada — a categoria ficou"
+      ⭐ é EXATAMENTE o gesto que levaria 422 sem o conserto do gate do sentido
+
+FRENTE 3a — a ponte:
+   POST /resolver CATEGORIA (Pró-labore e Distribuição) → HTTP 200
+   ⭐ CONSEQUÊNCIA: {"tipo":"PONTE_PJ_PF","titulo":"Passo 2 — mandar pro perfil PF?",
+                     "ondeReabrir":"/retiradas-pendentes","tipoDeRetirada":null}
+   ⚠️ tipoDeRetirada NULL é a trava funcionando: a categoria se chama "Pró-labore E
+      Distribuição" — diz as DUAS coisas, então o sistema NÃO CHUTA; o dono escolhe no painel.
+   retirada ÓRFÃ: 1 — visível em Retiradas, esperando o clique dele pro espelho no PF
+```
+
+**REGRA 12 — os dois viewports, medido na superfície certa:**
+```
+celular/desktop  /conciliacao 200 · Retiradas 200 · editar MANUAL 200 · editar OFX 200
+   ⭐ a FRONTEIRA (server component): "esta linha veio do extrato do banco" ✓ nos dois
+      + "reimportar o extrato na conta certa" ✓ (o motivo E a saída escritos)
+   bundle: freio do excluir ✓ · freio da avulsa ✓ · seção no histórico ✓ ·
+           trazer de volta ✓ · "sem categoria" ✓ · DESFAZER_AVULSA ✓ · pular explícito ✓
+```
+⚠️ **E duas sondas minhas deram falso vermelho antes de eu medir certo:** procurei a frase da fronteira e o título do convite **no chunk estático** — as duas são do **SERVIDOR** (uma vem no payload da página, a outra na resposta da rota); e chutei a URL `/conciliacao/historico`, que **nunca existiu** (é aba). *Sonda errada dá um vermelho tão convincente quanto um defeito real* — pela enésima vez.
+
+### A TABELA DOS 5 SALDOS — **0 DE 5 DIVERGEM**
+
+```
+banco caixa        SUM_TODAS             -3.248,46   ✓ zero
+banrisul           ABERTURA 31/07        -8.297,57   ✓ zero   ⭐ re-ancorado (decisão do dono)
+caixa loja/cofre   SUM_TODAS             45.566,63   ✓ zero   ⭐ de volta ao centavo previsto
+sicredi            ÂNCORA 25/09         -79.938,88   ✓ zero
+stone              ÂNCORA 30/09              87,53   ✓ zero
+```
+⭐ O **banrisul** foi re-ancorado pela função da casa (`recalcularSaldoConta`, nunca UPDATE à mão): **−13.531,57 → −8.297,57** ao centavo, o número que o dono mandou. ⛔ **A manual de 716,40 NÃO foi apagada** — ordem explícita dele; as 2 linhas de R$ 716,40 seguem vivas (ela é conciliada com a linha do extrato, o par normal do fluxo).
+
+**GUARDS:** `avulsa-pede-categoria.integration` (10 testes — roda os gestos **contra o banco**, lendo a linha pelo **MESMO `SELECT_DA_CAIXA`** da tela, porque montar a `LinhaParaEstacao` à mão seria a segunda derivação que sumiu com o CASPER em 20/09) · `desfecho-pede-confirmacao-e-tem-volta` (14, estrutural e assumido como tal) · `apagar-venda-sai-do-calendario` (4). **REGRA 11 medida: 4 · 3 · 2 · 3 vermelhos** com os defeitos repostos.
+
+⚠️⚠️ **E O MEU PRÓPRIO GUARD CAIU NA "MENÇÃO, NÃO USO":** eu procurava `tipo: 'PONTE_PJ_PF'` e o índice pegava a **declaração da interface** `ResolverResultado`, que vem ANTES do wrapper. O que morde é a **ATRIBUIÇÃO**. É a 8ª vez desta classe nesta casa.
+
+⚠️ **4 GUARDS REAPONTADOS com o motivo escrito, nenhum afrouxado, dois MAIS FORTES:** o do convite passou a **PROIBIR** a tela de derivar (cobre o defeito antigo e mais um que ele não via); o do sentido passou a cobrar **as duas metades** (o gate existe **e** a volta é isenta, derivada). ⚠️ E **3 call-sites de teste que se apoiavam na permissividade antiga da avulsa SEM DIZER** passaram a declarar a categoria — o assunto deles é outro (selo próprio, autor, idempotência), e agora o pressuposto está escrito.
+
+⚠️ **E O BUILD FALHOU UMA VEZ POR CULPA MINHA:** deixei as sondas de execução no **raiz do repo** e o type-check do build as compilou (`signToken` exige `role`, que o `tsx` não cobra). **O blue-green segurou — o symlink não moveu e prod seguiu no build anterior.** *Sonda vive fora do raiz do repo, ou sai antes do deploy.*
+
+**860 arquivos · 11.137 verdes · TS 0 · `pg_dump pre-3frentes-20260930-220632.dump` (7.703.158 bytes, tamanho conferido) · deploys 4/4 (`VoHhTV_sT2RX7uPLjboOE`) · Δ bundle +0 KB.**
+
+📋 **FICA PRO DONO (o clique é dele, REGRA 2):** (a) a **COOPERATIVA** está em **Retiradas** como órfã — o convite da ponte espera ele escolher *pró-labore* ou *distribuição* (o sistema não chuta, porque a categoria diz as duas coisas) e confirmar o espelho no PF; (b) a **RONE MESSA** está na caixa esperando decisão; (c) ⚠️ **a caixa tem 452 linhas no período e o teto lê 400** — o aviso de cobertura está na tela, e a varredura anterior mediu **ZERO** das invisíveis precisando de decisão.
+
 ## 🎨 A MESA v2 — CADA PRODUTO VIRA UMA FAIXA PRÓPRIA (29/09/2026, SÓ pintura)
 
 **Ordem do dono:** *"SÓ pintura, motor e dados intocados"* — e o item 6 dele fecha a pendência que a volta anterior deixou aberta: **`docs/mocks/real-vs-teorico-mock.html` nasceu versionado nesta volta e É a régua.** O guard `mesa-bate-com-o-mock.test.ts` **LÊ o `:root{}` do arquivo** e compara ao caractere; tom ajustado "no olho" fica vermelho **apontando o valor que o mock manda**. ⭐ Nomes e números do mock são **reais** (Caçula, 12→18/09, read-only) — *mock com nome inventado faz o dono aprovar uma tela que ele nunca vê*.
