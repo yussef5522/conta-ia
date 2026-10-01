@@ -23,10 +23,10 @@ import { ChassiDoCartao } from './chassi-do-cartao'
 import { MenuDoChip, type SecaoDoChip } from './menu-do-chip'
 import { FindAndMatchPanel } from './find-and-match-panel'
 import { secoesDoMenu, type CategoriaDoMenu } from '@/lib/conciliacao/categorias-do-gesto'
-import { estadoDoSeletor, estadoDoSeletorDoLote, podeDisparar, AVISO_CATEGORIA } from '@/lib/conciliacao/categoria-antes-do-gesto'
+import { estadoDoSeletor, estadoDoSeletorDoLote, podeDisparar, origemDaCategoria, AVISO_CATEGORIA } from '@/lib/conciliacao/categoria-antes-do-gesto'
 import type { AcaoDoBalcao } from '@/lib/conciliacao/caixa-de-entrada'
 import { nomeDaBusca } from '@/lib/conciliacao/nome-da-busca'
-import { conviteDaPonte, type ConviteDaPonte } from '@/lib/conciliacao/convite-da-ponte'
+import type { ConviteDaPonte } from '@/lib/conciliacao/convite-da-ponte'
 import { consequenciaDeVincular } from '@/lib/conciliacao/uma-casa-por-caso'
 import { venceuOuVence } from '@/lib/conciliacao/vencimento-na-tela'
 import { secoesDeFatura, alvoDaFatura } from '@/lib/credit-card-pj/faturas-pra-quitar'
@@ -110,6 +110,8 @@ interface LinhaDTO {
 }
 interface CaixaDTO {
   contadores: { saidas: number; entradas: number; arquivo: number; total: number }
+  /** ⭐ 30/09: até onde o teto de leitura alcançou */
+  cobertura?: { lidas: number; totalNoPeriodo: number; truncado: boolean; desde: string | null }
   progresso: { pct: number; resolvidas: number; naCaixa: number; frase: string }
   corte: string | null
   linhas: LinhaDTO[]
@@ -331,7 +333,16 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
     if (idsDoAlvo.length) alvo = { ...alvo, contaIds: idsDoAlvo, contaId: undefined }
     setOcupado(linha.id); setErro(null); setErroDaLinha(null)
     try {
-      const r = await fetchComTimeout<{ efeito?: string; deepLink?: string }>(`/api/conciliacao/resolver`, {
+      /**
+       * ⚠️ O tipo declara o que a tela LÊ — e `consequencia` entra aqui porque sem ela o
+       * `tsc` não cobraria o campo e o convite voltaria a ser derivado no cliente em
+       * silêncio (a dívida de 01/09: *"interface escrita à mão sobre payload é promessa"*).
+       */
+      const r = await fetchComTimeout<{
+        efeito?: string
+        deepLink?: string
+        consequencia?: { tipo: 'PONTE_PJ_PF'; titulo: string; ondeReabrir: string; tipoDeRetirada: 'PRO_LABORE' | 'DISTRIBUICAO' | null } | null
+      }>(`/api/conciliacao/resolver`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ empresaId, txId: linha.id, acao, ...alvo }), timeoutMs: 30_000,
       })
@@ -381,9 +392,26 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
        * ⭐ Agora o gesto **não termina** na categoria: enquanto a ponte não for respondida
        * (mandar ou pular, explícito), a linha continua na caixa com o painel aberto nela.
        */
-      const cat = categorias.find((x) => x.id === alvo.categoryId)
-      const convite = conviteDaPonte(cat)
-      if (convite) { setPonte({ linha, convite }); return }
+      /**
+       * ⭐⭐⭐ 30/09 — O CONVITE VEM DO SERVIDOR, e a tela parou de derivar.
+       *
+       * ⛔⛔ Aqui era `categorias.find(...)` + `conviteDaPonte(cat)`. Isso amarrava uma
+       * CONSEQUÊNCIA DE DINHEIRO a duas coisas frágeis: a lista de categorias ter carregado
+       * (`cargas.categorias` pode dizer `FALHOU` e a tela segue funcionando) e o `dreGroup`
+       * estar no payload. Faltando qualquer uma, **o convite nunca abre e a retirada fica
+       * meia-ponte em silêncio** — foi o que aconteceu com a linha da COOPERATIVA.
+       *
+       * ⭐ Quem sabe agora é quem GRAVOU. `r.data.consequencia` chega pronto do
+       * `resolverLinha`, que decide num lugar só, envolvendo o switch dos 12 gestos.
+       */
+      const cq = r.data.consequencia
+      if (cq?.tipo === 'PONTE_PJ_PF') {
+        setPonte({
+          linha,
+          convite: { oferecer: true, titulo: cq.titulo, ondeReabrir: cq.ondeReabrir, tipo: cq.tipoDeRetirada },
+        })
+        return
+      }
       await carregar()   // ⭐ a linha sai da caixa NA HORA
     } finally { setOcupado(null) }
   }, [empresaId, carregar, categorias])
@@ -490,7 +518,18 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
         </div>
         <div className="text-[12px]" style={{ color: V3.sub }}>
           {caixa.corte && <>conciliando a partir de <b>{dia(caixa.corte)}</b> · </>}
-          <span>{c.arquivo} no arquivo · {c.total} no período</span>
+          <span>
+            {c.arquivo} no arquivo · {c.total} {caixa.cobertura?.truncado ? 'lidas' : 'no período'}
+          </span>
+          {/* ⛔ O TETO DIZ O QUE NÃO ALCANÇOU (30/09) — senão "400 no período" afirma que se
+              olhou tudo quando existem 452. A 4ª vez que um teto esconde linha nesta casa. */}
+          {caixa.cobertura?.truncado && (
+            <span className="text-[11px]" style={{ color: V3.sub }}>
+              · de {caixa.cobertura.totalNoPeriodo} no período, a tela lê as {caixa.cobertura.lidas} mais
+              recentes{caixa.cobertura.desde ? ` (até ${caixa.cobertura.desde.split('-').reverse().join('/')})` : ''} —
+              as mais antigas já estão resolvidas no arquivo
+            </span>
+          )}
           {/* ⛔ o invariante VISÍVEL: número que fecha por fora é promessa */}
           {!fecha && <b className="ml-1.5" style={{ color: V3.coral }}>⛔ a soma não fecha</b>}
         </div>
@@ -932,6 +971,8 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFatur
     ? estadoDoSeletorDoLote(semCatNoLote, l.lote.notas.length)
     : estadoDoSeletor((l.palpite?.acao ?? null) as AcaoDoBalcao | null, l.categoriaDaConta ?? null)
   const temCategoria = !!categoriaEscolhida || sel.modo === 'HERDA'
+  /** ⭐ 30/09: o freio do desfecho — «arquivar como avulsa?» antes de gravar */
+  const [confirmandoAvulsa, setConfirmandoAvulsa] = useState(false)
   /** ⭐ o alvo que TODO gesto leva junto — a escolha da esquerda, quando houver */
   const comCategoria = (alvo: Record<string, unknown> = {}) =>
     categoriaEscolhida ? { ...alvo, categoryId: categoriaEscolhida.id } : alvo
@@ -1369,8 +1410,67 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFatur
                     }} />
                 )
               }
+              /**
+               * ⭐⭐⭐ 30/09 — O CHIP SEM ALVO PASSOU A RESPEITAR A RÉGUA DA CATEGORIA.
+               *
+               * ⛔⛔ **O defeito, medido em prod:** este ramo fazia `onGesto(l, a.acao)` —
+               * **sem `comCategoria()`**. Era por aqui que a *«é despesa avulsa»* saía, e ela
+               * **jogava no lixo a categoria que o dono tinha acabado de escolher no seletor
+               * da esquerda**. Resultado na linha da COOPERATIVA: arquivada com
+               * `categoryId = null`, fora de DRE nenhum, e a ponte da retirada nunca abriu.
+               *
+               * ⭐ Agora o gating é GENÉRICO — sai de `origemDaCategoria`, a mesma régua do
+               * chip de categoria —, então gesto novo que precise de categoria nasce travado
+               * e mandando o campo. *A régua num lugar só, consumida por todos os chips.*
+               */
+              const precisaCategoria = origemDaCategoria(a.acao as AcaoDoBalcao) === 'ESCOLHER'
+              const liberado = podeDisparar(a.acao as AcaoDoBalcao, temCategoria)
+
+              /**
+               * ⭐⭐ O FREIO DA AVULSA (30/09) — **gesto de desfecho pede confirmação.**
+               *
+               * ⚠️ Ela arquiva a linha por uma DECISÃO (*"não tem nota"*), e era o único
+               * desfecho do balcão que gravava no primeiro clique. O dono: *"cliquei sem
+               * querer"* — e foi assim que a linha do RONE MESSA entrou na história.
+               *
+               * ⛔ Leve de propósito, e o peso está na FRASE, não na cerimônia: agora ela é
+               * reversível (*"trazer de volta"* no arquivo), então exigir digitação afastaria
+               * de um gesto legítimo e frequente.
+               */
+              if (a.acao === 'AVULSA_CONFIRMADA') {
+                return (
+                  <span key={a.acao} className="inline-flex items-center gap-1.5">
+                    {confirmandoAvulsa ? (
+                      <>
+                        <span className="text-[11.5px] font-semibold" style={{ color: V3.ink }}>
+                          arquivar como avulsa?
+                        </span>
+                        <button type="button" disabled={ocupado} className={chip}
+                          style={{ ...cor, borderColor: V3.verde, color: V3.verde }}
+                          onClick={() => { setConfirmandoAvulsa(false); onGesto(l, a.acao, comCategoria()) }}>
+                          confirmar
+                        </button>
+                        <button type="button" disabled={ocupado} className={chip} style={cor}
+                          onClick={() => setConfirmandoAvulsa(false)}>
+                          cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" disabled={ocupado || !liberado} className={chip} style={cor}
+                        title={liberado ? undefined : AVISO_CATEGORIA}
+                        onClick={() => setConfirmandoAvulsa(true)}>
+                        {ICONE[a.acao] ?? ''} {a.rotulo}
+                      </button>
+                    )}
+                  </span>
+                )
+              }
+
               return (
-                <button key={a.acao} type="button" disabled={ocupado} onClick={() => onGesto(l, a.acao)} className={chip} style={cor}>
+                <button key={a.acao} type="button" disabled={ocupado || !liberado}
+                  title={liberado ? undefined : AVISO_CATEGORIA}
+                  onClick={() => onGesto(l, a.acao, precisaCategoria ? comCategoria() : undefined)}
+                  className={chip} style={cor}>
                   {ocupado ? <Loader2 className="h-3 w-3 animate-spin" /> : <>{ICONE[a.acao] ?? ''} {a.rotulo}</>}
                 </button>
               )

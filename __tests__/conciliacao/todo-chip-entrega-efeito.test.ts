@@ -26,7 +26,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { TODAS_AS_ACOES, acoesDoSentido, type AcaoDoBalcao, type SentidoDaLinha } from '@/lib/conciliacao/caixa-de-entrada'
+import { TODAS_AS_ACOES, acoesDoSentido, type AcaoDoBalcao, type SentidoDaLinha, ACOES_ACEITAS } from '@/lib/conciliacao/caixa-de-entrada'
 import { destinoDaAcao } from '@/lib/conciliacao/resolver-linha'
 
 const raiz = process.cwd()
@@ -255,9 +255,21 @@ describe('⛔⛔⛔ O SCHEMA DA ROTA COBRE TODO GESTO — senão o gesto novo na
    */
   it('⭐ o enum da rota é DERIVADO, não uma segunda lista digitada', () => {
     const rota = fonte('app/api/conciliacao/resolver/route.ts')
+    /**
+     * ⭐ 30/09 — o conjunto cresceu: além dos chips de desfecho (`TODAS_AS_ACOES`), a rota
+     * aceita os gestos de VOLTA (`ACOES_DE_VOLTA`). `ACOES_ACEITAS` é a união **derivada**,
+     * e é ela que o enum consome — exatamente a mesma régua, com o conjunto certo.
+     */
     expect(rota, 'a lista de ações voltou a ser digitada à mão na rota — gesto novo nasce quebrado')
-      .toContain('z.enum(TODAS_AS_ACOES)')
+      .toContain('z.enum(ACOES_ACEITAS)')
     expect(rota).not.toMatch(/acao: z\.enum\(\[/)
+    // ⛔ e o conjunto aceito é a UNIÃO derivada, nunca uma 3ª lista digitada
+    const caixa = fonte('lib/conciliacao/caixa-de-entrada.ts')
+    expect(caixa, 'ACOES_ACEITAS deixou de derivar das duas listas').toMatch(
+      /ACOES_ACEITAS\s*=\s*\[\.\.\.TODAS_AS_ACOES,\s*\.\.\.ACOES_DE_VOLTA\]/,
+    )
+    // ⭐ o gesto de volta entra pela rota — era ele que levava 400 "Gesto inválido"
+    expect(ACOES_ACEITAS as readonly string[]).toContain('DESFAZER_AVULSA')
   })
 
   it('⭐⭐ e TODA ação dos dois sentidos está no conjunto derivado', () => {

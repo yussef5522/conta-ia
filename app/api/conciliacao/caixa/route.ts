@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ erro: 'Sem permissão.', permission: 'transaction.view' }, { status: 403 })
   }
 
-  const { rows, contadores, nomeConta, corte } = await lerCaixa(empresaId)
+  const { rows, contadores, nomeConta, corte, cobertura } = await lerCaixa(empresaId)
 
   // ⚠️ só as linhas que ESTÃO na caixa ganham palpite — palpitar sobre o arquivo é
   // trabalho (e consulta) pra quem já está resolvido.
@@ -279,6 +279,15 @@ export async function GET(request: NextRequest) {
     progresso: progressoDoMes(contadores),
     /** a tela DIZ de quando ela conta: fila que mostra menos precisa dizer por quê */
     corte: corte ? corte.toISOString().slice(0, 10) : null,
+    /**
+     * ⭐ 30/09: o que o TETO alcançou. Medido em prod: 452 no período × 400 lidas = 52
+     * invisíveis (todas já resolvidas, mas a tela dizia "400 no período" como se fosse tudo).
+     * *Truncar em silêncio é afirmar que se olhou tudo* — a 4ª ocorrência desta classe.
+     */
+    cobertura: {
+      ...cobertura,
+      desde: cobertura.desde ? cobertura.desde.toISOString().slice(0, 10) : null,
+    },
     /**
      * ⭐⭐⭐ A LISTA ÚNICA (23/09) — **caixa ∪ caso aberto**, e a régua mora na lib.
      *

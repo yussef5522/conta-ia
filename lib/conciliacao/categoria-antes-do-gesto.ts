@@ -52,13 +52,39 @@ export function origemDaCategoria(acao: AcaoDoBalcao): OrigemDaCategoria {
     case 'APORTE_INVESTIMENTO':
     case 'TRANSFERENCIA_ENVIADA':
     case 'TRANSFERENCIA_RECEBIDA':
+    case 'IGNORAR':
+      return 'ESTRUTURAL'
     /**
-     * ⭐ `AVULSA_CONFIRMADA` é ESTRUTURAL de propósito (25/09): ela só existe **depois** de
-     * a linha já ter categoria — o gesto responde *"não tem nota"*, não *"o que é isto"*.
-     * Cobrar categoria aqui seria cobrar duas vezes o mesmo fato.
+     * ⛔⛔⛔ `AVULSA_CONFIRMADA` VIROU `ESCOLHER` — ela era ESTRUTURAL e a premissa ERA FALSA.
+     *
+     * **O comentário que estava aqui** (25/09) dizia: *"ela só existe DEPOIS de a linha já ter
+     * categoria — o gesto responde 'não tem nota', não 'o que é isto'. Cobrar categoria aqui
+     * seria cobrar duas vezes o mesmo fato."*
+     *
+     * ⚠️⚠️ **MEDIDO EM PROD (30/09): 1 de 1 avulsa confirmada está SEM CATEGORIA.** O chip é
+     * oferecido a QUALQUER linha da caixa, não só às de fornecedor já categorizadas — então
+     * ele arquivava com `categoryId = null` e a linha saía da caixa **sem entrar em DRE
+     * nenhum**. É o furo do selo *"categorizada"* renascendo com outro nome: o mesmo que
+     * escondeu R$ 16.201,01 em 24/09.
+     *
+     * ⭐ O caso real: a linha da COOPERATIVA DE PAIS E MESTRES (−100,00, 30/09). O dono
+     * escolheu *Distribuição de Lucros* no seletor, a ponte não abriu, ele clicou «avulsa» —
+     * e **a avulsa jogou a categoria escolhida no lixo**. A linha foi pro arquivo sem
+     * categoria e sem ponte.
+     *
+     * ⛔ Agora ela PEDE categoria como qualquer despesa: *"não tem nota"* e *"o que é isto"*
+     * são perguntas diferentes, e a avulsa precisa das DUAS respostas — a primeira é o gesto,
+     * a segunda é a categoria. Cobrar as duas não é cobrar duas vezes o mesmo fato.
      */
     case 'AVULSA_CONFIRMADA':
-    case 'IGNORAR':
+      return 'ESCOLHER'
+    /**
+     * ⭐ `DESFAZER_AVULSA` não pede categoria: ele desfaz o *"não tem nota"* e **deixa a
+     * categoria de pé** (o dono já disse o que a linha é). Ele nem aparece na fileira da
+     * caixa — mora no arquivo —, mas o switch é TOTAL de propósito: gesto novo sem par não
+     * compila, e foi o `tsc` que achou os 3 lugares quando o aporte nasceu em 25/09.
+     */
+    case 'DESFAZER_AVULSA':
       return 'ESTRUTURAL'
   }
 }

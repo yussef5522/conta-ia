@@ -109,7 +109,14 @@ describe('⛔⛔ a linha de FORNECEDOR não arquiva só com categoria', () => {
 
 describe('⭐⭐ a saída honesta: "é despesa avulsa — não tem nota"', () => {
   it('⭐⭐⭐ o gesto ARQUIVA com selo PRÓPRIO, e grava quem decidiu', async () => {
-    const r = await resolverLinha({ companyId, txId: linhaId, acao: 'AVULSA_CONFIRMADA', userId, motivoLivre: 'compra anterior ao sistema' }, prisma)
+    /**
+     * ⚠️ A CATEGORIA VAI JUNTO desde 30/09 — e este teste **se apoiava na permissividade
+     * antiga sem dizer**. O assunto dele é o SELO PRÓPRIO e o AUTOR; a exigência de
+     * categoria tem arquivo próprio (`avulsa-pede-categoria.integration.test.ts`), onde ela
+     * é o alvo. ⭐ E `catFornecedor` é escolha deliberada: ela NÃO quita pela régua de
+     * 24/09, então quem arquiva aqui continua sendo a DECISÃO do dono, não a categoria.
+     */
+    const r = await resolverLinha({ companyId, txId: linhaId, acao: 'AVULSA_CONFIRMADA', userId, categoryId: catFornecedor, motivoLivre: 'compra anterior ao sistema' }, prisma)
     expect(r.saiuDaCaixa).toBe(true)
     expect(await naCaixa(), 'a confirmação do dono não fechou o caso — o aviso vira beco').toBe(false)
     /**
@@ -131,8 +138,8 @@ describe('⭐⭐ a saída honesta: "é despesa avulsa — não tem nota"', () =>
   })
 
   it('⭐ confirmar duas vezes é o dono clicando duas vezes, não um erro', async () => {
-    await resolverLinha({ companyId, txId: linhaId, acao: 'AVULSA_CONFIRMADA', userId }, prisma)
-    await resolverLinha({ companyId, txId: linhaId, acao: 'AVULSA_CONFIRMADA', userId }, prisma)
+    await resolverLinha({ companyId, txId: linhaId, acao: 'AVULSA_CONFIRMADA', userId, categoryId: catFornecedor }, prisma)
+    await resolverLinha({ companyId, txId: linhaId, acao: 'AVULSA_CONFIRMADA', userId, categoryId: catFornecedor }, prisma)
     expect(await prisma.conciliacaoAvulsaConfirmada.count({ where: { transactionId: linhaId } })).toBe(1)
   })
 
@@ -166,7 +173,7 @@ describe('⭐⭐ A AUDITORIA DA CAIXA — dá pra saber QUEM produziu o estado',
       role: { id: 'r', name: 'OWNER', isSystemDefault: true },
       permissions: ['*'], requirePermission: () => {},
     } as never
-    await resolverLinha({ companyId, txId: linhaId, acao: 'AVULSA_CONFIRMADA', userId, authCtx: ctx }, prisma)
+    await resolverLinha({ companyId, txId: linhaId, acao: 'AVULSA_CONFIRMADA', userId, categoryId: catFornecedor, authCtx: ctx }, prisma)
     const aud = await prisma.auditLog.findMany({ where: { companyId, entityId: linhaId } })
     expect(aud, 'o gesto da caixa voltou a não deixar rastro').toHaveLength(1)
     const m = JSON.parse(String(aud[0].metadata ?? '{}'))

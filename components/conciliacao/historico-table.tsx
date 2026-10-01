@@ -40,6 +40,16 @@ interface HistoricoItem {
   } | null
 }
 
+/** ⭐ 30/09: a linha arquivada por DECISÃO do dono ("não tem nota") — não por par */
+interface AvulsaItem extends Omit<HistoricoItem, 'ofx'> {
+  ofx: null
+  /** ⚠️ `type` não está no `HistoricoItem` (a lista de pares não precisa dele) — mas aqui
+   *  ele DECIDE o sinal na tela, e sem o campo a avulsa de entrada apareceria como saída. */
+  type: string
+  avulsa: { criadoEm: string; motivo: string | null }
+  bankAccount?: { name: string; bankName: string | null } | null
+}
+
 interface GroupedEntry {
   type: 'single' | 'group'
   // pra single
@@ -60,6 +70,19 @@ interface Props {
 export function HistoricoTable({ empresaId, onAfterUndo }: Props) {
   const { toast } = useToast()
   const [items, setItems] = useState<HistoricoItem[]>([])
+  /**
+   * ⭐⭐⭐ AS AVULSAS (30/09) — o arquivo que era INENCONTRÁVEL.
+   *
+   * **A queixa do dono:** *"as duas SUMIRAM e NÃO estão em «Já conciliadas»"*. Era literal:
+   * esta tela lista pares (`reconciledWithId`), e a avulsa arquiva por **decisão**, sem
+   * vínculo nenhum. Ela saía da caixa e não aparecia em lugar nenhum do sistema.
+   *
+   * ⛔ Seção SEPARADA, não misturada na lista de pares: *"eu disse que não tem nota"* e
+   * *"casou com uma nota"* são fatos diferentes, e colapsar os dois no mesmo balde é a
+   * mistura que escondeu R$ 16.201,01 em 24/09.
+   */
+  const [avulsas, setAvulsas] = useState<AvulsaItem[]>([])
+  const [voltandoId, setVoltandoId] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [busca, setBusca] = useState('')
@@ -87,18 +110,47 @@ export function HistoricoTable({ empresaId, onAfterUndo }: Props) {
       limit: String(limit),
     })
     if (busca.trim()) qs.set('busca', busca.trim())
-    const r = await fetchComTimeout<{ items: HistoricoItem[]; total: number }>(
+    const r = await fetchComTimeout<{ items: HistoricoItem[]; total: number; avulsas?: AvulsaItem[] }>(
       `/api/conciliacao/historico?${qs}`, { credentials: 'include' },
     )
     setLoading(false)
     if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui carregar o histórico.'); return }
     setItems(r.data.items)
     setTotal(r.data.total)
+    setAvulsas(r.data.avulsas ?? [])
   }, [empresaId, page, busca])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  /**
+   * ⭐⭐ TRAZER DE VOLTA PRA CAIXA — pela porta ÚNICA do balcão (`/resolver`), nunca por uma
+   * rota nova. *Uma tela nova não pode significar um motor novo.*
+   *
+   * ⚠️ Sem `confirm()` nativo (ele falhou em silêncio no Safari em fluxo async, 22/08): o
+   * gesto é reversível e leve, então o clique é o gesto — e o efeito é DITO no toast.
+   */
+  async function trazerDeVolta(item: AvulsaItem) {
+    setVoltandoId(item.id)
+    try {
+      const r = await fetchComTimeout<{ efeito?: string }>(`/api/conciliacao/resolver`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ empresaId, txId: item.id, acao: 'DESFAZER_AVULSA' }),
+      })
+      if (!r.ok) {
+        toast({ variant: 'destructive', title: 'Não trouxe de volta', description: r.erro ?? 'Falha ao desfazer.' })
+        return
+      }
+      toast({ variant: 'success', title: 'De volta na caixa', description: r.data?.efeito ?? 'a linha voltou pra caixa de entrada' })
+      await fetchData()
+      onAfterUndo?.()
+    } finally {
+      setVoltandoId(null)
+    }
+  }
 
   async function desfazer(item: HistoricoItem) {
     const par = `${item.description} ↔ ${item.ofx?.description ?? 'OFX'}`
@@ -411,6 +463,45 @@ export function HistoricoTable({ empresaId, onAfterUndo }: Props) {
               return null
             })}
           </div>
+
+          {/* ⭐⭐ A SEÇÃO DAS AVULSAS — o arquivo da DECISÃO do dono, com a volta */}
+          {avulsas.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <p className="text-[13px] font-semibold text-amber-900 dark:text-amber-200">
+                Arquivadas como despesa avulsa ({avulsas.length})
+              </p>
+              <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                você disse que estas não têm nota a casar — elas não têm par, então moram aqui
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {avulsas.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-amber-200/70 bg-white px-3 py-2 dark:border-amber-900/40 dark:bg-slate-950">
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-medium">
+                        {a.description || '(sem descrição)'}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {new Date(a.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                        {' · '}
+                        {a.type === 'CREDIT' ? '+' : '−'} R$ {a.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        {a.bankAccount?.name ? ` · ${a.bankAccount.name}` : ''}
+                        {/* ⛔ a categoria aparece: avulsa SEM categoria era o furo que saía do DRE */}
+                        {' · '}
+                        {a.category?.name ?? <span className="text-rose-600 dark:text-rose-400">sem categoria</span>}
+                      </p>
+                      {a.avulsa.motivo && (
+                        <p className="text-[11px] text-amber-800 dark:text-amber-300">motivo: {a.avulsa.motivo}</p>
+                      )}
+                    </div>
+                    <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs"
+                      onClick={() => trazerDeVolta(a)} disabled={voltandoId === a.id}>
+                      {voltandoId === a.id ? 'voltando…' : '↩ trazer de volta'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between text-xs">

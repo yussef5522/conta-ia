@@ -73,11 +73,28 @@ describe('⭐⭐ 1. RETIRADA OFERECE A PONTE — meia-ponte não se grava em sil
     expect(tipoSugerido({ id: 'c', name: 'Pró-labore e Distribuição', dreGroup: 'DISTRIBUICAO_LUCROS' })).toBeNull()
   })
 
-  it('⭐ a TELA oferece o convite e reusa o painel que já existe (REGRA 4)', () => {
+  /**
+   * ⚠️⚠️ REAPONTADO EM 30/09 **COM O MOTIVO, E ELE FICOU MAIS FORTE.** A régua não mudou —
+   * *a tela OFERECE a ponte depois de gravar a retirada* —; mudou **quem decide**.
+   *
+   * ⛔ Antes a tela derivava o convite (`categorias.find(...)` + `conviteDaPonte(cat)`), o
+   * que amarrava uma CONSEQUÊNCIA DE DINHEIRO a duas coisas frágeis: a lista de categorias
+   * ter carregado (`cargas.categorias` pode dizer FALHOU e a tela segue) e o `dreGroup`
+   * estar no payload. Faltando qualquer uma, **o convite nunca abria e a retirada ficava
+   * meia-ponte em silêncio** — foi exatamente o que aconteceu com a linha da COOPERATIVA.
+   *
+   * ⭐ Agora quem sabe é quem GRAVOU, e por isso o guard **proíbe** a tela de voltar a
+   * derivar: a asserção nova cobre a antiga e mais um defeito que ela não via.
+   */
+  it('⭐⭐ a TELA oferece o convite — e ele vem do SERVIDOR, não derivado na tela', () => {
     const t = fonte(TELA)
     expect(t, 'a tela deixou de oferecer a ponte depois de gravar a retirada')
-      .toMatch(/conviteDaPonte\(cat\)[\s\S]{0,120}setPonte/)
+      .toMatch(/r\.data\.consequencia[\s\S]{0,200}setPonte/)
+    expect(t, 'a tela voltou a derivar o convite por conta própria').not.toMatch(/conviteDaPonte\(/)
     expect(t, 'reescreveu a ponte em vez de usar o WithdrawalPanel').toMatch(/<WithdrawalPanel/)
+    // ⛔ e quem decide é o choke-point, envolvendo o switch dos 12 gestos
+    const resolver = fonte('lib/conciliacao/resolver-linha.ts')
+    expect(resolver, 'a decisão da ponte saiu do servidor').toMatch(/tipo:\s*'PONTE_PJ_PF'/)
   })
 
   /**
@@ -194,9 +211,15 @@ describe('⛔⛔ NADA QUE SOME SOZINHO CARREGA DECISÃO (19/09)', () => {
   })
 
   it('⛔⛔ e a linha NÃO sai da caixa antes de ele responder', () => {
-    // no ramo da retirada o gesto retorna ANTES do carregar()
+    /**
+     * ⚠️ REAPONTADO EM 30/09: o convite passou a vir do servidor (`r.data.consequencia`),
+     * então o gate mudou de forma. **O que o teste cobra é o mesmo e é o que importa: no
+     * ramo da ponte o gesto RETORNA antes do `carregar()`** — senão a linha sai da caixa
+     * na hora e o convite fica órfão, que é a queixa original do dono (*"a mensagem
+     * desaparece sozinha e eu não sei onde achar as retiradas"*).
+     */
     expect(t(), 'voltou a recarregar na hora — a linha some e o convite fica órfão')
-      .toMatch(/if \(convite\) \{ setPonte\(\{ linha, convite \}\); return \}/)
+      .toMatch(/cq\?\.tipo === 'PONTE_PJ_PF'[\s\S]{0,260}return\s*\n/)
   })
 
   it('⭐ pular é explícito e diz onde o gesto continua', () => {

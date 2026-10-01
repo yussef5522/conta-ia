@@ -128,6 +128,73 @@ export function podeMoverDeConta(l: LinhaParaMover): VereditoDaFronteira {
   return { pode: true, motivo: null, explicacao: null }
 }
 
+/**
+ * ⭐⭐⭐ EXCLUIR UM LANÇAMENTO (30/09/2026) — a MESMA fronteira, outra pergunta.
+ *
+ * **O caso:** a venda em dinheiro de R$ 2.112,00 era **duplicata** — dias depois de 17/09 o
+ * dono viu o cofre sem a venda do dia e lançou o TOTAL COMPLETO (2.882); os 2.112 estão
+ * DENTRO dos 2.882. Mover a linha pro cofre (o gesto anterior) deixou o dia **dobrado**, e
+ * **a tela não tinha como excluir**.
+ *
+ * ⭐ **A allowlist é a MESMA do mover** (`ORIGENS_QUE_MOVEM`), e isso é desenho: a pergunta
+ * de fundo é idêntica — *"esta linha é um lançamento DO DONO ou é o espelho de um fato que
+ * outro sistema registrou?"*. Duas listas divergiriam na primeira origem nova, e aí um
+ * gesto permitiria o que o outro recusa **sobre a mesma linha**.
+ *
+ * ⚠️ **E o excluir é MAIS perigoso que o mover**, então as recusas são as mesmas mais uma
+ * leitura: apagar linha de extrato apagaria o que o banco registrou, e o próximo import a
+ * traria de volta (o dedup não a acha) — o dono apagaria a mesma linha para sempre.
+ */
+export function podeExcluirLancamento(l: LinhaParaMover): VereditoDaFronteira {
+  if (l.origin && !ORIGENS_QUE_MOVEM.has(l.origin)) {
+    if (l.origin === 'OFX' || l.origin === 'PDF_STATEMENT' || l.origin === 'OPEN_FINANCE') {
+      return {
+        pode: false,
+        motivo: 'VEIO_DO_EXTRATO',
+        explicacao:
+          'esta linha veio do extrato do banco — apagar aqui apagaria o que o banco registrou, ' +
+          'e o próximo import a traria de volta. Se ela não é pra cá, o caminho é «ignorar» na ' +
+          'caixa de entrada (que é reversível), não excluir.',
+      }
+    }
+    return {
+      pode: false,
+      motivo: 'ORIGEM_NAO_MOVIVEL',
+      explicacao:
+        `esta linha foi criada por outro fluxo do sistema (${l.origin}) — apagar por aqui deixaria ` +
+        'o outro lado apontando pro nada. Desfaça pelo fluxo que a criou.',
+    }
+  }
+  if (l.lifecycle && l.lifecycle !== 'EFFECTED') {
+    return {
+      pode: false,
+      motivo: 'NAO_EFETIVADA',
+      explicacao:
+        'este lançamento é conta a pagar/receber em aberto — apague pelo Contas a Pagar, que ' +
+        'guarda o retrato na lixeira e deixa restaurar.',
+    }
+  }
+  if (l.transferGroupId || l.type === 'TRANSFER') {
+    return {
+      pode: false,
+      motivo: 'PERNA_DE_TRANSFERENCIA',
+      explicacao:
+        'esta linha é uma das pontas de uma transferência — apagar só ela deixaria meia ' +
+        'transferência. Desfaça o par primeiro (as duas pontas saem juntas).',
+    }
+  }
+  if (l.reconciledWithId) {
+    return {
+      pode: false,
+      motivo: 'CONCILIADA',
+      explicacao:
+        `este lançamento está conciliado${l.conciliadaCom ? ` com «${l.conciliadaCom}»` : ''} — ` +
+        'desfaça a conciliação primeiro, senão o outro lado fica apontando pro nada.',
+    }
+  }
+  return { pode: true, motivo: null, explicacao: null }
+}
+
 // ═══ A COMPETÊNCIA (que muda com a conta) ═══
 
 export interface CompetenciaDaConta {

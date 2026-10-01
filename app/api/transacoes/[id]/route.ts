@@ -12,7 +12,7 @@ import { autoMemorizeVendor } from '@/lib/categorization/auto-memorize-vendor'
 import { counterpartyRulePattern, CONTRAPARTE_TIPO_MATCH } from '@/lib/counterparty/rules'
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 import { reAncorarContas } from '@/lib/balance/recalcular'
-import { prepararMudancaDeConta, MoverDeContaError } from '@/lib/transacoes/mover-de-conta'
+import { prepararMudancaDeConta, MoverDeContaError, podeExcluirLancamento } from '@/lib/transacoes/mover-de-conta'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -363,6 +363,37 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     const ctx = await getAuthContext(request, transacao.bankAccount.companyId)
     ctx.requirePermission('transaction.delete')
 
+    /**
+     * ⭐⭐⭐ A FRONTEIRA DO EXCLUIR (30/09/2026) — e ela FALTAVA por completo.
+     *
+     * ⛔⛔ Este DELETE apagava **qualquer coisa**: linha de extrato, perna de transferência,
+     * conta a pagar conciliada. Não havia botão na tela, então nunca mordeu — mas a rota
+     * estava aberta, e o sprint acabou de pôr o botão. *Gesto novo em rota sem fronteira é
+     * o estrago esperando a maçaneta.*
+     *
+     * ⚠️ É a MESMA allowlist do mover (`podeExcluirLancamento` reusa `ORIGENS_QUE_MOVEM`):
+     * duas listas divergiriam na primeira origem nova, e um gesto permitiria sobre a mesma
+     * linha o que o outro recusa.
+     */
+    const veredito = podeExcluirLancamento({
+      origin: transacao.origin,
+      reconciledWithId: transacao.reconciledWithId,
+      transferGroupId: transacao.transferGroupId,
+      type: transacao.type,
+      lifecycle: transacao.lifecycle,
+    })
+    if (!veredito.pode) {
+      return NextResponse.json({ erro: veredito.explicacao, code: veredito.motivo }, { status: 422 })
+    }
+
+    /**
+     * ⭐ O MOTIVO VAI NO RASTRO. Excluir é irreversível (não há lixeira pra `Transaction`
+     * EFFECTED), então o audit é o único lugar onde o "por quê" sobrevive — e é ele que o
+     * contador vai ler em três meses. Opcional de propósito: cerimônia afasta, e o dono
+     * escreve quando importa.
+     */
+    const motivo = new URL(request.url).searchParams.get('motivo')?.trim() || null
+
     const contaAfetada = transacao.bankAccountId!
 
     await prisma.$transaction(async (tx) => {
@@ -381,6 +412,12 @@ export async function DELETE(request: NextRequest, { params }: Params) {
             description: transacao.description,
             amount: transacao.amount,
             type: transacao.type,
+            data: transacao.date.toISOString().slice(0, 10),
+            bankAccountId: contaAfetada,
+            origin: transacao.origin,
+            categoryId: transacao.categoryId,
+            // ⭐ o porquê, em palavras — o único lugar onde ele sobrevive à exclusão
+            ...(motivo ? { motivo } : {}),
           },
           request,
         },

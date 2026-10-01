@@ -97,9 +97,35 @@ describe('⛔⛔ toda ação oferecida TEM despacho — nenhuma cai no vazio', (
    */
   it('⛔ a lei do SENTIDO é checada no servidor, não só no menu', () => {
     expect(usosDe(resolver, 'acaoValePraSentido'), 'a lei do sentido virou enfeite no servidor').toBeGreaterThan(0)
-    expect(resolver, 'a checagem do sentido saiu do caminho de guarda').toMatch(/if \(!acaoValePraSentido\(/)
+    expect(resolver, 'a checagem do sentido saiu do caminho de guarda').toMatch(/if \([\s\S]{0,80}!acaoValePraSentido\(/)
     expect(resolver).toMatch(/ENTROU/)
     expect(resolver).toMatch(/SAIU/)
+  })
+
+  /**
+   * ⭐⭐⭐ ...E ELA **NÃO** VALE PRO GESTO DE VOLTA (30/09) — a metade que faltava.
+   *
+   * ⛔⛔ **O defeito que isto trava, achado pelo teste de comportamento da avulsa:** a volta
+   * (`DESFAZER_AVULSA`) **não é chip de sentido nenhum**, de propósito — então o gate a
+   * recusava com ***"Esta linha é dinheiro que SAIU — ela não recebe"***, e o botão
+   * *«↩ trazer de volta pra caixa»* do histórico **nasceria quebrado em prod**.
+   *
+   * ⚠️⚠️ É a cicatriz de 25/09 pela segunda vez: eu liguei o `z.enum` da rota e **esqueci
+   * deste segundo portão** — *duas portas, uma consertada*.
+   *
+   * ⭐ E a isenção tem que ser **DERIVADA de `ACOES_DE_VOLTA`**, nunca uma lista à mão aqui
+   * dentro: senão o próximo gesto de volta nasce quebrado do mesmo jeito.
+   */
+  it('⛔⛔ e a lei do sentido NÃO alcança o gesto de VOLTA — senão ele nasce quebrado', () => {
+    expect(usosDe(resolver, 'precisaCasarComOSentido'), 'o gate voltou a recusar o gesto de volta').toBeGreaterThan(0)
+    expect(resolver, 'a isenção da volta saiu do caminho de guarda').toMatch(
+      /if \(precisaCasarComOSentido\(input\.acao\) && !acaoValePraSentido\(/,
+    )
+    const caixa = readFileSync(join(raiz, 'lib/conciliacao/caixa-de-entrada.ts'), 'utf-8')
+    // ⛔ a régua deriva da lista de volta; lista digitada à mão aqui é a 2ª fonte
+    expect(caixa, 'a isenção virou uma lista digitada à mão').toMatch(
+      /precisaCasarComOSentido[\s\S]{0,220}ACOES_DE_VOLTA[\s\S]{0,40}\.includes\(acao\)/,
+    )
   })
 })
 

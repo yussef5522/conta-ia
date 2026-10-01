@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { resolverLinha, destinoDaAcao, ResolverError } from '@/lib/conciliacao/resolver-linha'
-import { TODAS_AS_ACOES } from '@/lib/conciliacao/caixa-de-entrada'
+import { ACOES_ACEITAS } from '@/lib/conciliacao/caixa-de-entrada'
 
 const schema = z.object({
   empresaId: z.string().min(1),
@@ -19,7 +19,10 @@ const schema = z.object({
    * inválido"*), porque quem os acrescentou na lib não sabia que havia uma segunda lista
    * aqui. Agora gesto novo fora do schema é impossível.
    */
-  acao: z.enum(TODAS_AS_ACOES),
+  // ⭐ os chips do balcão + os gestos de VOLTA (oferecidos no arquivo). Derivado da lib,
+  // nunca digitado — a lição de 25/09, quando dois gestos novos deram "Gesto inválido" por
+  // dias porque o enum repetia a lista à mão.
+  acao: z.enum(ACOES_ACEITAS),
   cardId: z.string().optional(),
   invoiceMonth: z.string().nullable().optional(),
   loanId: z.string().optional(),

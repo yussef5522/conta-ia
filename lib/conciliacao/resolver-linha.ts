@@ -31,7 +31,8 @@ import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-p
 import { vincularPagamentoDeParcela, VinculoDeParcelaError } from '@/lib/loans/vincular-pagamento'
 import { registrarAporte, AporteError } from '@/lib/investimentos/registrar-aporte'
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
-import { acaoValePraSentido, sentidoDaLinha, type AcaoDoBalcao } from './caixa-de-entrada'
+import { conviteDaPonte } from './convite-da-ponte'
+import { acaoValePraSentido, precisaCasarComOSentido, sentidoDaLinha, type AcaoDoBalcao } from './caixa-de-entrada'
 import { reconcileTransactions, ReconciliationError } from './reconcile'
 import type { MotivoDaDiferenca } from './regua-da-diferenca'
 import type { AuthContext } from '@/lib/auth/rbac'
@@ -108,6 +109,21 @@ export interface ResolverResultado {
   efeito: string
   /** a linha saiu da caixa de entrada? (sempre `true` num gesto que efetivou) */
   saiuDaCaixa: boolean
+  /**
+   * ⭐⭐⭐ A CONSEQUÊNCIA DA CATEGORIA, DECIDIDA NO SERVIDOR (30/09).
+   *
+   * **A régua do dono:** *"toda categoria com consequência DISPARA a consequência"*.
+   *
+   * ⛔⛔ **Por que ela saiu da TELA:** o convite da ponte era derivado no cliente
+   * (`categorias.find(...)` + `conviteDaPonte`). Isso amarra uma CONSEQUÊNCIA DE DINHEIRO a
+   * duas coisas frágeis — a lista de categorias ter carregado (`cargas.categorias` pode
+   * dizer `FALHOU`) e o `dreGroup` estar no payload. Se qualquer uma faltar, o convite
+   * **nunca abre e a retirada fica meia-ponte, em silêncio** — que é exatamente o que
+   * aconteceu com a linha da COOPERATIVA.
+   *
+   * ⭐ Agora quem sabe é quem GRAVOU. A tela só desenha o que o servidor devolveu.
+   */
+  consequencia?: { tipo: 'PONTE_PJ_PF'; titulo: string; ondeReabrir: string; tipoDeRetirada: 'PRO_LABORE' | 'DISTRIBUICAO' | null } | null
 }
 
 /**
@@ -151,6 +167,43 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
    * repetir um gesto que os três motores recusam duplicar. Então a falha entra no **efeito** e
    * no **audit** — e o retroativo, que é idempotente, conserta.
    */
+  /**
+   * ⭐⭐ A CONSEQUÊNCIA VAI AQUI, envolvendo o `switch` — pelo MESMO motivo do audit e do
+   * carimbo logo abaixo: são 12 ações, e dentro dos ramos o próximo gesto que gravasse
+   * categoria nasceria **sem** disparar a ponte. *"N caminhos, 1 esquecido"* evitado por
+   * construção — e é justamente o que faltava quando a avulsa engoliu a categoria escolhida.
+   */
+  if (input.categoryId) {
+    try {
+      const cat = await db.category.findFirst({
+        where: { id: input.categoryId, companyId: input.companyId },
+        select: { id: true, name: true, dreGroup: true },
+      })
+      const convite = conviteDaPonte(cat)
+      if (convite) {
+        // ⛔ e só oferece se a linha AINDA não tem ponte: oferecer de novo faria o dono
+        // criar a segunda ponte pro mesmo dinheiro.
+        const jaTemPonte = await db.pJtoPFBridge.findFirst({ where: { pjTransactionId: input.txId }, select: { id: true } })
+        if (!jaTemPonte) {
+          r = {
+            ...r,
+            consequencia: {
+              tipo: 'PONTE_PJ_PF',
+              titulo: convite.titulo,
+              ondeReabrir: convite.ondeReabrir,
+              tipoDeRetirada: convite.tipo,
+            },
+          }
+        }
+      }
+    } catch (e) {
+      // ⚠️ fail-soft: o gesto já gravou. Mas NUNCA silencioso — o dono precisa saber que a
+      // ponte não foi oferecida, senão a retirada fica meia e ele não descobre.
+      r = { ...r, efeito: `${r.efeito} · ⚠️ não consegui oferecer o passo 2 da retirada — reabra em Retiradas pendentes` }
+      void e
+    }
+  }
+
   let carimbo: { selo: string | null; carimbou: boolean; falhou?: string } = { selo: null, carimbou: false }
   try {
     const c = await carimbarSeTemVinculo(db, input.txId, input.companyId)
@@ -176,6 +229,7 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
         ...(input.distanciaAceita !== undefined ? { distanciaAceita: input.distanciaAceita } : {}),
         // ⭐ o carimbo no rastro: "o gesto resolveu E marcou" vs "marcou antes" vs "falhou"
         carimbo,
+        ...(r.consequencia ? { consequencia: r.consequencia.tipo } : {}),
         origem: 'caixa-de-entrada',
       },
     }).catch(() => {})
@@ -191,7 +245,8 @@ async function executarGesto(input: ResolverInput, db: PrismaClient): Promise<Re
   if (!tx) throw new ResolverError('Linha do extrato não encontrada.')
 
   const sentido = sentidoDaLinha(tx.type)
-  if (!acaoValePraSentido(input.acao, sentido)) {
+  // ⛔ a lei do sentido é do DESFECHO; a volta desfaz e por isso não tem sentido próprio
+  if (precisaCasarComOSentido(input.acao) && !acaoValePraSentido(input.acao, sentido)) {
     throw new ResolverError(
       sentido === 'ENTRADA'
         ? 'Esta linha é dinheiro que ENTROU — ela não paga conta nem fatura. Use os caminhos de entrada (receber, venda, transferência, estorno).'
@@ -315,6 +370,29 @@ async function executarGesto(input: ResolverInput, db: PrismaClient): Promise<Re
      * ⭐ `upsert` porque confirmar duas vezes é o dono clicando duas vezes, não um erro.
      */
     case 'AVULSA_CONFIRMADA': {
+      /**
+       * ⛔⛔⛔ AGORA ELA EXIGE CATEGORIA (30/09) — e o defeito era grande.
+       *
+       * ⚠️ **Medido em prod: 1 de 1 avulsa confirmada estava SEM categoria.** O gesto era
+       * marcado ESTRUTURAL com a premissa *"ela só existe depois de a linha já ter
+       * categoria"* — falsa: o chip é oferecido a QUALQUER linha da caixa. Resultado: a
+       * linha saía pro arquivo com `categoryId = null` e **não entrava em DRE nenhum** — o
+       * furo do selo *"categorizada"* renascendo (o mesmo que escondeu R$ 16.201,01).
+       *
+       * ⭐ E o caso real é pior: o dono **tinha escolhido** «Distribuição de Lucros» no
+       * seletor e a avulsa **jogou a escolha no lixo**. Agora ela GRAVA a categoria — o
+       * gesto responde *"não tem nota"* E carrega a resposta de *"o que é isto"*.
+       */
+      if (!input.categoryId) {
+        throw new ResolverError(
+          'Diga a categoria antes: «avulsa» responde "não tem nota", não "o que é isto" — ' +
+            'sem categoria a despesa sai da caixa e não entra em DRE nenhum.',
+        )
+      }
+      await db.transaction.update({
+        where: { id: tx.id },
+        data: { categoryId: input.categoryId, status: 'RECONCILED' },
+      })
       await db.conciliacaoAvulsaConfirmada.upsert({
         where: { transactionId: tx.id },
         create: {
@@ -323,7 +401,29 @@ async function executarGesto(input: ResolverInput, db: PrismaClient): Promise<Re
         },
         update: {},
       })
+      // ⚠️ o gatilho de vendas também roda aqui: a avulsa pode ser uma RECEITA avulsa, e o
+      // calendário não pode depender de por qual chip a categoria entrou (fail-soft).
+      await recomputeVendasSeVenda(db, input.companyId, [input.categoryId], 'balcao').catch(() => {})
       return { efeito: 'arquivada como despesa avulsa — sem nota a casar', saiuDaCaixa: true }
+    }
+
+    /**
+     * ⭐⭐ DESFAZER A AVULSA (30/09) — a volta que faltava.
+     *
+     * **A queixa do dono:** *"as duas SUMIRAM e NÃO estão em «Já conciliadas»"*. O gesto
+     * arquivava e **não tinha volta nem endereço**: o `historico` lista `reconciledWithId`,
+     * e a avulsa não tem vínculo nenhum, então ela era literalmente **inencontrável**.
+     *
+     * ⛔ Apagar só o registro devolve a linha pra caixa — e a CATEGORIA fica, de propósito:
+     * o dono disse o que a linha é; desfazer o *"não tem nota"* não desfaz o *"o que é"*.
+     * Zerar a categoria aqui faria o gesto de volta apagar trabalho que ele já tinha feito.
+     */
+    case 'DESFAZER_AVULSA': {
+      const apagou = await db.conciliacaoAvulsaConfirmada.deleteMany({ where: { transactionId: tx.id } })
+      if (apagou.count === 0) {
+        throw new ResolverError('Esta linha não está marcada como despesa avulsa.')
+      }
+      return { efeito: 'de volta na caixa de entrada — a categoria ficou', saiuDaCaixa: false }
     }
 
     /**

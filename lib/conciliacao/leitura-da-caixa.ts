@@ -93,11 +93,20 @@ export function paraLei(r: LinhaCrua): LinhaParaEstacao {
   }
 }
 
+export interface CoberturaDaCaixa {
+  lidas: number
+  totalNoPeriodo: number
+  truncado: boolean
+  desde: Date | null
+}
+
 export interface CaixaLida {
   rows: LinhaCrua[]
   contadores: ContadoresDoBalcao
   /** ⭐ a tela DIZ de quando ela conta — fila que mostra menos precisa dizer por quê */
   corte: Date | null
+  /** ⭐ 30/09: quantas linhas o teto alcançou — truncar em silêncio afirma que se olhou tudo */
+  cobertura: CoberturaDaCaixa
   /** nome de cada conta, pra tela nomear de onde a linha veio */
   nomeConta: Map<string, string>
 }
@@ -137,7 +146,45 @@ export async function lerCaixa(empresaId: string, db: PrismaClient = defaultPris
     : new Set<string>()
   for (const r of rows) r.avulsaConfirmada = avulsas.has(r.id)
 
-  return { rows, contadores: contarEstacoes(rows.map(paraLei)), corte, nomeConta: new Map(contas.map((c) => [c.id, c.name])) }
+  /**
+   * ⭐⭐⭐ O TETO PASSOU A MORDER — e a tela tem que DIZER (30/09/2026).
+   *
+   * ⚠️ **Medido em prod:** 452 linhas ≥ corte e o teto lê 400 → **52 invisíveis**. O contador
+   * dizia *"12 na caixa · 388 no arquivo · 400 no período"* como se 400 fosse tudo que
+   * existe. **O número estava certo sobre as 400 lidas e errado sobre o período.**
+   *
+   * ⭐ Medido também o que importa: das 52 invisíveis, **ZERO pedem decisão** (todas já
+   * resolvidas) — então o teto **não está escondendo trabalho hoje**. Mas é a 4ª vez que um
+   * teto de leitura esconde linha nesta casa (o fermento em 16/09, a ordem do ano 202 em
+   * 19/09, o recebimento em 23/09), e as três anteriores só apareceram quando alguém
+   * reclamou de um sumiço.
+   *
+   * ⛔ **O conserto não é subir o teto** (ele protege a consulta e a tela); é a leitura DIZER
+   * quantas ficaram fora, como o detector de transferência já faz com `coverage/truncated`
+   * desde 13/09. *Truncar em silêncio é afirmar que se olhou tudo.*
+   */
+  const totalNoPeriodo = await db.transaction.count({
+    where: {
+      bankAccountId: { in: contas.map((c) => c.id) },
+      origin: 'OFX', lifecycle: 'EFFECTED',
+      ...(corte ? { date: { gte: corte } } : {}),
+    },
+  })
+  const cobertura = {
+    lidas: rows.length,
+    totalNoPeriodo,
+    truncado: totalNoPeriodo > rows.length,
+    /** ⭐ o dia mais ANTIGO que o teto alcança — é o que diz ATÉ ONDE a tela olhou */
+    desde: rows.length ? rows[rows.length - 1]!.date : null,
+  }
+
+  return {
+    rows,
+    contadores: contarEstacoes(rows.map(paraLei)),
+    corte,
+    cobertura,
+    nomeConta: new Map(contas.map((c) => [c.id, c.name])),
+  }
 }
 
 /**

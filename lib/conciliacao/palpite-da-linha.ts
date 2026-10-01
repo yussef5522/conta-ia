@@ -98,6 +98,8 @@ export function rotuloDoBotao(acao: AcaoDoBalcao, alvoNome?: string): string {
     case 'APORTE_INVESTIMENTO': return alvoNome ? `✓ Confirmar — aporte no ${alvoNome}` : '✓ Confirmar — registra o aporte'
     case 'CASAR_PAGAR': return alvoNome ? `✓ Confirmar — concilia a ${alvoNome}` : '✓ Confirmar — concilia a conta'
     case 'CASAR_RECEBER': return alvoNome ? `✓ Confirmar — baixa ${alvoNome}` : '✓ Confirmar — baixa o recebimento'
+    // ⭐ o gesto de volta: o rótulo diz PRA ONDE a linha vai, não "desfazer" seco
+    case 'DESFAZER_AVULSA': return '↩ trazer de volta pra caixa'
     case 'RECEBIMENTO_VENDA': return '✓ Confirmar — registra a receita do dia'
     case 'ESTORNO': return '✓ Confirmar — amarra ao estorno'
     case 'TRANSFERENCIA_ENVIADA':

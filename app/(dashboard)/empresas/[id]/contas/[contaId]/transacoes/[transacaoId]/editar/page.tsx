@@ -4,7 +4,7 @@ import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { Header } from '@/components/layout/header'
 import { TransacaoForm } from '@/components/transacoes/transacao-form'
-import { podeMoverDeConta } from '@/lib/transacoes/mover-de-conta'
+import { podeMoverDeConta, podeExcluirLancamento } from '@/lib/transacoes/mover-de-conta'
 
 interface Props { params: Promise<{ id: string; contaId: string; transacaoId: string }> }
 
@@ -48,13 +48,16 @@ export default async function EditarTransacaoPage({ params }: Props) {
     orderBy: { name: 'asc' },
     select: { id: true, name: true, bankName: true, accountType: true },
   })
-  const fronteira = podeMoverDeConta({
+  const daLinha = {
     origin: transacao.origin,
     reconciledWithId: transacao.reconciledWithId,
     transferGroupId: transacao.transferGroupId,
     type: transacao.type,
     lifecycle: transacao.lifecycle,
-  })
+  }
+  const fronteira = podeMoverDeConta(daLinha)
+  // ⭐ o veredito do EXCLUIR vem do servidor pela MESMA função que a rota usa pra recusar
+  const doExcluir = podeExcluirLancamento(daLinha)
 
   return (
     <div className="space-y-6">
@@ -66,6 +69,8 @@ export default async function EditarTransacaoPage({ params }: Props) {
         contas={contas}
         podeTrocarConta={fronteira.pode}
         motivoContaTravada={fronteira.explicacao}
+        podeExcluir={doExcluir.pode}
+        motivoExcluirTravado={doExcluir.explicacao}
         transacao={{
           id: transacao.id,
           description: transacao.description,

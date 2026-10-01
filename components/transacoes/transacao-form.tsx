@@ -26,6 +26,9 @@ interface TransacaoFormProps {
    */
   podeTrocarConta?: boolean
   motivoContaTravada?: string | null
+  /** ⭐ 30/09: o veredito do EXCLUIR, do MESMO servidor que a rota consulta */
+  podeExcluir?: boolean
+  motivoExcluirTravado?: string | null
   transacao?: {
     id: string
     description: string
@@ -46,6 +49,8 @@ export function TransacaoForm({
   contas = [],
   podeTrocarConta = false,
   motivoContaTravada = null,
+  podeExcluir = false,
+  motivoExcluirTravado = null,
   transacao,
 }: TransacaoFormProps) {
   const router = useRouter()
@@ -76,6 +81,19 @@ export function TransacaoForm({
     rastro: string
     competencia: { antes: { inicio: string | null }; depois: { inicio: string | null }; mudou: boolean }
   } | null>(null)
+  /**
+   * ⭐⭐ A CONFIRMAÇÃO DO EXCLUIR — LEVE, e o peso é proporcional ao estrago.
+   *
+   * ⛔ Não é `confirm()` nativo: ele **falhou em silêncio no Safari** em fluxo async (a
+   * cicatriz de 22/08, e de novo em 23/09 no reprocessar do dia). É um estado nosso.
+   *
+   * ⚠️ Leve porque a alternativa (digitar o valor, digitar o nome) afasta de um gesto que o
+   * dono vai fazer com frequência — errar a conta e errar o lançamento são rotina. O que
+   * segura é a frase dizer **o efeito** e o motivo ir pro rastro, não a cerimônia.
+   */
+  const [confirmandoExcluir, setConfirmandoExcluir] = useState(false)
+  const [motivoExcluir, setMotivoExcluir] = useState('')
+  const [excluindo, setExcluindo] = useState(false)
 
   function set(field: string, value: string) {
     setForm((p) => ({ ...p, [field]: value }))
@@ -153,6 +171,28 @@ export function TransacaoForm({
       toast({ variant: 'destructive', title: 'Erro', description: 'Erro interno. Tente novamente.' })
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function excluir() {
+    setExcluindo(true)
+    try {
+      const qs = motivoExcluir.trim() ? `?motivo=${encodeURIComponent(motivoExcluir.trim())}` : ''
+      const res = await fetch(`/api/transacoes/${transacao!.id}${qs}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // ⚠️ a recusa do servidor é MOSTRADA com o motivo dele — nunca um "erro" genérico
+        toast({ variant: 'destructive', title: 'Não excluí', description: data.erro ?? 'Falha ao excluir.' })
+        return
+      }
+      toast({ variant: 'success', title: 'Excluído', description: 'o saldo da conta foi recalculado pela régua' })
+      router.push(`/empresas/${empresaId}/contas/${contaId}/transacoes`)
+      router.refresh()
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não consegui falar com o servidor. Nada foi excluído.' })
+    } finally {
+      setExcluindo(false)
+      setConfirmandoExcluir(false)
     }
   }
 
@@ -305,6 +345,59 @@ export function TransacaoForm({
               <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80">
                 o dia no calendário de vendas não mudou.
               </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ⭐ EXCLUIR (30/09) — só na edição, e travado com o motivo quando não pode */}
+      {isEditing && (
+        <Card className="border-rose-200 dark:border-rose-900/60">
+          <CardContent className="py-4">
+            {!podeExcluir ? (
+              <div>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Excluir lançamento</p>
+                {/* ⛔ TRAVADO COM O MOTIVO, nunca escondido: esconder tira a explicação junto */}
+                <p className="text-xs text-muted-foreground mt-1">🔒 {motivoExcluirTravado}</p>
+              </div>
+            ) : !confirmandoExcluir ? (
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-rose-700 dark:text-rose-300">Excluir lançamento</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    o saldo da conta é recalculado pela régua e a exclusão fica no histórico
+                  </p>
+                </div>
+                <Button type="button" variant="outline" size="sm"
+                  className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300"
+                  onClick={() => setConfirmandoExcluir(true)} disabled={loading || excluindo}>
+                  Excluir
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-rose-800 dark:text-rose-200">
+                  Excluir este lançamento?
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {form.description || '(sem descrição)'} · {form.type === 'CREDIT' ? '+' : '−'} R$ {form.amount}
+                  {' '}· o saldo da conta é recalculado na hora
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="motivoExcluir" className="text-xs">Motivo (vai pro histórico)</Label>
+                  <Input id="motivoExcluir" placeholder="ex: duplicata — o dia já está completo noutro lançamento"
+                    value={motivoExcluir} onChange={(e) => setMotivoExcluir(e.target.value)} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button type="button" size="sm" variant="destructive" onClick={excluir} disabled={excluindo}>
+                    {excluindo ? 'Excluindo…' : 'confirmar'}
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost"
+                    onClick={() => setConfirmandoExcluir(false)} disabled={excluindo}>
+                    cancelar
+                  </Button>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>

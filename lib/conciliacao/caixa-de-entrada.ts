@@ -58,6 +58,18 @@ export type AcaoDoBalcao =
    * pré-sistema e pix pro entregador são casos legítimos. ***Decisão, nunca silêncio.***
    */
   | 'AVULSA_CONFIRMADA'
+  /**
+   * ⭐⭐ 30/09 — **DESFAZER A AVULSA**, e ela NÃO é chip da fileira de propósito.
+   *
+   * **A queixa do dono:** *"as duas SUMIRAM e NÃO estão em «Já conciliadas»"*. A avulsa
+   * arquivava sem volta e sem endereço — o histórico lista `reconciledWithId`, e a avulsa
+   * não tem vínculo, então ela era literalmente **inencontrável**.
+   *
+   * ⛔ O lugar dela é o ARQUIVO (onde a linha está), não a caixa (de onde ela saiu) — por
+   * isso fica fora de `SAIDA`/`ENTRADA`, que são os chips do balcão. Oferecer um "desfazer"
+   * na fileira da caixa seria oferecer o desfazer de algo que ainda não aconteceu.
+   */
+  | 'DESFAZER_AVULSA'
 
 export interface AcaoOferecida {
   acao: AcaoDoBalcao
@@ -143,8 +155,42 @@ export function acoesDoSentido(sentido: SentidoDaLinha): readonly AcaoOferecida[
  */
 export const TODAS_AS_ACOES = [...new Set([...SAIDA, ...ENTRADA].map((a) => a.acao))] as [AcaoDoBalcao, ...AcaoDoBalcao[]]
 
+/**
+ * ⭐ OS GESTOS DE VOLTA — oferecidos no ARQUIVO, nunca na fileira de chips.
+ *
+ * ⚠️ Eles entram no enum da rota (senão dariam *"Gesto inválido"*, o defeito de 25/09 que
+ * deixou dois gestos mortos por dias), mas **não** em `TODAS_AS_ACOES`, que é a lista dos
+ * chips do balcão. A separação é o que impede um "desfazer" de aparecer na caixa, onde não
+ * há o que desfazer.
+ */
+export const ACOES_DE_VOLTA = ['DESFAZER_AVULSA'] as const satisfies readonly AcaoDoBalcao[]
+
+/** O universo que a ROTA aceita: os chips + as voltas. Derivado, nunca digitado. */
+export const ACOES_ACEITAS = [...TODAS_AS_ACOES, ...ACOES_DE_VOLTA] as [AcaoDoBalcao, ...AcaoDoBalcao[]]
+
 export function acaoValePraSentido(acao: AcaoDoBalcao, sentido: SentidoDaLinha): boolean {
   return acoesDoSentido(sentido).some((a) => a.acao === acao)
+}
+
+/**
+ * ⭐⭐⭐ A LEI DO SENTIDO VALE PRO DESFECHO, **NUNCA PRO GESTO DE VOLTA** (30/09).
+ *
+ * ⛔⛔ **O defeito que isto conserta, achado pelo teste de comportamento:** o gate do
+ * sentido pergunta *"esta ação é um dos chips DESTE sentido?"* — e a volta **não é chip de
+ * sentido nenhum**, de propósito (não há o que desfazer na fileira da caixa; há guard
+ * proibindo que ela vire chip). Resultado: `DESFAZER_AVULSA` numa saída era recusado com
+ * ***"Esta linha é dinheiro que SAIU — ela não recebe"***, e o botão
+ * *«↩ trazer de volta pra caixa»* do histórico **nasceria quebrado em prod**.
+ *
+ * ⚠️⚠️ É a cicatriz de 25/09 pela SEGUNDA vez: lá o `z.enum` da rota repetia a lista à mão
+ * e dois gestos ficaram mortos por dias. **Eu liguei o enum (`ACOES_ACEITAS`) e esqueci
+ * deste segundo portão** — *duas portas, uma consertada* é a doença que esta casa mais paga.
+ *
+ * ⭐ E a resposta DERIVA de `ACOES_DE_VOLTA`: gesto de volta novo passa de graça, em vez de
+ * alguém ter que lembrar de acrescentá-lo numa segunda lista.
+ */
+export function precisaCasarComOSentido(acao: AcaoDoBalcao): boolean {
+  return !(ACOES_DE_VOLTA as readonly AcaoDoBalcao[]).includes(acao)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
