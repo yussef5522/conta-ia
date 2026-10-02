@@ -88,7 +88,9 @@ const linha = async () => {
 
 /** ⭐ a conta impressa: `tinha` + cada linha que a tela desenha */
 function somaImpressa(c: NonNullable<Awaited<ReturnType<typeof linha>>['conta']>) {
-  return Math.round((c.tinha + c.baldes.reduce((s, b) => s + b.qtd, 0)) * 1000) / 1000
+  // ⚠️ o `foraDoTotal` aparece na tela e NÃO soma — é a linha do lançamento atrasado
+  const soma = c.baldes.reduce((s, b) => s + (b.foraDoTotal ? 0 : b.qtd), 0)
+  return Math.round((c.tinha + soma) * 1000) / 1000
 }
 
 beforeEach(async () => {
@@ -196,6 +198,79 @@ describe('⛔⛔ O AJUSTE DE CONTAGEM — a exclusão é pela SESSÃO, não pelo
     expect(c.baldes.find((b) => b.chave === 'ajustes'), 'o ajuste da borda virou linha').toBeFalsy()
     expect(somaImpressa(c)).toBe(c.deviaTer)
     expect(c.naoExplicado).toBe(0)
+  })
+})
+
+describe('⚠️⚠️ O ESPELHO — lançado DEPOIS da contagem aparece e NÃO soma', () => {
+  it('⛔⛔ import atrasado: a linha existe, fica fora do total, e a conta FECHA', async () => {
+    /**
+     * ⭐⭐ **MEDIDO EM PROD, e foi o dado que decidiu:** das 35 linhas das listas, **7 não
+     * fechavam e (B) era a causa de 6** — tirando-o do total, `tinha + normal + retroativo` dá
+     * o `deviaTer` ao centavo (iscas de frango 119 · queijo 271,11 · beef 17). Eu tinha
+     * deixado (B) como simples resíduo achando que era raro; **o dado disse o contrário**.
+     *
+     * ⛔ E ele PRECISA aparecer na tela: some calado seria o buraco de novo, do outro lado.
+     * Ele entra na PRÓXIMA janela (lá o fato é anterior à contagem, então vira retroativo).
+     */
+    /**
+     * ⚠️ AS DUAS CONTAGENS FICAM NO PASSADO nesta cena — é a única forma de o movimento
+     * (criado agora) nascer DEPOIS delas, que é exatamente o que define (B). Nas outras cenas
+     * a de referência está no futuro imediato, pra os movimentos nascerem antes.
+     */
+    const ANT_P = new Date(AGORA - 48 * H)
+    const REF_P = new Date(AGORA - 24 * H)
+    const FATO_P = new Date(AGORA - 36 * H) // datado ENTRE as duas contagens
+    await contar(ANT_P, 100, 100)
+    await contar(REF_P, 100, 97)
+    // a venda daquele dia, lançada só agora (import atrasado)
+    await criarMovimento(prisma, {
+      companyId, itemId: coca, tipo: 'BAIXA_VENDA', quantidade: -8, custoUnitario: 8, custoTotal: -64,
+      origem: 'MANUAL', dataMovimento: FATO_P,
+    })
+
+    const r = await calcularFechamentoDoDia(
+      { companyId, de: diaBR(ANT_P), ate: diaBR(REF_P), caros: [], revenda: [coca], porcoes: [] }, prisma,
+    )
+    const c = r.revenda[0].conta!
+    expect(c.tinha).toBe(100)
+    expect(c.deviaTer, 'a foto da contagem é anterior ao lançamento').toBe(100)
+
+    const tarde = c.baldes.find((b) => b.chave === 'lancadoDepois')
+    expect(tarde, '⛔ o lançamento atrasado sumiu da tela').toBeTruthy()
+    expect(tarde!.qtd).toBe(-8)
+    expect(tarde!.foraDoTotal, 'ele NÃO pode entrar no total — não estava na foto').toBe(true)
+    expect(tarde!.rotulo).toMatch(/próxima janela/i)
+
+    // ⛔ e o balde "vendeu" NÃO o contou
+    expect(c.baldes.find((b) => b.chave === 'vendeu'), 'o atrasado entrou no vendeu e a conta não fecha').toBeFalsy()
+    expect(somaImpressa(c), 'Σ das linhas QUE SOMAM tem que dar o devia ter').toBe(c.deviaTer)
+    expect(c.naoExplicado).toBe(0)
+  })
+})
+
+describe('⚠️ O ARREDONDAMENTO DA FOTO — 6 milésimos não são linha faltando', () => {
+  it('⭐ snapshot de 2 casas × ledger de 3 casas: resíduo de milésimo vira ZERO', async () => {
+    /**
+     * ⭐⭐ **MEDIDO EM PROD no «Coxão Mole»:** Σ das linhas **49,316** × snapshot **49,31** —
+     * resíduo de **6 milésimos**. O `saldoSistema` da contagem é gravado com 2 casas e o
+     * ledger anda em 3 (grama/ml), então a diferença é **artefato de arredondamento**, não
+     * movimento sem linha.
+     *
+     * ⛔ Com a tolerância em 0,005 isso acendia a faixa âmbar todo dia num item que está
+     * certo — e *alarme falso repetido é como um alarme morre* (os 111 falsos de 26/08).
+     */
+    await contar(ANT, 20.2, 20.2)
+    // uma entrada em KG, com a 3ª casa que o ledger guarda e a foto não
+    await criarMovimento(prisma, {
+      companyId, itemId: coca, tipo: 'ENTRADA_NF', quantidade: 29.116, custoUnitario: 8,
+      custoTotal: Math.round(29.116 * 8 * 100) / 100, origem: 'SEFAZ', dataMovimento: DENTRO,
+    })
+    // a foto da contagem guarda 49,31 — o ledger soma 49,316
+    await contar(REF, 49.31, 49)
+    const c = (await linha()).conta!
+    expect(somaImpressa(c), 'o ledger soma em 3 casas').toBe(49.316)
+    expect(c.deviaTer, 'a foto guarda 2 casas').toBe(49.31)
+    expect(c.naoExplicado, '6 milésimos de arredondamento não são linha faltando').toBe(0)
   })
 })
 

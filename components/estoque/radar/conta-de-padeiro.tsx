@@ -77,8 +77,14 @@ export function ContaDePadeiro({ conta, unidade, itemId, empresaId }: {
                   </span>
                 )}
               </td>
-              <td className="py-1.5 text-right font-bold tabular-nums">
-                {b.qtd >= 0 ? '+' : '−'} {qtd(Math.abs(b.qtd))} {un}
+              {/* ⚠️ a linha que NÃO SOMA parece que não soma: sem sinal, em cinza e entre
+                  parênteses. ⛔ Ela aparece porque somir calado seria o buraco do outro lado
+                  (o fato já aconteceu, só não estava na foto da contagem). */}
+              <td className="py-1.5 text-right font-bold tabular-nums"
+                style={b.foraDoTotal ? { color: RADAR.mudo, fontWeight: 500 } : undefined}>
+                {b.foraDoTotal
+                  ? `(${qtd(Math.abs(b.qtd))} ${un})`
+                  : `${b.qtd >= 0 ? '+' : '−'} ${qtd(Math.abs(b.qtd))} ${un}`}
               </td>
             </tr>
           ))}

@@ -63,8 +63,14 @@ export interface BaldeDaConta {
    * a conta **não tinha linha pra eles**. ***Toda parcela que o motor usa aparece como
    * LINHA.***
    */
-  chave: 'comprou' | 'produziu' | 'vendeu' | 'perdas' | 'devolveu' | 'estornos' | 'ajustes' | 'foraDeOrdem' | 'outros'
+  chave: 'comprou' | 'produziu' | 'vendeu' | 'perdas' | 'devolveu' | 'estornos' | 'ajustes' | 'foraDeOrdem' | 'lancadoDepois' | 'outros'
   rotulo: string
+  /**
+   * ⚠️ **APARECE E NÃO SOMA.** É o movimento datado dentro da janela e lançado DEPOIS da
+   * contagem: ele ainda não estava na foto do `deviaTer`, então entrar no total faria a conta
+   * não fechar — e sumir dele faria o buraco de novo, do outro lado. Entra na janela seguinte.
+   */
+  foraDoTotal?: true
   qtd: number
   valor: number
   /** quantos movimentos formaram o balde — o "1 nota" / "3 ordens" da tela */
@@ -539,20 +545,19 @@ export async function calcularFechamentoDoDia(
      */
     const foraDeOrdem = todos.filter((m) => !noPeriodoDoFato(m) && entrouNoDeviaTer(m))
     /**
-     * ⚠️⚠️ O ESPELHO (B) FICA COMO REDE, NÃO COMO LINHA — e a razão é medida, não de gosto.
+     * ⚠️⚠️ O ESPELHO (B): datado DENTRO da janela, **lançado DEPOIS da contagem de
+     * referência**. Ele não está no `deviaTer` (a foto é anterior a ele), então somá-lo faz a
+     * conta não fechar — e ele aparece com `foraDoTotal`, dizendo que entra na PRÓXIMA janela.
      *
-     * (B) é o movimento datado DENTRO da janela e lançado DEPOIS da contagem de referência:
-     * ele não está no `deviaTer`, então somá-lo não fecha. Tirá-lo do total **engole toda
-     * fixture** — num teste o `criadoEm` é o relógio real (meses depois da data do fato) e
-     * não se backdata, então (B) viraria *todo* movimento e os baldes zerariam. Medido: 2
-     * testes do `mesa-le-o-motor` ficaram vermelhos exatamente assim.
+     * ⭐⭐ **MEDIDO EM PROD ANTES DE DECIDIR:** das 35 linhas das listas, 7 não fechavam e **(B)
+     * era a causa de 6** — tirando-o do total, `tinha + normal + retroativo` dá o `deviaTer`
+     * AO CENTAVO (iscas de frango 119 · queijo 271,11 · beef 17). ⚠️ Eu tinha deixado (B)
+     * como simples resíduo achando que era raro; o dado disse o contrário.
      *
-     * ⭐ Então o total segue o eixo do FATO, e quando (B) existir de verdade (import atrasado
-     * depois de uma contagem) o `naoExplicado` sobra e **a tela diz** — com o motivo nomeado
-     * no `pista`, em vez de um resíduo mudo.
+     * ⛔ E ele PRECISA aparecer: sumir calado seria o buraco de novo, do outro lado.
      */
     const lancadoDepois = ms.filter((m) => !entrouNoDeviaTer(m))
-    const msNoTotal = ms
+    const msNoTotal = ms.filter(entrouNoDeviaTer)
     const balde = (chave: BaldeDaConta['chave'], rotulo: string, tipos: readonly string[], inverter = false): BaldeDaConta => {
       const sel = msNoTotal.filter((m) => tipos.includes(m.tipo))
       const q = sel.reduce((s, m) => s + m.quantidade, 0)
@@ -599,6 +604,21 @@ export async function calcularFechamentoDoDia(
           ...(sel.length ? { dias: [...new Set(sel.map((m) => diaBR(m.dataMovimento)))].sort() } : {}),
         }
       })(),
+      // ⚠️ (B) aparece e NÃO soma — já aconteceu, ainda não estava na foto da contagem
+      (() => {
+        const dias = [...new Set(lancadoDepois.map((m) => diaBR(m.dataMovimento)))].sort()
+        return {
+          chave: 'lancadoDepois' as const,
+          rotulo: dias.length
+            ? `lançado depois da contagem (fato em ${dias.map(br).join(', ')}) — entra na próxima janela`
+            : 'lançado depois da contagem',
+          qtd: round3(lancadoDepois.reduce((a, m) => a + m.quantidade, 0)),
+          valor: round2(Math.abs(lancadoDepois.reduce((a, m) => a + m.custoTotal, 0))),
+          movimentos: lancadoDepois.length,
+          foraDoTotal: true as const,
+          ...(dias.length ? { dias } : {}),
+        }
+      })(),
       // ⭐⭐ A LINHA QUE FALTAVA: datado fora da janela, lançado dentro dela
       (() => {
         const dias = [...new Set(foraDeOrdem.map((m) => diaBR(m.dataMovimento)))].sort()
@@ -616,7 +636,7 @@ export async function calcularFechamentoDoDia(
         }
       })(),
     ]
-    const somaBaldes = baldes.reduce((s, b) => s + b.qtd, 0)
+    const somaBaldes = baldes.reduce((s, b) => s + (b.foraDoTotal ? 0 : b.qtd), 0)
     const tinha = round3(ant?.qtdContada ?? (ref ? ref.saldoSistema - somaBaldes : 0))
     /**
      * ⭐ COM contagem, o "devia ter" é o `saldoSistema` **gravado** no instante dela.
@@ -638,13 +658,19 @@ export async function calcularFechamentoDoDia(
       contamos: ref ? round3(ref.qtdContada) : null,
       faltou: ref ? round3(ref.divergencia) : null,
       faltouValor: ref ? round2(ref.valorDivergencia) : null,
-      naoExplicado: Math.abs(naoExplicado) < 0.005 ? 0 : naoExplicado,
+      /**
+       * ⚠️ 0,01 e não 0,005: o `saldoSistema` da contagem é gravado com **2 casas** e o ledger
+       * anda em **3** (grama/ml). Medido no «Coxão Mole»: Σ 49,316 × snapshot 49,31 — resíduo
+       * de 6 milésimos que é **artefato de arredondamento**, não linha faltando. ⛔ Alarme
+       * falso repetido é como um alarme morre.
+       */
+      naoExplicado: Math.abs(naoExplicado) < 0.0101 ? 0 : naoExplicado,
       /**
        * ⭐ E SE SOBROU, A TELA DIZ O PORQUÊ PROVÁVEL em vez de um resíduo mudo. Hoje a única
        * causa conhecida é o (B): movimento datado dentro da janela e lançado depois da
        * contagem (import atrasado) — ele ainda não estava na foto do `deviaTer`.
        */
-      ...(Math.abs(naoExplicado) >= 0.005 && lancadoDepois.length
+      ...(Math.abs(naoExplicado) >= 0.0101 && lancadoDepois.length
         ? { pista: `${lancadoDepois.length} movimento(s) datado(s) nesta janela foram lançados DEPOIS da contagem de ${br(diaBR(j.t1))} — ainda não estavam no "devia ter"` }
         : {}),
     }

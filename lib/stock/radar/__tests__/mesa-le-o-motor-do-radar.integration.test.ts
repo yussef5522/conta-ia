@@ -25,12 +25,38 @@ import { criarMovimento } from '@/lib/stock/movement'
 const CNPJ = '68686868000168'
 let companyId: string
 let coca: string, queijo: string
-const DIA = '2026-09-15'
-const JANELA = { de: '2026-09-12', ate: '2026-09-18' }
+/**
+ * ⚠️⚠️ A CENA É RELATIVA AO RELÓGIO (02/10/2026), e isso virou necessário quando a conta de
+ * padeiro passou a distinguir *"lançado antes"* de *"lançado depois da contagem"*: o
+ * `criadoEm` de um movimento é o relógio real e **não se backdata pela porta**. Com datas
+ * fixas no passado, TODO movimento da fixture nascia depois das contagens — um estado que em
+ * prod é a exceção (import atrasado), e aqui era 100% dos casos.
+ *
+ * ⭐ Os dias viraram offsets em MINUTOS a partir de agora, preservando a ORDEM que cada teste
+ * precisa (ontem < 14 < 16 < 17). *Fixture que não reproduz a ordem de lançamento de prod não
+ * prova nada sobre prod.*
+ */
+const AGORA = Date.now()
+const H = 3_600_000
+/** o dia do fato, em offsets — negativo é passado, e a ordem é o que importa */
+const FATO = {
+  antes: new Date(AGORA - 72 * H),   // fora da janela (era 10/09)
+  meio: new Date(AGORA - 20 * H),    // dentro (era 13/09)
+  dia: new Date(AGORA - 10 * H),     // dentro (era 15/09)
+}
+/** as contagens acontecem AGORA (como em prod: depois dos movimentos existirem) */
+const QUANDO: Record<string, Date> = {
+  '2026-09-13': new Date(AGORA + 1 * 60_000),
+  '2026-09-14': new Date(AGORA + 2 * 60_000),
+  '2026-09-16': new Date(AGORA + 3 * 60_000),
+  '2026-09-17': new Date(AGORA + 4 * 60_000),
+}
+const diaISO = (d: Date) => new Date(+d - 3 * H).toISOString().slice(0, 10)
+const JANELA = { de: diaISO(new Date(AGORA - 24 * H)), ate: diaISO(new Date(AGORA + 5 * 60_000)) }
 
 /** cria a contagem do jeito que a tela cria: linha + AJUSTE_CONTAGEM na mesma história */
 async function contar(itemId: string, quando: string, saldoSistema: number, contou: number, custo: number) {
-  const contadoEm = new Date(`${quando}T15:00:00-03:00`)
+  const contadoEm = QUANDO[quando] ?? new Date(AGORA + 9 * 60_000)
   const divergencia = Math.round((contou - saldoSistema) * 1000) / 1000
   const mov = divergencia === 0 ? null : await criarMovimento(prisma, {
     companyId, itemId, tipo: 'AJUSTE_CONTAGEM', quantidade: divergencia,
@@ -57,10 +83,10 @@ beforeEach(async () => {
   const b = await prisma.stockItem.create({ data: { companyId, nome: 'porçao queijo 135 grama', unidadeControle: 'KG', categoria: 'INTERMEDIARIO', criadoVia: 'MANUAL' } })
   coca = a.id; queijo = b.id
   // compra antes do período (forma o INÍCIO) + venda dentro
-  await criarMovimento(prisma, { companyId, itemId: coca, tipo: 'ENTRADA_NF', quantidade: 100, custoUnitario: 3, custoTotal: 300, origem: 'SEFAZ', dataMovimento: new Date('2026-09-10T12:00:00-03:00') })
-  await criarMovimento(prisma, { companyId, itemId: coca, tipo: 'BAIXA_VENDA', quantidade: -12, custoUnitario: 3, custoTotal: -36, origem: 'MANUAL', dataMovimento: new Date(`${DIA}T12:00:00-03:00`) })
-  await criarMovimento(prisma, { companyId, itemId: queijo, tipo: 'PRODUCAO_GERACAO', quantidade: 20, custoUnitario: 4, custoTotal: 80, origem: 'MANUAL', dataMovimento: new Date('2026-09-13T12:00:00-03:00') })
-  await criarMovimento(prisma, { companyId, itemId: queijo, tipo: 'BAIXA_VENDA', quantidade: -5, custoUnitario: 4, custoTotal: -20, origem: 'MANUAL', dataMovimento: new Date(`${DIA}T12:00:00-03:00`) })
+  await criarMovimento(prisma, { companyId, itemId: coca, tipo: 'ENTRADA_NF', quantidade: 100, custoUnitario: 3, custoTotal: 300, origem: 'SEFAZ', dataMovimento: FATO.antes })
+  await criarMovimento(prisma, { companyId, itemId: coca, tipo: 'BAIXA_VENDA', quantidade: -12, custoUnitario: 3, custoTotal: -36, origem: 'MANUAL', dataMovimento: FATO.dia })
+  await criarMovimento(prisma, { companyId, itemId: queijo, tipo: 'PRODUCAO_GERACAO', quantidade: 20, custoUnitario: 4, custoTotal: 80, origem: 'MANUAL', dataMovimento: FATO.meio })
+  await criarMovimento(prisma, { companyId, itemId: queijo, tipo: 'BAIXA_VENDA', quantidade: -5, custoUnitario: 4, custoTotal: -20, origem: 'MANUAL', dataMovimento: FATO.dia })
   await prisma.stockRadarWatchlist.createMany({ data: [
     { companyId, lista: 'REVENDA', itemId: coca },
     { companyId, lista: 'PORCOES', itemId: queijo },
@@ -173,8 +199,10 @@ describe('⭐ as colunas e o que cada uma diz', () => {
     await contar(queijo, '2026-09-16', 15, 15, 4)   // 1ª contagem do queijo
     const radar = await rodarRadar()
     const porItem = new Map(montarMesa(radar).flatMap((s) => s.linhas).map((l) => [l.itemId, l]))
-    expect(porItem.get(coca)!.desde).toBe('2026-09-13')
-    expect(porItem.get(coca)!.diasDaJanela).toBe(4)
+    // ⚠️ a cena é relativa ao relógio (ver o topo): o "desde" é o DIA da contagem anterior,
+    // e as duas contagens da coca estão a minutos de distância — então a janela é do mesmo dia
+    expect(porItem.get(coca)!.desde).toBe(diaISO(QUANDO['2026-09-13']!))
+    expect(porItem.get(coca)!.diasDaJanela, 'minutos de distância arredondam pra 0 dia').toBe(0)
     expect(porItem.get(queijo)!.desde, 'sem contagem anterior a janela não tem começo').toBeNull()
   })
 
