@@ -517,10 +517,35 @@ export async function calcularFechamentoDoDia(
      * `tinha` já é pós-ajuste da anterior e o `deviaTer` é pré-ajuste da de referência.
      * Excluir por TIPO (como era) levava embora o ajuste LEGÍTIMO do meio da janela.
      */
-    const bordas = new Set([ant?.contagemId, ref?.contagemId].filter(Boolean) as string[])
-    /** ⛔ o ajuste da PRÓPRIA contagem de borda nunca entra (ver o comentário acima) */
-    const naoEhBorda = (m: { tipo: string; receiptId: string | null }) =>
-      !(m.tipo === 'AJUSTE_CONTAGEM' && m.receiptId && bordas.has(m.receiptId))
+    /**
+     * ⭐⭐⭐ A BORDA É O **ÚLTIMO** AJUSTE DA SESSÃO DE REFERÊNCIA, NÃO TODOS ELES (02/10).
+     *
+     * ⛔⛔ **Medido em prod na «metade de bolinha massa de pizza»:** a sessão de 02/10
+     * **RECONTOU** o item — ajuste `−546` às 05:27 e `+200` às 05:28 — e a linha da contagem
+     * guarda só o **último** delta (o `@@unique(contagemId,itemId)` faz recontar virar UPDATE,
+     * decisão de 23/08). O `saldoSistema` gravado (164) já embute o `−546`, então excluir
+     * **todos** os ajustes da sessão abria um buraco de exatamente 546 na conta.
+     *
+     * ⭐ A régua: do `ant` sai TUDO (o `tinha` é o contado, pós-todos os ajustes dele); do
+     * `ref` sai só o ÚLTIMO (o `deviaTer` é pré-último). As leituras anteriores da recontagem
+     * ganham LINHA — e passa a ser visível que a própria contagem mexeu no número.
+     *
+     * ⚠️ 23 linhas de contagem da Caçula têm recontagem; ver o débito registrado sobre a
+     * variância gravada subestimar nesses casos (decisão do dono).
+     */
+    const ultimoAjusteDoRef = (() => {
+      if (!ref) return null
+      const doRef = (movsPorItem.get(itemId) ?? [])
+        .filter((m) => m.tipo === 'AJUSTE_CONTAGEM' && m.receiptId === ref.contagemId)
+        .sort((a, b) => +a.criadoEm - +b.criadoEm)
+      return doRef.length ? doRef[doRef.length - 1]! : null
+    })()
+    const naoEhBorda = (m: { tipo: string; receiptId: string | null; criadoEm: Date; quantidade: number }) => {
+      if (m.tipo !== 'AJUSTE_CONTAGEM' || !m.receiptId) return true
+      if (ant && m.receiptId === ant.contagemId) return false
+      if (ultimoAjusteDoRef && m === ultimoAjusteDoRef) return false
+      return true
+    }
     const noPeriodoDoFato = (m: { dataMovimento: Date }) =>
       (j.t0 === null || m.dataMovimento > j.t0) && m.dataMovimento <= j.t1
     /** entrou no sistema entre as duas fotos? (é o que decide se está no `deviaTer`) */
@@ -590,7 +615,14 @@ export async function calcularFechamentoDoDia(
       balde('devolveu', 'separado pra produção', [...TIPOS.SEPARACAO, ...TIPOS.DEVOLUCAO]),
       balde('estornos', 'estornos', TIPOS.ESTORNO),
       // ⭐ ajuste de contagem DO MEIO da janela (o da borda já saiu pela sessão)
-      balde('ajustes', 'ajuste de outra contagem', TIPOS.AJUSTE),
+      // ⭐ leitura anterior da recontagem (ou ajuste de outra sessão) — nunca silenciosa
+      (() => {
+        const b = balde('ajustes', 'ajuste de contagem', TIPOS.AJUSTE)
+        const soDoRef = ref && msNoTotal
+          .filter((m) => m.tipo === 'AJUSTE_CONTAGEM')
+          .every((m) => m.receiptId === ref.contagemId)
+        return { ...b, rotulo: soDoRef && b.movimentos > 0 ? 'leitura anterior desta contagem (recontagem)' : b.rotulo }
+      })(),
       // ⭐ o que o ledger tem e esta conta não nomeia — nunca silencioso
       (() => {
         const sel = msNoTotal.filter((m) => !COBERTOS.includes(m.tipo))

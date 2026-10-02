@@ -248,6 +248,54 @@ describe('⚠️⚠️ O ESPELHO — lançado DEPOIS da contagem aparece e NÃO 
   })
 })
 
+describe('⛔⛔⛔ A RECONTAGEM NA MESMA SESSÃO — a 1ª leitura ganha linha', () => {
+  it('⛔⛔⛔ recontou no meio da sessão: a leitura anterior aparece e a conta FECHA', async () => {
+    /**
+     * ⭐⭐ **O CASO REAL da «metade de bolinha massa de pizza», medido em prod:** a sessão de
+     * 02/10 recontou o item — ajuste **−546** às 05:27 e **+200** às 05:28. O
+     * `@@unique(contagemId,itemId)` faz recontar virar **UPDATE da linha** (decisão de 23/08),
+     * então a linha guarda só o ÚLTIMO delta e o `saldoSistema` gravado **já embute o −546**.
+     *
+     * ⛔ Excluindo TODOS os ajustes da sessão (como eu fazia), abria um buraco de exatamente
+     * 546 — o maior resíduo da empresa. A régua: do `ant` sai tudo; do `ref` sai só o ÚLTIMO.
+     */
+    await contar(ANT, 700, 652)
+    // a sessão de referência conta 164, recontando depois pra 364 (dois ajustes, uma linha)
+    const sessao = await prisma.stockContagem.create({
+      data: { companyId, tipo: 'ROTINA', status: 'FINALIZADA', iniciadaEm: REF, finalizadaEm: REF },
+    })
+    const a1 = await criarMovimento(prisma, {
+      companyId, itemId: coca, tipo: 'AJUSTE_CONTAGEM', quantidade: -488, custoUnitario: 1, custoTotal: -488,
+      receiptId: sessao.id, origem: 'MANUAL', dataMovimento: REF,
+    })
+    const a2 = await criarMovimento(prisma, {
+      companyId, itemId: coca, tipo: 'AJUSTE_CONTAGEM', quantidade: 200, custoUnitario: 1, custoTotal: 200,
+      receiptId: sessao.id, origem: 'MANUAL', dataMovimento: new Date(+REF + 60_000),
+    })
+    await prisma.stockContagemItem.create({
+      data: {
+        companyId, contagemId: sessao.id, itemId: coca, saldoSistema: 164, qtdContada: 364,
+        divergencia: 200, custoUnitario: 1, valorDivergencia: 200,
+        movementId: a2.id, contadoEm: new Date(+REF + 60_000), contadoPorNome: 'cristian fortes',
+      },
+    })
+    void a1
+
+    const r = await calcularFechamentoDoDia(
+      { companyId, de: diaBR(ANT), ate: diaBR(new Date(+REF + 60_000)), caros: [], revenda: [coca], porcoes: [] }, prisma,
+    )
+    const c = r.revenda[0].conta!
+    expect(c.tinha, 'o "tinha" é o contado na anterior').toBe(652)
+    expect(c.deviaTer, 'a foto guarda o sistema ANTES do último ajuste').toBe(164)
+    const rec = c.baldes.find((b) => b.chave === 'ajustes')
+    expect(rec, '⛔ a leitura anterior da recontagem sumiu — é o buraco de 546').toBeTruthy()
+    expect(rec!.qtd).toBe(-488)
+    expect(rec!.rotulo, 'a linha tem que DIZER que foi recontagem').toMatch(/recontagem/i)
+    expect(somaImpressa(c), 'Σ das linhas tem que dar o devia ter').toBe(c.deviaTer)
+    expect(c.naoExplicado).toBe(0)
+  })
+})
+
 describe('⚠️ O ARREDONDAMENTO DA FOTO — 6 milésimos não são linha faltando', () => {
   it('⭐ snapshot de 2 casas × ledger de 3 casas: resíduo de milésimo vira ZERO', async () => {
     /**
