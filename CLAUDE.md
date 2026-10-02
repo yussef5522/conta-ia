@@ -1520,6 +1520,98 @@ banrisul           ABERTURA 31/07      -13.531,57  ⛔ -5.234,00 → decisão do
 
 📋 **DÉBITO REGISTRADO:** o **lançamento manual grava a data à MEIA-NOITE UTC** (`new Date("2026-09-18").toISOString()`), enquanto a convenção da casa é **MEIO-DIA** (o import carimba assim). Em fuso negativo, meia-noite UTC **volta um dia** na exibição — foi por isso que a linha dos 2.112,00 aparece como 17/09 na perícia e 18/09 no dado cru. Não mexido: acertar move competências históricas.
 
+## ⛔⛔⛔ A CONTA DE PADEIRO SOMA SEMPRE · E A COCA FANTASMA TEM DONO (02/10/2026)
+
+**O dono, na Coca 2L, janela 01/10→02/10:** *"a conta imprime tinha 265 · vendeu −81 · DEVIA TER 147 — mas 265−81=184. (…) o motor DESCONTA os 37 por dentro e a conta IMPRESSA esconde a linha deles."* E a lei que ele ditou: ***toda parcela que o motor usa aparece como LINHA, e Σ(linhas) == devia ter — guard vermelho se não fechar.***
+
+### ⭐⭐ OS 37 ERAM **UM** MOVIMENTO, COM NOME E SOBRENOME
+
+```
+BAIXA_VENDA −37 · fato 01/10 00:00 · LANÇADO 02/10 04:58 · marcyelle · receipt comp-…
+                  (a contagem estava no meio: 01/10 04:30)
+265 − 81 − 37 = 147  ⭐ ao centavo
+```
+
+**⚠️⚠️ E A CAUSA DE FUNDO É QUE A JANELA TEM DOIS EIXOS, e o motor usava um.** O saldo do sistema é Σ de tudo que **EXISTE** (o `saldo.ts` não filtra data), então o `tinha` e o `deviaTer` são fotos separadas por **criadoEm**; os baldes olhavam só a **data do FATO**. Lançamento retroativo entrava no `deviaTer` e **não aparecia em janela nenhuma**.
+
+**⚠️ E NÃO É CASO DE BORDA — É A ROTINA:** o import de **complementos grava à meia-noite** e **a cozinha conta de madrugada** (medido: as 21 contagens da Coca saíram entre **02:22 e 05:23**). Então a baixa do próprio dia cai antes da contagem **todo dia**. Em prod: **11 das 35 linhas** das listas têm lançamento retroativo.
+
+### ⛔ AS TRÊS CLASSES, cada uma achada medindo a seguinte
+
+| # | o que é | o que mudou |
+|---|---|---|
+| **(A)** retroativo | fato **fora** da janela, lançado **dentro** | ⭐ ganhou LINHA, com as duas datas em DD/MM |
+| **(B)** o espelho | fato **dentro**, lançado **depois** da contagem | ⭐ linha com **`foraDoTotal`** — aparece em cinza, entre parênteses, e **NÃO soma** (entra na próxima janela) |
+| **(C)** recontagem | a sessão recontou o item | ⭐ a borda passou a ser **só o ÚLTIMO ajuste** do `ref`; a leitura anterior ganhou linha |
+
+⚠️ **(B) eu tinha deixado como simples resíduo achando que era raro — o dado disse o contrário:** das 35 linhas, **7 não fechavam e (B) era a causa de 6**. Tirando-o do total, `tinha + normal + retroativo` dá o `deviaTer` **exato** (iscas 119 · queijo 271,11 · beef 17).
+
+**⛔⛔ (C) ERA O MAIOR BURACO DA EMPRESA — 546 unidades.** A sessão de 02/10 **recontou** a «metade de bolinha massa de pizza»: ajuste **−546** às 05:27 e **+200** às 05:28. O `@@unique(contagemId,itemId)` faz recontar virar **UPDATE da linha** (decisão de 23/08), então a linha guarda só o **último** delta e o `saldoSistema` gravado **já embute o −546**. Excluir **todos** os ajustes da sessão abria um buraco de exatamente 546. ⭐ A régua: **do `ant` sai tudo** (o `tinha` é o contado, pós-todos os dele); **do `ref` sai só o último** (o `deviaTer` é pré-último).
+
+### ⭐ COBERTURA TOTAL — e o `AJUSTE_RESIDUO` nunca tinha casa
+
+A lista de baldes passou a cobrir **todo** tipo que move a prateleira, com o balde **`outros`** nomeando o tipo. ⚠️ O `AJUSTE_RESIDUO` nasceu em 19/09 e **somava calado pro resíduo** desde então. E o **`naoExplicado` voltou a ser resíduo DE VERDADE** (0 nos 35 itens), com `pista` dizendo o porquê provável quando sobrar.
+
+**⚠️ A MESA TINHA O MESMO DEFEITO, numa tabela ao lado:** a horizontal dela somava **5 dos baldes** e o motor usa todos. Ganhou a coluna **OUTROS** (`padrao: true` — coluna que fecha a conta não nasce desligada).
+
+**⚠️ E A TOLERÂNCIA DO RESÍDUO FOI PRA 0,01, com razão medida:** o `saldoSistema` é gravado com **2 casas** e o ledger anda em **3** (grama/ml). No «Coxão Mole»: Σ 49,316 × foto 49,31 — **6 milésimos de arredondamento**, não linha faltando. Alarme falso repetido é como um alarme morre.
+
+### ⛔⛔ RESGATE, NUNCA EXCLUSÃO — um defeito de DESENHO meu, pego pelo teste
+
+A 1ª versão trocou a janela de `dataMovimento` por `criadoEm` e **toda fixture datada no passado ficou com os baldes vazios** — o `criadoEm` é o relógio real e **não se backdata pela porta**. O eixo do FATO continua mandando nos baldes; o `criadoEm` entra só pra **achar o que a janela do fato não vê**. ⭐ E as fixtures do `mesa-le-o-motor` viraram **relativas ao relógio** (*"a contagem anterior foi ontem nesta hora; a de referência acabou de sair"*): fixture que não reproduz a ordem de lançamento de prod não prova nada sobre prod.
+
+**PROVADO EM PROD, nos DOIS viewports (REGRA 12):**
+```
+⭐ A JANELA DO DONO                      ⭐ A EMPRESA INTEIRA (25/09→02/10, 35 itens)
+  tinha ................. 265              contas que FECHAM: 35 de 35
+  vendeu ................ −81              linhas com retroativo: 11
+  lançamento retroativo    −37             (antes do sprint: a conta não somava em 8)
+  ──────────────────────────
+  Σ DAS LINHAS .......... 147
+  DEVIA TER ............. 147  ✓ resíduo 0
+radar 200 (celular 648ms · desktop 76ms) · real-vs-teorico 200 (109ms · 58ms)
+bundle: coluna OUTROS ✓ · foraDoTotal ✓ · a faixa do resíduo ✓
+```
+
+**REGRA 11 — 9 defeitos repostos, 9 vermelhos:** a linha do retroativo somindo · o ajuste excluído por tipo · a exclusão da borda caindo (**7**) · o balde `outros` somindo · a mesa somando 5 baldes · o (B) voltando pro total · o (B) perdendo a linha · a tolerância voltando a 0,005 · a borda voltando a excluir todos os ajustes do `ref`. ⚠️ **Dois vieram VERDES:** a tolerância **não tinha ninguém conferindo** (o caso do Coxão virou teste) e uma cena minha era **estruturalmente impossível** — *"ajuste no meio da janela"* não existe, porque o `ant` é sempre a última contagem antes do `ref`, então qualquer contagem no meio **passa a ser** o `ant`.
+
+**865 arquivos · 11.197 verdes · TS 0 · deploys 4/4 (`U4-rC3EOmj37-qqSLfVMz`, `1wAvH-GhSu8a70nT4He53`, `U7Zegi1SKbvEgn2uQm9xQ`) · Δ bundle +4 KB.** ⛔ **Zero escrita em prod.**
+
+### ⛔⛔⛔ E A COCA FANTASMA: OS 19 TÊM DONO — É O **COMBO CAÇULA**
+
+**As 81 abertas por produto do PDV**, pelo planner real:
+```
+56 UN ← "Combo Caçula" × 56        → FICHA, 1 Coca 2L por unidade vendida
+25 UN ← "COCA COLA 2L" × 25        → a venda direta
+───── Σ 81 (produtos) + 37 (complementos) = 118 UN de Coca num dia só
+```
+⭐ **E os 62 do dono são exatamente `25 + 37`** — as linhas em que o PDV **nomeia** a Coca.
+
+**⛔⛔ A DUPLA CONTAGEM, e o relatório de complementos é a prova:** ele registra a escolha **DENTRO do pedido** (`CALABRESA 76×`, `FRANGO 32×` = sabor; `GRANDE 11×` = tamanho; `MAIONESE` = molho) — e a **bebida escolhida está lá 37×**, enquanto a ficha do Combo **já embute 1 Coca 2L**. ***A mesma garrafa, duas vezes.*** Pior: a ficha embute **Coca 2L especificamente**, e o cliente pode ter escolhido Zero (14×), Fanta (2×) ou Fruki.
+
+**⚠️ A FAMÍLIA É EXATAMENTE 1 FICHA** (varrido): das 33 que "embutem bebida", 32 são **passa-direto** da própria bebida (legítimo). Só o Combo é **composto** com bebida dentro.
+
+**⭐ E A FICHA MUDOU DE PRODUTO NO MEIO DO CAMINHO:**
+```
+v1 (03/09, por Yussef)    2 UN beef de xis + 2 UN PAO DE XIS          ← "2 xis", SEM bebida
+v2 (21/09, por marcyelle) 1 UN COCA COLA 2L + 2 UN porção queijo 135g ← pizza grande + refri
+                          + 1 UN CAIXA P/ PIZZA 35cm + 3 UN metade de bolinha massa
+                          R$ 76,54 · 203 combos vendidos no histórico
+```
+
+**⚠️⚠️ E EU QUASE REPORTEI 1.132 GARRAFAS DE FANTASMA — corrigi medindo de novo.** Somei os tipos CRUS (`BAIXA_VENDA −3.493`) e eles **incluem baixas estornadas**. O ledger **VIVO** diz: comprou **1.160**, baixou **658**, ajustes **−301** → saldo **201** = o que a Posição mostra e o que a última contagem achou. ⭐ **Varredura: ZERO baixas duplicadas vivas na empresa inteira** — o estorna-e-refaz do reprocesso está correto.
+
+📋 **O QUE FICA PRO DONO (decisão de produto, não corrigi):** **o Combo Caçula inclui refrigerante?** Se **sim**, quem deve baixar a bebida é o **relatório de complementos** (ele sabe QUAL bebida) e a ficha não deve embutir Coca 2L; se **não**, a v2 da ficha está errada e o certo é a v1. Nos dois casos **o histórico é decisão dele** (como foi na CALABRESA BLACK): o ledger é imutável e reprocessar os dias é gesto com preview.
+
+📋 **DÉBITO MEDIDO, NÃO CONSERTADO — a variância gravada SUBESTIMA quando há recontagem.** São **23 linhas** de contagem da Caçula em que a sessão recontou o item; a linha guarda o **último** delta e a Σ da sessão é outra:
+```
+02/10 metade de bolinha massa de pizza   linha diz   +200 · a sessão ajustou   −346
+09/11 porçao queijo 135 grama            linha diz   −262 · a sessão ajustou −1.091
+09/11 porcao coxao 80 grama              linha diz     −8 · a sessão ajustou   −376
+14/09 REQUEIJAO CHEDDAR 1,5KG            linha diz 28.469 · a sessão ajustou 71.172  (o 1000× de 14/09)
+```
+⚠️ **E as duas telas discordam nesses casos:** o `calcularRealVsTeorico` soma **todos** os ajustes do período (a Σ da sessão, honesta) e o Radar lê o campo `divergencia` (o último delta). ⛔ **Não mudei de propósito:** derivar a variância da Σ da sessão quebraria a linha arquitetural deste módulo (*"este arquivo NÃO calcula variância — ela já está gravada"*) e mudaria o veredito de 23 linhas históricas, inclusive o placar de meses passados. **É decisão do dono qual régua vale.**
+
 ## ⛔⛔⛔ UMA RÉGUA PRA TRÊS TELAS — A PARCELA 22 QUITADA ERA CHAMADA DE ATRASADA (02/10/2026)
 
 **O dono, com os prints:** as 2 transações de 25/09 do **C41033828** (AMORTIZACAO 7.568,91 + LIQUIDACAO 2.665,44) estão *"parcela 22 · PELO SISTEMA · Resolvida"* ✓ e a parcela mostra *"pago em 25/09 · PAGO EM 2 PARCELAS PARCIAIS"* com os dois linkados ✓ — **mas a mesma parcela tem selo "Atrasada" + botão "Marcar paga"**, a tela de dentro do empréstimo diz atrasado e a LISTA diz em dia. ***Três leituras, três respostas.***
