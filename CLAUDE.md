@@ -1520,6 +1520,68 @@ banrisul           ABERTURA 31/07      -13.531,57  ⛔ -5.234,00 → decisão do
 
 📋 **DÉBITO REGISTRADO:** o **lançamento manual grava a data à MEIA-NOITE UTC** (`new Date("2026-09-18").toISOString()`), enquanto a convenção da casa é **MEIO-DIA** (o import carimba assim). Em fuso negativo, meia-noite UTC **volta um dia** na exibição — foi por isso que a linha dos 2.112,00 aparece como 17/09 na perícia e 18/09 no dado cru. Não mexido: acertar move competências históricas.
 
+## ⭐⭐ O COMBO CAÇULA PAROU DE EMBUTIR BEBIDA — v3 EM PROD (02/10/2026)
+
+**Decisão do dono:** *"o combo INCLUI bebida, mas quem escolhe é o cliente — então a FICHA NÃO EMBUTE bebida (v3 = a pizza, sem Coca 2L); quem baixa a bebida é o RELATÓRIO DE COMPLEMENTOS (ele sabe qual: Coca, Zero, Fanta...)."*
+
+**APLICADO pela porta da casa** (`atualizarFicha`, que versiona — a v2 fica no histórico), `pg_dump pre-combo-v3-20261002-200553.dump` (7.925.076 bytes, tamanho conferido) antes.
+
+```
+v2  1 UN COCA COLA 2L  +  2 UN porção queijo 135g  +  1 UN caixa 35cm  +  3 UN metade de massa
+v3                        2 UN porção queijo 135g  +  1 UN caixa 35cm  +  3 UN metade de massa
+```
+
+**⭐ O DIFF PROVADO NOS TRÊS LADOS (snapshot → aplica → compara):**
+```
+PRODUTOS 01/10     1 item mudou de 66 · COCA-COLA 2L 81 → 25   ⭐ só a venda direta
+PRODUTOS 30/09     0 de 59 (não houve combo nesse dia)
+COMPLEMENTOS       0 de 25 (01/10) · 0 de 12 (30/09)   ⭐ a bebida segue baixando por lá
+AS OUTRAS FICHAS   1 de 190 ativas mudou — o Combo. Os 32 passa-direto INTACTOS
+                   e o da própria Coca segue vivo (v1, 1× COCA-COLA 2L)
+compostas que ainda embutem bebida: 0 (era 1)
+```
+
+**⭐ E O CUSTO DO COMBO CAIU PORQUE ELE PAROU DE PAGAR UMA GARRAFA QUE NÃO ERA DELE:** `R$ 21,98 → R$ 13,17` (a Coca 2L custa R$ 8,81), margem **71% → 83%** sobre o preço praticado de R$ 77,06. A margem de 71% que a tela mostrava era a do produto **mais** uma bebida que o complemento já cobrava.
+
+### ⚠️ O CAMINHO DOS COMPLEMENTOS BAIXA 18 DOS 24 NOMES DE BEBIDA — e os 6 que faltam são combos
+
+```
+✓ COM destino: 18 nomes · 657 ocorrências    ⛔ SEM destino: 6 nomes · 30 ocorrências (4,4%)
+     11× FRUKI LATA MAIS MINI FRITAS          5× GUARANA FRUKI ZERO LATA
+      7× SPRITE LATA MAIS MINI FRITAS         4× FRUKI ZERO LATA MAIS MINI FRITAS
+      2× coca lata + mini fritas              1× Fanta Uva Lata + Mini Fritas
+```
+⭐ Quatro dos seis são **`bebida + MINI FRITAS`** — e eles não herdam por decisão de **12/09** (*"combo não herda: baixaria só a lata e esqueceria a batata"*); precisam de ficha composta, que é gesto do dono. ⚠️ O `GUARANA FRUKI ZERO LATA` é o caso de **ausência real** (só existe a `FRUKI LATA ZERO` no estoque, outra grafia) e os outros dois são grafia nova. ⛔ **Nada disso regrediu com a v3** — essas 30 ocorrências nunca foram baixadas corretamente, porque a ficha do Combo baixava **Coca 2L** independente do que o cliente escolheu.
+
+### 📋 O PREVIEW DO HISTÓRICO — e ele mudou a recomendação
+
+**Quantas Cocas 2L a ficha baixou A MAIS, desde a v2 (21/09 04:46):**
+```
+dia      combo(ficha)  direto   LIVE no ledger   lançado em        Δ A MAIS
+20/09          −34       −46          −80        21/09 04:48        −34   R$ 274,91
+01/10          −56       −25          −81        02/10 04:58        −56   R$ 493,68
+                                                        ⛔ Σ 90 UN · R$ 768,59
+```
+⚠️ Os outros dias de combo (21/08 e 19/09) foram processados com a **v1**, que não tinha bebida — então não entram.
+
+**⭐⭐ E AS CONTAGENS DA MADRUGADA JÁ ABSORVERAM — quase ao centavo, nos DOIS pares:**
+```
+20/09: baixou 34 a mais (lançado 21/09 04:48)  →  contagem 21/09 05:07 ajustou +34   ⭐ EXATO
+01/10: baixou 56 a mais (lançado 02/10 04:58)  →  contagem 02/10 05:23 ajustou +54
+Σ dos ajustes desde a v2: +91  ×  fantasma 90   ·   saldo de hoje: 201 UN (o contado)
+```
+
+**⛔⛔ POR ISSO A RECOMENDAÇÃO É REGISTRAR DIVERGÊNCIA, NÃO ACERTAR.** O saldo de hoje é o **físico contado**; estornar as 90 baixas **sem** desfazer os ajustes das contagens deixaria o estoque **90 UN ACIMA da prateleira** — criaria o erro em vez de corrigi-lo. É literalmente o caso *"a contagem já curou"* de 28-29/09 (*"devolver agora somaria em cima de um saldo que a contagem já reconciliou com a prateleira"*), e desfazer um ajuste de contagem seria apagar o que alguém contou.
+
+⚠️ **O que ficou torto e o estorno NÃO conserta:** **R$ 768,59 de CMV inflado** em 20/09 e 01/10, e **duas divergências de contagem falsas** (+34 e +54) que dizem *"sobrou"* quando foi a ficha baixando a mais — elas poluem o Real vs Teórico daqueles dias. **Decisão do dono.**
+
+**⚠️ E O QUE O COMPLEMENTO DIZ QUE REALMENTE SAIU nos dois dias** (é a bebida de verdade, por marca):
+```
+20/09   21 Coca 2L · 10 Coca Zero 2L · 8 Coca lata · 4 Fruki 2L · 3 Fanta Laranja 2L · 2 Fanta Uva 2L · 1 Sprite 2L · 1 Fanta Laranja lata
+01/10   37 Coca 2L · 14 Coca Zero 2L · 10 Coca lata · 4 Fanta Uva 2L · 2 Fanta Laranja 2L · 1 Sprite 2L · 1 Fanta Uva lata · 1 Fruki 2L
+```
+⭐ Nos dois dias a Coca 2L do complemento (21 e 37) é **menor** que o nº de combos (34 e 56) — ou seja boa parte dos clientes escolheu **Zero, Fanta ou Fruki**, e a ficha baixava Coca comum pra todos.
+
 ## ⛔⛔⛔ A CONTA DE PADEIRO SOMA SEMPRE · E A COCA FANTASMA TEM DONO (02/10/2026)
 
 **O dono, na Coca 2L, janela 01/10→02/10:** *"a conta imprime tinha 265 · vendeu −81 · DEVIA TER 147 — mas 265−81=184. (…) o motor DESCONTA os 37 por dentro e a conta IMPRESSA esconde a linha deles."* E a lei que ele ditou: ***toda parcela que o motor usa aparece como LINHA, e Σ(linhas) == devia ter — guard vermelho se não fechar.***
