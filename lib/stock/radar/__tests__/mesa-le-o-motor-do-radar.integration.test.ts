@@ -127,26 +127,33 @@ describe('⭐ as colunas e o que cada uma diz', () => {
     await contar(queijo, '2026-09-16', 15, 15, 4)
     const radar = await rodarRadar()
     const l = linhaDaMesa(radar.porcoes[0])
-    const soma = (l.inicio ?? 0) + l.entrou + l.produziu + l.vendeu + l.perdeu + l.separado
+    const soma = (l.inicio ?? 0) + l.entrou + l.produziu + l.vendeu + l.perdeu + l.separado + l.outros
     expect(Math.round(soma * 1000) / 1000).toBe(l.teorico)
     expect(l.produziu).toBe(20)
     expect(l.vendeu).toBe(-5) // ⭐ o sinal é o do ledger — é ele que faz a conta fechar
   })
 
-  it('⛔⛔ a linha que NÃO fecha carrega o "sem explicação" — não deixa o dono somar no dedo', async () => {
+  it('⛔⛔ a linha FECHA na horizontal com TODOS os baldes — e o "sem explicação" é a rede', async () => {
     /**
      * ⚠️ Achado na PROVA EM PROD: a «porçao queijo 135 grama» tinha as colunas somando 937
      * e o teórico 934. O motor já sabia (`naoExplicado`), mas a MESA não carregava o campo
      * — a tabela mostraria os dois números e nada explicando os 3.
+     *
+     * ⚠️⚠️ ASSERÇÃO ATUALIZADA EM 02/10, COM O MOTIVO ESCRITO. Ela afirmava *"o motor EXCLUI
+     * AJUSTE dos baldes, então a conta horizontal não fecha"* — e isso virou o defeito que a
+     * lei *"a conta de padeiro SOMA SEMPRE"* mata: o ajuste do meio da janela passou a ter
+     * LINHA (`ajustes`), e a mesa passou a carregar os baldes sem coluna própria (`outros`).
+     * ⭐ A metade que CONTINUA valendo: **a horizontal tem que fechar**, e o `naoExplicado`
+     * segue sendo a rede pro resíduo de verdade (hoje: import lançado depois da contagem).
      */
     await contar(coca, '2026-09-16', 88, 86, 3)
-    // um ajuste avulso no meio da janela: o motor EXCLUI AJUSTE dos baldes, então a conta
-    // horizontal não fecha — e é exatamente o estado que o campo existe pra nomear
     const radar = await rodarRadar()
     const l = linhaDaMesa(radar.revenda[0])
-    const horizontal = (l.inicio ?? 0) + l.entrou + l.produziu + l.vendeu + l.perdeu + l.separado
+    const horizontal = (l.inicio ?? 0) + l.entrou + l.produziu + l.vendeu + l.perdeu + l.separado + l.outros
     expect(Math.round((horizontal + l.naoExplicado) * 1000) / 1000,
-      'início + baldes + naoExplicado tem que dar o teórico, sempre').toBe(l.teorico)
+      'início + TODOS os baldes + naoExplicado tem que dar o teórico, sempre').toBe(l.teorico)
+    // ⛔ e o ajuste do meio da janela tem LINHA, não é resíduo
+    expect(l.outros, 'o ajuste da janela sumiu da conta').toBe(-2)
   })
 
   it('⛔⛔ REAL sem contagem é null — NUNCA número inventado', async () => {

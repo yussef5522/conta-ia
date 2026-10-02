@@ -60,7 +60,9 @@ export function ContaDePadeiro({ conta, unidade, itemId, empresaId }: {
                 {/* ⭐⭐ v1.2 — OS DIAS, escritos: "vendeu (baixas de 18 e 19/09)".
                     ⛔ Sem isto o "− 319 UN" é um número que só quem escreveu o código
                     consegue explicar. Acima de 3 dias vira intervalo, senão a linha estoura. */}
-                {b.dias && b.dias.length > 0 && (
+                {/* ⚠️ o retroativo já carrega as datas NO rótulo (fato × lançamento) —
+                    repetir aqui seria dizer a mesma data duas vezes na mesma linha */}
+                {b.chave !== 'foraDeOrdem' && b.dias && b.dias.length > 0 && (
                   <span className="ml-1 opacity-70">
                     ({b.dias.length <= 3
                       ? `${b.chave === 'vendeu' ? 'baixas de ' : ''}${b.dias.map(br).join(' e ')}`
@@ -81,8 +83,11 @@ export function ContaDePadeiro({ conta, unidade, itemId, empresaId }: {
             </tr>
           ))}
           <tr className="border-t" style={{ borderColor: RADAR.line }}>
-            {/* ⭐ v1.1 — o tempo verbal segue a janela: com contagem é o que DEVIA ter no
-                instante dela; sem contagem, o que o sistema diz que tem AGORA. */}
+            {/* ⭐⭐⭐ A LEI DE 02/10: **a conta de padeiro SOMA SEMPRE.** O "devia ter" é o
+                mesmo número que as linhas acima dão somadas — e é por isso que toda parcela
+                que o motor usa tem LINHA (`ajuste`, `lançamento retroativo`, `outros`).
+                ⛔ Antes a Coca 2L imprimia "tinha 265 · vendeu −81 · devia ter 147" (265−81
+                = 184) e os 37 viviam num rodapé. */}
             <td className="pt-2 font-extrabold">{c.contamos == null ? (c.ate === hoje ? 'DEVE TER AGORA' : `DEVIA TER EM ${br(c.ate)}`) : 'DEVIA TER'}</td>
             <td className="pt-2 text-right font-extrabold tabular-nums">{qtd(c.deviaTer)} {un}</td>
           </tr>
@@ -115,8 +120,10 @@ export function ContaDePadeiro({ conta, unidade, itemId, empresaId }: {
       {c.naoExplicado !== 0 && (
         <p className="mt-2.5 rounded-[10px] px-3 py-2 text-[12px] font-semibold"
           style={{ background: RADAR.ambarBg, color: RADAR.ambar }}>
-          ⚠️ {qtd(Math.abs(c.naoExplicado))} {un} desta janela não têm movimento que explique
-          (lançamento com data fora de ordem, ou ajuste avulso no meio).
+          ⚠️ {qtd(Math.abs(c.naoExplicado))} {un} desta janela não têm movimento que explique.
+          {/* ⭐ e quando o servidor SABE o porquê provável, ele diz — resíduo mudo é o que
+              fazia o dono somar no dedo e achar um furo que não é furo */}
+          {c.pista ? <span className="mt-0.5 block font-normal">{c.pista}</span> : null}
         </p>
       )}
 

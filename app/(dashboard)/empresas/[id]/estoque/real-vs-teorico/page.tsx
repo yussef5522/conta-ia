@@ -359,6 +359,7 @@ function Secao({ s, cols, mostra, empresaId, aberta, aoAbrir }: {
             {mostra('produziu') && <th className="px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wide">produzido</th>}
             {mostra('vendeu') && <th className="px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wide">vendeu</th>}
             {mostra('perdeu') && <th className="px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wide">perdeu</th>}
+            {mostra('outros') && <th className="px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wide">outros</th>}
             {mostra('teorico') && <th className="px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wide">teórico</th>}
             {mostra('real') && <th className="px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wide">real</th>}
             {mostra('variancia') && <th className="px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wide">variância</th>}
@@ -392,6 +393,10 @@ function Secao({ s, cols, mostra, empresaId, aberta, aoAbrir }: {
                 {mostra('produziu') && <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}><Qtd v={l.produziu || l.separado} un={l.unidade} /></td>}
                 {mostra('vendeu') && <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}><Qtd v={l.vendeu} un={l.unidade} /></td>}
                 {mostra('perdeu') && <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}><Qtd v={l.perdeu} un={l.unidade} /></td>}
+                {/* ⭐⭐ OUTROS — estorno, ajuste de outra contagem e lançamento RETROATIVO.
+                    É a coluna que faz a horizontal fechar; sem ela o dono soma no dedo e
+                    acha um furo que não existe (o caso da Coca 2L, 02/10). */}
+                {mostra('outros') && <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}><Qtd v={l.outros} un={l.unidade} /></td>}
                 {mostra('teorico') && (
                   <td className="px-3 text-right" style={{ paddingTop: MESA.linhaPy, paddingBottom: MESA.linhaPy }}>
                     <Qtd v={l.teorico} un={l.unidade} forte />
@@ -463,6 +468,7 @@ function Secao({ s, cols, mostra, empresaId, aberta, aoAbrir }: {
                 {mostra('produziu') && (l.produziu !== 0 || l.separado !== 0) && <span>produzido <b style={{ color: RADAR.ink }}>{formatarQtd(l.produziu || l.separado, l.unidade)}</b></span>}
                 {mostra('vendeu') && l.vendeu !== 0 && <span>vendeu <b style={{ color: RADAR.ink }}>{formatarQtd(l.vendeu, l.unidade)}</b></span>}
                 {mostra('perdeu') && l.perdeu !== 0 && <span>perdeu <b style={{ color: RADAR.ink }}>{formatarQtd(l.perdeu, l.unidade)}</b></span>}
+                {mostra('outros') && l.outros !== 0 && <span>outros <b style={{ color: RADAR.ink }}>{formatarQtd(l.outros, l.unidade)}</b></span>}
                 {mostra('teorico') && <span>teórico <b style={{ color: RADAR.ink, fontWeight: MESA.pesoForte }}>{formatarQtd(l.teorico, l.unidade)}</b></span>}
                 {l.naoExplicado !== 0 && <span style={{ color: RADAR.ambar }}>⚠️ {formatarQtd(Math.abs(l.naoExplicado), l.unidade)} sem explicação</span>}
                 {mostra('real') && <span>real <b style={{ color: l.real == null ? RADAR.mudo : RADAR.ink, fontWeight: MESA.pesoForte }}>{l.real == null ? 'falta contar' : formatarQtd(l.real, l.unidade)}</b></span>}

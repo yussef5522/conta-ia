@@ -35,6 +35,13 @@ export const COLUNAS = [
   { chave: 'produziu', rotulo: 'PRODUZIDO', ajuda: 'geração de produção (+) · nos insumos, o separado aparece com sinal −', tipo: 'qtd', padrao: true },
   { chave: 'vendeu', rotulo: 'VENDEU', ajuda: 'baixas de venda, pelas fichas', tipo: 'qtd', padrao: true },
   { chave: 'perdeu', rotulo: 'PERDEU', ajuda: 'perdas e uso interno lançados', tipo: 'qtd', padrao: false },
+  /**
+   * ⭐⭐ A COLUNA QUE FAZ A HORIZONTAL FECHAR NA TELA (02/10/2026). Sem ela a mesa somava 5
+   * baldes e o motor usa todos — estorno, ajuste de outra contagem e **lançamento
+   * retroativo** ficavam de fora, e o dono somava no dedo e achava um furo que não existe.
+   * ⚠️ `padrao: true` de propósito: coluna que fecha a conta não pode nascer desligada.
+   */
+  { chave: 'outros', rotulo: 'OUTROS', ajuda: 'estorno, ajuste de outra contagem e lançamento retroativo — é o que faz a linha fechar', tipo: 'qtd', padrao: true },
   { chave: 'teorico', rotulo: 'TEÓRICO', ajuda: 'o que devia ter no fim', tipo: 'qtd', padrao: true },
   { chave: 'real', rotulo: 'REAL', ajuda: 'o que foi contado (última contagem dentro do período)', tipo: 'qtd', padrao: true },
   { chave: 'variancia', rotulo: 'VARIÂNCIA', ajuda: 'real − teórico', tipo: 'qtd', padrao: true },
@@ -90,6 +97,16 @@ export interface LinhaDaMesa {
    * confiança na tela se perde.*
    */
   naoExplicado: number
+  /**
+   * ⭐⭐ OS BALDES QUE A TABELA NÃO TEM COLUNA PRÓPRIA (02/10/2026) — estorno, ajuste de
+   * outra contagem, lançamento retroativo e tipo novo do ledger.
+   *
+   * ⛔⛔ Sem este campo a horizontal da mesa **já não fechava**: ela somava 5 dos baldes e
+   * o motor usa todos. Era o mesmo defeito da conta de padeiro (*"265 − 81 = 184 e a tela
+   * diz 147"*) uma tabela ao lado — e sobrava calado no `naoExplicado`, que é a rede do
+   * resíduo, não a casa de um movimento que o ledger tem e a tela não nomeia.
+   */
+  outros: number
   veredito: LinhaDoRadar['veredito']
   custoMedio: number | null
   /** ⚠️ a conta de padeiro vem inteira: a mesa NÃO a remonta (é o mesmo componente) */
@@ -131,6 +148,12 @@ export function linhaDaMesa(l: LinhaDoRadar): LinhaDaMesa {
     vendeu,
     perdeu,
     separado,
+    // ⭐ Σ dos baldes sem coluna própria — é o que faz a horizontal voltar a fechar
+    outros: round3(
+      (c?.baldes ?? [])
+        .filter((b) => !['comprou', 'produziu', 'vendeu', 'perdas', 'devolveu'].includes(b.chave))
+        .reduce((a, b) => a + b.qtd, 0),
+    ),
     teorico: c ? c.deviaTer : null,
     real: c?.contamos ?? null,
     // ⛔ a variância É a do motor, sem recálculo — é isto que faz Σ(mesa) == Σ(Radar)

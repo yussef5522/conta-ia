@@ -54,7 +54,16 @@ export type Veredito = 'FALTOU_GRANDE' | 'FALTOU_PEQUENO' | 'SOBROU' | 'BATEU' |
 export const DEGRAU_VERMELHO = 50
 
 export interface BaldeDaConta {
-  chave: 'comprou' | 'produziu' | 'vendeu' | 'perdas' | 'devolveu' | 'estornos'
+  /**
+   * ⭐⭐⭐ COBERTURA TOTAL (02/10/2026 — a lei "a conta de padeiro SOMA SEMPRE").
+   *
+   * ⛔⛔ `ajustes` e `foraDeOrdem` nasceram porque a conta IMPRESSA não fechava: a Coca 2L
+   * dizia *"tinha 265 · vendeu −81 · devia ter 147"* — e 265−81 = **184**. Os 37 de
+   * diferença o motor DESCONTAVA por dentro (o `deviaTer` é o saldo gravado na contagem) e
+   * a conta **não tinha linha pra eles**. ***Toda parcela que o motor usa aparece como
+   * LINHA.***
+   */
+  chave: 'comprou' | 'produziu' | 'vendeu' | 'perdas' | 'devolveu' | 'estornos' | 'ajustes' | 'foraDeOrdem' | 'outros'
   rotulo: string
   qtd: number
   valor: number
@@ -98,11 +107,17 @@ export interface ContaDePadeiro {
   faltou: number | null
   faltouValor: number | null
   /**
-   * ⛔ `tinha + Σbaldes` tem que dar `deviaTer`. Quando não dá (movimento datado fora de
-   * ordem, ajuste avulso no meio), a tela **DIZ** em vez de mostrar uma conta que não
-   * fecha — *"número que não soma é como a confiança na tela se perde"*.
+   * ⛔⛔ **A LEI: `tinha + Σ(baldes) == deviaTer`, SEMPRE.** Toda parcela que o motor usa
+   * tem linha (`ajustes`, `foraDeOrdem`, `outros`), então isto é **resíduo de verdade** —
+   * e o guard `conta-de-padeiro-soma.test.ts` fica vermelho se deixar de ser 0.
+   *
+   * ⚠️ Fica no tipo de propósito, como última rede: se um dia aparecer um estado que as
+   * linhas não cobrem, a tela **DIZ** em vez de imprimir uma conta que não fecha —
+   * *"número que não soma é como a confiança na tela se perde"*.
    */
   naoExplicado: number
+  /** ⭐ o porquê provável do resíduo, quando houver — nunca um número mudo */
+  pista?: string
 }
 
 export interface LinhaDoRadar {
@@ -260,6 +275,8 @@ export function totalDaSecao(linhas: LinhaDoRadar[]): TotalDaSecao {
 
 interface ContagemDaLinha {
   itemId: string
+  /** ⭐ a SESSÃO — é por ela que o ajuste da PRÓPRIA contagem de borda é excluído da conta */
+  contagemId: string
   contadoEm: Date
   saldoSistema: number
   qtdContada: number
@@ -296,7 +313,7 @@ export async function calcularFechamentoDoDia(
     // das listas" pra não subestimar em silêncio.
     db.stockContagemItem.findMany({
       where: { companyId: input.companyId, contadoEm: { gte: inicio, lte: fim } },
-      select: { itemId: true, contadoEm: true, saldoSistema: true, qtdContada: true, divergencia: true, valorDivergencia: true },
+      select: { itemId: true, contagemId: true, contadoEm: true, saldoSistema: true, qtdContada: true, divergencia: true, valorDivergencia: true },
       orderBy: { contadoEm: 'asc' },
     }),
     // ⭐ a MESMA porta da Posição — saldo, valor e custo médio de uma vez só
@@ -340,7 +357,7 @@ export async function calcularFechamentoDoDia(
       const ant = await db.stockContagemItem.findFirst({
         where: { companyId: input.companyId, itemId, contadoEm: { lt: fimDaJanelaDe(itemId) } },
         orderBy: { contadoEm: 'desc' },
-        select: { contadoEm: true, qtdContada: true },
+        select: { contagemId: true, contadoEm: true, qtdContada: true },
       })
       return [itemId, ant] as const
     }))
@@ -423,10 +440,20 @@ export async function calcularFechamentoDoDia(
       where: {
         companyId: input.companyId,
         itemId: { in: janelas.map((j) => j.itemId) },
-        tipo: { notIn: [NAO_PRATELEIRA, ...TIPOS.AJUSTE] },
-        dataMovimento: { lte: fim },
+        /**
+         * ⭐⭐ O AJUSTE DE CONTAGEM VOLTOU PRA CONSULTA (02/10). Ele estava EXCLUÍDO, e era
+         * uma das duas razões de a conta impressa não fechar: ajuste no meio da janela
+         * mexia no `deviaTer` sem ter linha. O que precisa ficar de fora é só o ajuste da
+         * PRÓPRIA contagem de borda (o `tinha` já é pós-ajuste da anterior e o `deviaTer` é
+         * pré-ajuste da de referência) — e isso se faz pela SESSÃO, não pelo tipo.
+         *
+         * ⚠️ E **sem filtro de data**: o saldo do sistema é Σ de tudo que EXISTE, então um
+         * lançamento retroativo (datado antes, criado depois) entra no `deviaTer` sem
+         * aparecer numa janela filtrada por `dataMovimento`. Era o outro buraco.
+         */
+        tipo: { not: NAO_PRATELEIRA },
       },
-      select: { itemId: true, tipo: true, quantidade: true, custoTotal: true, dataMovimento: true },
+      select: { itemId: true, tipo: true, quantidade: true, custoTotal: true, dataMovimento: true, criadoEm: true, receiptId: true },
     })
     : []
   const movsPorItem = new Map<string, typeof movs>()
@@ -465,11 +492,69 @@ export async function calcularFechamentoDoDia(
      */
     const j = janelas.find((x) => x.itemId === itemId)
     if (!j) return base
-    const ms = (movsPorItem.get(itemId) ?? []).filter(
-      (m) => (j.t0 === null || m.dataMovimento > j.t0) && m.dataMovimento <= j.t1,
-    )
+    const ant = antPorItem.get(itemId)
+
+    /**
+     * ⭐⭐⭐ A JANELA TEM DOIS EIXOS, e ignorar um deles era o defeito (02/10/2026).
+     *
+     * O **saldo do sistema** é Σ de tudo que EXISTE (o `saldo.ts` não filtra data), então o
+     * `tinha` (pós-ajuste da contagem anterior) e o `deviaTer` (o `saldoSistema` gravado na
+     * contagem de referência) são fotos separadas por **EXISTÊNCIA** (`criadoEm`). Os baldes
+     * olhavam só a **DATA DO FATO** (`dataMovimento`) — e aí um lançamento retroativo (datado
+     * antes da contagem, criado depois) entrava no `deviaTer` **sem linha nenhuma na conta**.
+     *
+     * ⛔ O caso real da Coca 2L: `BAIXA_VENDA −37` datada **01/10 00:00** e criada **02/10
+     * 04:58** (o import de complementos grava à meia-noite), com a contagem no meio, às
+     * **01/10 04:30**. `265 − 81 = 184`, a tela dizia `147`, e os 37 eram essa linha.
+     *
+     * ⚠️ O ajuste da PRÓPRIA contagem de borda fica fora pela SESSÃO (`receiptId`): o
+     * `tinha` já é pós-ajuste da anterior e o `deviaTer` é pré-ajuste da de referência.
+     * Excluir por TIPO (como era) levava embora o ajuste LEGÍTIMO do meio da janela.
+     */
+    const bordas = new Set([ant?.contagemId, ref?.contagemId].filter(Boolean) as string[])
+    /** ⛔ o ajuste da PRÓPRIA contagem de borda nunca entra (ver o comentário acima) */
+    const naoEhBorda = (m: { tipo: string; receiptId: string | null }) =>
+      !(m.tipo === 'AJUSTE_CONTAGEM' && m.receiptId && bordas.has(m.receiptId))
+    const noPeriodoDoFato = (m: { dataMovimento: Date }) =>
+      (j.t0 === null || m.dataMovimento > j.t0) && m.dataMovimento <= j.t1
+    /** entrou no sistema entre as duas fotos? (é o que decide se está no `deviaTer`) */
+    const entrouNoDeviaTer = (m: { criadoEm: Date }) =>
+      (!ant || m.criadoEm > ant.contadoEm) && (!ref || m.criadoEm <= ref.contadoEm)
+
+    const todos = (movsPorItem.get(itemId) ?? []).filter(naoEhBorda)
+    /**
+     * ⭐⭐ RESGATE, NUNCA EXCLUSÃO — e isto foi um defeito de DESENHO meu, pego pelo teste.
+     *
+     * A 1ª versão trocava a janela de `dataMovimento` por `criadoEm`, e **toda fixture
+     * datada no passado ficou com os baldes vazios** (o `criadoEm` é o relógio real e não se
+     * backdata). O eixo do FATO continua mandando nos baldes; o `criadoEm` entra só pra
+     * **achar o que a janela do fato não vê**, nunca pra tirar o que ela já viu.
+     */
+    const ms = todos.filter(noPeriodoDoFato)
+    /**
+     * ⭐ OS "FORA DE ORDEM" (A): o fato é datado FORA da janela e entrou no sistema DENTRO
+     * dela — então está no `deviaTer` e **precisa de linha**, senão a conta não soma. É o
+     * caso real da Coca: baixa de complementos datada à meia-noite de 01/10, lançada em
+     * 02/10, com a contagem no meio (01/10 04:30).
+     */
+    const foraDeOrdem = todos.filter((m) => !noPeriodoDoFato(m) && entrouNoDeviaTer(m))
+    /**
+     * ⚠️⚠️ O ESPELHO (B) FICA COMO REDE, NÃO COMO LINHA — e a razão é medida, não de gosto.
+     *
+     * (B) é o movimento datado DENTRO da janela e lançado DEPOIS da contagem de referência:
+     * ele não está no `deviaTer`, então somá-lo não fecha. Tirá-lo do total **engole toda
+     * fixture** — num teste o `criadoEm` é o relógio real (meses depois da data do fato) e
+     * não se backdata, então (B) viraria *todo* movimento e os baldes zerariam. Medido: 2
+     * testes do `mesa-le-o-motor` ficaram vermelhos exatamente assim.
+     *
+     * ⭐ Então o total segue o eixo do FATO, e quando (B) existir de verdade (import atrasado
+     * depois de uma contagem) o `naoExplicado` sobra e **a tela diz** — com o motivo nomeado
+     * no `pista`, em vez de um resíduo mudo.
+     */
+    const lancadoDepois = ms.filter((m) => !entrouNoDeviaTer(m))
+    const msNoTotal = ms
     const balde = (chave: BaldeDaConta['chave'], rotulo: string, tipos: readonly string[], inverter = false): BaldeDaConta => {
-      const sel = ms.filter((m) => tipos.includes(m.tipo))
+      const sel = msNoTotal.filter((m) => tipos.includes(m.tipo))
       const q = sel.reduce((s, m) => s + m.quantidade, 0)
       const v = sel.reduce((s, m) => s + m.custoTotal, 0)
       // ⭐ v1.2 — os DIAS que formaram o balde, pra o número não precisar de dedução
@@ -482,17 +567,57 @@ export async function calcularFechamentoDoDia(
     const vendeu = balde('vendeu', 'vendeu (pelas fichas)', TIPOS.VENDA)
     // ⭐ a ressalva só faz sentido se a janela ALCANÇA o dia da ponta
     if (ressalvaDaVenda && diaBR(j.t1) === ate) vendeu.ressalva = ressalvaDaVenda
-    const baldes = [
+    /**
+     * ⛔⛔ A LISTA COBRE **TODO** TIPO QUE MOVE A PRATELEIRA — é o que faz a conta somar.
+     * `outros` é a rede: tipo novo no ledger aparece numa linha com o nome dele em vez de
+     * sumir dentro de um resíduo que ninguém explica (foi assim que o `AJUSTE_RESIDUO`,
+     * que nasceu em 19/09, nunca teve casa nesta conta).
+     */
+    const COBERTOS: readonly string[] = [
+      ...TIPOS.ENTRADA, ...TIPOS.GERACAO, ...TIPOS.VENDA, ...TIPOS.PERDA,
+      ...TIPOS.SEPARACAO, ...TIPOS.DEVOLUCAO, ...TIPOS.ESTORNO, ...TIPOS.AJUSTE,
+    ]
+    const baldes: BaldeDaConta[] = [
       balde('comprou', 'comprou', TIPOS.ENTRADA),
       balde('produziu', 'produziu', TIPOS.GERACAO),
       vendeu,
       balde('perdas', 'perdas lançadas', TIPOS.PERDA),
       balde('devolveu', 'separado pra produção', [...TIPOS.SEPARACAO, ...TIPOS.DEVOLUCAO]),
       balde('estornos', 'estornos', TIPOS.ESTORNO),
+      // ⭐ ajuste de contagem DO MEIO da janela (o da borda já saiu pela sessão)
+      balde('ajustes', 'ajuste de outra contagem', TIPOS.AJUSTE),
+      // ⭐ o que o ledger tem e esta conta não nomeia — nunca silencioso
+      (() => {
+        const sel = msNoTotal.filter((m) => !COBERTOS.includes(m.tipo))
+        const tipos = [...new Set(sel.map((m) => m.tipo))]
+        return {
+          chave: 'outros' as const,
+          rotulo: tipos.length ? `outros movimentos (${tipos.join(', ').toLowerCase()})` : 'outros movimentos',
+          qtd: round3(sel.reduce((a, m) => a + m.quantidade, 0)),
+          valor: round2(Math.abs(sel.reduce((a, m) => a + m.custoTotal, 0))),
+          movimentos: sel.length,
+          ...(sel.length ? { dias: [...new Set(sel.map((m) => diaBR(m.dataMovimento)))].sort() } : {}),
+        }
+      })(),
+      // ⭐⭐ A LINHA QUE FALTAVA: datado fora da janela, lançado dentro dela
+      (() => {
+        const dias = [...new Set(foraDeOrdem.map((m) => diaBR(m.dataMovimento)))].sort()
+        const lanc = [...new Set(foraDeOrdem.map((m) => diaBR(m.criadoEm)))].sort()
+        return {
+          chave: 'foraDeOrdem' as const,
+          // ⚠️ DD/MM, a língua da tela — o ISO é chave de dado, não texto pro dono
+          rotulo: dias.length
+            ? `lançamento retroativo (fato em ${dias.map(br).join(', ')} · lançado em ${lanc.map(br).join(', ')})`
+            : 'lançamento retroativo',
+          qtd: round3(foraDeOrdem.reduce((a, m) => a + m.quantidade, 0)),
+          valor: round2(Math.abs(foraDeOrdem.reduce((a, m) => a + m.custoTotal, 0))),
+          movimentos: foraDeOrdem.length,
+          ...(dias.length ? { dias } : {}),
+        }
+      })(),
     ]
     const somaBaldes = baldes.reduce((s, b) => s + b.qtd, 0)
-    const tinha = round3(antPorItem.get(itemId)?.qtdContada
-      ?? (ref ? ref.saldoSistema - somaBaldes : 0))
+    const tinha = round3(ant?.qtdContada ?? (ref ? ref.saldoSistema - somaBaldes : 0))
     /**
      * ⭐ COM contagem, o "devia ter" é o `saldoSistema` **gravado** no instante dela.
      * ⭐ SEM contagem, é o que o ledger explica no fim da janela (`tinha + baldes`) —
@@ -514,6 +639,14 @@ export async function calcularFechamentoDoDia(
       faltou: ref ? round3(ref.divergencia) : null,
       faltouValor: ref ? round2(ref.valorDivergencia) : null,
       naoExplicado: Math.abs(naoExplicado) < 0.005 ? 0 : naoExplicado,
+      /**
+       * ⭐ E SE SOBROU, A TELA DIZ O PORQUÊ PROVÁVEL em vez de um resíduo mudo. Hoje a única
+       * causa conhecida é o (B): movimento datado dentro da janela e lançado depois da
+       * contagem (import atrasado) — ele ainda não estava na foto do `deviaTer`.
+       */
+      ...(Math.abs(naoExplicado) >= 0.005 && lancadoDepois.length
+        ? { pista: `${lancadoDepois.length} movimento(s) datado(s) nesta janela foram lançados DEPOIS da contagem de ${br(diaBR(j.t1))} — ainda não estavam no "devia ter"` }
+        : {}),
     }
     if (!ref) return { ...base, conta }
     return {
