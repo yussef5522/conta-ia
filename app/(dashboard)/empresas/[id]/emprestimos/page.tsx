@@ -38,7 +38,7 @@ interface LoanRow {
   carencia: number
   interestRateMonthly: number
   status: 'ACTIVE' | 'PAID_OFF' | 'LATE'
-  statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'VENCE_HOJE' | 'ATRASADA' | 'QUITADO'
+  statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'VENCE_HOJE' | 'ATRASADA' | 'PARCIAL' | 'QUITADO'
   flexible?: boolean
   notes?: string | null
   devolvido?: number | null
@@ -97,6 +97,18 @@ function StatusPill({ s }: { s: LoanRow['statusVisual'] }) {
       <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
         <CheckCircle2 className="h-3 w-3 mr-1" />
         Quitado
+      </Badge>
+    )
+  /**
+   * ⭐⭐ PARCIAL é estado PRÓPRIO (02/10): nem "em dia" (falta dinheiro) nem "atrasada" (já
+   * entrou parte). Era colapsar isso num dos dois que fazia esta tela dizer EM DIA enquanto
+   * a tela da parcela dizia ATRASADA — três telas, três respostas.
+   */
+  if (s === 'PARCIAL')
+    return (
+      <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300">
+        <Clock className="h-3 w-3 mr-1" />
+        Parcela parcial
       </Badge>
     )
   if (s === 'ATRASADA')

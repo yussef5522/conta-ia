@@ -18,6 +18,8 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { computeLinkSplit, storedScheduleValid, shouldWriteSplit } from './link-payment'
+// ⚠️ o arredondamento vem de um lugar só — um `round2` local aqui seria a 3ª cópia
+import { arredondar2 } from './estado-da-parcela'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -121,7 +123,29 @@ export async function vincularPagamentoDeParcela(input: VincularInput): Promise<
     throw new VinculoDeParcelaError('TX_INELIGIBLE', porques.join(' · '))
   }
 
-  const paidTotal = txs.reduce((s, t) => s + t.amount, 0)
+  /**
+   * ⭐⭐⭐ O PAGO É A Σ DE **TODOS** OS VÍNCULOS, NÃO OS DESTE GESTO (02/10/2026).
+   *
+   * ⛔⛔ **O defeito, medido em prod:** era `txs.reduce(...)` — só as transações do gesto — e
+   * o `update` abaixo **SOBRESCREVIA** o `paidTotal`. Vincular em DOIS gestos perdia o
+   * primeiro: a parcela 22 do C41033828 ficou com **2.665,44** quando os dois vínculos somam
+   * **10.234,35** (o devido exato), e o status virou `PARTIAL` → a tela disse **"Atrasada"**
+   * com os dois pagamentos desenhados logo abaixo.
+   *
+   * ⚠️ A #21 do mesmo contrato tem **3 mordidas** e ficou CERTA — porque foram vinculadas
+   * **num gesto só**. É por isso que o defeito passou: ele só aparece quando o dono volta.
+   *
+   * ⭐ É a doutrina da **baixa parcial** (10/09) chegando ao empréstimo: *"o valor pago é a
+   * SOMA das baixas e o em aberto é DERIVADO — nunca status na mão"*. Coluna de valor pago
+   * envelhece; soma de linhas, não.
+   */
+  const jaVinculados = await prisma.loanInstallmentPayment.findMany({
+    where: { installmentId: target.id },
+    select: { amount: true },
+  })
+  const paidTotal = arredondar2(
+    jaVinculados.reduce((s, p) => s + p.amount, 0) + txs.reduce((s, t) => s + t.amount, 0),
+  )
   const split = computeLinkSplit({
     installment: { amortization: target.amortization, openingBalance: target.openingBalance },
     rateMonthly: loan.interestRateMonthly, paidTotal,
@@ -139,7 +163,20 @@ export async function vincularPagamentoDeParcela(input: VincularInput): Promise<
   const gravaSplit = shouldWriteSplit({
     scheduleSource: loan.scheduleSource, isZeroRate, agendaValida, isPartial: split.isPartial,
   })
-  const paidDate = txs.reduce((max, t) => (t.date > max ? t.date : max), txs[0].date)
+  /**
+   * ⚠️ A DATA também era só do gesto. Com mordidas em dias diferentes, o 2º gesto podia
+   * gravar uma data ANTERIOR à que já estava lá — e o cronograma passaria a dizer que a
+   * parcela foi paga antes do último débito que a quitou.
+   */
+  const datasJa = await prisma.loanInstallmentPayment.findMany({
+    where: { installmentId: target.id },
+    select: { transaction: { select: { date: true } } },
+  })
+  const todasAsDatas = [
+    ...txs.map((t) => t.date),
+    ...datasJa.map((d) => d.transaction?.date).filter((d): d is Date => !!d),
+  ]
+  const paidDate = todasAsDatas.reduce((max, d) => (d > max ? d : max), todasAsDatas[0])
   const status: 'PAID' | 'PARTIAL' = split.isPartial ? 'PARTIAL' : 'PAID'
 
   for (const t of txs) {

@@ -88,6 +88,10 @@ interface LoanDetalhe {
       interest: number
       amortization: number
       isAtrasada: boolean
+      /** ⭐ estado rico da régua única — é ele que deixa o card dizer "faltam R$ X" */
+      estado?: 'PAGA' | 'PARCIAL' | 'ATRASADA' | 'VENCE_HOJE' | 'A_VENCER' | null
+      falta?: number | null
+      selo?: string | null
     } | null
   }
   installments: Array<{
@@ -99,6 +103,18 @@ interface LoanDetalhe {
     payment: number
     closingBalance: number
     status: 'PAID' | 'OPEN' | 'LATE'
+    /**
+     * ⭐ 02/10 — o ESTADO RICO da régua única (`estadoDaParcela`). O enum acima fica por
+     * compat; é este que distingue PARCIAL de ATRASADA, e `pago`/`falta` vêm DERIVADOS da
+     * Σ dos vínculos (nunca do `paidTotal` gravado — era ele que mentia).
+     */
+    estado?: 'PAGA' | 'PARCIAL' | 'ATRASADA' | 'VENCE_HOJE' | 'A_VENCER'
+    pago?: number
+    falta?: number
+    selo?: string
+    /** ⛔ quitada NÃO oferece "marcar paga" — era por aí que a dupla contagem entrava */
+    ofereceMarcarPaga?: boolean
+    rotuloDoGesto?: string
     paidDate: string | null
     /** ⭐ o que a LINHA mostra: realizado quando há vínculo, previsto quando não há */
     linha: {
@@ -137,12 +153,44 @@ const fmtDate = (iso: string) => {
 
 const fmtRate = fmtRateMonthly
 
-function StatusInstallment({ s }: { s: 'PAID' | 'OPEN' | 'LATE' }) {
+/**
+ * ⭐⭐⭐ O SELO VEM DO SERVIDOR (02/10/2026) — a tela não infere mais estado.
+ *
+ * ⛔⛔ O enum de 3 valores não tinha como dizer **PARCIAL**, então a parcela 22 do
+ * C41033828 — com os DOIS pagamentos vinculados somando o devido exato — era desenhada
+ * **"Atrasada"** com as duas mordidas logo abaixo. O `estado` e o `selo` chegam prontos da
+ * régua única (`estadoDaParcela`), que é a MESMA que a lista de empréstimos usa.
+ */
+function StatusInstallment({
+  s,
+  estado,
+  selo,
+}: {
+  s: 'PAID' | 'OPEN' | 'LATE'
+  estado?: 'PAGA' | 'PARCIAL' | 'ATRASADA' | 'VENCE_HOJE' | 'A_VENCER'
+  selo?: string
+}) {
+  if (estado === 'PARCIAL')
+    return (
+      <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300" title={selo}>
+        <Clock className="h-3 w-3 mr-1" />
+        {/* ⭐ o NÚMERO no selo: "parcial" sem o quanto falta não ajuda o dono a decidir */}
+        {selo ?? 'Parcial'}
+      </Badge>
+    )
+  if (estado === 'VENCE_HOJE')
+    return (
+      <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300">
+        <Clock className="h-3 w-3 mr-1" />
+        Vence hoje
+      </Badge>
+    )
   if (s === 'PAID')
     return (
       <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
         <CheckCircle2 className="h-3 w-3 mr-1" />
-        Paga · conciliada
+        {/* ⚠️ "conciliada" só quando há vínculo; paga por documento não mente dizendo isso */}
+        {selo === 'paga' ? 'Paga · conciliada' : (selo ?? 'Paga')}
       </Badge>
     )
   if (s === 'LATE')
@@ -349,13 +397,37 @@ export default function DetalheEmprestimoPage({
           <KpiCard
             icon={<Calendar className="h-4 w-4 text-amber-600" />}
             label="Próxima parcela"
-            value={agregados.proximaParcela ? formatBRL(agregados.proximaParcela.payment) : '—'}
+            /**
+             * ⭐ NA PARCIAL O NÚMERO É O QUE FALTA (02/10). O nominal da agenda ali seria
+             * cobrar de novo o pedaço que já entrou — e é justamente a parcela com dinheiro
+             * dentro que o dono olha pra decidir quanto pagar hoje.
+             */
+            value={
+              agregados.proximaParcela
+                ? formatBRL(
+                    agregados.proximaParcela.estado === 'PARCIAL' &&
+                      agregados.proximaParcela.falta != null
+                      ? agregados.proximaParcela.falta
+                      : agregados.proximaParcela.payment,
+                  )
+                : '—'
+            }
             sub={
               agregados.proximaParcela
-                ? `#${agregados.proximaParcela.number} · ${fmtDate(agregados.proximaParcela.dueDate)}${agregados.proximaParcela.isAtrasada ? ' (atrasada)' : ''}`
+                ? `#${agregados.proximaParcela.number} · ${fmtDate(agregados.proximaParcela.dueDate)}${
+                    agregados.proximaParcela.estado === 'PARCIAL'
+                      ? ' · falta pagar (parcial)'
+                      : agregados.proximaParcela.isAtrasada
+                        ? ' (atrasada)'
+                        : ''
+                  }`
                 : 'Quitado'
             }
-            tone={agregados.proximaParcela?.isAtrasada ? 'red' : 'amber'}
+            tone={
+              agregados.proximaParcela?.isAtrasada
+                ? 'red'
+                : 'amber'
+            }
           />
         )}
       </div>
@@ -479,7 +551,7 @@ export default function DetalheEmprestimoPage({
                     </td>
                     <td className="p-3">
                       <div className="flex items-center gap-2">
-                        <StatusInstallment s={i.status} />
+                        <StatusInstallment s={i.status} estado={i.estado} selo={i.selo} />
                         {i.status === 'PAID' && i.reconciledTransaction && (
                           <button
                             type="button"
@@ -490,14 +562,22 @@ export default function DetalheEmprestimoPage({
                             Desfazer
                           </button>
                         )}
-                        {(i.status === 'OPEN' || i.status === 'LATE') && (
+                        {/*
+                          ⛔⛔⛔ O BOTÃO OBEDECE O SERVIDOR (02/10) — risco de DUPLA CONTAGEM.
+                          Era `status === 'OPEN' || 'LATE'`, e como a parcela 22 era desenhada
+                          LATE (sem conhecer PARTIAL), o botão aparecia numa parcela **que já
+                          tinha os dois pagamentos vinculados**. Clicar levaria a um terceiro
+                          vínculo. Agora: quitada NÃO oferece; parcial oferece dizendo o que
+                          falta — o gesto COMPLETA a diferença, nunca recomeça.
+                        */}
+                        {(i.ofereceMarcarPaga ?? (i.status === 'OPEN' || i.status === 'LATE')) && (
                           <button
                             type="button"
                             onClick={() => setOpenCandidatos(i.number)}
                             className="text-[10px] text-primary hover:underline inline-flex items-center gap-0.5"
                           >
                             <Link2 className="h-2.5 w-2.5" />
-                            Marcar paga
+                            {i.rotuloDoGesto ?? 'Marcar paga'}
                           </button>
                         )}
                       </div>

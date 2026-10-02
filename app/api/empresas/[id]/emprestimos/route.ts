@@ -15,6 +15,7 @@ import { parcelaMensalTotal, type LinhaParcelaMensal } from '@/lib/loans/parcela
 import { computeVenceMes } from '@/lib/loans/vence-mes'
 import { validateSchedule, InvalidLoanScheduleError } from '@/lib/loans/validate-schedule'
 import { computeOutstandingBalance as compOut } from '@/lib/loans/auto-conciliacao'
+import { estadoDaParcela } from '@/lib/loans/estado-da-parcela'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -70,6 +71,13 @@ export async function GET(request: NextRequest, { params }: Params) {
             paidTotal: true,
             reconciledTransactionId: true,
             _count: { select: { payments: true } },
+            /**
+             * ⭐⭐ 02/10 — os VALORES dos vínculos, não só a contagem. Sem eles a régua única
+             * não tem como derivar o pago, e a lista voltaria a decidir pelo `status` gravado
+             * — que é justamente o campo que mentiu na parcela 22.
+             */
+            payments: { select: { amount: true } },
+            reconciledTransaction: { select: { amount: true } },
           },
           orderBy: { number: 'asc' },
         },
@@ -95,7 +103,29 @@ export async function GET(request: NextRequest, { params }: Params) {
       // inválida → fórmula conservadora. Ver lib/loans/saldo.ts.
       const saldoDevedor = saldoDevedorAtual(l, l.installments)
 
-      const proximaOpen = l.installments.find((i) => i.status === 'OPEN')
+      /**
+       * ⭐⭐⭐ A PRÓXIMA É A PRIMEIRA QUE NÃO ESTÁ PAGA — pela RÉGUA ÚNICA (02/10/2026).
+       *
+       * ⛔⛔ Era `find(i => i.status === 'OPEN')`, e isso **pulava `PARTIAL`**: a parcela 22 do
+       * C41033828 (status `PARTIAL` por causa do `paidTotal` sobrescrito) era **invisível pra
+       * esta tela**, que então olhava a #23 de 25/10 e dizia **EM DIA** — enquanto a tela da
+       * parcela dizia **ATRASADA**. Três telas, três respostas.
+       *
+       * ⭐ Agora a régua é a mesma das outras duas, e ela é honesta nos dois sentidos: parcela
+       * parcial DE VERDADE passa a ser a próxima, dizendo o que falta.
+       */
+      const flexible = l.scheduleSource === 'FLEXIBLE'
+      const veredito = (i: (typeof l.installments)[number]) =>
+        estadoDaParcela(
+          {
+            dueDate: i.dueDate, payment: i.payment, status: i.status, paidTotal: i.paidTotal,
+            pagamentos: i.payments.map((pg) => ({ amount: pg.amount })),
+            valorDoVinculo11: i.reconciledTransaction?.amount ?? null,
+          },
+          { flexible, hoje: now },
+        )
+      const proximaOpen = l.installments.find((i) => veredito(i).estado !== 'PAGA')
+      const vProxima = proximaOpen ? veredito(proximaOpen) : null
 
       // Fase 2 (15/08): previsão da próxima parcela — POS pela última CASADA
       // (valor real), PRE pela agenda (fato). Ver lib/loans/forecast.ts.
@@ -114,7 +144,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
       // Mútuo FLEXIBLE (sem prazo fixo): NUNCA "Atrasada"/"Próxima" — a agenda é só
       // nominal, a devolução é conforme caixa. Só EM_DIA ou QUITADO.
-      const flexible = l.scheduleSource === 'FLEXIBLE'
+      // ⚠️ `flexible` é declarado acima, junto do veredito — um nome só pra a mesma coisa.
       // Atrasada só DEPOIS do dia do vencimento — comparação por DIA (UTC), não
       // por instante (parcela vencendo HOJE não está atrasada; o débito cai ao
       // longo do dia). Hoje = "vence hoje"; ontem-pra-trás = "atrasada".
@@ -126,11 +156,16 @@ export async function GET(request: NextRequest, { params }: Params) {
             proximaOpen.dueDate.getUTCDate(),
           )
         : null
-      const isAtrasada = !flexible && diaVenc != null && diaVenc < diaHoje
+      // ⚠️ parcial NÃO é atrasada: já entrou dinheiro nela, e o selo dela diz o que falta
+      const isAtrasada = !flexible && vProxima?.estado === 'ATRASADA' && diaVenc != null && diaVenc < diaHoje
       const isVenceHoje = !flexible && diaVenc != null && diaVenc === diaHoje
-      const statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'VENCE_HOJE' | 'ATRASADA' | 'QUITADO' =
+      const statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'VENCE_HOJE' | 'ATRASADA' | 'PARCIAL' | 'QUITADO' =
         l.status === 'PAID_OFF'
           ? 'QUITADO'
+          // ⭐ parcial é estado PRÓPRIO: nem "em dia" (falta dinheiro) nem "atrasada"
+          //   (já entrou parte). Colapsar num dos dois é a mentira que o dono pegou.
+          : vProxima?.estado === 'PARCIAL'
+            ? 'PARCIAL'
           : isAtrasada
             ? 'ATRASADA'
             : isVenceHoje

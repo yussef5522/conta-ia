@@ -6,6 +6,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { linhaDoCronograma, jurosRealizados } from '@/lib/loans/linha-do-cronograma'
 import { saldoDevedorAtual } from '@/lib/loans/saldo'
+import { estadoDaParcela, ofereceMarcarPaga, rotuloDoGesto } from '@/lib/loans/estado-da-parcela'
 
 interface Params {
   params: Promise<{ id: string; loanId: string }>
@@ -96,20 +97,48 @@ export async function GET(request: NextRequest, { params }: Params) {
         valor: Math.round((i.paidTotal ?? i.amortization) * 100) / 100,
       }))
 
-    const proximaOpen = flexible ? undefined : loan.installments.find((i) => i.status === 'OPEN')
-    const isAtrasada =
-      proximaOpen !== undefined && proximaOpen.dueDate.getTime() < now.getTime()
+    /**
+     * ⭐⭐⭐ A RÉGUA ÚNICA, CHAMADA UMA VEZ POR PARCELA (02/10/2026) — e o cabeçalho do
+     * contrato bebe DELA, não de uma leitura própria.
+     *
+     * ⛔⛔ Era `installments.find((i) => i.status === 'OPEN')`, que **PULA a PARTIAL**: numa
+     * parcial de verdade (pagou metade, falta metade) o cabeçalho saltava pra a parcela
+     * SEGUINTE e o contrato dizia *"em dia"* escondendo o resto em aberto. ⚠️ E a comparação
+     * é POR DIA, nunca por instante — as duas réguas divergiam no PRÓPRIO dia do vencimento
+     * (a cicatriz de fuso do card do cartão, 09/09).
+     */
+    const veredito = (i: (typeof loan.installments)[number]) =>
+      estadoDaParcela(
+        {
+          dueDate: i.dueDate, payment: i.payment, status: i.status, paidTotal: i.paidTotal,
+          pagamentos: i.payments.map((pg) => ({ amount: pg.amount })),
+          valorDoVinculo11: i.reconciledTransaction?.amount ?? null,
+        },
+        { flexible, hoje: now },
+      )
 
-    // Marca status visual de cada parcela (LATE pro front). FLEXIBLE nunca LATE.
+    const proximaOpen = flexible
+      ? undefined
+      : loan.installments.find((i) => veredito(i).estado !== 'PAGA')
+    const vProxima = proximaOpen ? veredito(proximaOpen) : null
+    const isAtrasada = vProxima?.estado === 'ATRASADA'
+
+    /**
+     * ⭐⭐⭐ O ESTADO DE CADA PARCELA VEM DA RÉGUA ÚNICA (02/10/2026).
+     *
+     * ⛔⛔ Era `i.status === 'PAID' ? 'PAID' : dueDate < now ? 'LATE' : 'OPEN'` — **só conhecia
+     * PAID vs resto**. A parcela 22 do C41033828, com os DOIS pagamentos vinculados somando
+     * exatamente o devido (7.568,91 + 2.665,44 = 10.234,35), virava **LATE** e a tela dizia
+     * *"Atrasada"* com as duas mordidas desenhadas logo abaixo. **Três telas, três respostas.**
+     */
     const installments = loan.installments.map((i) => {
+      // ⚠️ a MESMA função do cabeçalho — uma segunda chamada com outros argumentos aqui
+      // faria o contrato dizer um estado e a linha dizer outro, que é o defeito de origem.
+      const v = veredito(i)
+      // ⚠️ o contrato com o front é mantido (PAID|OPEN|LATE) e GANHA o estado rico ao lado —
+      // trocar o enum num só commit quebraria a tela antes do deploy dela.
       const statusUI: 'PAID' | 'OPEN' | 'LATE' =
-        i.status === 'PAID'
-          ? 'PAID'
-          : flexible
-            ? 'OPEN'
-            : i.dueDate.getTime() < now.getTime()
-              ? 'LATE'
-              : 'OPEN'
+        v.estado === 'PAGA' ? 'PAID' : v.estado === 'ATRASADA' ? 'LATE' : 'OPEN'
       // ⭐⭐ PARCELA PAGA RELATA, PARCELA FUTURA PREVÊ (10/09/2026) — a régua mora na
       // lib e a tela só desenha. Os campos `interest`/`payment` continuam indo CRUS
       // (o "Corrigir agenda" edita a PREVISÃO e precisa dela), mas o que a linha do
@@ -124,6 +153,18 @@ export async function GET(request: NextRequest, { params }: Params) {
         payment: i.payment,
         closingBalance: i.closingBalance,
         status: statusUI,
+        /**
+         * ⭐⭐ O ESTADO RICO, pra a tela parar de inferir (02/10). `estado` distingue PARCIAL
+         * de ATRASADA — o que o enum de 3 valores não conseguia dizer — e `pago`/`falta` vêm
+         * **DERIVADOS da Σ dos vínculos**, nunca do `paidTotal` gravado (era ele que mentia).
+         */
+        estado: v.estado,
+        pago: v.pago,
+        falta: v.falta,
+        selo: v.selo,
+        /** ⛔ quitada NÃO oferece "marcar paga" — era por aí que a dupla contagem entrava */
+        ofereceMarcarPaga: ofereceMarcarPaga(v),
+        rotuloDoGesto: rotuloDoGesto(v),
         paidDate: i.paidDate?.toISOString() ?? null,
         linha: {
           juros: linha.juros,
@@ -221,6 +262,15 @@ export async function GET(request: NextRequest, { params }: Params) {
               interest: proximaOpen.interest,
               amortization: proximaOpen.amortization,
               isAtrasada,
+              /**
+               * ⭐ O ESTADO DA PRÓXIMA, pra o cabeçalho poder ser honesto numa PARCIAL:
+               * ali o que o dono precisa ver é **o que FALTA**, não o nominal da agenda —
+               * mostrar os R$ 10.234,35 cheios numa parcela com 7.568,91 já pagos seria
+               * cobrar duas vezes pelo mesmo pedaço.
+               */
+              estado: vProxima?.estado ?? null,
+              falta: vProxima?.falta ?? null,
+              selo: vProxima?.selo ?? null,
             }
           : null,
       },
