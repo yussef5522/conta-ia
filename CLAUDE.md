@@ -1520,6 +1520,83 @@ banrisul           ABERTURA 31/07      -13.531,57  ⛔ -5.234,00 → decisão do
 
 📋 **DÉBITO REGISTRADO:** o **lançamento manual grava a data à MEIA-NOITE UTC** (`new Date("2026-09-18").toISOString()`), enquanto a convenção da casa é **MEIO-DIA** (o import carimba assim). Em fuso negativo, meia-noite UTC **volta um dia** na exibição — foi por isso que a linha dos 2.112,00 aparece como 17/09 na perícia e 18/09 no dado cru. Não mexido: acertar move competências históricas.
 
+## ⛔⛔⛔ UMA RÉGUA PRA TRÊS TELAS — A PARCELA 22 QUITADA ERA CHAMADA DE ATRASADA (02/10/2026)
+
+**O dono, com os prints:** as 2 transações de 25/09 do **C41033828** (AMORTIZACAO 7.568,91 + LIQUIDACAO 2.665,44) estão *"parcela 22 · PELO SISTEMA · Resolvida"* ✓ e a parcela mostra *"pago em 25/09 · PAGO EM 2 PARCELAS PARCIAIS"* com os dois linkados ✓ — **mas a mesma parcela tem selo "Atrasada" + botão "Marcar paga"**, a tela de dentro do empréstimo diz atrasado e a LISTA diz em dia. ***Três leituras, três respostas.***
+
+**⭐ OS NÚMEROS DECIDEM, e eles fecham AO CENTAVO:** `7.568,91 + 2.665,44 = 10.234,35` = **exatamente** o devido da #22. Não era parcial de verdade: era quitada sendo chamada de atrasada.
+
+### ⛔⛔ ERAM DUAS CAMADAS, e a de cima sozinha não explicava nada
+
+**1. O DADO.** `vincularPagamentoDeParcela` somava as tx **DO GESTO** e **SOBRESCREVIA** o `paidTotal` → vincular em **dois gestos perdia o primeiro**. A #22 ficou com `paidTotal 2.665,44` (só o último) tendo 10.234,35 vinculados, e daí o `status PARTIAL`. ⚠️ **A #21, com 3 mordidas num gesto só, ficou certa — é por isso que o defeito passou meses.** Agora a gravação lê `loanInstallmentPayment.findMany` e soma **todos** os vínculos; o `paidDate` é o **max de todas** as datas, não a do gesto.
+
+**2. A LEITURA.** O `statusUI` da tela do contrato era `i.status === 'PAID' ? 'PAID' : dueDate < now ? 'LATE' : 'OPEN'` — **só conhecia PAID vs resto**. Parcela `PARTIAL` vencida virava **LATE**, com as duas mordidas desenhadas logo abaixo.
+
+**⚠️⚠️ E HAVIA DUAS IMPLEMENTAÇÕES DE "ATRASADA":** a LISTA comparava por **DIA (UTC)**, com o motivo escrito (*"parcela vencendo HOJE não está atrasada; o débito cai ao longo do dia"*); o CONTRATO e o `statusUI` comparavam por **INSTANTE**. Divergiam no **próprio dia do vencimento** — a cicatriz de fuso que esta casa já pagou no card do cartão (09/09) e no Contas a Pagar (13/09). Mais um terceiro vocabulário em `parcelas-do-mes`.
+
+### ⭐⭐⭐ A DECISÃO MAIS IMPORTANTE: **PROMOVE, NUNCA REBAIXA**
+
+A régua ingênua — *"PAGA ⟺ Σ dos vínculos >= devido"* — foi **MEDIDA contra as 353 parcelas da empresa ANTES de ser escrita**, e ela **rebaixaria 3 que estão legitimamente pagas**:
+
+```
+Arafat #1    devido 41.428,57 · pago 40.000,00   ← mútuo FLEXIBLE: a agenda é NOMINAL
+Banrisul #58 devido  2.449,08 · pago  2.444,62   ← faltam 4,46 e ninguém deve isso
+Banrisul #59 devido  2.422,62 · pago  2.413,86   ← faltam 8,76
+```
+
+⚠️ E **180 parcelas estão `PAID` sem vínculo nenhum** (pagas por documento, histórico anterior ao sistema) — uma régua que exigisse a soma rebaixaria todas. ⭐ Por isso: ***`PAID` gravado é DECISÃO e ganha da aritmética; a soma só PROMOVE.*** É a lição de 14/08 — *"invariante ERRADO é pior que invariante nenhum: se a regra falha no caso legítimo, alguém vai 'consertar' o DADO pra bater com a régua errada"*. **Provado em prod:** a lista mostra o Banrisul 002100057538834 com próxima **#60**, ou seja #58 e #59 seguem PAGAS.
+
+`lib/loans/estado-da-parcela.ts` é a régua única: **PAGA · PARCIAL · ATRASADA · VENCE_HOJE · A_VENCER**, com `pago`/`falta` **DERIVADOS da Σ dos vínculos** (N:1 → 1:1 → `paidTotal` só como último recurso, pra a parcela sem vínculo nenhum) e comparação **POR DIA**. **FLEXIBLE nunca é ATRASADA nem PARCIAL pelo nominal** — dizer *"faltam 1.428,57"* no mútuo inventaria uma dívida de parcela que não existe.
+
+### ⛔ O BOTÃO QUE ERA A PORTA DA DUPLA CONTAGEM
+
+*"Marcar paga"* aparecia numa parcela **que já tinha os dois pagamentos vinculados** (porque o `statusUI` a chamava de LATE). Clicar levaria a um **terceiro vínculo** e o `paidTotal` seria sobrescrito de novo. Agora **quitada não oferece** (`ofereceMarcarPaga`) e **parcial oferece dizendo o que falta** (`rotuloDoGesto` → *"completar — faltam R$ 2.665,44"*): o gesto completa a diferença, nunca recomeça. ⭐ E o **cabeçalho do contrato mostra o que FALTA numa parcial**, não o nominal da agenda — o nominal ali cobraria de novo o pedaço que já entrou.
+
+⚠️ **E as duas rotas achavam a próxima parcela por `status === 'OPEN'`, que PULA a PARTIAL** — numa parcial de verdade isso faz o contrato dizer *"em dia"* **escondendo o resto em aberto**. Agora a próxima é a primeira que a régua não chama de PAGA.
+
+**PROVADO EM PROD, pelas rotas reais com sessão assinada (REGRA 12, os dois viewports):**
+```
+TELA 1 — LISTA      C41033828-8 · statusVisual EM_DIA · próxima #23 (25/10)
+TELA 2 — CONTRATO   cabeçalho isAtrasada false · próxima #23 · estado A_VENCER
+TELA 3 — A PARCELA  #22 devido 10.234,35 · estado PAGA · pago 10.234,35 · falta 0,00
+                    selo "paga em 2 pagamentos" · ofereceMarcarPaga FALSE
+                    25/09 7.568,91 sicredi AMORTIZACAO · 25/09 2.665,44 sicredi LIQUIDACAO
+                    Σ das mordidas 10.234,35 == devido · FECHA ✓
+⭐ AS TRÊS CONCORDAM: SIM ✓     ⛔ a #21 lê "paga em 3 pagamentos" (as 3 mordidas de 25/08)
+os 10 contratos da carteira: EM_DIA · nenhum virou ATRASADA falso
+páginas: LISTA 200 (celular 207ms · desktop 147ms) · CONTRATO 200 (107ms · 99ms)
+
+⭐ CONTRAFACTUAL DA PARCIAL (a #22 com SÓ a 1ª mordida — o estado dela entre os dois débitos):
+   estado PARCIAL · pago 7.568,91 · falta 2.665,44
+   selo "parcial — R$ 7.568,91 de R$ 10.234,35, faltam R$ 2.665,44"
+   rótulo "completar — faltam R$ 2.665,44"
+```
+⚠️ **Não há NENHUMA parcial de verdade na empresa hoje** (medido: 0) — então o *"parcial — falta R$ X"* se prova pelo contrafactual com os números reais da própria #22, não por dado vivo.
+
+**REGRA 11 — 12 defeitos repostos, 12 vermelhos:** na régua (`PAID` deixando de ganhar **3** · `paidTotal` na frente dos vínculos **5** · botão na quitada **1** · comparação por instante **1** · FLEXIBLE sem isenção **2** · parcial vencida virando atrasada **3**) e no encaixe (contrato achando a próxima por status **2** · lista idem **1** · botão pelo status gravado **1** · cabeçalho com o nominal **1** · gravação somando só o gesto **1** · lista sem PARCIAL **1**).
+
+**⚠️⚠️ DOIS GUARDS MEUS VIERAM VERDES E FORAM APERTADOS:** o do cabeçalho media a **MENÇÃO** da frase — que aparece também no `sub=` logo abaixo — em vez do `value=` que decide o número (*"menção, não uso"*, a 9ª vez nesta casa); e o da gravação casava `loanInstallmentPayment.findMany` num arquivo que tem **DUAS** dessas (a outra busca as DATAS) → **mordeu a chamada errada**. ⚠️ E uma asserção nasceu com **janela de 400 caracteres** e deu **falso vermelho com a tela certa** — virou estrutural (*janela de distância já produziu falso vermelho E falso verde aqui*).
+
+**864 arquivos · 11.189 verdes · TS 0 · deploy 4/4 (`Ju6lETUNpQTpHi7p4gNkn`) · Δ bundle +0 KB.** ⛔ **Zero escrita em prod** — conserto de código + sondas read-only.
+
+### 📋 FICA PRO DONO — A CORREÇÃO DE DADO DA #22 (medida, NÃO aplicada)
+
+O **código** já lê certo; o que segue torto é o **dado gravado**, e ele tem **duas consequências de dinheiro**:
+
+```
+#22 gravada: status PARTIAL · paidTotal R$ 2.665,44 · paidInterest NULL
+  (a soma dos vínculos é 10.234,35 e a agenda diz amort 9.729,34 + juros 505,01)
+
+1) SALDO DEVEDOR do contrato      hoje R$ 31.370,79 (fecha na #21)
+                            se #22 PAID R$ 21.641,45
+                            ⛔ R$ 9.729,34 a MAIS — a carteira diz 826.163,81 em vez de 816.434,47
+
+2) DRE DE SETEMBRO           a #20 tem paidInterest 827,76 · a #21 tem 667,74 · a #22 NULL
+                            ⛔ R$ 505,01 de despesa financeira que não entrou
+```
+
+⭐ **E o conserto NÃO é um UPDATE à mão** — é **desfazer e re-vincular pela porta** (`desfazerVinculoDeParcela` + `vincularPagamentoDeParcela` com as duas transações), que agora soma todos os vínculos e **recalcula o split do zero**. *Número de dinheiro corrigido a dedo é o começo do dado que ninguém explica depois.* ⚠️ **A família é de 1 caso** — varredura: **1** parcela não-PAID cuja Σ de vínculos já quita o devido, exatamente esta. **Setembro acabou de fechar**; se já foi pro contador, a entrada dos 505,01 é decisão dele.
+
 ## ⛔⛔⛔ O EXTRATO DO BANCO CAIXA NÃO CHEGOU NA CONCILIAÇÃO — O FORMATO DO ARQUIVO DECIDIA (01/10/2026)
 
 **O dono:** *"Importei hoje o extrato do BANCO CAIXA com 2 pagamentos de EMPRÉSTIMO + juros/tarifa + outras. Na Conciliação não apareceu NADA — nem na caixa, nem nos contadores; só UMA transferência apareceu."*
