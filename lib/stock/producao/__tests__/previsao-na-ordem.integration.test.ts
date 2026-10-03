@@ -11,7 +11,8 @@ import { prisma } from '@/lib/db'
 import { criarFicha } from '../fichas'
 import { criarOrdem, confirmarSeparacao, iniciarProducao, explodirSeparacao } from '../ordens'
 import { concluir, rendimentoMedidoDaFicha } from '../conclusao'
-import { escalaDoConsumo, preverSaida, insumoParaSaida } from '../previsao-rendimento'
+import { escalaDoConsumo, preverSaida } from '../previsao-rendimento'
+import { insumoDoPedido } from '../escala-da-ordem'
 
 // ⚠️ CNPJ ÚNICO NA SUÍTE (06/09): este arquivo dividia o CNPJ com outro, e os dois, em
 // PARALELO, apagavam a empresa um do outro no `beforeEach` (FK violation intermitente).
@@ -76,7 +77,7 @@ describe('⭐⭐ a previsão e o rendimento gravado saem da MESMA escala', () =>
     // a tela calcularia assim, com o `porLote` que a rota devolve:
     const escalaDaTela = escalaDoConsumo([{ qtd: 20.85, porLote: POR_LOTE }])!
     const previsto = preverSaida(escalaDaTela, { teorico: 1, medido: null, lotes: 0 })
-    expect(Math.round(previsto.teorico)).toBe(154) // o "~154" que faltava no print
+    expect(Math.round(previsto.esperadoDaFicha)).toBe(154) // o "~154" que faltava no print
 
     // e o motor, ao concluir com exatamente esse número, grava rendimento ≈ 1 por receita
     const r = await produzir(20.85, 154)
@@ -84,16 +85,23 @@ describe('⭐⭐ a previsão e o rendimento gravado saem da MESMA escala', () =>
     expect(r.rendimento).toBeCloseTo(0.9971, 3)
   })
 
-  it('⭐⭐ o sentido principal: "faz 200 porções" com média medida → 29,3 KG', async () => {
-    // duas produções a ~92% criam a régua medida
+  it('⛔⛔ "faz 200 porções" → 27 KG mesmo COM média medida — INVERTIDO em 03/10', async () => {
+    /**
+     * ⚠️⚠️ **Era 29,35, "e não 27, que faria FALTAR queijo".** O dono reverteu em 03/10:
+     * *"receita é lei — se a perda é real, EU mudo a ficha"*. Este teste virou a PROVA de que
+     * a medição não alcança a separação: duas produções a 92% criam a média, e o número que
+     * a cozinha recebe continua sendo o da receita.
+     */
     await produzir(20.85, 142)
     await produzir(20.85, 142)
     const { media, lotes } = await rendimentoMedidoDaFicha(companyId, fichaId, prisma)
     expect(lotes).toBe(2)
-    expect(media).toBeCloseTo(0.92, 2)
+    expect(media).toBeCloseTo(0.92, 2) // ⭐ a média EXISTE…
 
-    const kg = insumoParaSaida(200, POR_LOTE, { teorico: 1, medido: media, lotes })!
-    expect(kg).toBeCloseTo(29.35, 1)  // e não 27, que faria FALTAR queijo
+    const kg = insumoDoPedido({ pedido: 200, loteBase: 1 }, POR_LOTE)!
+    expect(kg).toBeCloseTo(27, 2)      // ⭐ …e não muda a conta em nada
+    // ⛔ o contrafactual do mundo antigo
+    expect((200 / media!) * POR_LOTE).toBeCloseTo(29.35, 1)
   })
 })
 
@@ -104,7 +112,7 @@ describe('⭐ o desvio e o motivo ficam gravados na ordem', () => {
     const r = await produzir(20.85, 120, 'queijo veio com muita casca')
 
     expect(r.variacao.faixa).toBe('ABAIXO')
-    expect(r.variacao.pctTeorico).toBeCloseTo(0.777, 2) // o "78%" do dono
+    expect(r.variacao.pctFicha).toBeCloseTo(0.777, 2) // o "78%" do dono
 
     const d = await prisma.stockProducaoDesvio.findFirst({ where: { companyId, conclusaoId: r.conclusaoId } })
     expect(d).not.toBeNull()
@@ -125,10 +133,19 @@ describe('⭐ o desvio e o motivo ficam gravados na ordem', () => {
     expect(d!.lotesNaMedia).toBe(0) // 1ª produção: não havia régua medida
   })
 
-  it('⛔ com 1 lote só NÃO acusa desvio — "normal" de uma medição é régua inventada', async () => {
+  it('⛔⛔ com 1 lote só JÁ acusa — asserção INVERTIDA em 03/10, com o motivo escrito', async () => {
+    /**
+     * ⚠️ Era `SEM_REGUA`, com o argumento *"'normal' de uma medição só é régua inventada"* —
+     * verdade **enquanto a régua era a média**. A decisão do dono trocou a régua pela RECEITA,
+     * que é declaração dele e vale desde o primeiro lote.
+     *
+     * ⭐ E o ganho é operacional: 120 de ~154 é **78%**, e esse lote passava sem uma palavra
+     * até a receita ter 2 produções. Agora ele é denunciado no dia em que acontece.
+     */
     await produzir(20.85, 142)
     const r = await produzir(20.85, 120)
-    expect(r.variacao.faixa).toBe('SEM_REGUA')
-    expect(r.variacao.alerta).toBe(false)
+    expect(r.variacao.pctFicha).toBeCloseTo(0.777, 2)
+    expect(r.variacao.faixa).toBe('ABAIXO')
+    expect(r.variacao.alerta).toBe(true)
   })
 })

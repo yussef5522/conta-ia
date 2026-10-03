@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { explodirReceita } from '@/lib/stock/explodir-receita'
-import { insumoParaSaida } from '@/lib/stock/producao/previsao-rendimento'
+import { insumoDoPedido } from '@/lib/stock/producao/escala-da-ordem'
 
 const raiz = process.cwd()
 
@@ -44,9 +44,15 @@ const PERMITIDOS: Record<string, string> = {
   'lib/stock/producao/custo-teorico.ts': 'dose × CUSTO (dinheiro, não consumo)',
   'lib/stock/producao/fichas.ts': 'dose × CUSTO pro subtotal da linha da ficha',
 
-  // ⚠️ PREVISÃO DE TELA, pergunta INVERSA (quantas porções → quanto pegar). Não grava nada,
-  // e está AMARRADA à porta pelo teste do fim deste arquivo.
-  'lib/stock/producao/previsao-rendimento.ts': 'planejamento inverso, amarrado à porta por teste',
+  // ⚠️ A CONVERSÃO "quero N" → separação, pergunta INVERSA (quantas unidades → quanto pegar).
+  // Não grava nada, e está AMARRADA à porta pelo teste do fim deste arquivo.
+  //
+  // ⭐⭐ ANTES ERA `previsao-rendimento.ts`, e a troca é o sprint de 03/10: aquele arquivo
+  // multiplicava dose **pelo rendimento MEDIDO** (`insumoParaSaida`), e o dono tirou a medição
+  // da conta da separação (*"receita é lei, rendimento é só relatório"*). A multiplicação
+  // mudou de casa pra um arquivo cujo tipo **não aceita rendimento** — e o
+  // `previsao-rendimento.ts` saiu desta lista porque deixou de multiplicar dose.
+  'lib/stock/producao/escala-da-ordem.ts': 'pedido → separação pela FICHA, amarrado à porta por teste',
 }
 
 function arquivosTs(dir: string, fora: string[] = []): string[] {
@@ -99,19 +105,17 @@ describe('⛔⛔⛔ dose × quantidade acontece SÓ na porta', () => {
   })
 })
 
-describe('⭐⭐ a PREVISÃO DE TELA concorda com a PORTA (a amarra que vale mais que a proibição)', () => {
-  it('insumoParaSaida == explodirReceita pra a mesma escala', () => {
+describe('⭐⭐ a CONVERSÃO DO PEDIDO concorda com a PORTA (a amarra que vale mais que a proibição)', () => {
+  it('insumoDoPedido == explodirReceita pra a mesma escala', () => {
     /**
-     * ⚠️ A previsão não foi proibida de multiplicar — ela foi AMARRADA. Se a régua da porta
-     * mudar (rendimento declarado entrando na explosão, por exemplo) e a previsão ficar pra
-     * trás, este teste fica vermelho — que é exatamente o estrago que a tela produziria:
-     * o dono separa pela previsão e a ordem planeja outro número.
+     * ⚠️ A conversão não foi proibida de multiplicar — ela foi AMARRADA. Se a régua da porta
+     * mudar e a conversão ficar pra trás, este teste fica vermelho — que é exatamente o
+     * estrago que a tela produziria: o dono separa por um número e a ordem planeja outro.
      */
     const POR_LOTE = 0.135 // a porção de queijo real
-    const REGUA = { teorico: 1, medido: 0.92, lotes: 5 }
     const alvo = 200
 
-    const previsto = insumoParaSaida(alvo, POR_LOTE, REGUA)!
+    const previsto = insumoDoPedido({ pedido: alvo, loteBase: 1 }, POR_LOTE)!
     // a MESMA escala que a previsão usou, pela porta
     const escala = previsto / POR_LOTE
     const pelaPorta = explodirReceita(

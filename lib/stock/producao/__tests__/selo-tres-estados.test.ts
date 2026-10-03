@@ -1,37 +1,44 @@
-// ⭐⭐ TRÊS ESTADOS, TRÊS APARÊNCIAS — sem promoção silenciosa de um pro outro (01/09/2026).
+// ⭐⭐ O SELO DO LOTE — ERAM TRÊS ESTADOS, VIRARAM DOIS (01/09/2026 → 03/10/2026).
 //
-// Regra do dono, e cada metade tem motivo:
+// **O mundo de 01/09**, que este arquivo guardava:
 //   MEDIDA   (≥2 lotes) → % COLORIDO.  **Cor é JULGAMENTO** — só a régua medida julga.
 //   TEORICO  (0-1 lote) → "≈N% do teórico" em CINZA. Referência, não julgamento.
 //   SEM_DADO (fóssil)   → NADA.
 //
-// ⚠️ POR QUE O FÓSSIL FICA DE FORA, e é a condição que mais importa: recalcular um lote
-// antigo com a régua de hoje produz FICÇÃO. O lote de 21/08 ("porção de carne") é de outra
-// FAMÍLIA de receita — componentes de **1 KG** com `loteBase` 1, ou seja, a quantidade
-// escrita é a do LOTE INTEIRO, não a de uma porção. Recalculado hoje ele dá **2500%**, não
-// porque rendeu 25×, mas porque a ficha dele é de antes do padrão "por unidade".
+// ⛔⛔⛔ **A DECISÃO DO DONO EM 03/10 APAGOU A FRONTEIRA ENTRE OS DOIS PRIMEIROS:**
+// *"receita é lei, rendimento é só relatório"*. O `MEDIDA` julgava o lote **contra a própria
+// média da ficha** — pergunta que sempre responde SIM, porque a referência anda junto com o
+// desvio. O que o selo diz agora é **eficiência contra a RECEITA**, e a receita é régua desde
+// o PRIMEIRO lote: não existe mais "ainda não tenho régua pra julgar".
 //
-// ⭐ E o mecanismo não precisou de coluna nova: `stock_producao_desvio` já congela
-// `pctTeorico`/`pctMedia`/`lotesNaMedia` **no instante da conclusão**. Quem não tem linha
-// lá é anterior ao sprint — e não ganha selo. O corte cai sozinho no lugar certo.
+//   FICHA    (tem desvio congelado) → % contra o que a receita promete. É julgamento.
+//   SEM_DADO (fóssil)               → NADA.
+//
+// ⚠️ **As asserções foram INVERTIDAS, não apagadas** — cada uma abaixo diz o que exigia antes.
+//
+// ⭐⭐ **E A CONDIÇÃO QUE MAIS IMPORTA NÃO MUDOU UMA LINHA:** o fóssil continua sem selo.
+// Recalcular um lote antigo com a régua de hoje produz FICÇÃO — o lote de 21/08 ("porção de
+// carne") é de outra FAMÍLIA de receita (componentes de **1 KG** com `loteBase` 1, ou seja a
+// quantidade escrita é a do LOTE INTEIRO) e daria **2500%**. O julgamento fica congelado em
+// `stock_producao_desvio` no instante da conclusão; quem não tem linha lá, não tem selo.
 
 import { describe, it, expect } from 'vitest'
 import { estadoDoSelo } from '../painel-producao'
 import { MIN_LOTES_PARA_MEDIA } from '../previsao-rendimento'
 
-describe('⭐⭐ os três estados do selo', () => {
-  it('⭐ MEDIDA — com 2+ lotes e pctMedia, o selo ganha COR (é julgamento)', () => {
-    expect(estadoDoSelo({ pctTeorico: 0.98, pctMedia: 0.92, lotesNaMedia: 4 })).toBe('MEDIDA')
-    expect(estadoDoSelo({ pctTeorico: 0.98, pctMedia: 0.92, lotesNaMedia: MIN_LOTES_PARA_MEDIA })).toBe('MEDIDA')
+describe('⭐⭐ os dois estados do selo', () => {
+  it('⛔⛔ FICHA — basta o desvio congelado, SEM exigir 2 lotes (era MEDIDA/TEORICO)', () => {
+    /**
+     * ⚠️ Antes: `{pctTeorico: 0.98, pctMedia: 0.92, lotesNaMedia: 4}` → `MEDIDA`, e com
+     * `lotesNaMedia: 0` → `TEORICO` (cinza, sem julgamento). **Os dois viram FICHA**, porque
+     * o que julga é a receita e ela não precisa de histórico.
+     */
+    expect(estadoDoSelo({ pctTeorico: 0.98, pctMedia: 0.92, lotesNaMedia: 4 })).toBe('FICHA')
+    expect(estadoDoSelo({ pctTeorico: 1.01, pctMedia: null, lotesNaMedia: 0 })).toBe('FICHA')
+    expect(estadoDoSelo({ pctTeorico: 0.72, pctMedia: 0.72, lotesNaMedia: 1 })).toBe('FICHA')
   })
 
-  it('⚪ TEORICO — com 0 ou 1 lote, é CINZA: referência, não julgamento', () => {
-    // ⚠️ os 7 lotes de 01/09 caem todos aqui — primeira produção de cada receita.
-    expect(estadoDoSelo({ pctTeorico: 1.01, pctMedia: null, lotesNaMedia: 0 })).toBe('TEORICO')
-    expect(estadoDoSelo({ pctTeorico: 0.72, pctMedia: 0.72, lotesNaMedia: 1 })).toBe('TEORICO')
-  })
-
-  it('⛔⛔ SEM_DADO — lote sem desvio gravado NÃO ganha selo nenhum', () => {
+  it('⛔⛔ SEM_DADO — lote sem desvio gravado NÃO ganha selo nenhum (INTOCADO)', () => {
     // é o fóssil de 21/08. Recalcular por cima daria 2500%.
     expect(estadoDoSelo(null)).toBe('SEM_DADO')
   })
@@ -41,40 +48,54 @@ describe('⭐⭐ os três estados do selo', () => {
   })
 })
 
-describe('⛔⛔ nenhuma promoção silenciosa entre os estados', () => {
-  it('⛔⛔ 1 lote NÃO vira MEDIDA só porque tem pctMedia preenchido', () => {
-    // ⚠️ o `pctMedia` existe com 1 lote (o `avaliarVariacao` calcula), mas 1 medição não é
-    // média. Sem esta trava, o 2º lote de cada receita já apareceria colorido — julgando
-    // contra uma "média" de uma amostra só.
-    expect(estadoDoSelo({ pctTeorico: 0.9, pctMedia: 0.9, lotesNaMedia: 1 })).toBe('TEORICO')
-  })
-
-  it('⛔⛔ SEM_DADO nunca vira TEORICO por recálculo — a ausência é a resposta', () => {
-    // a régua olha SÓ o congelado. Não há caminho de `null` pra outro estado.
+describe('⛔⛔ o que NÃO mudou: a ausência continua sendo a resposta', () => {
+  it('⛔⛔ SEM_DADO nunca vira FICHA por recálculo — a régua olha SÓ o congelado', () => {
     expect(estadoDoSelo(null)).toBe('SEM_DADO')
-    expect(estadoDoSelo(null)).not.toBe('TEORICO')
+    expect(estadoDoSelo(null)).not.toBe('FICHA')
   })
 
-  it('⭐ a fronteira é exatamente MIN_LOTES_PARA_MEDIA, não um número solto', () => {
-    expect(estadoDoSelo({ pctTeorico: 1, pctMedia: 1, lotesNaMedia: MIN_LOTES_PARA_MEDIA - 1 })).toBe('TEORICO')
-    expect(estadoDoSelo({ pctTeorico: 1, pctMedia: 1, lotesNaMedia: MIN_LOTES_PARA_MEDIA })).toBe('MEDIDA')
+  it('⛔⛔ e `pctMedia` deixou de ter QUALQUER poder sobre o selo', () => {
+    /**
+     * ⭐ A prova de que a média saiu do caminho: com `pctTeorico` fixo, mexer em `pctMedia` e
+     * em `lotesNaMedia` não muda o selo. Era exatamente o contrário — eles decidiam.
+     */
+    const base = { pctTeorico: 0.9 }
+    expect(estadoDoSelo({ ...base, pctMedia: null, lotesNaMedia: 0 })).toBe('FICHA')
+    expect(estadoDoSelo({ ...base, pctMedia: 0.9, lotesNaMedia: 1 })).toBe('FICHA')
+    expect(estadoDoSelo({ ...base, pctMedia: 0.9, lotesNaMedia: 99 })).toBe('FICHA')
+  })
+
+  it('⛔ a fronteira de MIN_LOTES_PARA_MEDIA não governa mais o SELO (só o espelho)', () => {
+    /**
+     * ⚠️ A constante CONTINUA viva e com o mesmo valor — ela é o que impede um lote único de
+     * ser chamado de "a sua média" no **espelho** (`eficienciaMedia`). O que ela perdeu foi o
+     * poder de decidir se o lote é julgado ou não.
+     */
+    expect(MIN_LOTES_PARA_MEDIA).toBe(2)
+    expect(estadoDoSelo({ pctTeorico: 1, pctMedia: 1, lotesNaMedia: MIN_LOTES_PARA_MEDIA - 1 })).toBe('FICHA')
+    expect(estadoDoSelo({ pctTeorico: 1, pctMedia: 1, lotesNaMedia: MIN_LOTES_PARA_MEDIA })).toBe('FICHA')
   })
 })
 
-describe('⚠️ o caso real que motivou a condição 2', () => {
+describe('⚠️ o caso real que motivou a condição do fóssil', () => {
   it('⚠️ o fóssil de 21/08 daria 2500% se fosse recalculado — e por isso não é', () => {
     // "porção de carne 100g": componentes de 1 KG cada (o LOTE inteiro), loteBase 1.
-    // escala consumida 1 → esperado teórico 1 → saíram 25.
+    // escala consumida 1 → esperado pela ficha 1 → saíram 25.
     const recalculoIngenuo = 25 / (1 * 1)
     expect(recalculoIngenuo).toBe(25) // 2500%
     // ⭐ mas ele não tem linha em stock_producao_desvio → SEM_DADO, e nada é mostrado.
     expect(estadoDoSelo(null)).toBe('SEM_DADO')
   })
 
-  it('⭐ enquanto os lotes de 01/09 (família proporcional) dão números sãos', () => {
-    // medidos em prod: 101%, 72%, 135%, 104%, 130%, 91%, 93%
+  it('⭐ e os lotes de 01/09 (família proporcional) ganham selo desde o 1º — isso é o ganho', () => {
+    /**
+     * ⭐⭐ **Aqui a inversão vale dinheiro.** Estes 7 eram a 1ª produção de cada receita e
+     * ficavam em CINZA, *"referência, não julgamento"* — inclusive o de **72%**, que é
+     * exatamente o tipo de lote que o dono quer ver denunciado. Com a receita como régua, o
+     * 72% acusa no dia em que acontece, e não no 3º lote.
+     */
     for (const pct of [1.01, 0.72, 1.35, 1.04, 1.3, 0.91, 0.93]) {
-      expect(estadoDoSelo({ pctTeorico: pct, pctMedia: null, lotesNaMedia: 0 })).toBe('TEORICO')
+      expect(estadoDoSelo({ pctTeorico: pct, pctMedia: null, lotesNaMedia: 0 })).toBe('FICHA')
       expect(Math.round(pct * 100)).toBeGreaterThan(50)
       expect(Math.round(pct * 100)).toBeLessThan(200)
     }

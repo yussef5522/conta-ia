@@ -1,5 +1,28 @@
-// ⭐⭐ PREVISÃO DE RENDIMENTO — a régua ÚNICA que converte "quantas porções" ↔ "quantos kg"
-// e julga a variação na conclusão (01/09/2026).
+// ⭐⭐ PREVISÃO DE RENDIMENTO — a régua que julga o que SAIU, e o ESPELHO da medição.
+//
+// ⛔⛔⛔ **ESTE ARQUIVO PERDEU O PODER DE DECIDIR SEPARAÇÃO EM 03/10/2026 (decisão do dono).**
+// *"Receita é lei, rendimento é só relatório. A separação é SEMPRE ficha × pedido, SEM
+// rendimento no meio — ele NUNCA multiplica nem divide nada."* Motivo de dono: *"se
+// funcionário rende mal ou rouba, um sistema que adapta a separação pela medição APRENDE o
+// roubo como normal e passa a cobrir ele."*
+//
+// **O que SAIU daqui** (apagado, não desativado — função sem chamador é função que alguém
+// religa por descuido): `escalaParaSaida` · `insumoParaSaida` · `reguaDoRendimento` /
+// `Regua` · `DISCORDANCIA_MAXIMA`. Quem converte pedido→separação agora é
+// **`escala-da-ordem.ts`**, cujo tipo **não tem campo de rendimento** (REGRA 5: o erro ficou
+// impossível, não improvável).
+//
+// ⚠️ A `DISCORDANCIA_MAXIMA` (faixa de ±20%) morreu porque ela existia pra decidir QUAL
+// rendimento mandava. Com a ficha mandando sempre, não há o que escolher — e escolher era o
+// problema. O que sobrou da medição é `eficienciaMedia` (espelho) e `avaliarVariacao`
+// (veredito contra a FICHA).
+//
+// ⭐ O que CONTINUA aqui e por quê: `escalaDoConsumo` (quantas receitas saíram do que foi
+// consumido de verdade — é o que o `concluir()` grava, não é separação) e o julgamento do
+// lote. Veja `eficiencia-da-ordem.ts` pro espelho por ordem e o juiz **P8**.
+//
+// ───────────────────────────────────────────────────────────────────────────────────────────
+// Histórico do arquivo (01/09/2026), preservado porque explica os campos:
 //
 // ⛔ O QUE MOTIVOU (relato do dono, com o print na mão): ordem "porção queijo 135 grama",
 // ele tirou **20,85 kg** da câmara, e na conclusão a tela perguntava *"quantos saíram?"* com
@@ -71,146 +94,86 @@ export interface ReguaRendimento {
   lotes: number
 }
 
-export interface Regua {
-  /** o rendimento por receita que MANDA na conta */
-  valor: number
-  /** `true` quando a régua é a média medida; `false` quando ainda é a ficha */
-  daMedia: boolean
+export interface EficienciaMedia {
+  /** medido ÷ teórico — o "92%" da tela */
+  pct: number
   lotes: number
-  /** medido ÷ teórico — o "92%" da tela. `null` sem média. */
-  pct: number | null
-  /**
-   * ⭐⭐ `true` quando existe medição mas ela DISCORDA tanto da ficha que o sistema **recusou
-   * usá-la** e voltou pro declarado. A tela tem que DIZER isso — ver `DISCORDANCIA_MAXIMA`.
-   */
-  discordante: boolean
 }
 
 /**
- * ⛔⛔⛔ A FAIXA DE CONCORDÂNCIA — a 2ª camada da cura do `beef de xis` (03/10/2026).
+ * PURA. O ESPELHO: quanto a cozinha vem rendendo, em % do que a ficha promete.
  *
- * **A régua nova, e ela é a disciplina da casa:** a **observação** (o rendimento medido) não
- * sobrescreve a **declaração do dono** (o `loteBase` da ficha) **em silêncio**. Ela substitui
- * quando CONCORDA; quando destoa, vale o declarado e o sistema **AVISA**.
+ * ⛔⛔ **ELA NÃO ENTRA EM CONTA NENHUMA.** É um número pra LER — na tela de criar a ordem
+ * (*"os últimos N lotes renderam 125% do que a ficha promete"*) e no juiz. Antes isto era um
+ * PARÂMETRO que dividia o pedido e **sumia dentro da escala**; agora é texto.
  *
- * ⚠️ É a mesma régua de *"categoria é decisão do dono — o sistema PERGUNTA quando estranha,
- * nunca reclassifica sozinho"* (17/08), aplicada ao rendimento. O `loteBase` é o que ele
- * escreveu; a média é o que a cozinha fez. **Divergência grande é sinal de que um dos dois
- * está errado — e escolher calado é o que produziu o caso de hoje.**
- *
- * ⭐ Medido na Caçula (43 fichas de produção): **13 passam de ±20%**, e a pior é
- * `QUEIJO CHEDDAR FATIADO` com **medido 10,2704 contra teórico 1 — 1027%**. Pedir 10 ali
- * separaria material pra **1 unidade**. Era bomba armada, e a faixa a desarma.
- *
- * ⚠️ **E o número NÃO foi escolhido a dedo:** ±20% é a MESMA faixa do M2 (plausibilidade da
- * dose, 02/10), pelo mesmo motivo — abaixo dela está a folga real de trim/manipulação que a
- * cozinha tem todo dia (o `beef de hamburger` roda em 93-95% e é legítimo, por isso o dono o
- * chamou de "OK"); acima dela, é dado torto.
- *
- * ⛔ **E ela NÃO contradiz a decisão de 01/09** (*"a medida no campo, o teórico ao lado"*, que
- * nasceu porque pelo teórico a `porção de queijo` fazia **faltar**): aquela ficha roda em
- * **101%** do teórico — dentro da faixa, segue usando a medida. O que a faixa barra é a média
- * **envenenada**, não a correção fina.
+ * ⚠️ `null` com menos de 2 lotes: *uma produção não é média* (regra do dono, 01/09) — e
+ * chamar um lote único de "a sua média" é inventar uma referência.
  */
-export const DISCORDANCIA_MAXIMA = 0.2
-
-/**
- * PURA. Qual rendimento manda: a média medida (a partir de 2 lotes) ou a ficha.
- *
- * ⚠️ ≥2 É DECISÃO DO DONO e vale **só pra previsão e aviso** — *"custo é 'quanto custou',
- * previsão é 'quanto vai sair'; são perguntas diferentes"*. O custo por unidade da ficha
- * continua usando a medição desde o 1º lote (uma medição real é melhor que "a definir").
- */
-export function reguaDoRendimento(r: ReguaRendimento): Regua {
-  const pct = r.medido != null && r.teorico > 0 ? round4(r.medido / r.teorico) : null
-  const temMedia = r.medido != null && r.medido > 0 && r.lotes >= MIN_LOTES_PARA_MEDIA
-  /**
-   * ⭐ A medição DISCORDA do declarado? Então ela não manda — e o fato fica marcado pra a
-   * tela dizer. ⚠️ Sem `pct` (teórico ≤ 0) não há como comparar: aí a média é tudo que existe
-   * e usá-la é melhor que nada.
-   */
-  const discordante = temMedia && pct != null && Math.abs(pct - 1) > DISCORDANCIA_MAXIMA
-  const usaMedia = temMedia && !discordante
-  return {
-    valor: usaMedia ? (r.medido as number) : r.teorico,
-    daMedia: usaMedia,
-    lotes: r.lotes,
-    pct,
-    discordante,
-  }
+export function eficienciaMedia(r: ReguaRendimento): EficienciaMedia | null {
+  if (r.medido == null || !(r.medido > 0) || !(r.teorico > 0)) return null
+  if (r.lotes < MIN_LOTES_PARA_MEDIA) return null
+  return { pct: round4(r.medido / r.teorico), lotes: r.lotes }
 }
 
 export interface Previsao {
-  /** o número que vai NO CAMPO (pela régua vigente) */
-  esperado: number
-  /** o que a ficha prometia — sempre visível ao lado */
-  teorico: number
-  /** o que a média diz; `null` sem histórico */
+  /**
+   * ⭐ O que a FICHA promete pra essa escala — **a única expectativa que existe**.
+   *
+   * ⚠️ O campo se chama assim de propósito: o antigo `esperado` saía da "régua vigente" (média
+   * ou ficha, o sistema escolhia) e era exatamente o lugar onde a medição entrava calada.
+   * Nome novo pra que o `tsc` ache todo mundo que lia o antigo (REGRA 4 de graça).
+   */
+  esperadoDaFicha: number
+  /** o que a média histórica diria — ESPELHO, ao lado, nunca na conta. `null` sem histórico. */
   medido: number | null
 }
 
-/** PURA. `escala` × rendimento → quantas unidades saem. (kg digitado → porções) */
+/** PURA. `escala` × o que a ficha promete → quantas unidades devem sair. */
 export function preverSaida(escala: number, r: ReguaRendimento): Previsao {
-  const regua = reguaDoRendimento(r)
   return {
-    esperado: round4(escala * regua.valor),
-    teorico: round4(escala * r.teorico),
+    esperadoDaFicha: round4(escala * r.teorico),
     medido: r.medido != null ? round4(escala * r.medido) : null,
   }
-}
-
-/**
- * PURA. O INVERSO — quantas receitas pra sair a quantidade desejada.
- * (porções digitadas → escala → kg de cada insumo)
- *
- * ⭐ É o sentido principal do dono: *"faz 200 porções"* → quanto pegar. E é por isso que a
- * régua tem que ser a MEDIDA: pelo teórico (0,135 × 200 = 27 kg) **ele pega pouco e falta**.
- */
-export function escalaParaSaida(qtdDesejada: number, r: ReguaRendimento): number | null {
-  const regua = reguaDoRendimento(r)
-  if (!(qtdDesejada > 0) || !(regua.valor > 0)) return null
-  return round4(qtdDesejada / regua.valor)
-}
-
-/** PURA. Quanto pegar de UM insumo pra fazer `qtdDesejada`. */
-export function insumoParaSaida(qtdDesejada: number, porLote: number, r: ReguaRendimento): number | null {
-  const escala = escalaParaSaida(qtdDesejada, r)
-  return escala == null ? null : round4(escala * porLote)
 }
 
 export type FaixaVariacao = 'NORMAL' | 'ABAIXO' | 'ACIMA' | 'SEM_REGUA'
 
 export interface Variacao {
-  /** saiu ÷ teórico — o "78%" */
-  pctTeorico: number | null
-  /** saiu ÷ média medida; `null` enquanto não há média */
+  /** saiu ÷ o que a ficha prometia — **a eficiência**, o "78%" */
+  pctFicha: number | null
+  /** saiu ÷ média medida — ESPELHO ("contra o que você costuma fazer"). `null` sem média. */
   pctMedia: number | null
-  /** o "92%" da régua, pra tela dizer "sua média é 92%" */
+  /** o "92%" do espelho, pra tela dizer "sua média é 92%" */
   pctMediaDaFicha: number | null
   faixa: FaixaVariacao
-  /** `true` só quando há régua medida e o desvio passa de ±15% */
+  /** `true` quando a EFICIÊNCIA passa de ±15% do que a receita promete */
   alerta: boolean
 }
 
 /**
- * PURA. Julga o que saiu contra o esperado. **SUGERE, NUNCA DECIDE** — não trava conclusão.
+ * PURA. Julga o que saiu **contra a FICHA**. SUGERE, NUNCA trava a conclusão.
  *
- * ⚠️ O julgamento é contra a MÉDIA quando ela existe (≥2 lotes) e contra o teórico enquanto
- * não existe. Com 1 lote só, `faixa` fica NORMAL: chamar de "abaixo do normal" quando o
- * "normal" é uma medição única seria inventar uma régua — e alarme falso repetido mata o
- * alarme.
+ * ⛔⛔ **A RÉGUA MUDOU EM 03/10 (decisão do dono) e a mudança é o ponto do sprint:** antes o
+ * veredito era contra a MÉDIA (e ficava `SEM_REGUA` enquanto não houvesse 2 lotes). Medir
+ * contra a média é perguntar *"você produziu como costuma produzir?"* — pergunta que sempre
+ * responde SIM, porque a referência anda junto com o desvio. **Agora a referência é a receita**,
+ * que não anda: *"pedi 10 · produziu 9 → 90%"*, desde o PRIMEIRO lote.
+ *
+ * ⚠️ `SEM_REGUA` sobrou só pro caso em que não há o que comparar (`teorico <= 0`) — ficha com
+ * lote base zerado. Ali inventar porcentagem seria pior que dizer "não sei".
  */
 export function avaliarVariacao(qtdGerada: number, escala: number, r: ReguaRendimento): Variacao {
-  const regua = reguaDoRendimento(r)
-  const esperadoTeorico = escala * r.teorico
+  const esperadoFicha = escala * r.teorico
   const esperadoMedio = r.medido != null ? escala * r.medido : null
-  const pctTeorico = esperadoTeorico > 0 ? round4(qtdGerada / esperadoTeorico) : null
+  const pctFicha = esperadoFicha > 0 ? round4(qtdGerada / esperadoFicha) : null
   const pctMedia = esperadoMedio != null && esperadoMedio > 0 ? round4(qtdGerada / esperadoMedio) : null
+  const espelho = eficienciaMedia(r)
 
-  if (!regua.daMedia || pctMedia == null) {
-    return { pctTeorico, pctMedia, pctMediaDaFicha: regua.pct, faixa: 'SEM_REGUA', alerta: false }
+  if (pctFicha == null) {
+    return { pctFicha, pctMedia, pctMediaDaFicha: espelho?.pct ?? null, faixa: 'SEM_REGUA', alerta: false }
   }
-  const desvio = pctMedia - 1
+  const desvio = pctFicha - 1
   const faixa: FaixaVariacao = desvio < -DESVIO_ALERTA ? 'ABAIXO' : desvio > DESVIO_ALERTA ? 'ACIMA' : 'NORMAL'
-  return { pctTeorico, pctMedia, pctMediaDaFicha: regua.pct, faixa, alerta: faixa !== 'NORMAL' }
+  return { pctFicha, pctMedia, pctMediaDaFicha: espelho?.pct ?? null, faixa, alerta: faixa !== 'NORMAL' }
 }

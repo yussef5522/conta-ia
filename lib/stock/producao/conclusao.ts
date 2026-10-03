@@ -261,7 +261,10 @@ export async function concluir(input: ConcluirInput, db: PrismaClient = defaultP
     await tx.stockProducaoDesvio.create({
       data: {
         companyId: input.companyId, conclusaoId: conc.id, ordemId: input.ordemId,
-        pctTeorico: variacao.pctTeorico ?? 0, pctMedia: variacao.pctMedia,
+        // ⚠️ A COLUNA conserva o nome antigo (`pctTeorico`) porque migration de estoque é
+        // CREATE-only. O que ela guarda é a EFICIÊNCIA contra a ficha — que desde 03/10 é o
+        // único veredito que existe. Renomear exigiria ALTER, e o isolamento proíbe.
+        pctTeorico: variacao.pctFicha ?? 0, pctMedia: variacao.pctMedia,
         lotesNaMedia: medidoAnterior.lotes,
         motivo: input.motivoDesvio?.trim() ? input.motivoDesvio.trim() : null,
         criadoPorId: input.userId ?? null,

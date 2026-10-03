@@ -8,6 +8,7 @@ import { criarFicha } from '../fichas'
 import { criarOrdem, confirmarSeparacao, iniciarProducao } from '../ordens'
 import { concluir } from '../conclusao'
 import { checkProducaoInvariants } from '../producao-invariants'
+import type { StockInvariantFail } from '../../stock-invariants'
 import { saldosDaEmpresa } from '../../saldo'
 
 const CNPJ = '70707070000170'
@@ -32,7 +33,11 @@ beforeEach(async () => {
 afterEach(async () => {
   await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_stock_movement_no_update;`).catch(() => {})
   await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_stock_movement_no_delete;`).catch(() => {})
-  for (const t of ['stockProducaoConclusao', 'stockMovement', 'stockProductionOrder', 'stockFichaComponente', 'stockFichaVersao', 'stockFicha', 'stockItem'] as const) {
+  // ⚠️⚠️ `stockProducaoDesvio` FALTAVA NESTA LISTA, e o P8 (que lê essa tabela) denunciou:
+  // o `it` seguinte via o julgamento congelado dos anteriores como se fosse dele. É a classe
+  // das linhas órfãs de 03/10 — tabela `stock_*` não tem cascade (o isolamento proíbe
+  // `@relation`), então o que não está nesta lista SOBREVIVE à empresa.
+  for (const t of ['stockProducaoDesvio', 'stockProducaoConclusao', 'stockMovement', 'stockProductionOrder', 'stockFichaComponente', 'stockFichaVersao', 'stockFicha', 'stockItem'] as const) {
     // @ts-expect-error dinâmico
     await prisma[t].deleteMany({ where: { companyId } })
   }
@@ -46,7 +51,17 @@ async function produzir(escala: number, sep: number, consumo: number, qtdGerada:
   const r = await concluir({ companyId, ordemId, consumo: COMPS.map((k) => ({ itemId: ids[k.nome], qtdConsumida: consumo })), qtdGerada, parcial }, prisma)
   return { ordemId, r }
 }
-const soP = (fails: { invariante: string }[]) => fails.filter((f) => f.invariante.startsWith('P'))
+const soP = (fails: StockInvariantFail[]) => fails.filter((f) => f.invariante.startsWith('P'))
+/**
+ * ⚠️⚠️ **ESCOPO POR EMPRESA, e isto me pegou escrevendo o teste do P8.** O juiz é GLOBAL por
+ * desenho (varre o banco inteiro, todas as empresas), então `toHaveLength(0)` sem filtro mede
+ * o lixo das outras suítes rodando em paralelo — e o meu P8 "disparava" num lote de 90% que
+ * estava correto. É a MESMA classe do `snapshotClosedModules` global (23/08) e das 161.810
+ * linhas órfãs de 03/10: **asserção de CONTAGEM sobre varredura global precisa de escopo.**
+ * Os testes antigos escapam porque usam `.some(...)`, que tolera linha de fora.
+ */
+const soMinhas = (fails: StockInvariantFail[], inv: string) =>
+  fails.filter((f) => f.invariante === inv && f.companyId === companyId)
 
 describe('GOLDEN fluxo completo + juiz P1-P6', () => {
   it('1ª produção real (1kg de cada → 25 UN, 3,62/un) → 0 P falhos, P1 fecha', async () => {
@@ -54,8 +69,16 @@ describe('GOLDEN fluxo completo + juiz P1-P6', () => {
     expect(r.rendimento).toBe(25)
     expect(r.custoUnitarioReal).toBe(3.62) // 90,50 / 25
     expect((await prisma.stockItem.findFirst({ where: { id: produtoId } }))!.nome).toContain('carne')
-    // nenhum invariante de produção falha no fluxo correto
+    /**
+     * ⚠️⚠️ **ESCOPADO POR EMPRESA (03/10), e a troca não afrouxa nada.** A asserção era
+     * global (`soP(...)` sem filtro) e passava por SORTE: enquanto nenhum P disparava pra
+     * outra empresa, 0 global == 0 desta. O P8 quebrou esse acaso — ele lê
+     * `stock_producao_desvio`, tabela que acumula órfã de toda suíte (sem cascade, por
+     * isolamento). **A pergunta que este teste quer fazer sempre foi "o MEU fluxo correto não
+     * dispara nada"**, e agora ela está escrita assim.
+     */
     const fails = soP(await checkProducaoInvariants(prisma, new Date('2026-08-21')))
+      .filter((f) => f.companyId === companyId)
     expect(fails).toHaveLength(0)
   })
 
@@ -87,6 +110,54 @@ describe('GOLDEN fluxo completo + juiz P1-P6', () => {
     await prisma.stockMovement.create({ data: { companyId, itemId: ids['Açém'], tipo: 'PRODUCAO_CONSUMO', quantidade: -0.3, custoUnitario: 33.95, custoTotal: -10.19, receiptId: ordemId, origem: 'MANUAL' } })
     const p = soP(await checkProducaoInvariants(prisma, new Date('2026-08-21')))
     expect(p.some((f) => f.invariante === 'P1')).toBe(true)
+  })
+
+  /**
+   * ⭐⭐⭐ P8 — A EFICIÊNCIA CAIU (item 2 da decisão do dono, 03/10/2026).
+   *
+   * *"Aviso no juiz quando a eficiência cai (<85%) — me DENUNCIA, não me corrige."*
+   *
+   * ⛔⛔ **É A CONTRAPARTIDA DE TIRAR O RENDIMENTO DA SEPARAÇÃO.** Enquanto a medição dividia
+   * o pedido, render mal se autocorrigia em silêncio. Com a separação fixa pela ficha, render
+   * mal **sobra** — e sobrar só vale se alguém for avisado.
+   */
+  it('⭐⭐ P8: lote abaixo de 85% do que a receita promete → dispara AVISO', async () => {
+    // consumo de 1 KG de cada (porLote 1) → a receita promete 1 unidade; saíram 0,8 = 80%
+    await produzir(1, 1, 1, 0.8)
+    const p8 = soMinhas(await checkProducaoInvariants(prisma, new Date('2026-08-21')), 'P8')
+    expect(p8).toHaveLength(1)
+    expect(p8[0].nivel).toBe('aviso') // ⛔ nunca ERRO: é fato da operação, não defeito de dado
+    expect(p8[0].detalhe).toContain('80%')
+    expect(p8[0].detalhe).toContain('abaixo de 85%')
+  })
+
+  it('⭐ P8 NÃO dispara dentro da faixa — 90% é a vida real da cozinha', async () => {
+    /** ⚠️ É a mesma razão por que o dono chamou o `beef de hamburger` (94-99%) de "OK". */
+    await produzir(1, 1, 1, 0.9)
+    expect(soMinhas(await checkProducaoInvariants(prisma, new Date('2026-08-21')), 'P8')).toHaveLength(0)
+  })
+
+  it('⛔⛔ P8 CALA o P3 no mesmo lote — uma causa, um alarme', async () => {
+    /**
+     * ⚠️ Sem isto o mesmo lote ruim sairia duas vezes no e-mail: *"saiu 50% do que a receita
+     * promete"* (P8) e *"desvia 50% da sua média"* (P3). É a régua do N1/N3 do juiz de infra —
+     * **alarme repetido é como o dono para de ler o e-mail** (a lição dos 111 falsos).
+     */
+    await produzir(1, 1, 1, 1)         // 100% — vira a referência
+    const { r } = await produzir(1, 1, 1, 0.5) // 50% da receita E −50% da média
+    const fails = await checkProducaoInvariants(prisma, new Date('2026-08-21'))
+
+    /**
+     * ⚠️⚠️ **A MINHA PREMISSA ESTAVA ERRADA E O TESTE CORRIGIU:** eu esperava `P3` ZERADO na
+     * empresa. Mas o P3 compara cada lote com a média dos OUTROS — então com dois lotes
+     * (1 e 0,5) **cada um destoa do outro** e ele fala dos dois. A supressão é por LOTE, não
+     * por empresa: *"uma causa, um alarme"* vale pro lote que o P8 já denunciou.
+     */
+    const p8 = soMinhas(fails, 'P8')
+    expect(p8).toHaveLength(1)
+    expect(p8[0].detalhe).toContain(r.conclusaoId) // ⭐ é o lote ruim
+    // ⭐ e o P3 NÃO repete esse mesmo lote
+    expect(soMinhas(fails, 'P3').some((f) => f.detalhe.includes(r.conclusaoId))).toBe(false)
   })
 
   it('P3: 2ª produção com rendimento > ±25% da média → dispara', async () => {

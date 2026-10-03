@@ -19,7 +19,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { custoMedioPorItem } from '../saldo'
 import { lerEmProducao, valorEmProducao } from './em-producao'
 import { conclusoesNoPeriodo, rendimentoMedidoDaFicha } from './conclusao'
-import { preverSaida, avaliarVariacao, MIN_LOTES_PARA_MEDIA, type FaixaVariacao } from './previsao-rendimento'
+import { preverSaida, avaliarVariacao, DESVIO_ALERTA, type FaixaVariacao } from './previsao-rendimento'
 
 /** ⭐ Os estados de trabalho ABERTO. A MESMA lista que o P2 do juiz usa — antes estava
  *  literal nos dois lugares. Ordem aberta NUNCA obedece o filtro de período: trabalho
@@ -92,42 +92,49 @@ export interface OrdemAberta {
 }
 
 /**
- * ⭐⭐ OS TRÊS ESTADOS DO SELO (01/09/2026) — três aparências, sem promoção silenciosa.
+ * ⚠️⚠️ POR QUE O FÓSSIL NÃO GANHA SELO, e é a condição que mais importa (01/09/2026):
+ * recalcular um lote antigo com a régua de hoje produz ficção. O lote de 21/08 ("porção de
+ * carne", família de LOTE FIXO: componentes de 1 KG, `loteBase` 1) dá **2500%** se
+ * recalculado — não porque rendeu 25×, mas porque a ficha dele é de outra época. O julgamento
+ * fica congelado no `stock_producao_desvio` do instante da conclusão; quem não tem linha lá,
+ * não tem selo. **Isso continua valendo igual.**
  *
- *   MEDIDA   (≥2 lotes)  → % COLORIDO (verde/âmbar/vermelho). **Cor é julgamento.**
- *   TEORICO  (0-1 lote)  → "≈N% do teórico" em CINZA. Referência, não julgamento.
- *   SEM_DADO (fóssil)    → NADA.
+ * ⛔⛔ **ERAM TRÊS ESTADOS, VIRARAM DOIS (decisão do dono, 03/10/2026).**
  *
- * ⚠️ POR QUE O FÓSSIL NÃO GANHA SELO, e é a condição que mais importa: recalcular um lote
- * antigo com a régua de hoje produz ficção. O lote de 21/08 ("porção de carne", família de
- * LOTE FIXO: componentes de 1 KG, `loteBase` 1) dá **2500%** se recalculado — não porque
- * rendeu 25×, mas porque a ficha dele é de outra época. O julgamento fica congelado no
- * `stock_producao_desvio` do instante da conclusão; quem não tem linha lá, não tem selo.
+ * O selo `MEDIDA` mostrava o lote julgado **contra a própria média** da ficha — e o dono
+ * aposentou essa pergunta: *"receita é lei, rendimento é só relatório"*. Julgar contra a média
+ * responde *"você produziu como costuma produzir?"*, que **sempre** dá sim, porque a referência
+ * anda junto com o desvio. O que o selo diz agora é **eficiência contra a FICHA**.
  *
- * ⚠️ E o CINZA é o que impede o teórico de virar acusação: uma ficha com `loteBase` mal
- * preenchido geraria vermelho sem nada de errado ter acontecido na cozinha.
+ * ⚠️ `estadoDoSelo` e os testes dele foram **invertidos com o motivo escrito**, não apagados.
  */
-export type EstadoSelo = 'MEDIDA' | 'TEORICO' | 'SEM_DADO'
+export type EstadoSelo = 'FICHA' | 'SEM_DADO'
 
 export interface LoteDoPeriodo {
   conclusaoId: string
   ordemId: string
   qtdGerada: number
+  /** o que a FICHA prometia pra escala consumida */
   esperado: number | null
-  /** saiu ÷ esperado — o selo da linha */
+  /** saiu ÷ o que a ficha prometia — a EFICIÊNCIA do lote */
   pct: number | null
   faixa: FaixaVariacao
   motivo: string | null
   selo: EstadoSelo
 }
 
-/** PURA. Qual dos três estados, a partir do que foi CONGELADO na conclusão. */
+/**
+ * PURA. A partir do que foi CONGELADO na conclusão.
+ *
+ * ⚠️ A coluna do banco continua chamada `pctTeorico` — migration de estoque é CREATE-only, e
+ * o nome dela é o único resquício do vocabulário antigo. O que ela guarda é a eficiência
+ * contra a ficha, que é exatamente o que o selo passou a mostrar.
+ */
 export function estadoDoSelo(
   desvio: { pctTeorico: number | null; pctMedia: number | null; lotesNaMedia: number } | null,
 ): EstadoSelo {
   if (!desvio) return 'SEM_DADO' // ⛔ lote anterior ao sprint: não se recalcula por cima
-  if (desvio.lotesNaMedia >= MIN_LOTES_PARA_MEDIA && desvio.pctMedia != null) return 'MEDIDA'
-  return desvio.pctTeorico != null ? 'TEORICO' : 'SEM_DADO'
+  return desvio.pctTeorico != null ? 'FICHA' : 'SEM_DADO'
 }
 
 /**
@@ -168,17 +175,21 @@ export async function lotesDoPeriodo(
     const medido = await rendimentoMedidoDaFicha(companyId, o.fichaId, db, c.id)
     const regua = { teorico: versao?.loteBase ?? 1, medido: medido.media, lotes: medido.lotes }
     const p = preverSaida(c.escalaConsumida, regua)
-    const v = avaliarVariacao(c.qtdGerada, c.escalaConsumida, regua)
     const d = desvioPorConclusao.get(c.id) ?? null
     const selo = estadoDoSelo(d)
+    /**
+     * ⚠️ O NÚMERO VEM DO CONGELADO, não do recálculo: é o mesmo que o operador viu ao
+     * concluir. Recalcular faria o selo mudar sozinho quando a média da ficha andasse.
+     *
+     * ⭐ E a FAIXA sai do MESMO número congelado — antes ela vinha de um `avaliarVariacao`
+     * recalculado, então o número e a cor podiam contar histórias diferentes na mesma linha.
+     */
+    const pct = selo === 'FICHA' ? d!.pctTeorico : null
     out.push({
       conclusaoId: c.id, ordemId: c.ordemId, qtdGerada: c.qtdGerada,
-      esperado: p.esperado > 0 ? p.esperado : null,
-      // ⚠️ O NÚMERO VEM DO CONGELADO, não do recálculo: é o mesmo que o operador viu ao
-      // concluir. Recalcular faria o selo mudar sozinho quando a média da ficha andasse.
-      pct: selo === 'MEDIDA' ? d!.pctMedia : selo === 'TEORICO' ? d!.pctTeorico : null,
-      // ⚠️ a FAIXA (cor) só existe no estado MEDIDA — cor é julgamento, e teórico não julga.
-      faixa: selo === 'MEDIDA' ? v.faixa : 'SEM_REGUA',
+      esperado: p.esperadoDaFicha > 0 ? p.esperadoDaFicha : null,
+      pct,
+      faixa: pct == null ? 'SEM_REGUA' : pct < 1 - DESVIO_ALERTA ? 'ABAIXO' : pct > 1 + DESVIO_ALERTA ? 'ACIMA' : 'NORMAL',
       motivo: d?.motivo ?? null,
       selo,
     })

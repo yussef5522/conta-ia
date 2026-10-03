@@ -1,4 +1,4 @@
-// ESTOQUE FASE 2 item 2.5 — invariantes do JUIZ pra produção (P1-P6). Rodam no juiz
+// ESTOQUE FASE 2 item 2.5 — invariantes do JUIZ pra produção (P1-P6, P8 + M2). Rodam no juiz
 // noturno (mesma tabela stock_judge_report isolada). P7 (etiqueta vencida ainda vendida)
 // depende de BAIXA_VENDA/fase 3 — deferido. Retorna o mesmo StockInvariantFail[] do E*.
 
@@ -7,6 +7,7 @@ import type { StockInvariantFail } from '../stock-invariants'
 import { rendimentoMedioDaFicha } from './conclusao'
 import { emProducaoPorOrdem } from './em-producao'
 import { dosesSuspeitas, assinaturaDoDesvio, DESVIO_DA_DOSE } from './plausibilidade-da-dose'
+import { EFICIENCIA_MINIMA } from './eficiencia-da-ordem'
 import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -104,12 +105,58 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
     }
   }
 
+  /**
+   * ⭐⭐⭐ P8 — A EFICIÊNCIA CAIU (item 2 da decisão do dono, 03/10/2026).
+   *
+   * *"Aviso no juiz quando a eficiência cai (ex. <85%) — me DENUNCIA, não me corrige."*
+   *
+   * ⛔⛔ **ESTE INVARIANTE É A CONTRAPARTIDA DE TIRAR O RENDIMENTO DA SEPARAÇÃO.** Enquanto a
+   * medição dividia o pedido, render mal **se autocorrigia em silêncio** (separava menos, a
+   * conta "fechava", e o desvio virava a nova linha de base). Agora a separação é fixa pela
+   * ficha, então render mal **sobra** — e sobrar é o ponto: alguém tem que ser avisado.
+   *
+   * ⚠️ **A RÉGUA É A FICHA, NUNCA A MÉDIA** — e é o que o separa do P3. Medir contra a média
+   * pergunta *"você produziu como costuma produzir?"*, que sempre responde SIM porque a
+   * referência anda junto com o desvio. O P8 pergunta *"você produziu o que a receita
+   * prometia?"*, e a receita não anda.
+   *
+   * ⭐ Lê o valor **CONGELADO** na conclusão (`stock_producao_desvio.pctTeorico`), nunca um
+   * recálculo: é o número que o operador viu, e recalcular faria o alarme nascer e morrer
+   * sozinho conforme a média da ficha andasse. ⚠️ A coluna conserva o nome antigo porque
+   * migration de estoque é CREATE-only.
+   *
+   * ⭐ **AVISO, não erro:** eficiência baixa é fato da operação, não defeito de dado. Deixar o
+   * selo vermelho por causa dela faria o dono parar de ler o e-mail — a lição dos 111 alarmes
+   * falsos do juiz de vendas.
+   */
+  const desviosP8 = await db.stockProducaoDesvio.findMany({
+    select: { conclusaoId: true, companyId: true, pctTeorico: true },
+  })
+  /** conclusões que o P8 já denunciou — uma causa, um alarme (a régua do N1/N3 do juiz de infra) */
+  const denunciadasPeloP8 = new Set<string>()
+  for (const d of desviosP8) {
+    if (d.pctTeorico == null || !(d.pctTeorico > 0)) continue
+    if (d.pctTeorico >= EFICIENCIA_MINIMA) continue
+    denunciadasPeloP8.add(d.conclusaoId)
+    F(
+      'P8',
+      d.companyId,
+      `conclusão ${d.conclusaoId}: saiu ${Math.round(d.pctTeorico * 100)}% do que a receita promete ` +
+        `(abaixo de ${Math.round(EFICIENCIA_MINIMA * 100)}%) — o material consumido dava pra mais. ` +
+        `Confira a operação, a sobra não contada, ou mude a ficha se a perda é real.`,
+      'aviso',
+    )
+  }
+
   // P3 — rendimento do lote fora de ±25% da média (desvio grave não revisado)
   const conclusoes = await db.stockProducaoConclusao.findMany({ select: { id: true, companyId: true, ordemId: true, rendimento: true } })
   const fichaDaOrdem = new Map(ordens.map((o) => [o.id, o.fichaId]))
   for (const c of conclusoes) {
     const fichaId = fichaDaOrdem.get(c.ordemId)
     if (!fichaId) continue
+    // ⚠️ o P8 já apontou este lote contra a FICHA; repetir "desvia da sua média" aqui seria o
+    // mesmo problema contado duas vezes, e é assim que o e-mail vira ruído.
+    if (denunciadasPeloP8.has(c.id)) continue
     const media = await rendimentoMedioDaFicha(c.companyId, fichaId, db as PrismaClient, c.id)
     if (media && media > 0) {
       const desvio = Math.abs((c.rendimento - media) / media)

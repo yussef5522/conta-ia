@@ -5,7 +5,8 @@
 // virtual em-produção). Sobra volta (devolver). Conclusão "quantos saíram?" é 2.2.
 
 import { useEffect, useMemo, useState, use } from 'react'
-import { escalaDoConsumo, preverSaida, insumoParaSaida, reguaDoRendimento, avaliarVariacao } from '@/lib/stock/producao/previsao-rendimento'
+import { escalaDoConsumo, preverSaida, eficienciaMedia, avaliarVariacao } from '@/lib/stock/producao/previsao-rendimento'
+import { insumoDoPedido } from '@/lib/stock/producao/escala-da-ordem'
 import { formatarQtd } from '@/lib/stock/quantidade'
 import { Card, CardContent } from '@/components/ui/card'
 import { EtapasDaOrdem } from '@/components/estoque/etapas-da-ordem'
@@ -74,10 +75,10 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const parseNum = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
   const custoSeparado = useMemo(() => linhas.reduce((s, l) => { const q = ordem?.estado === 'PLANEJADA' ? parseNum(sep[l.itemId]) : l.qtdSeparada; return s + q * (l.custoMedio ?? 0) }, 0), [linhas, sep, ordem])
 
-  // ⭐⭐ A RÉGUA e a PREVISÃO — hooks no TOPO (Regra dos Hooks: nº fixo, antes do early-return).
-  // A conta é toda da lib pura `previsao-rendimento`; aqui não há aritmética de rendimento.
-  const regua = useMemo(
-    () => reguaDoRendimento({ teorico: ordem?.loteBase ?? 1, medido: rendimentoMedio, lotes: rendimentoLotes }),
+  // ⭐⭐ O ESPELHO e a PREVISÃO — hooks no TOPO (Regra dos Hooks: nº fixo, antes do early-return).
+  // ⛔ A conta da separação é a FICHA (`insumoDoPedido`); o espelho só alimenta a frase.
+  const espelho = useMemo(
+    () => eficienciaMedia({ teorico: ordem?.loteBase ?? 1, medido: rendimentoMedio, lotes: rendimentoLotes }),
     [ordem?.loteBase, rendimentoMedio, rendimentoLotes],
   )
 
@@ -98,15 +99,16 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   // numa média seria pior — a previsão sairia de um número que não existe em lugar nenhum.
   const desencontro = useMemo(() => {
     if (ordem?.estado !== 'PLANEJADA' || !ordem) return null
+    // ⭐ a saída de cada linha pela FICHA (`loteBase`), nunca pelo rendimento medido
     const rs = linhas.filter((l) => l.porLote > 0 && parseNum(sep[l.itemId]) > 0)
-      .map((l) => ({ nome: l.nome, saida: (parseNum(sep[l.itemId]) / l.porLote) * regua.valor }))
+      .map((l) => ({ nome: l.nome, saida: (parseNum(sep[l.itemId]) / l.porLote) * ordem.loteBase }))
     if (rs.length < 2) return null
     const min = rs.reduce((a, b) => (a.saida <= b.saida ? a : b))
     const max = rs.reduce((a, b) => (a.saida >= b.saida ? a : b))
     if (min.saida <= 0 || max.saida / min.saida < 1.1) return null
     return { min, max }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linhas, sep, ordem, regua])
+  }, [linhas, sep, ordem])
 
   if (ordem === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (ordem === null) return <div className="p-6 text-sm text-slate-500">Ordem não encontrada.</div>
@@ -221,8 +223,9 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                       const alvo = parseNum(e.target.value)
                       if (!(alvo > 0) || !ordem) return
                       // ⭐ o de cima manda: cada linha recebe o SEU insumo pra esse alvo
+                      // ⛔ pela FICHA (dose × pedido ÷ loteBase) — sem rendimento no meio
                       setSep(Object.fromEntries(linhas.map((l) => {
-                        const q = insumoParaSaida(alvo, l.porLote, { teorico: ordem.loteBase, medido: rendimentoMedio, lotes: rendimentoLotes })
+                        const q = insumoDoPedido({ pedido: alvo, loteBase: ordem.loteBase }, l.porLote)
                         return [l.itemId, q == null ? '' : String(q).replace('.', ',')]
                       })))
                     }}
@@ -238,12 +241,14 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                 <p className="mt-1 text-sm font-semibold tabular-nums text-slate-900">
                   {linhas.length === 0 ? '—' : linhas.map((l) => `${formatarQtd(parseNum(sep[l.itemId]), l.unidade)} de ${l.nome.toLowerCase()}`).join(' · ')}
                 </p>
+                {/* ⛔ A frase diz a VERDADE da conta: é a receita. O espelho vem depois. */}
                 <p className="mt-0.5 text-[11px] text-slate-400">
-                  {regua.daMedia
-                    ? `pela sua média medida — ${(regua.pct! * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}% do que a ficha promete, de ${regua.lotes} lotes`
+                  pela receita da ficha
+                  {espelho
+                    ? ` · seus últimos ${espelho.lotes} lotes renderam ${(espelho.pct * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}% dela`
                     : rendimentoLotes === 1
-                      ? 'pelo teórico da ficha · 1 lote ainda não é média'
-                      : 'pelo teórico da ficha · sua média: a apurar'}
+                      ? ' · 1 lote ainda não é média'
+                      : ' · eficiência: a apurar'}
                 </p>
               </div>
 
@@ -251,9 +256,12 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                 <div className="ml-auto text-right text-xs">
                   <p className="text-slate-500">Com isso deve sair</p>
                   <p className="text-lg font-semibold tabular-nums text-slate-900">
-                    ~{num(Math.round(previsao.esperado))} <span className="text-sm font-normal text-slate-500">{ordem.unidadeProduzido}</span>
+                    ~{num(Math.round(previsao.esperadoDaFicha))} <span className="text-sm font-normal text-slate-500">{ordem.unidadeProduzido}</span>
                   </p>
-                  <p className="text-[11px] text-slate-400">~{num(Math.round(previsao.teorico))} pelo teórico da ficha</p>
+                  {/* ⭐ ESPELHO: o que a sua média diria — informação, não meta. */}
+                  {previsao.medido != null && espelho && (
+                    <p className="text-[11px] text-slate-400">~{num(Math.round(previsao.medido))} pela sua média de {espelho.lotes} lotes</p>
+                  )}
                 </div>
               )}
             </div>
@@ -462,10 +470,10 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, etapasAbertas, rend
           <div className="mt-1 flex items-center gap-1"><input value={qtdGerada} onChange={(e) => setQtdGerada(e.target.value)} inputMode="decimal" placeholder="conte e digite" className="w-28 rounded-lg border border-slate-300 py-2 px-3 text-sm tabular-nums" /><span className="text-xs text-slate-400">{unidadeProduzido}</span></div>
           {previsao && (
             <p className="mt-1 text-[11px] text-slate-400">
-              esperado ~{num(Math.round(previsao.esperado))}
+              a receita promete ~{num(Math.round(previsao.esperadoDaFicha))}
               {previsao.medido != null && rendimentoLotes >= 2
-                ? ` pela sua média de ${rendimentoLotes} lotes · ~${num(Math.round(previsao.teorico))} teórico`
-                : ` pelo teórico da ficha${rendimentoLotes === 1 ? ' · 1 lote ainda não é média' : ''}`}
+                ? ` · a sua média daria ~${num(Math.round(previsao.medido))} (${rendimentoLotes} lotes)`
+                : rendimentoLotes === 1 ? ' · 1 lote ainda não é média' : ''}
             </p>
           )}
         </label>
@@ -492,24 +500,24 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, etapasAbertas, rend
         <div><span className="flex items-center gap-1 text-slate-400"><TrendingUp className="h-3 w-3" /> rendimento médio</span><p className="font-semibold tabular-nums text-slate-800">{rendimentoMedio != null ? `${num(rendimentoMedio)}/receita` : 'a apurar'}</p>{rendimentoLotes > 0 && <p className="text-[10px] text-slate-400">de {rendimentoLotes} {rendimentoLotes === 1 ? 'lote' : 'lotes'}</p>}</div>
       </div>
 
-      {/* ⭐ AVISO DE VARIAÇÃO — sugere, NUNCA bloqueia. O botão Concluir segue ativo. */}
-      {variacao && variacao.pctTeorico != null && (
+      {/* ⭐ AVISO DE EFICIÊNCIA — contra a RECEITA (03/10). Sugere, NUNCA bloqueia. */}
+      {variacao && variacao.pctFicha != null && (
         <div className={`rounded-lg border p-3 text-xs ${
           variacao.faixa === 'ABAIXO' ? 'border-rose-200 bg-rose-50/70 text-rose-700'
             : variacao.faixa === 'ACIMA' ? 'border-amber-200 bg-amber-50/70 text-amber-800'
               : variacao.faixa === 'NORMAL' ? 'border-emerald-200 bg-emerald-50/70 text-emerald-700'
                 : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
           <p className="font-medium">
-            {(variacao.pctTeorico * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}% do teórico
+            {(variacao.pctFicha * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}% do que a receita promete
             {variacao.pctMediaDaFicha != null && ` · sua média é ${(variacao.pctMediaDaFicha * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%`}
-            {variacao.faixa === 'ABAIXO' && ' · ABAIXO DO NORMAL'}
-            {variacao.faixa === 'ACIMA' && ' · ACIMA DO NORMAL'}
-            {variacao.faixa === 'NORMAL' && ' · dentro do normal'}
+            {variacao.faixa === 'ABAIXO' && ' · SAIU MENOS'}
+            {variacao.faixa === 'ACIMA' && ' · SAIU MAIS'}
+            {variacao.faixa === 'NORMAL' && ' · dentro do esperado'}
           </p>
+          {/* ⛔ SEM_REGUA agora só existe com ficha de lote base zerado — sem ele não há o
+              que comparar, e inventar porcentagem ali seria pior que dizer "não sei". */}
           {variacao.faixa === 'SEM_REGUA' && (
-            <p className="mt-0.5">
-              {rendimentoLotes === 1 ? 'Esta é a 2ª produção — com uma medição só ainda não dá pra dizer o que é normal.' : 'Primeira produção desta receita: ela é que vai virar a régua.'}
-            </p>
+            <p className="mt-0.5">A ficha não declara quanto 1 receita produz — sem isso não dá pra medir eficiência.</p>
           )}
           {variacao.alerta && (
             <label className="mt-2 block">

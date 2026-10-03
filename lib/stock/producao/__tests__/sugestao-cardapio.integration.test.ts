@@ -39,6 +39,33 @@ describe('sugestão de produção (min/max)', () => {
     expect(sug).toHaveLength(1)
     expect(sug[0].saldo).toBe(0)
     expect(sug[0].faltam).toBe(50) // até o máximo
-    expect(sug[0].escalaSugerida).toBeNull() // sem rendimento ainda → a apurar
+    /**
+     * ⛔⛔ **ASSERÇÃO INVERTIDA EM 03/10 — e ela escondia um BUG SILENCIOSO.**
+     *
+     * Era `toBeNull()` com o comentário *"sem rendimento ainda → a apurar"*, porque a escala
+     * saía de `faltam ÷ rendimentoMedio`. Só que a tela faz `escalaReceitas: escalaSugerida ?? 1`
+     * — então o botão "criar ordem" do painel, numa receita **nunca produzida**, criava uma
+     * ordem de **1 unidade** faltando **50**. O `null` não era "a apurar" na prática: era
+     * uma ordem errada, do tamanho errado, sem nada na tela dizendo isso.
+     *
+     * ⭐ Com a decisão do dono (*"a separação é SEMPRE ficha × pedido"*) a escala sai de
+     * `faltam ÷ loteBase`, que **não precisa de histórico**: ficha nova sugere o número certo
+     * desde o primeiro clique. A segunda porta virou a porta certa.
+     */
+    expect(sug[0].escalaSugerida).toBe(50) // loteBase 1 → 50 unidades = 50 receitas
+    expect(sug[0].rendimentoMedio).toBeNull() // ⭐ e o espelho segue honesto: sem histórico
+  })
+
+  it('⭐ loteBase > 1 divide a sugestão — e o espelho continua fora da conta', async () => {
+    /**
+     * ⚠️ O caso da massa que rende 17 metades: faltando 34, a sugestão é **2 receitas**, não
+     * 34. É `escalaDoPedido` — a MESMA porta que a tela de criar ordem usa (REGRA 4), e não
+     * uma segunda divisão escrita aqui.
+     */
+    const f = await criarFicha({ companyId, nomeProduzido: 'Massa', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 17, unidadeLoteBase: 'UN', componentes: [{ itemId: insumoId, qtdPlanejada: 5, unidade: 'KG' }] }, prisma)
+    await prisma.stockItem.update({ where: { id: f.itemProduzidoId }, data: { estoqueMin: 10, estoqueMax: 34 } })
+    const sug = (await sugestoesDeProducao(companyId, prisma)).find((s) => s.nome === 'Massa')!
+    expect(sug.faltam).toBe(34)
+    expect(sug.escalaSugerida).toBe(2)
   })
 })

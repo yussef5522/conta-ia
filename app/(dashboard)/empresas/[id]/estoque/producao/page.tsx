@@ -8,7 +8,8 @@ import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 // ⚠️ "×" SAIU DA TELA (01/09, decisão do dono): *"a pessoa fala em porções e em kg, nunca
 // em '×'"*. O `escalaReceitas` continua no banco e no motor — só não aparece mais.
-import { escalaParaSaida, reguaDoRendimento } from '@/lib/stock/producao/previsao-rendimento'
+import { eficienciaMedia } from '@/lib/stock/producao/previsao-rendimento'
+import { escalaDoPedido } from '@/lib/stock/producao/escala-da-ordem'
 import { avisosDaEscala } from '@/lib/stock/producao/escala-do-pedido'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
@@ -24,7 +25,7 @@ interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string
 interface Setor { id: string; nome: string; ativo: boolean }
 interface Painel { emAberto: number; valorEmProducao: number; concluidasNoPeriodo: number; valorProduzidoNoPeriodo: number; rendimentoPeriodo: number | null; lotesNaMedia: number; faixaRendimento: string; abertasDeOntem: number }
 type Aberta = Ordem & { deOntem?: boolean }
-interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string; pct: number | null; faixa: string; motivo: string | null; selo: 'MEDIDA' | 'TEORICO' | 'SEM_DADO' }
+interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string; pct: number | null; faixa: string; motivo: string | null; selo: 'FICHA' | 'SEM_DADO' }
 
 // ⭐ PALETA APROVADA NO MOCKUP (01/09/2026). Cor SÓ com significado — status, desvio,
 // dinheiro parado. Texto sobre fundo colorido usa o tom escuro da MESMA família, nunca
@@ -368,36 +369,39 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
   }, [id])
 
   const ficha = fichas.find((f) => f.id === fichaId) ?? null
-  const rend = ficha ? { teorico: ficha.loteBase, medido: ficha.rendimentoMedio, lotes: ficha.rendimentoLotes } : null
-  const regua = rend ? reguaDoRendimento(rend) : null
+  /** ⭐ ESPELHO, não régua: só pra tela DIZER quanto a cozinha vem rendendo. */
+  const espelho = ficha ? eficienciaMedia({ teorico: ficha.loteBase, medido: ficha.rendimentoMedio, lotes: ficha.rendimentoLotes }) : null
 
   /**
    * ⭐⭐ O GUARD DO ATO DA CRIAÇÃO (item 4b, 03/10) — pega ANTES de separar, não no mês
    * seguinte. O caso que o criou: ordem de 10 beef de xis propondo material pra ~6,7.
+   *
+   * ⛔⛔ **A SEPARAÇÃO É `escalaDoPedido` — ficha × pedido, sem rendimento** (decisão do dono,
+   * 03/10). A medição não aparece em nenhuma multiplicação/divisão daqui; ela só alimenta a
+   * FRASE do aviso.
    *
    * ⚠️ A régua mora em `avisosDaEscala` (lib PURA), nunca aqui: *regra que vive num
    * componente é regra que ninguém prova* — este projeto roda sem jsdom (a lição do prefill
    * do cardápio, 28/08).
    */
   const alvoNum = Number(quanto.replace(',', '.'))
-  const escalaPrevia = rend && alvoNum > 0 ? escalaParaSaida(alvoNum, rend) : null
   const maiorDose = (ficha?.componentes ?? []).reduce<{ nome: string; dose: number } | null>(
     (m, c) => (!m || c.qtdPlanejada > m.dose ? { nome: c.nome, dose: c.qtdPlanejada } : m), null)
-  const avisos = ficha && regua && escalaPrevia != null && alvoNum > 0
+  const avisos = ficha && alvoNum > 0
     ? avisosDaEscala({
-        pedido: alvoNum, escala: escalaPrevia, regua,
+        pedido: alvoNum,
         loteBase: ficha.loteBase, unidadeLoteBase: ficha.unidadeLoteBase,
-        unidadeProduto: ficha.unidadeProduzido, maiorDose,
+        unidadeProduto: ficha.unidadeProduzido, maiorDose, espelho,
       })
     : []
 
   const criar = async () => {
     setErro(null)
     const alvo = Number(quanto.replace(',', '.'))
-    if (!fichaId || !rend) return setErro('Escolha a ficha.')
+    if (!fichaId || !ficha) return setErro('Escolha a ficha.')
     if (!(alvo > 0)) return setErro('Diga quanto você quer produzir.')
     // a escala continua sendo o que o banco guarda — só não é mais o que se digita
-    const esc = escalaParaSaida(alvo, rend)
+    const esc = escalaDoPedido({ pedido: alvo, loteBase: ficha.loteBase })
     if (esc == null || !(esc > 0)) return setErro('Não consegui converter — confira o lote base da ficha.')
     if (!data) return setErro('Informe a data de produção.')
     setBusy(true)
@@ -425,11 +429,10 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
                 <input value={quanto} onChange={(e) => setQuanto(e.target.value)} inputMode="decimal" placeholder="200" className="block w-28 rounded-lg border border-slate-300 py-2 px-3 text-sm tabular-nums" />
                 <span className="text-xs text-slate-400">{ficha?.unidadeProduzido ?? ''}</span>
               </div>
-              {regua && (
-                <span className="mt-1 block text-[11px] font-normal text-slate-400">
-                  {regua.daMedia ? `pela sua média de ${regua.lotes} lotes` : 'pelo teórico da ficha · sua média: a apurar'}
-                </span>
-              )}
+              {/* ⭐ A conta é SEMPRE a ficha (03/10). O espelho vai ao lado, como informação. */}
+              <span className="mt-1 block text-[11px] font-normal text-slate-400">
+                pela receita da ficha{espelho ? ` · seus últimos ${espelho.lotes} lotes renderam ${Math.round(espelho.pct * 100)}%` : ' · eficiência: a apurar'}
+              </span>
             </label>
           </div>
           <div className="flex flex-wrap items-end gap-3">
@@ -544,24 +547,20 @@ function ListaConcluidas({ id, itens, periodo, nomePorOrdem, mostrar, onMais }: 
               <span className={`${T.custo} tabular-nums`} style={{ color: C.nomeTx, fontWeight: 500 }}>{brl(c.custoUnitarioReal)}/un</span>
               {/* ⭐ ITEM 3: o selo de % por linha — faixas do `avaliarVariacao`, a MESMA
                   régua do card e do aviso que o operador viu ao concluir. */}
-              {/* ⭐⭐ TRÊS ESTADOS, TRÊS APARÊNCIAS — e nenhuma promoção silenciosa:
-                  MEDIDA  → % colorido (cor é JULGAMENTO, e só a régua medida julga)
-                  TEORICO → "≈N% do teórico" em CINZA (referência, não julgamento)
-                  SEM_DADO→ nada (lote anterior ao sprint; recalcular daria ficção — o
-                            fóssil de 21/08 daria 2500% por causa da ficha da época) */}
-              {c.selo === 'MEDIDA' && c.pct != null && (
+              {/* ⭐⭐ DOIS ESTADOS (03/10) — eram três, e a fusão é a decisão do dono:
+                  FICHA    → % COLORIDO contra o que a receita promete. É a EFICIÊNCIA, e
+                             ela vale desde o 1º lote (a receita é régua sem precisar de
+                             histórico). Antes isto era `MEDIDA` e exigia 2 lotes; o `TEORICO`
+                             mostrava o mesmo número em CINZA, *"referência, não julgamento"* —
+                             e era justamente o lote novo, onde um 72% passava sem uma palavra.
+                  SEM_DADO → nada (lote anterior ao sprint; recalcular daria ficção — o
+                             fóssil de 21/08 daria 2500% por causa da ficha da época) */}
+              {c.selo === 'FICHA' && c.pct != null && (
                 <span className={`rounded-xl px-2 py-0.5 ${T.pill} tabular-nums`} style={
                   c.faixa === 'ABAIXO' ? { background: C.ambarBg, color: C.ambarTx }
                     : c.faixa === 'ACIMA' ? { background: C.azulBg, color: C.azulTx }
-                      : { background: C.verdeBg, color: C.verdeTx }} title="rendimento contra a sua média medida">
+                      : { background: C.verdeBg, color: C.verdeTx }} title="o que saiu contra o que a receita promete">
                   {Math.round(c.pct * 100)}%
-                </span>
-              )}
-              {c.selo === 'TEORICO' && c.pct != null && (
-                <span className={`rounded-xl px-2 py-0.5 ${T.pill} tabular-nums`}
-                  style={{ background: C.cinzaBg, color: C.cinzaTx }}
-                  title="ainda não há média medida (precisa de 2 lotes) — este é o teórico da ficha">
-                  ≈{Math.round(c.pct * 100)}% do teórico
                 </span>
               )}
               {c.motivo && <span className={`${T.quem} italic`} style={{ color: C.txt3 }}>{c.motivo}</span>}

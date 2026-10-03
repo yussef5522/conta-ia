@@ -13,6 +13,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { custoMedioPorItem, saldosDaEmpresa } from '../saldo'
 import { calcularMargem } from './custo-teorico'
 import { rendimentoMedioDaFicha } from './conclusao'
+import { escalaDoPedido } from './escala-da-ordem'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
@@ -25,21 +26,37 @@ export interface SugestaoProducao {
   estoqueMin: number
   estoqueMax: number | null
   faltam: number // (max ?? min) − saldo, em unidades do produto
-  escalaSugerida: number | null // faltam / rendimentoMedio (null = a apurar → escala 1)
+  /**
+   * ⛔⛔ `faltam ÷ loteBase` — **pela FICHA, nunca pelo rendimento medido** (decisão do dono,
+   * 03/10: *"receita é lei, rendimento é só relatório"*).
+   *
+   * ⚠️⚠️ **ESTA ERA A SEGUNDA PORTA, e ela gravava separação torta sem passar por tela nenhuma:**
+   * era `faltam ÷ rendimentoMedio`, e o botão "criar ordem" do painel manda este número direto
+   * como `escalaReceitas`. Consertar só a tela de criar ordem teria deixado o defeito vivo pelo
+   * caminho do min/máx — é a REGRA 4 (*achar TODAS as cópias da decisão*) cobrando no mesmo dia.
+   */
+  escalaSugerida: number | null
+  /** ⭐ ESPELHO — só pra tela dizer quanto a cozinha vem rendendo. Fora da conta. */
   rendimentoMedio: number | null
 }
 
 /** Itens produzidos (com ficha ATIVA) cujo saldo caiu abaixo do mínimo. */
 export async function sugestoesDeProducao(companyId: string, db: PrismaClient = defaultPrisma): Promise<SugestaoProducao[]> {
-  const fichas = await db.stockFicha.findMany({ where: { companyId, ativo: true }, select: { id: true, itemProduzidoId: true } })
+  const fichas = await db.stockFicha.findMany({ where: { companyId, ativo: true }, select: { id: true, itemProduzidoId: true, versaoAtual: true } })
   if (!fichas.length) return []
   const produzidoIds = fichas.map((f) => f.itemProduzidoId)
-  const [itens, saldos] = await Promise.all([
+  const [itens, saldos, versoes] = await Promise.all([
     db.stockItem.findMany({ where: { companyId, id: { in: produzidoIds } }, select: { id: true, nome: true, unidadeControle: true, estoqueMin: true, estoqueMax: true } }),
     saldosDaEmpresa(db, companyId),
+    // ⭐ o `loteBase` da versão VIGENTE de cada ficha — é ele que divide o pedido agora
+    db.stockFichaVersao.findMany({
+      where: { companyId, fichaId: { in: fichas.map((f) => f.id) } },
+      select: { fichaId: true, versao: true, loteBase: true },
+    }),
   ])
   const saldoDe = new Map(saldos.map((s) => [s.itemId, s.saldo]))
   const metaDe = new Map(itens.map((i) => [i.id, i]))
+  const loteDe = new Map(versoes.map((v) => [`${v.fichaId}#${v.versao}`, v.loteBase]))
 
   const out: SugestaoProducao[] = []
   for (const f of fichas) {
@@ -51,7 +68,10 @@ export async function sugestoesDeProducao(companyId: string, db: PrismaClient = 
     const faltam = round2(alvo - saldo)
     if (faltam <= 0) continue
     const rendimentoMedio = await rendimentoMedioDaFicha(companyId, f.id, db)
-    const escalaSugerida = rendimentoMedio && rendimentoMedio > 0 ? round2(faltam / rendimentoMedio) : null
+    const loteBase = loteDe.get(`${f.id}#${f.versaoAtual}`) ?? null
+    /** ⛔ `escalaDoPedido` é a porta única da separação — aqui ela entra pelo min/máx. */
+    const esc = loteBase != null ? escalaDoPedido({ pedido: faltam, loteBase }) : null
+    const escalaSugerida = esc != null ? round2(esc) : null
     out.push({ fichaId: f.id, itemProduzidoId: f.itemProduzidoId, nome: it.nome, unidade: it.unidadeControle, saldo, estoqueMin: it.estoqueMin, estoqueMax: it.estoqueMax, faltam, escalaSugerida, rendimentoMedio })
   }
   return out.sort((a, b) => a.saldo / a.estoqueMin - b.saldo / b.estoqueMin) // mais crítico primeiro
