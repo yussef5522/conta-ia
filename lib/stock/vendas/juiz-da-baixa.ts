@@ -21,15 +21,19 @@
  *
  * ⭐ Por isso o veredito tem **TRÊS** saídas, não duas — a mesma disciplina do B1 do saldo:
  *
- * | motor × ledger | a ficha mudou depois da baixa? | veredito |
+ * | motor × ledger | o MUNDO mudou depois da baixa? | veredito |
  * |---|---|---|
  * | batem | — | **verde** |
- * | divergem | **sim** | **AVISO**: *"a receita mudou depois desta baixa — reprocessar é decisão do dono"* |
+ * | divergem | **sim** (ficha versionada **ou** nome mapeado depois) | **AVISO**: *"reprocessar é decisão do dono"* |
  * | divergem | não | ⛔ **ERRO**: alguém baixou fora da porta |
  *
  * ⚠️ E a pergunta *"qual ficha?"* só é respondível porque a porta devolve o **rastro**
  * (`viaFichas`): sem ele eu teria que olhar "alguma ficha da empresa mudou", o que
  * transformaria qualquer edição de receita num perdão geral.
+ *
+ * ⚠️⚠️ **E "O MUNDO" SÃO DUAS COISAS, NÃO UMA — a prova em prod me ensinou a segunda.** A 1ª
+ * versão olhava só a FICHA e acusou os complementos de 11/09 como ERRO; a causa era o dono ter
+ * **mapeado dois nomes novos do PDV em 14/09**. Ver `mundoMudouDepois`, abaixo.
  */
 
 import type { PrismaClient } from '@prisma/client'
@@ -75,21 +79,75 @@ async function ledgerDoImport(db: PrismaClient, companyId: string, receiptId: st
 }
 
 /**
- * ⭐ A ficha mudou DEPOIS da baixa? Recebe as fichas que a explosão de hoje usou (o rastro
- * `viaFichas`) e pergunta se alguma ganhou versão nova depois que o movimento foi escrito.
+ * ⭐ O MUNDO MUDOU DEPOIS DA BAIXA? São **DUAS** coisas, e a prova em prod me ensinou a
+ * segunda.
+ *
+ * **(1) A FICHA** — alguma das fichas que a explosão de hoje atravessou (o rastro `viaFichas`)
+ * ganhou versão nova depois que o movimento foi escrito. Era o caso do Combo v3.
+ *
+ * ⚠️⚠️ **(2) O MAPA — e este buraco só apareceu RODANDO contra prod.** A 1ª versão olhava só
+ * a ficha, e o M1 acusou **complementos de 11/09** como ERRO: *"COCA COLA LATA 350ML — motor
+ * 15 × ledger 0"*. A causa não era ficha nenhuma: aqueles **nomes do PDV foram mapeados
+ * DEPOIS** (o dono mapeou `COCA COLA LATA` e a Zero em 14/09 às 17:59). Na época eram
+ * pendentes e não baixaram nada — hoje o mapa existe e o motor manda baixar. **Divergência
+ * legítima, acusada como defeito.** *Um juiz que trata "o dono mapeou um nome novo" como
+ * "alguém baixou por fora" vira ruído na primeira semana de uso real.*
+ *
+ * ⚠️ **LACUNA DECLARADA:** `stock_venda_produto_map` tem só `criadoEm` (sem `atualizadoEm`),
+ * então **TROCAR o destino de um nome já mapeado é invisível** pra esta pergunta — o mapa é
+ * upsert e a data não se move. O efeito cai no lado **seguro**: o juiz ACUSA em vez de
+ * perdoar, e o dono vê a divergência em vez de ela ser absolvida em silêncio. O mapa de
+ * complementos tem `atualizadoEm` e não sofre disso.
  */
-async function receitaMudouDepois(
+async function mundoMudouDepois(
   db: PrismaClient,
   companyId: string,
   fichaIds: string[],
+  nomesDoDia: string[],
   gravadoEm: Date | null,
-): Promise<string[]> {
-  if (!gravadoEm || !fichaIds.length) return []
-  const versoes = await db.stockFichaVersao.findMany({
-    where: { companyId, fichaId: { in: fichaIds }, criadoEm: { gt: gravadoEm } },
-    select: { fichaId: true },
-  })
-  return [...new Set(versoes.map((v) => v.fichaId))]
+  fluxo: 'PRODUTOS' | 'COMPLEMENTOS',
+): Promise<{ fichas: string[]; nomes: string[] }> {
+  if (!gravadoEm) return { fichas: [], nomes: [] }
+
+  const versoes = fichaIds.length
+    ? await db.stockFichaVersao.findMany({
+        where: { companyId, fichaId: { in: fichaIds }, criadoEm: { gt: gravadoEm } },
+        select: { fichaId: true },
+      })
+    : []
+
+  let nomes: string[] = []
+  if (nomesDoDia.length) {
+    if (fluxo === 'PRODUTOS') {
+      nomes = (
+        await db.stockVendaProdutoMap.findMany({
+          where: { companyId, nomeSuitable: { in: nomesDoDia }, criadoEm: { gt: gravadoEm } },
+          select: { nomeSuitable: true },
+        })
+      ).map((m) => m.nomeSuitable)
+    } else {
+      nomes = (
+        await db.stockVendaComplementoMap.findMany({
+          where: {
+            companyId,
+            nomeSuitable: { in: nomesDoDia },
+            OR: [{ criadoEm: { gt: gravadoEm } }, { atualizadoEm: { gt: gravadoEm } }],
+          },
+          select: { nomeSuitable: true },
+        })
+      ).map((m) => m.nomeSuitable)
+    }
+  }
+
+  return { fichas: [...new Set(versoes.map((v) => v.fichaId))], nomes }
+}
+
+/** a frase do AVISO, dizendo QUAL das duas coisas mudou — alarme sem causa é ruído */
+function fraseDoAviso(fluxo: string, data: string, m: { fichas: string[]; nomes: string[] }): string {
+  const partes: string[] = []
+  if (m.fichas.length) partes.push(`a receita mudou depois desta baixa (${m.fichas.length} ficha(s))`)
+  if (m.nomes.length) partes.push(`${m.nomes.length} nome(s) do PDV foram mapeados depois (${m.nomes.slice(0, 3).join(', ')})`)
+  return `${fluxo} de ${data}: ${partes.join(' · ')} — a divergência é esperada; reprocessar o dia é decisão do dono`
 }
 
 function frase(fluxo: string, data: string, c: Confronto, nomes: Map<string, string>): string {
@@ -132,13 +190,14 @@ export async function checkBaixaInvariants(
     const c = confrontarMotorComLedger(motor, led.porItem)
     if (c.fecha) continue
 
-    const mudaram = await receitaMudouDepois(db, imp.companyId, r.plano.fichasUsadas, led.gravadoEm)
-    if (mudaram.length) {
+    const nomesDoDia = [...new Set(r.plano.produtos.map((p) => p.nome))]
+    const mudou = await mundoMudouDepois(db, imp.companyId, r.plano.fichasUsadas, nomesDoDia, led.gravadoEm, 'PRODUTOS')
+    if (mudou.fichas.length || mudou.nomes.length) {
       fails.push({
         invariante: 'M1',
         companyId: imp.companyId,
         nivel: 'aviso',
-        detalhe: `produtos de ${data}: a receita mudou depois desta baixa (${mudaram.length} ficha(s)) — a divergência é esperada; reprocessar o dia é decisão do dono`,
+        detalhe: fraseDoAviso('produtos', data, mudou),
       })
     } else {
       fails.push({ invariante: 'M1', companyId: imp.companyId, detalhe: frase('produtos', data, c, nomes) })
@@ -180,13 +239,14 @@ export async function checkBaixaInvariants(
     const c = confrontarMotorComLedger(motor, led.porItem)
     if (c.fecha) continue
 
-    const mudaram = await receitaMudouDepois(db, imp.companyId, plano.fichasUsadas, led.gravadoEm)
-    if (mudaram.length) {
+    const nomesDoDia = [...new Set(plano.complementos.map((x) => x.nomeSuitable))]
+    const mudou = await mundoMudouDepois(db, imp.companyId, plano.fichasUsadas, nomesDoDia, led.gravadoEm, 'COMPLEMENTOS')
+    if (mudou.fichas.length || mudou.nomes.length) {
       fails.push({
         invariante: 'M1',
         companyId: imp.companyId,
         nivel: 'aviso',
-        detalhe: `complementos de ${data}: a receita mudou depois desta baixa (${mudaram.length} ficha(s)) — a divergência é esperada; reprocessar o dia é decisão do dono`,
+        detalhe: fraseDoAviso('complementos', data, mudou),
       })
     } else {
       fails.push({ invariante: 'M1', companyId: imp.companyId, detalhe: frase('complementos', data, c, nomes) })

@@ -20,25 +20,31 @@ const XIS = [
   { itemId: 'gordura', doseDaFicha: 0.02 },
 ]
 
-/** monta o consumo como se a ordem tivesse rodado com a razão dada */
-const comRazao = (razao: number, produzido: number) =>
-  XIS.map((c) => ({ ...c, consumido: c.doseDaFicha * razao * produzido }))
+/**
+ * monta o consumo como se a ordem de escala `escala` tivesse rodado com a razão dada.
+ *
+ * ⚠️ O 2º parâmetro é a **ESCALA DA ORDEM** (quantos lotes o plano mandou), não as unidades
+ * produzidas — a prova em prod mostrou que dividir por unidades mede o RENDIMENTO (que vai de
+ * 0,04 a 3,78 na Caçula) e não a dose. Ver o cabeçalho de `plausibilidade-da-dose.ts`.
+ */
+const comRazao = (razao: number, escala: number) =>
+  XIS.map((c) => ({ ...c, consumido: c.doseDaFicha * razao * escala }))
 
 describe('⭐ o M2 cala no normal', () => {
   it('razão 1,00 — a ordem consumiu exatamente a ficha', () => {
     expect(dosesSuspeitas(comRazao(1, 102), 102)).toEqual([])
   })
 
-  it('razão 1,06 — a folga normal de rendimento da cozinha NÃO acende', () => {
+  it('razão 1,06 — a folga normal de separação da cozinha NÃO acende', () => {
     /**
-     * ⚠️ É a faixa medida em 13 de 16 ordens recentes: `consumo == escala × dose` exato,
-     * mas **produzido ≠ escala** (a cozinha faz mais que o plano). Acender aqui
-     * transformaria a rotina inteira em alarme.
+     * ⚠️ É a faixa medida nas ordens reais: `consumo == escala × dose` fecha exato em 13 de
+     * 16, e o que sobra é a folga de quem tira da câmara. Acender aqui transformaria a
+     * rotina inteira em alarme.
      */
     expect(dosesSuspeitas(comRazao(1.06, 192), 192)).toEqual([])
   })
 
-  it('⛔ ordem sem unidade produzida devolve VAZIO — não existe "dose por unidade" de zero', () => {
+  it('⛔ ordem sem escala devolve VAZIO — não existe "dose por lote" de zero lote', () => {
     /**
      * A mesma disciplina do *"tempo zero não é velocidade infinita"* (06/09): dividir por
      * zero aqui inventaria um desvio infinito. Ordem parada é assunto do P2.

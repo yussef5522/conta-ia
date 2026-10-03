@@ -79,6 +79,19 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  /**
+   * ⚠️⚠️ APAGA AS TABELAS `stock_*` EXPLICITAMENTE — `company.deleteMany` NÃO cascateia aqui.
+   * O isolamento do módulo proíbe `@relation` às tabelas fechadas (o `companyId` é VALOR
+   * indexado), então não existe cascade. A 1ª versão deste arquivo só apagava a empresa e
+   * deixou **32 ordens órfãs no dev.db** — e como `checkProducaoInvariants` varre o banco
+   * INTEIRO, o golden da produção (que não filtra empresa) ficou vermelho por sujeira minha.
+   * É a mesma classe do `snapshotClosedModules` global (23/08) e do CNPJ colidindo (13/09):
+   * teste que não limpa o que cria envenena o vizinho.
+   */
+  for (const t of ['stockProducaoConclusao', 'stockMovement', 'stockProductionOrder', 'stockVendaLinha', 'stockVendaImport', 'stockVendaProdutoMap', 'stockVendaComplementoMap', 'stockFichaComponente', 'stockFichaVersao', 'stockFicha', 'stockItem'] as const) {
+    // @ts-expect-error dinâmico
+    await prisma[t].deleteMany({ where: { companyId } })
+  }
   await prisma.company.deleteMany({ where: { cnpj: CNPJ } })
 })
 
@@ -195,6 +208,37 @@ describe('⭐⭐ A TERCEIRA SAÍDA — a receita mudou DEPOIS da baixa', () => {
     expect(m[0].nivel).toBe('aviso') // ⭐ NÃO deixa o selo vermelho
     expect(m[0].detalhe).toContain('a receita mudou depois desta baixa')
     expect(m[0].detalhe).toContain('decisão do dono')
+  })
+
+  it('⭐⭐ NOME DO PDV mapeado DEPOIS também é AVISO — o caso real dos complementos de 11/09', async () => {
+    /**
+     * ⚠️⚠️ **ESTE TESTE NASCEU DE UM DEFEITO MEU QUE SÓ A PROVA EM PROD PEGOU.** A 1ª versão
+     * do M1 olhava só a FICHA, e o juiz acusou **complementos de 11/09** como ERRO:
+     * *"COCA COLA LATA 350ML — motor 15 × ledger 0"*. Não havia ficha nenhuma mudada: aqueles
+     * **nomes do PDV foram mapeados em 14/09**, depois da baixa. Na época eram pendentes e
+     * não baixaram nada; hoje o mapa existe e o motor manda baixar.
+     *
+     * ⭐ A cena aqui é a mesma: um nome que o dia TINHA e que só ganhou destino depois.
+     */
+    const novoItem = await prisma.stockItem.create({
+      data: { companyId, nome: 'COCA COLA LATA 350ML', unidadeControle: 'UN', categoria: 'REVENDA', criadoVia: 'CONFERENCIA' },
+    })
+    await prisma.stockMovement.create({
+      data: { companyId, itemId: novoItem.id, tipo: 'ENTRADA_NF', quantidade: 100, custoUnitario: 2.9, custoTotal: 290, origem: 'SEFAZ' },
+    })
+    // a linha do dia existia (entrou no import como PENDENTE) — acrescentamos e mapeamos AGORA
+    const imp = await prisma.stockVendaImport.findFirstOrThrow({ where: { companyId }, select: { id: true, data: true } })
+    await prisma.stockVendaLinha.create({
+      data: { companyId, importId: imp.id, data: imp.data, nomeSuitable: 'COCA COLA LATA', quantidade: 15, valorTotal: 90 },
+    })
+    const { upsertVendaMap } = await import('../venda-map')
+    await upsertVendaMap(companyId, 'COCA COLA LATA', { tipo: 'REVENDA', itemId: novoItem.id }, 'u', prisma)
+
+    const m = await mOf(companyId)
+    expect(m).toHaveLength(1)
+    expect(m[0].nivel).toBe('aviso') // ⭐ NÃO é erro: o dono mapeou um nome, não baixou por fora
+    expect(m[0].detalhe).toContain('mapeados depois')
+    expect(m[0].detalhe).toContain('COCA COLA LATA')
   })
 
   it('⭐ e a versão nova de OUTRA ficha NÃO compra o perdão', async () => {

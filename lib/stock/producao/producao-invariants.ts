@@ -22,7 +22,7 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
   const fails: StockInvariantFail[] = []
   const F = (invariante: string, companyId: string | null, detalhe: string, nivel?: 'erro' | 'aviso') => fails.push({ invariante, companyId, detalhe, ...(nivel ? { nivel } : {}) })
 
-  const ordens = await db.stockProductionOrder.findMany({ select: { id: true, companyId: true, estado: true, atualizadoEm: true, fichaId: true, versaoFicha: true } })
+  const ordens = await db.stockProductionOrder.findMany({ select: { id: true, companyId: true, estado: true, atualizadoEm: true, fichaId: true, versaoFicha: true, escalaReceitas: true } })
   /**
    * ⭐ AS ORDENS COM DESCANSO PLANEJADO — etapa ainda por fazer, marcada pra HOJE ou pra
    * FRENTE. É o que separa *"o lote está dormindo de propósito"* de *"o lote foi esquecido"*.
@@ -133,21 +133,20 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
    * mandariam o dono conferir três fichas que estão certas.
    */
   const conclusoesM2 = await db.stockProducaoConclusao.findMany({
-    select: { id: true, companyId: true, ordemId: true, qtdGerada: true },
+    select: { id: true, companyId: true, ordemId: true },
   })
   for (const c of conclusoesM2) {
     const fichaId = fichaDaOrdem.get(c.ordemId)
     const itens = porOrdemItem.get(c.ordemId)
     if (!fichaId || !itens) continue
     const ordem = ordens.find((o) => o.id === c.ordemId)
+    if (!ordem) continue
     // ⚠️ a dose tem que vir da VERSÃO QUE A ORDEM USOU (snapshot), nunca da vigente: a ficha
     // pode ter sido editada depois, e aí o aviso acusaria uma mudança de receita legítima.
-    const versao = ordem
-      ? await db.stockFichaVersao.findFirst({
-          where: { companyId: c.companyId, fichaId, versao: ordem.versaoFicha },
-          select: { id: true },
-        })
-      : null
+    const versao = await db.stockFichaVersao.findFirst({
+      where: { companyId: c.companyId, fichaId, versao: ordem.versaoFicha },
+      select: { id: true },
+    })
     if (!versao) continue
     const comps = await db.stockFichaComponente.findMany({
       where: { companyId: c.companyId, versaoId: versao.id },
@@ -159,7 +158,13 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
       doseDaFicha: cp.qtdPlanejada,
       consumido: itens.get(cp.itemId)?.con ?? 0,
     }))
-    const suspeitas = dosesSuspeitas(doses, c.qtdGerada)
+    /**
+     * ⭐ O DENOMINADOR É A ESCALA DA ORDEM (o PLANO), não as unidades produzidas nem a
+     * `escalaConsumida` da conclusão. A 1ª versão dividia por `qtdGerada` e media o
+     * RENDIMENTO (107 falsos em prod, a pergunta que o P3 já faz); a `escalaConsumida` é
+     * derivada do próprio consumo e daria 1,000 sempre — invariante circular.
+     */
+    const suspeitas = dosesSuspeitas(doses, ordem.escalaReceitas)
     if (!suspeitas.length) continue
     const assinatura = assinaturaDoDesvio(suspeitas, comps.length)
     const lista = suspeitas
@@ -172,7 +177,7 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
     F(
       'M2',
       c.companyId,
-      `conclusão ${c.id}: a dose efetiva por unidade produzida saiu de ±${Math.round(DESVIO_DA_DOSE * 100)}% da ficha — ${lista.join(' · ')}${pista}`,
+      `conclusão ${c.id}: a dose efetiva POR LOTE (consumo ÷ escala da ordem) saiu de ±${Math.round(DESVIO_DA_DOSE * 100)}% da ficha — ${lista.join(' · ')}${pista}`,
       'aviso',
     )
   }

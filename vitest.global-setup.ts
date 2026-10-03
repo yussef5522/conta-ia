@@ -26,8 +26,9 @@ export async function teardown() {
   const db = new PrismaClient()
   try {
     const r = await limparResiduo(db, antes)
-    if (r.empresasRemovidas > 0) {
-      console.log(`\n🧹 resíduo da suíte removido: ${r.empresasRemovidas} empresas · ${r.linhasRemovidas} linhas`)
+    if (r.empresasRemovidas > 0 || r.orfasRemovidas > 0) {
+      const orf = r.orfasRemovidas > 0 ? ` · ${r.orfasRemovidas} linhas ÓRFÃS (sem empresa)` : ''
+      console.log(`\n🧹 resíduo da suíte removido: ${r.empresasRemovidas} empresas · ${r.linhasRemovidas} linhas${orf}`)
     }
   } catch { /* falha macia: limpeza nunca derruba o resultado dos testes */ }
   await db.$disconnect().catch(() => {})

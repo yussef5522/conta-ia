@@ -66,6 +66,19 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  /**
+   * ⚠️⚠️ APAGA AS TABELAS `stock_*` EXPLICITAMENTE — `company.deleteMany` NÃO cascateia aqui.
+   * O isolamento do módulo proíbe `@relation` às tabelas fechadas (o `companyId` é VALOR
+   * indexado), então não existe cascade. A 1ª versão deste arquivo só apagava a empresa e
+   * deixou **32 ordens órfãs no dev.db** — e como `checkProducaoInvariants` varre o banco
+   * INTEIRO, o golden da produção (que não filtra empresa) ficou vermelho por sujeira minha.
+   * É a mesma classe do `snapshotClosedModules` global (23/08) e do CNPJ colidindo (13/09):
+   * teste que não limpa o que cria envenena o vizinho.
+   */
+  for (const t of ['stockProducaoConclusao', 'stockMovement', 'stockProductionOrder', 'stockVendaLinha', 'stockVendaImport', 'stockVendaProdutoMap', 'stockVendaComplementoMap', 'stockFichaComponente', 'stockFichaVersao', 'stockFicha', 'stockItem'] as const) {
+    // @ts-expect-error dinâmico
+    await prisma[t].deleteMany({ where: { companyId } })
+  }
   await prisma.company.deleteMany({ where: { cnpj: CNPJ } })
 })
 
