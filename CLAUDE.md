@@ -1759,7 +1759,69 @@ O golden da produção ficou vermelho e eu levei três medições pra ver que o 
 4. **M3 da FANTA UVA 2L** (7 UN no limbo): estornar o ajuste e contar na GARRAFA.
 5. Seguem abertas: a correção de dado da parcela #22 (saldo devedor R$ 9.729,34 a mais, DRE de setembro −R$ 505,01) · as 23 linhas de recontagem onde a variância gravada subestima · os 90 UN / R$ 768,59 do Combo (recomendação: registrar divergência) · os 6 nomes de bebida pendentes nos complementos.
 
+## ⛔⛔⛔ RECEITA É LEI, RENDIMENTO É SÓ RELATÓRIO — A MEDIÇÃO SAIU DA CONTA DA SEPARAÇÃO (03/10/2026)
+
+**Decisão do dono, no mesmo dia da cura anterior, e ela REVERTE tanto a régua de 01/09 quanto a minha própria correção da manhã:**
+
+> *"A separação da ordem é SEMPRE ficha × pedido, SEM rendimento no meio: pedir 10 beef de xis separa 0,910/0,440/0,200 · pedir 10 hamburger separa 1,100/0,550/0,180. O rendimento medido (mediana, faixa, tudo) SAI da conta da separação — ele NUNCA multiplica nem divide nada."*
+
+**⭐⭐⭐ E O MOTIVO É DE DONO, NÃO DE ARITMÉTICA — é a frase que fica:** *"se funcionário rende mal ou rouba, um sistema que adapta a separação pela medição APRENDE o roubo como normal e passa a cobrir ele."* **Um laço que se calibra pelo desvio deixa de medir o desvio: ele vira a nova linha de base, e em um mês ninguém sabe mais qual era o certo.** ⚠️ Eu havia entregado MEDIANA + FAIXA DE ±20% (afinar a estatística) e **invertido o pin do hamburger pra 1,158** argumentando perda real de trim. Ele recusou a premissa inteira: **perda só entra na conta se ELE declarar na ficha.**
+
+### ⭐⭐ A PORTA ÚNICA, e a trava é o TIPO (REGRA 5)
+
+`lib/stock/producao/escala-da-ordem.ts` — `escalaDoPedido` (`pedido ÷ loteBase`) e `insumoDoPedido` (`dose × pedido ÷ loteBase`). ⛔ **`PedidoDaOrdem` NÃO TEM campo de rendimento medido**, então passar um é **impossível** — não há o que lembrar de conferir. É o desenho do `createOfxImportRecord` (que exige o blob no tipo) e do `finalizadoEm` que fica NULL pra o tempo não entrar na média.
+
+**APAGADAS, não desativadas** (*função sem chamador é função que alguém religa por descuido*): `escalaParaSaida` · `insumoParaSaida` · `reguaDoRendimento`/`Regua` · `DISCORDANCIA_MAXIMA`. ⚠️ A faixa de ±20% morreu porque **existia pra decidir QUAL rendimento mandava** — com a ficha mandando sempre, não há o que escolher, e escolher era o problema.
+
+**⚠️⚠️ E A REGRA 4 ACHOU A SEGUNDA PORTA — que gravava sem passar por tela nenhuma:** `sugestao-cardapio.ts` fazia `escalaSugerida = faltam ÷ rendimentoMedio`, e o botão *"criar ordem"* do painel manda esse número **direto** como `escalaReceitas`. Consertar só a tela deixaria o defeito vivo pelo caminho do min/máx. ⭐ **E a correção fechou um bug SILENCIOSO de brinde:** sem histórico o campo vinha `null`, a tela fazia `escalaSugerida ?? 1` → **ficha nunca produzida criava ordem de 1 unidade faltando 50**. O `null` não era "a apurar" na prática: era uma ordem do tamanho errado, sem nada na tela dizendo isso.
+
+### ⭐⭐ A MEDIÇÃO VIROU ESPELHO (item 1 do dono)
+
+`eficiencia-da-ordem.ts` — *"pedi 10 · produziu 9 → 90%, com o consumo real do lado (plano × real por componente)"*. ⭐ **A mudança de fundo:** antes a medição era um **PARÂMETRO** que dividia o pedido e **sumia dentro da escala, invisível**; agora é **número na tela, com nome, ao lado do que a ficha prometia**. *Desvio que aparece é desvio que alguém explica; desvio que vira parâmetro é desvio que o sistema passa a cobrir.*
+
+⭐ **Os 85% que ele pediu SÃO o ±15% que a casa já usa** (`DESVIO_ALERTA`, a mesma faixa do P3 e do aviso de variação) — derivado, nunca digitado de novo. ⛔ **E o alerta é SÓ no lado de baixo:** render acima do prometido não é prejuízo, é ficha generosa — *alarme nos dois lados viraria alarme em todo lote*.
+
+**`avaliarVariacao` passou a julgar contra a FICHA, desde o PRIMEIRO lote.** ⚠️ Medir contra a média é perguntar *"você produziu como costuma produzir?"* — pergunta que **sempre** responde SIM, porque a referência anda junto com o desvio. `SEM_REGUA` sobrou só pra ficha com `loteBase` zerado. ⚠️ E o **selo do painel caiu de três estados pra dois** (`FICHA` | `SEM_DADO`): o `TEORICO` mostrava o mesmo número em **cinza**, *"referência, não julgamento"* — e era justamente o lote NOVO, onde um 72% passava sem uma palavra.
+
+### ⭐ O JUIZ P8 — "me DENUNCIA, não me corrige" (item 2)
+
+Eficiência abaixo de **85%** do que a receita promete = **AVISO** (nunca erro: é fato da operação, não defeito de dado — deixar o selo vermelho faria o dono parar de ler o e-mail). Lê o valor **CONGELADO** em `stock_producao_desvio`, nunca recálculo. ⛔ **E ele CALA o P3 no mesmo lote** — *uma causa, um alarme*, a régua do N1/N3 do juiz de infra. ⚠️ A coluna conserva o nome `pctTeorico` porque migration de estoque é CREATE-only.
+
+**⛔⛔ E O P8 É A CONTRAPARTIDA DE TIRAR O RENDIMENTO DA SEPARAÇÃO:** enquanto a medição dividia o pedido, render mal **se autocorrigia em silêncio** (separava menos, a conta "fechava"). Com a separação fixa, render mal **SOBRA** — e sobrar só vale se alguém for avisado.
+
+### ⛔⛔ O GUARD, e a REGRA 11 o REPROVOU NA 1ª VERSÃO
+
+A régua que o dono pediu: *"rendimento medido aparecendo em QUALQUER conta de separação = vermelho"*. **Minha 1ª versão procurava o rendimento ADJACENTE ao operador** (`/\s*rendimento\w*`) — e a reposição real foi `alvo / (ficha.rendimentoMedio ?? ficha.loteBase)`: **o parêntese no meio fez o guard passar VERDE com o defeito de volta na tela de criar ordem.**
+
+⭐⭐ **A régua nova não procura o veneno — procura QUEM CALCULA ESCALA:** *fora da porta, ninguém divide pra achar escala; dentro dela, a divisão é obrigada a ser por `loteBase`.* Isso é imune à forma do identificador (`rend.medido`, `mediana(...)`, `x ?? y`) e **pega até a divisão por um fator que não se chama nada disso**. 2ª rede pra divisão espalhada em duas linhas. **REGRA 11 medida nos 6 defeitos repostos:** a tela voltando a dividir (**2 vermelhos**) · a MESMA coisa em duas linhas (**1**) · divisão por fator neutro (**1**) · a 2ª porta do min/máx (**3**) · a porta trocando o denominador (**15**) · o P8 removido (**2**) · o veredito voltando à média (**3**).
+
+### ⚠️ E ISTO EU IA SUBIR QUEBRADO — a dívida da interface escrita à mão
+
+O servidor passou a devolver `selo: 'FICHA'` e a tela de produção só desenhava `'MEDIDA'`/`'TEORICO'` → **o selo de % sumiria de toda linha, em silêncio**, com `tsc` verde. É exatamente a dívida registrada em 01/09 (*"interface escrita à mão sobre payload é promessa, não prova"*) cobrando.
+
+**⚠️ E O TESTE DO P8 ACHOU DUAS COISAS MINHAS:** (a) o `afterEach` do golden **não limpava `stockProducaoDesvio`** → o `it` seguinte lia o julgamento congelado dos anteriores (a classe das linhas órfãs, de novo); (b) eu afirmei `P3` zerado na empresa, e **o P3 fala dos DOIS lotes** (cada um destoa do outro) — a supressão é por LOTE. ⚠️ E uma asserção minha estava **aritmeticamente errada**: escrevi que 142 de 154 passaria a acusar, e 142/154,44 = **91,9%**, dentro de ±15%. O teste me corrigiu, e está certo que esteja: perda de poucos % é a vida real da cozinha — é a mesma razão por que o dono chamou o hamburger de *"OK"*.
+
+**PROVADO EM PROD, pelo caminho da tela:**
+```
+⭐ beef de xis       PEDIDO 10 → ESCALA 10 · acém 0,9100 · peito 0,4400 · gordura 0,2000  ✓ PIN
+   espelho (FORA da conta): 125% do que a ficha promete (5 lotes)
+   AVISOS: [LOTE_NAO_COMPARAVEL] [MEDIA_DESTOA "…A separação segue a ficha; se a perda é real, mude a ficha"]
+⭐ beef de hamburger PEDIDO 10 → ESCALA 10 · acém 1,1000 · peito 0,5500 · gordura 0,1800  ✓ PIN
+   espelho: 95% · AVISOS: [LOTE_NAO_COMPARAVEL]   ⭐ 95% está DENTRO da faixa: não é denúncia
+
+⭐⭐ EFICIÊNCIA POR ORDEM (espelho, últimas 8):
+   ⛔ porçao frango frito  pedido 58,28 · produziu 1   → 2%    ⛔ metade de bolinha 300,21 → 186 → 62%
+   🔵 beef de xis          pedido 88,32 · produziu 108 → 122%  ✓ beef de hamburger 159,24 → 150 → 94%
+⭐ P8: 385 lotes com julgamento congelado · 42 abaixo de 85%
+```
+
+**874 arquivos · 11.276 verdes · TS 0 · deploy 4/4 (`uWgyFR7aCuVlfU3dgCtpq`, SHA `7911d58c`).** ⛔ **Zero escrita em prod.**
+
+📋 **FICA PRO DONO:** (a) **os 42 lotes abaixo de 85%** que o P8 passa a denunciar — o e-mail de amanhã sai com eles; (b) **os 37 achados do M5** (`unidadeLoteBase` em KG com produto contado em UN) — é ele que divide o pedido agora, então o aviso ficou MAIS importante, não menos; (c) **as duas conclusões outlier** (`frango frito` 2% e 379%) — `qtdGerada` não bate com o consumo, e só ele sabe se declarou unidades a mais ou se faltou lançar consumo.
+
 ## ⛔⛔⛔ A ORDEM DE 10 BEEF DE XIS SEPARAVA PRA 6,7 — A MÉDIA ENVENENADA REALIMENTANDO A ESCALA (03/10/2026)
+
+⚠️⚠️ **ESTA ENTRADA DESCREVE A CURA QUE O DONO APOSENTOU HORAS DEPOIS** (ver a seção acima). O **diagnóstico** segue valendo inteiro — a raiz era o `rendimentoMedio` dividindo o pedido, as fichas estavam corretas, e o hamburger também separava errado. O que caiu foi a **solução**: mediana + faixa de concordância afinavam a estatística, e a decisão foi **tirar a estatística da conta**. Fica registrada porque explica os números e porque o caminho importa.
 
 **O caso vivo, primeira prova de fogo do motor novo:** *"ordem de beef de xis pede 10 → separa pra ~6,7 · hamburger OK"*.
 
