@@ -8,6 +8,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { ESTADOS_ABERTOS } from './data-da-ordem'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento } from '../movement'
+import { explodirReceita } from '../explodir-receita'
 import { saldoItem, custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 import { materializarEtapasDaOrdem } from './etapas'
 import { encerrarEtapasAbertas } from './encerrar-etapas-abertas'
@@ -123,6 +124,23 @@ export async function explodirSeparacao(companyId: string, ordemId: string, db: 
   const meta = new Map(its.map((i) => [i.id, i]))
   const fichaDoItem = new Map(fichasComp.map((f) => [f.itemProduzidoId, f.id]))
 
+  /**
+   * ⭐⭐ A PORTA ÚNICA, no modo `SEPARACAO` (02/10/2026).
+   *
+   * ⛔ **`SEPARACAO` não desce nenhum componente, e isso é DECLARAÇÃO, não omissão:** o gesto
+   * aqui é FÍSICO — alguém vai à câmara buscar o que a ficha lista. Descer mandaria a pessoa
+   * pegar farinha quando a ficha pede massa pronta (e a massa já saiu na ordem dela — descer
+   * seria baixa DUPLA). Antes isso era um `for` com `c.qtdPlanejada * escala` solto aqui.
+   */
+  const planejado = new Map(
+    explodirReceita(
+      { fichaId: ordem.fichaId },
+      ordem.escalaReceitas,
+      { componentesByFicha: new Map([[ordem.fichaId, comps]]), fichaByItemProduzido: new Map() },
+      'SEPARACAO',
+    ).consumos.map((c) => [c.itemId, c.qtd] as const),
+  )
+
   const linhas: SeparacaoLinha[] = []
   for (const c of comps) {
     const saldo = await saldoItem(db, companyId, c.itemId)
@@ -138,7 +156,14 @@ export async function explodirSeparacao(companyId: string, ordemId: string, db: 
       // pessoa digitou (`qtdSeparada`), nunca este planejado. Quem formata é a tela, com a
       // precisão da ficha.
       porLote: c.qtdPlanejada,
-      qtdPlanejada: round6(c.qtdPlanejada * ordem.escalaReceitas),
+      /**
+       * ⭐ A MULTIPLICAÇÃO SAIU DAQUI (02/10/2026) — quem faz dose × escala é a porta única
+       * `explodirReceita`, no modo `SEPARACAO` (nada desce: a cozinha tira da câmara o que a
+       * ficha lista). ⚠️ O `round6` continua porque **esta é a borda de exibição**: o número
+       * vai pra tela e pro campo pré-preenchido, não pro ledger (quem grava é o
+       * `confirmarSeparacao`, com o que a pessoa digitou).
+       */
+      qtdPlanejada: round6(planejado.get(c.itemId) ?? 0),
       qtdSeparada: round6(separado.get(c.itemId) ?? 0),
       saldoDisponivel: saldo.saldo,
       custoMedio: custoMap.get(c.itemId) ?? null,

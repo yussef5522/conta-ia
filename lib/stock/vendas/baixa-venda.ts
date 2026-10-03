@@ -5,7 +5,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { montaNaVenda } from '@/lib/stock/tipos-ficha'
+import { explodirReceita } from '@/lib/stock/explodir-receita'
 import { parseSuitable } from './parse-suitable'
 import { lerComQuarentena } from './quarentena-venda'
 import { medirSanidade, SanidadeNaoConfirmadaError } from './medir-sanidade'
@@ -37,9 +37,14 @@ const TIPO_BAIXA = 'BAIXA_VENDA'
 // par. Nenhuma linha de lógica mudou aqui: só a visibilidade.
 import { semearSecoesDeNovos } from '@/lib/stock/cardapio/secoes-db'
 
+/**
+ * ⚠️ ESTE CTX **É** O `GrafoDeFichas` da porta única (02/10/2026) — os dois primeiros campos
+ * têm a forma que `explodirReceita` pede, de propósito. Montar um grafo "parecido" aqui seria
+ * a segunda representação da mesma receita, e as duas divergiriam no 1º campo novo.
+ */
 export interface Ctx {
   componentesByFicha: Map<string, { itemId: string; qtdPlanejada: number }[]>
-  fichaByItemProduzido: Map<string, { id: string; tipoProduto: string }>
+  fichaByItemProduzido: Map<string, { id: string; tipoProduto: string; itemProduzidoId: string }>
   fichaById: Map<string, { id: string; tipoProduto: string; itemProduzidoId: string }>
   nomeItem: Map<string, string>
 }
@@ -55,28 +60,42 @@ export async function montarCtx(companyId: string, db: PrismaClient): Promise<Ct
   const itens = await db.stockItem.findMany({ where: { companyId }, select: { id: true, nome: true } })
   return {
     componentesByFicha,
-    fichaByItemProduzido: new Map(fichas.map((f) => [f.itemProduzidoId, { id: f.id, tipoProduto: f.tipoProduto }])),
+    fichaByItemProduzido: new Map(fichas.map((f) => [f.itemProduzidoId, { id: f.id, tipoProduto: f.tipoProduto, itemProduzidoId: f.itemProduzidoId }])),
     fichaById: new Map(fichas.map((f) => [f.id, { id: f.id, tipoProduto: f.tipoProduto, itemProduzidoId: f.itemProduzidoId }])),
     nomeItem: new Map(itens.map((i) => [i.id, i.nome])),
   }
 }
 
-/** Explode um alvo (ficha ou item) × qtd em baixas por item (LEAF). PRODUTO_FINAL explode;
- *  intermediário/raw/revenda baixa direto. Recursão limitada (o ciclo já é bloqueado na ficha). */
-export function explodir(alvo: { tipo: 'REVENDA'; itemId: string } | { tipo: 'FICHA'; fichaId: string }, qtd: number, ctx: Ctx, acc: Map<string, number>, depth = 0): void {
-  if (depth > 12) throw new Error('Explosão de venda muito profunda (ciclo?).')
-  if (alvo.tipo === 'REVENDA') { acc.set(alvo.itemId, round6((acc.get(alvo.itemId) ?? 0) + qtd)); return }
-  const comps = ctx.componentesByFicha.get(alvo.fichaId) ?? []
-  for (const c of comps) {
-    const fichaComp = ctx.fichaByItemProduzido.get(c.itemId)
-    // ⭐ "MONTA NA VENDA" cobre PRODUTO_FINAL **e** SABOR (03/09). Sem o sabor aqui, um
-    // sabor usado como componente baixaria o item-invólucro — que ninguém produz — e o
-    // saldo dele ficaria negativo pra sempre num item fantasma.
-    if (fichaComp && montaNaVenda(fichaComp.tipoProduto)) {
-      explodir({ tipo: 'FICHA', fichaId: fichaComp.id }, round6(qtd * c.qtdPlanejada), ctx, acc, depth + 1) // monta na venda → explode
-    } else {
-      acc.set(c.itemId, round6((acc.get(c.itemId) ?? 0) + qtd * c.qtdPlanejada)) // pack/raw/revenda → baixa direto
-    }
+/**
+ * ⭐ CASCA FINA SOBRE A PORTA ÚNICA (`explodirReceita`, 02/10/2026).
+ *
+ * ⛔ **A recursão e a régua ESTOCADO×ATRAVESSA saíram daqui** — a decisão *"desce ou para?"*
+ * tem um dono só agora. Esta função existe porque os chamadores (plano de venda, baixa de
+ * complemento, custo do cardápio) acumulam **várias** explosões no mesmo `acc`, uma por linha
+ * do PDV; a porta responde por UMA.
+ *
+ * ⚠️ **O `acc` fica EXATO** — quem arredonda é a borda de gravação (o `round6` já existe em
+ * `montarPlanoDeLinhas`). Somar arredondado a cada linha é o arredondamento composto que o
+ * dono proibiu: 500 linhas de 0,0003 KG perdiam dose de verdade.
+ *
+ * ⭐ `rastro` (opcional) colhe as FICHAS que a explosão atravessou. É o que permite o juiz
+ * M1 perguntar *"a receita mudou depois desta baixa?"* sobre as fichas CERTAS — sem ele, a
+ * pergunta viraria *"alguma ficha da empresa mudou?"*, e qualquer edição de receita daria
+ * perdão geral à divergência de todos os dias.
+ *
+ * ⚠️ O parâmetro `depth` que existia aqui MORREU: o teto de profundidade (e o aviso de ciclo)
+ * é da porta agora. Nenhum chamador o passava — conferido antes de trocar.
+ */
+export function explodir(alvo: { tipo: 'REVENDA'; itemId: string } | { tipo: 'FICHA'; fichaId: string }, qtd: number, ctx: Ctx, acc: Map<string, number>, rastro?: Set<string>): void {
+  const r = explodirReceita(
+    alvo.tipo === 'REVENDA' ? { itemId: alvo.itemId } : { fichaId: alvo.fichaId },
+    qtd,
+    ctx,
+    'VENDA',
+  )
+  for (const c of r.consumos) {
+    acc.set(c.itemId, (acc.get(c.itemId) ?? 0) + c.qtd)
+    if (rastro) for (const f of c.viaFichas) rastro.add(f)
   }
 }
 
@@ -92,6 +111,12 @@ export interface PlanoVenda {
   totalUnidades: number
   totalMapeados: number
   totalPendentes: number
+  /**
+   * ⭐ As FICHAS que a explosão atravessou neste plano (o rastro da porta única).
+   * O juiz M1 usa pra perguntar *"a receita mudou depois desta baixa?"* sobre as fichas
+   * CERTAS — ver `lib/stock/vendas/juiz-da-baixa.ts`.
+   */
+  fichasUsadas: string[]
   /** ⭐ o que perguntar antes de baixar (N× a média) — o plano CARREGA a pergunta */
   sanidade: ResultadoDaSanidade
 }
@@ -118,6 +143,8 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
   /** ⭐ decisão do dono: este nome não controla estoque (14/09). NOMEADO, nunca só contado. */
   const ignorados: { nome: string; quantidade: number }[] = []
   const agregada = new Map<string, number>()
+  /** ⭐ o rastro da porta: por quais fichas a explosão passou (o juiz M1 lê isto) */
+  const fichasUsadas = new Set<string>()
 
   for (const l of linhas) {
     const m = mapaPorNome.get(l.produto)
@@ -127,8 +154,8 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
     if (m.alvoTipo === 'IGNORAR') { ignorados.push({ nome: l.produto, quantidade: l.quantidade }); continue }
     if (incluirSet && !incluirSet.has(l.produto)) { fora.push({ nome: l.produto, quantidade: l.quantidade }); continue }
     const acc = new Map<string, number>()
-    if (m.alvoTipo === 'FICHA' && m.fichaId) explodir({ tipo: 'FICHA', fichaId: m.fichaId }, l.quantidade, ctx, acc)
-    else if (m.alvoTipo === 'REVENDA' && m.itemId) explodir({ tipo: 'REVENDA', itemId: m.itemId }, l.quantidade, ctx, acc)
+    if (m.alvoTipo === 'FICHA' && m.fichaId) explodir({ tipo: 'FICHA', fichaId: m.fichaId }, l.quantidade, ctx, acc, fichasUsadas)
+    else if (m.alvoTipo === 'REVENDA' && m.itemId) explodir({ tipo: 'REVENDA', itemId: m.itemId }, l.quantidade, ctx, acc, fichasUsadas)
     const baixa = [...acc.entries()].map(([itemId, qtd]) => ({ itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round6(qtd), custoMedio: custoMap.get(itemId) ?? null }))
     for (const [itemId, qtd] of acc) agregada.set(itemId, round6((agregada.get(itemId) ?? 0) + qtd))
     produtos.push({ nome: l.produto, quantidade: l.quantidade, alvoTipo: m.alvoTipo as 'FICHA' | 'REVENDA', alvoNome: nomeAlvo(m), baixa })
@@ -140,6 +167,7 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
     totalUnidades: linhas.reduce((s, l) => s + l.quantidade, 0),
     totalMapeados: produtos.length,
     totalPendentes: pendentes.length,
+    fichasUsadas: [...fichasUsadas],
     sanidade,
   }
 }

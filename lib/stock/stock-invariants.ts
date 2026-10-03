@@ -10,6 +10,8 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { saldosDaEmpresa } from './saldo'
 import { checkProducaoInvariants } from './producao/producao-invariants'
 import { checkVendasInvariants } from './vendas/vendas-invariants'
+import { checkBaixaInvariants } from './vendas/juiz-da-baixa'
+import { checkFantasmaInvariants } from './fantasma-invariants'
 import { checkSaidaInvariants } from './saida-invariants'
 import { checkContagemInvariants } from './contagem-invariants'
 import { checkNfeInvariants } from './nfe-invariants'
@@ -180,6 +182,23 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
   fails.push(...(await checkProducaoInvariants(db, now)))
   // V1 — invariantes de VENDA (fase 3). V1 é AVISO (não deixa o selo vermelho).
   fails.push(...(await checkVendasInvariants(db, now)))
+  /**
+   * ⭐⭐ M1 — A BAIXA GRAVADA BATE COM O MOTOR (item 2a do sprint do motor, 02/10/2026).
+   *
+   * É o que torna a PORTA ÚNICA permanente: o guard estrutural impede alguém de escrever uma
+   * segunda multiplicação; o M1 pega o estrago de qualquer coisa que desvie da porta em
+   * RUNTIME (fluxo novo gravando por fora, reprocesso que deixou movimento velho vivo).
+   * ⚠️ Divergência com a receita alterada depois = AVISO, não erro — senão os dias do Combo
+   * v2 gritariam toda noite pra sempre.
+   */
+  fails.push(...(await checkBaixaInvariants(db as PrismaClient, now)))
+  /**
+   * ⭐⭐ M3/M4 — A REGRA DE OURO DO MRP (item 1.b): phantom não tem estoque, estocado não
+   * atravessa. ⚠️ Olha o SALDO LÍQUIDO, não "tem movimento?" — medido em prod: 25 movimentos
+   * em phantom são pares ajuste+estorno da cirurgia de 09/09, e um guard ingênuo nasceria com
+   * 13 alarmes falsos de um problema já resolvido.
+   */
+  fails.push(...(await checkFantasmaInvariants(db as PrismaClient)))
   // C1/C2 — invariantes de SAÍDA (perda/uso interno). C1 erro, C2 aviso.
   fails.push(...(await checkSaidaInvariants(db, now)))
   // E7/E8 — invariantes da CONTAGEM (fase 3 parte 2). E8 erro (ajuste bate com o ledger),

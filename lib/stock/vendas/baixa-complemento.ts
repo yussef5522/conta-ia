@@ -23,6 +23,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { montarCtx, explodir } from './baixa-venda'
 import { ehLinhaDePeriodo } from './identidade-import-complemento'
+import { confrontarMotorComLedger } from './confronto-motor-ledger'
 import { criarMovimento, estornarMovimento } from '../movement'
 import { custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 
@@ -59,6 +60,11 @@ export interface PlanoComplementos {
   jaBaixado: boolean
   /** ⛔ o que está baixado HOJE difere do que as linhas atuais mandam baixar */
   precisaReprocessar: boolean
+  /**
+   * ⭐ As FICHAS que a explosão atravessou (rastro da porta única). O juiz M1 usa pra
+   * distinguir *"a receita mudou depois"* de *"alguém baixou fora da porta"*.
+   */
+  fichasUsadas: string[]
 }
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -127,6 +133,7 @@ async function planoDeLinhas(
 
   const ctx = await montarCtx(companyId, db as PrismaClient)
   const agregado = new Map<string, number>()
+  const fichasUsadas = new Set<string>()
   const complementos: PlanoComplementos['complementos'] = []
   const pendentes: PlanoComplementos['pendentes'] = []
   const ignorados: PlanoComplementos['ignorados'] = []
@@ -138,7 +145,7 @@ async function planoDeLinhas(
 
     // ⭐ 1 ocorrência = 1 explosão da ficha (a régua do dono), pelo motor de sempre
     const acc = new Map<string, number>()
-    explodir({ tipo: 'FICHA', fichaId: m.fichaId }, l.ocorrencias, ctx, acc)
+    explodir({ tipo: 'FICHA', fichaId: m.fichaId }, l.ocorrencias, ctx, acc, fichasUsadas)
     for (const [itemId, qtd] of acc) agregado.set(itemId, round2((agregado.get(itemId) ?? 0) + qtd))
     complementos.push({
       nomeSuitable: l.nomeSuitable, ocorrencias: l.ocorrencias,
@@ -161,12 +168,17 @@ async function planoDeLinhas(
   const ativas = await baixasAtivas(db, companyId, importId)
   const baixadoHoje = new Map<string, number>()
   for (const b of ativas) baixadoHoje.set(b.itemId, round2((baixadoHoje.get(b.itemId) ?? 0) + Math.abs(b.quantidade)))
-  // ⛔ a marca é DERIVADA (nunca gravada): compara o que ESTÁ baixado com o que as linhas de
-  // hoje mandam baixar. Flag gravada envelhece e passa a mentir; esta se corrige sozinha.
-  const precisaReprocessar = ativas.length > 0 && (
-    baixadoHoje.size !== agregado.size
-    || [...agregado.entries()].some(([itemId, qtd]) => Math.abs((baixadoHoje.get(itemId) ?? 0) - qtd) > 0.001)
-  )
+  /**
+   * ⛔ A marca é DERIVADA (nunca gravada): compara o que ESTÁ baixado com o que as linhas de
+   * hoje mandam baixar. Flag gravada envelhece e passa a mentir; esta se corrige sozinha.
+   *
+   * ⭐⭐ E A RÉGUA SAIU DAQUI (02/10/2026): quem responde *"o ledger bate com o motor?"* é
+   * `confrontarMotorComLedger`, a MESMA função que o juiz noturno usa. Enquanto a comparação
+   * morava neste `some(...)`, o juiz teria que escrever a dele — e as duas divergiriam no 1º
+   * caso de borda, com a tela dizendo "fecha" e o e-mail dizendo "não fecha".
+   */
+  const precisaReprocessar =
+    ativas.length > 0 && !confrontarMotorComLedger(agregado, baixadoHoje).fecha
 
   return {
     data, importId, ehPeriodo, complementos, pendentes, ignorados, agregada,
@@ -174,6 +186,7 @@ async function planoDeLinhas(
     ocorrenciasBaixadas: complementos.reduce((s, c) => s + c.ocorrencias, 0),
     jaBaixado: ativas.length > 0,
     precisaReprocessar,
+    fichasUsadas: [...fichasUsadas],
   }
 }
 

@@ -82,7 +82,19 @@ describe('⭐⭐ embalagem BAIXA como qualquer componente — RODANDO a explosã
     const acc = new Map<string, number>()
     explodir({ tipo: 'FICHA', fichaId: 'f-pizza' }, 38, ctxDaPizza(), acc)
     expect(acc.get('i-caixa35')).toBe(38)
-    expect(acc.get('i-massa')).toBe(15.2)
+    /**
+     * ⚠️ ASSERÇÃO AJUSTADA EM 02/10 COM O MOTIVO ESCRITO (era `toBe(15.2)`).
+     *
+     * Até a porta única, `explodir` arredondava **a cada passo da recursão**, então o `acc`
+     * saía "limpo" (15,2 exato). Agora a conta acumula EXATA — `38 × 0,4` em binário é
+     * `15.200000000000001` — e **quem arredonda é a borda de gravação** (`montarPlanoDeLinhas`
+     * aplica `round6` no `baixa` e no `agregada`).
+     *
+     * ⭐ A troca é deliberada e tem dono: arredondamento composto foi o que zerou a dose de
+     * 0,0003 KG de fermento. O que o teste afirma continua sendo o que importa — **38 pizzas
+     * baixam 15,2 kg de massa** —, só na precisão que a função realmente entrega.
+     */
+    expect(acc.get('i-massa')).toBeCloseTo(15.2, 9)
   })
 
   it('⛔⛔ NÃO existe caso especial: a caixa sai pela MESMA porta que o queijo', () => {

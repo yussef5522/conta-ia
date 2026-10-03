@@ -6,11 +6,13 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import type { StockInvariantFail } from '../stock-invariants'
 import { rendimentoMedioDaFicha } from './conclusao'
 import { emProducaoPorOrdem } from './em-producao'
+import { dosesSuspeitas, assinaturaDoDesvio, DESVIO_DA_DOSE } from './plausibilidade-da-dose'
 import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+const round4 = (n: number) => Math.round((n + 1e-9) * 1e4) / 1e4
 const P3_DESVIO = 0.25 // ±25% grave
 const P5_DIAS = 14
 const P6_DIAS = 7
@@ -18,9 +20,9 @@ const TIPOS_ORDEM = ['SEPARACAO_SAIDA', 'DEVOLUCAO_PRODUCAO', 'PRODUCAO_CONSUMO'
 
 export async function checkProducaoInvariants(db: Db, now: Date = new Date()): Promise<StockInvariantFail[]> {
   const fails: StockInvariantFail[] = []
-  const F = (invariante: string, companyId: string | null, detalhe: string) => fails.push({ invariante, companyId, detalhe })
+  const F = (invariante: string, companyId: string | null, detalhe: string, nivel?: 'erro' | 'aviso') => fails.push({ invariante, companyId, detalhe, ...(nivel ? { nivel } : {}) })
 
-  const ordens = await db.stockProductionOrder.findMany({ select: { id: true, companyId: true, estado: true, atualizadoEm: true, fichaId: true } })
+  const ordens = await db.stockProductionOrder.findMany({ select: { id: true, companyId: true, estado: true, atualizadoEm: true, fichaId: true, versaoFicha: true } })
   /**
    * ⭐ AS ORDENS COM DESCANSO PLANEJADO — etapa ainda por fazer, marcada pra HOJE ou pra
    * FRENTE. É o que separa *"o lote está dormindo de propósito"* de *"o lote foi esquecido"*.
@@ -39,11 +41,17 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
         })).map((e) => e.ordemId)
       : [],
   )
+  /**
+   * ⚠️ IÇADO do `if (ordens.length)` em 02/10 porque o **M2** (plausibilidade da dose) também
+   * precisa do consumo por ordem+item. Sem içar, o M2 lia um mapa fora de escopo e o
+   * `tsc` cobrou — e o remédio errado seria ele montar o SEU agrupamento, que é a conta
+   * paralela que este sprint inteiro existe pra matar.
+   */
+  const porOrdemItem = new Map<string, Map<string, { sep: number; con: number; dev: number }>>()
   if (ordens.length) {
     const ids = ordens.map((o) => o.id)
     const movs = await db.stockMovement.findMany({ where: { receiptId: { in: ids }, tipo: { in: TIPOS_ORDEM } }, select: { receiptId: true, itemId: true, tipo: true, quantidade: true } })
     // agrupa por ordem+item: {sep, con, dev}
-    const porOrdemItem = new Map<string, Map<string, { sep: number; con: number; dev: number }>>()
     for (const m of movs) {
       const oi = porOrdemItem.get(m.receiptId!) ?? new Map()
       const cur = oi.get(m.itemId) ?? { sep: 0, con: 0, dev: 0 }
@@ -107,6 +115,66 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
       const desvio = Math.abs((c.rendimento - media) / media)
       if (desvio > P3_DESVIO) F('P3', c.companyId, `conclusão ${c.id}: rendimento ${round2(c.rendimento)} desvia ${Math.round(desvio * 100)}% da média ${round2(media)} — revisar (carne ruim? porção errada? sobra não contada?).`)
     }
+  }
+
+  /**
+   * ⭐⭐ M2 — PLAUSIBILIDADE DA DOSE (item 2b do sprint do motor, 02/10/2026).
+   *
+   * *"dose efetiva (consumo ÷ unidades produzidas) fora de ±20% da ficha = aviso nomeado;
+   * pega ficha errada E motor errado, os dois lados."*
+   *
+   * ⚠️ É a **terceira** pergunta desta família, e não se confunde com as outras duas: o P1 é
+   * contábil (nada evapora), o P3 olha o RENDIMENTO do lote contra a história da própria
+   * ficha, e o M2 olha **quanto de CADA componente entrou em cada unidade que saiu**. Era a
+   * pergunta que a perícia do acém respondeu à mão — e que ninguém faria de novo sozinho.
+   *
+   * ⭐ E o aviso diz a ASSINATURA: razão igual em todos os componentes = ESCALA (um problema,
+   * não N); razão só num = dose/versão da ficha. Sem isso, três avisos de 21% na mesma ordem
+   * mandariam o dono conferir três fichas que estão certas.
+   */
+  const conclusoesM2 = await db.stockProducaoConclusao.findMany({
+    select: { id: true, companyId: true, ordemId: true, qtdGerada: true },
+  })
+  for (const c of conclusoesM2) {
+    const fichaId = fichaDaOrdem.get(c.ordemId)
+    const itens = porOrdemItem.get(c.ordemId)
+    if (!fichaId || !itens) continue
+    const ordem = ordens.find((o) => o.id === c.ordemId)
+    // ⚠️ a dose tem que vir da VERSÃO QUE A ORDEM USOU (snapshot), nunca da vigente: a ficha
+    // pode ter sido editada depois, e aí o aviso acusaria uma mudança de receita legítima.
+    const versao = ordem
+      ? await db.stockFichaVersao.findFirst({
+          where: { companyId: c.companyId, fichaId, versao: ordem.versaoFicha },
+          select: { id: true },
+        })
+      : null
+    if (!versao) continue
+    const comps = await db.stockFichaComponente.findMany({
+      where: { companyId: c.companyId, versaoId: versao.id },
+      select: { itemId: true, qtdPlanejada: true },
+    })
+    if (!comps.length) continue
+    const doses = comps.map((cp) => ({
+      itemId: cp.itemId,
+      doseDaFicha: cp.qtdPlanejada,
+      consumido: itens.get(cp.itemId)?.con ?? 0,
+    }))
+    const suspeitas = dosesSuspeitas(doses, c.qtdGerada)
+    if (!suspeitas.length) continue
+    const assinatura = assinaturaDoDesvio(suspeitas, comps.length)
+    const lista = suspeitas
+      .slice(0, 3)
+      .map((s) => `${s.itemId}: ficha ${round4(s.doseDaFicha)} × efetiva ${round4(s.doseEfetiva)} (${s.lado === 'ACIMA' ? '+' : '−'}${Math.round(Math.abs(s.razao - 1) * 100)}%)`)
+    const pista =
+      assinatura === 'ESCALA'
+        ? ' · ⭐ TODOS os componentes desviam na MESMA proporção = assinatura de ESCALA (o rendimento do lote), não das doses'
+        : ' · a razão aparece em componente isolado = conferir a DOSE / a versão da ficha'
+    F(
+      'M2',
+      c.companyId,
+      `conclusão ${c.id}: a dose efetiva por unidade produzida saiu de ±${Math.round(DESVIO_DA_DOSE * 100)}% da ficha — ${lista.join(' · ')}${pista}`,
+      'aviso',
+    )
   }
 
   // P5 — PRODUTO_FINAL ativo com valorVenda nulo há > 14 dias (cobra o "a definir")
