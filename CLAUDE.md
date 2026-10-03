@@ -1759,6 +1759,94 @@ O golden da produção ficou vermelho e eu levei três medições pra ver que o 
 4. **M3 da FANTA UVA 2L** (7 UN no limbo): estornar o ajuste e contar na GARRAFA.
 5. Seguem abertas: a correção de dado da parcela #22 (saldo devedor R$ 9.729,34 a mais, DRE de setembro −R$ 505,01) · as 23 linhas de recontagem onde a variância gravada subestima · os 90 UN / R$ 768,59 do Combo (recomendação: registrar divergência) · os 6 nomes de bebida pendentes nos complementos.
 
+## ⛔⛔⛔ A ORDEM DE 10 BEEF DE XIS SEPARAVA PRA 6,7 — A MÉDIA ENVENENADA REALIMENTANDO A ESCALA (03/10/2026)
+
+**O caso vivo, primeira prova de fogo do motor novo:** *"ordem de beef de xis pede 10 → separa pra ~6,7 · hamburger OK"*.
+
+### ⭐⭐ O RETRATO DO PAR — a hipótese do dono estava CERTA, e o campo era o que ele desconfiava
+
+**As duas fichas são IDÊNTICAS e CORRETAS** — `loteBase 1`, dose por unidade, **nunca alteradas** (xis 2 versões, hamburger 3, todas com os mesmos números). ⛔ **Então não era `loteBase 1,5` nem dose gravada por-lote.** O que difere é o **`rendimentoMedio`**, e `escala = pedido ÷ rendimento`:
+
+```
+beef de xis        rendimento MÉDIO 1,4749  →  10 ÷ 1,4749 = 6,78  →  acém 0,617 (a ficha pede 0,910)
+beef de hamburger  rendimento MÉDIO 0,9326  →  10 ÷ 0,9326 = 10,72 →  acém 1,180 (a ficha pede 1,100)
+```
+
+**⭐⭐ A MÉDIA DO XIS ESTAVA ENVENENADA POR DOIS LOTES DE 27**, não por erro de ficha:
+```
+1,0400 · 1,0598 · 1,2532 · 1,8803 · 2,1411   →  MÉDIA 1,4749  ·  MEDIANA 1,2532
+(27/09 declarou 173 un com consumo pra 92; 29/09 declarou 94 com consumo pra 44)
+```
+
+**⚠️⚠️ E O RELATO ERA MENOR QUE O PROBLEMA: o hamburger TAMBÉM separava errado** — **7% a MAIS** (razão 1,0723). **A menos é visível porque falta material na câmara; a mais sobra e passa batido.** Chamar o hamburger de "OK" era o sintoma de uma classe inteira passando invisível pelo lado que não dói.
+
+**⛔⛔ E A REALIMENTAÇÃO É O QUE FAZ ISSO PIORAR SOZINHO:** separa menos → a cozinha produz os 10 de verdade → consumo real > plano → o rendimento medido SOBE → separa ainda menos amanhã. *Média que entra na própria conta que a alimenta é um laço, não uma medição.*
+
+### ⭐⭐ A CURA SÃO DUAS CAMADAS, e nenhuma resolve sozinha
+
+1. **MEDIANA no lugar da média** (`medianaDosRendimentos`) — tira o peso do outlier. ⭐ É a **mesma lição do M2 de 02/10**, um dia depois: *com média o desviante puxa a própria referência e se esconde; a mediana não se move quando um foge.*
+2. **FAIXA DE CONCORDÂNCIA ±20%** (`DISCORDANCIA_MAXIMA`, a MESMA do M2) — medição que destoa do declarado **não manda**, e a tela **DIZ**. ⛔ *A observação não sobrescreve a declaração do dono em silêncio* — é a régua de *"categoria é decisão do dono"* (17/08) aplicada ao rendimento.
+
+**⚠️ E A FAIXA NÃO CONTRADIZ A DECISÃO DE 01/09** (*"pelo teórico ele pega pouco e falta"*): a porção de queijo roda em **101%** do teórico e **segue usando a medida**. **O que a faixa barra é a média ENVENENADA, nunca a correção fina** — há teste travando isso, senão o conserto de hoje quebraria o sprint daquele dia.
+
+**⛔⛔ E DESARMOU UMA BOMBA QUE ESTAVA ESPERANDO ALGUÉM CRIAR A ORDEM:** `QUEIJO CHEDDAR FATIADO` tem rendimento medido **10,2704 (1027%)** — pedir 10 ali separaria material pra **1 unidade**. É a pior das **13 fichas** fora de ±20%.
+
+### ⭐ A SEMÂNTICA VIROU UMA SÓ, DECLARADA NA PORTA (item 4a)
+
+`explodirReceita` passou a declarar por contrato o que `loteBase`/`unidadeLoteBase` significam: *1 execução da receita produz `loteBase` `unidadeLoteBase` do item produzido* — e **`loteBase` só é um RENDIMENTO comparável quando `unidadeLoteBase` é a unidade em que o item produzido se CONTA**. **M5 (novo):** ficha cujo `unidadeLoteBase` ≠ `unidadeControle` do item produzido → o lote **não é rendimento**. **Prod: 37 achados de 43 fichas de produção** (declaram o lote em KG com o produto contado em UN).
+
+### ⭐ O GUARD DO ATO DA CRIAÇÃO (item 4b) — avisa ANTES de separar
+
+**⚠️⚠️ E A ARITMÉTICA NÃO DÁ PRA AUDITAR: ela FECHA POR CONSTRUÇÃO.** `separação ÷ pedido` sempre dá `dose ÷ rendimento`, qualquer que seja o rendimento — então um guard que confira a CONTA **nunca morde**. **O que dá pra auditar é a ENTRADA da conta.** `avisosDaEscala` pergunta três coisas, **na ordem em que elas doem** (causa → consequência, a lição de 16/09): `MEDIA_DISCORDA` · `LOTE_NAO_COMPARAVEL` · `SEPARACAO_DESTOA` (o número em KG que o dono reconhece de olho).
+
+⛔ **E ELE AVISA, NUNCA BLOQUEIA** — travar a criação pararia a cozinha por ficha mal declarada, e são **36 de 43** hoje. A régua do FREIO da contagem: *pergunta com o número na tela, nunca recusa cega.*
+
+### ⚠️⚠️ O ITEM 2 DEU O CONTRÁRIO DO ESPERADO — e isso CORRIGE a perícia de 02/10
+
+O dono apostou que a escala menor explicaria o **Σ −24,91 KG de acém "além do plano"**. **Medido, dá o oposto:**
+```
+Σ gap contra a ESCALA DA ORDEM (a conta de 02/10):      +2,262 KG = R$   76,83
+Σ gap contra o PLANO CERTO (escala = unidades geradas): −13,488 KG = R$ −458,05
+   xis:       TODAS as razões < 1 (0,944 · 0,962 · 0,798 · 0,467 · 0,532 · 0,956 · 0,847 · 0,962)
+   hamburger: TODAS > 1 (1,010 a 1,213)
+```
+⭐ Contra o plano correto o **xis consome MENOS**, não mais. **Então o "−24,91 KG além do plano" foi medido contra a escala da ORDEM e NÃO se confirma pelo xis.** As razões 0,467 e 0,532 são as **duas conclusões outlier** (27 e 29/09) onde `qtdGerada` não bate com o consumo — **ou unidades super-declaradas, ou consumo não lançado; eu não sei qual, e não vou afirmar.**
+
+### ⚠️ O PIN DO HAMBURGER DÁ 1,158, NÃO 1,100 — e é decisão do dono
+
+O item 4c pedia `10 hamburger → 1,100/0,550/0,180` (a dose NOMINAL). **Os 22 lotes dessa ficha são consistentes em 0,94–0,99** (mediana 0,9499): a cozinha consome ~5% mais carne por beef do que a ficha diz. **Isso é perda real de trim, não média envenenada** — e é por isso que ele chamou o hamburger de "OK". **As duas metades do pedido não podem ser verdade juntas**, e entregar o nominal faria **FALTAR material**, que é literalmente o problema de 01/09. **O pin do xis BATE; o do hamburger está invertido com o motivo escrito no teste.**
+
+**PROVADO EM PROD pelo caminho da TELA** (`reguaDoRendimento → escalaParaSaida → insumoParaSaida → avisosDaEscala`):
+```
+⭐ 10 beef de xis  →  ESCALA 10  ·  acém 0,9100 · peito 0,4400 · gordura 0,2000   ✓ O PIN BATE
+   mediana 1,2532 (27 lotes) · pct 125% · DISCORDANTE · régua usada 1 · 2 avisos na tela
+   10 beef de hamburger → escala 10,5274 · 1,1580 / 0,5790 / 0,1895 · 1 aviso
+M5: 37 achados de 43 fichas de produção
+```
+
+**REGRA 11 — e ela me pegou DUAS VEZES NO MESMO LUGAR, em dois dias:** o pin chama `medianaDosRendimentos` **direto**, então eu podia repor a MÉDIA dentro de `rendimentoMedidoDeFichas` e os 13 testes seguiam **VERDES**. É o **denominador do M2 de 02/10 outra vez**: ***guard que testa a função não prova o encaixe de quem a chama.*** Fechado com `mediana-no-encaixe.integration.test.ts` (grava as 5 conclusões reais no banco e pergunta pro caminho de verdade). ⚠️ E o CNPJ colidiu porque eu **medi "1 ocorrência" e ignorei** — o guard da casa pegou.
+
+**⛔⛔ E O MOTIVO DE A SUÍTE TER FICADO VERMELHA NO CAMINHO ERA SUJEIRA MINHA: 161.810 linhas órfãs no `dev.db`.** A rede global de limpeza apaga `WHERE companyId IN (empresas que SOBRARAM)` — então **o teste DISCIPLINADO, que apaga a própria `Company` no `afterEach`, tira a empresa da lista e deixa as linhas `stock_*` órfãs pra sempre** (sem FK nem cascade, porque o isolamento do módulo proíbe `@relation`). **Quanto mais limpo o teste, mais lixo ele deixa.** E não era inerte: **32 ordens órfãs em `PLANEJADA`** faziam o golden da produção acusar, e eu levei **três medições** pra ver que o réu era eu. Curado com `varrerOrfas` na rede de baixo (REGRA 5 — impossibilidade em vez de disciplina em ~100 arquivos). ⭐ **Efeito colateral medido: a suíte caiu de 94 s pra 46 s.**
+
+**873 arquivos · 11.261 verdes · TS 0 · deploy 4/4 (`toGntPubXz25RZTrkrFfA`) · Δ bundle +4 KB.** ⛔ **Zero escrita em prod.**
+
+### 📋 ITEM 5 — O HISTÓRICO **NÃO PRECISA DE ESCRITA**, e o dado é que decide
+
+O preview das **190 ordens concluídas desde 20/09** achou **167 em que o consumo real ≠ (dose × unidades declaradas)**, Σ **−R$ 6.197,61** em 25 itens. ⚠️ **Isso NÃO são 167 defeitos** — é a prova de que *"dose × qtdGerada"* **não é um plano confiável**: os Δ são quase todos **negativos** e os maiores vêm justamente das fichas de rendimento podre (`QUEIJO CHEDDAR` −77,6 KG, a de 1027%).
+
+**⭐⭐ E AS CONTAGENS JÁ FECHARAM A CONTA — é o que mata o retroativo:**
+```
+Acém     contagem 28/09 · sistema 4,970 → contou 4,050 · divergência −0,92 KG (R$ −30,39)
+Peito    contagem 28/09 · sistema 38,790 → contou 38,650 · divergência −0,14 KG
+Gordura  contagem 28/09 · sistema 0,170 → contou 1,900 · divergência +1,73 KG
+BACON    contagem 28/09 · divergência 0,000   ⭐ exato
+```
+⛔ **Se as ordens tivessem consumido 14,33 KG de acém MENOS do que as fichas dizem, a contagem de 28/09 teria achado um excedente de quilos na câmara. Achou 920 gramas.** O saldo de hoje é o **físico contado**; estornar e refazer 167 ordens somaria em cima de um estoque que a contagem já reconciliou com a prateleira — **criaria o erro em vez de corrigi-lo**. É o caso *"a contagem já curou"* de 28-29/09, agora com 167 linhas em jogo.
+
+**RECOMENDAÇÃO: não escrever nada no histórico.** O que fica torto e o estorno **não** conserta: o **CMV dos dias** das duas conclusões outlier (27 e 29/09) e as **divergências de contagem** que absorveram a diferença. ⚠️ **E os 4 itens NUNCA CONTADOS** (`Patinho`, `FARINHA`, `BROCOLIS` e o `QUEIJO CHEDDAR`) são os únicos onde o Δ não tem contrapartida medida — ali a saída é **contar**, não estornar.
+
+**📋 FICA PRO DONO:** (a) **os 37 achados do M5** — corrigir `unidadeLoteBase` é gesto dele (a ficha é decisão do dono desde 17/08); (b) **o pin do hamburger** — 1,100 nominal ou 1,158 medido; (c) **as 2 conclusões outlier de 27 e 29/09** — ele sabe se declarou unidades a mais ou se faltou lançar consumo; (d) **contar os 4 itens nunca contados**, com o `QUEIJO CHEDDAR` primeiro, porque é a bomba de 1027%.
+
 ## ⛔⛔⛔ UMA RÉGUA PRA TRÊS TELAS — A PARCELA 22 QUITADA ERA CHAMADA DE ATRASADA (02/10/2026)
 
 **O dono, com os prints:** as 2 transações de 25/09 do **C41033828** (AMORTIZACAO 7.568,91 + LIQUIDACAO 2.665,44) estão *"parcela 22 · PELO SISTEMA · Resolvida"* ✓ e a parcela mostra *"pago em 25/09 · PAGO EM 2 PARCELAS PARCIAIS"* com os dois linkados ✓ — **mas a mesma parcela tem selo "Atrasada" + botão "Marcar paga"**, a tela de dentro do empréstimo diz atrasado e a LISTA diz em dia. ***Três leituras, três respostas.***
