@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 // ⚠️ "×" SAIU DA TELA (01/09, decisão do dono): *"a pessoa fala em porções e em kg, nunca
 // em '×'"*. O `escalaReceitas` continua no banco e no motor — só não aparece mais.
 import { escalaParaSaida, reguaDoRendimento } from '@/lib/stock/producao/previsao-rendimento'
+import { avisosDaEscala } from '@/lib/stock/producao/escala-do-pedido'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
@@ -19,7 +20,7 @@ import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null }
 interface Sugestao { fichaId: string; itemProduzidoId: string; nome: string; unidade: string; saldo: number; estoqueMin: number; estoqueMax: number | null; faltam: number; escalaSugerida: number | null; rendimentoMedio: number | null }
-interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string; loteBase: number; rendimentoMedio: number | null; rendimentoLotes: number; tipoProduto: string }
+interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string; loteBase: number; unidadeLoteBase: string; rendimentoMedio: number | null; rendimentoLotes: number; tipoProduto: string; componentes?: { nome: string; qtdPlanejada: number }[] }
 interface Setor { id: string; nome: string; ativo: boolean }
 interface Painel { emAberto: number; valorEmProducao: number; concluidasNoPeriodo: number; valorProduzidoNoPeriodo: number; rendimentoPeriodo: number | null; lotesNaMedia: number; faixaRendimento: string; abertasDeOntem: number }
 type Aberta = Ordem & { deOntem?: boolean }
@@ -370,6 +371,26 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
   const rend = ficha ? { teorico: ficha.loteBase, medido: ficha.rendimentoMedio, lotes: ficha.rendimentoLotes } : null
   const regua = rend ? reguaDoRendimento(rend) : null
 
+  /**
+   * ⭐⭐ O GUARD DO ATO DA CRIAÇÃO (item 4b, 03/10) — pega ANTES de separar, não no mês
+   * seguinte. O caso que o criou: ordem de 10 beef de xis propondo material pra ~6,7.
+   *
+   * ⚠️ A régua mora em `avisosDaEscala` (lib PURA), nunca aqui: *regra que vive num
+   * componente é regra que ninguém prova* — este projeto roda sem jsdom (a lição do prefill
+   * do cardápio, 28/08).
+   */
+  const alvoNum = Number(quanto.replace(',', '.'))
+  const escalaPrevia = rend && alvoNum > 0 ? escalaParaSaida(alvoNum, rend) : null
+  const maiorDose = (ficha?.componentes ?? []).reduce<{ nome: string; dose: number } | null>(
+    (m, c) => (!m || c.qtdPlanejada > m.dose ? { nome: c.nome, dose: c.qtdPlanejada } : m), null)
+  const avisos = ficha && regua && escalaPrevia != null && alvoNum > 0
+    ? avisosDaEscala({
+        pedido: alvoNum, escala: escalaPrevia, regua,
+        loteBase: ficha.loteBase, unidadeLoteBase: ficha.unidadeLoteBase,
+        unidadeProduto: ficha.unidadeProduzido, maiorDose,
+      })
+    : []
+
   const criar = async () => {
     setErro(null)
     const alvo = Number(quanto.replace(',', '.'))
@@ -421,6 +442,19 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
             {/* ⚠️ ATALHO, não segunda tela: o cadastro de gente mora em Sistema → Equipe. */}
             <a href="/equipe?filtro=cozinha" className="inline-flex items-center gap-1 pb-2 text-[11px] text-slate-400 hover:text-slate-600"><Settings className="h-3 w-3" /> setores e equipe</a>
           </div>
+          {avisos.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">confira antes de criar</p>
+              <ul className="mt-1 space-y-1">
+                {avisos.map((a) => (
+                  <li key={a.motivo} className="text-xs leading-snug text-amber-900">· {a.frase}</li>
+                ))}
+              </ul>
+              {/* ⛔ AVISA, NÃO BLOQUEIA: travar pararia a cozinha por ficha mal declarada
+                  (são 36 de 43 hoje) — a régua do FREIO da contagem e da sanidade do import. */}
+              <p className="mt-1.5 text-[11px] text-amber-700">Dá pra criar assim mesmo — o aviso é pra você conferir a ficha.</p>
+            </div>
+          )}
           {erro && <p className="text-xs text-rose-600">{erro}</p>}
           <button onClick={criar} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Criar ordem</button>
         </>

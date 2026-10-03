@@ -79,7 +79,40 @@ export interface Regua {
   lotes: number
   /** medido ÷ teórico — o "92%" da tela. `null` sem média. */
   pct: number | null
+  /**
+   * ⭐⭐ `true` quando existe medição mas ela DISCORDA tanto da ficha que o sistema **recusou
+   * usá-la** e voltou pro declarado. A tela tem que DIZER isso — ver `DISCORDANCIA_MAXIMA`.
+   */
+  discordante: boolean
 }
+
+/**
+ * ⛔⛔⛔ A FAIXA DE CONCORDÂNCIA — a 2ª camada da cura do `beef de xis` (03/10/2026).
+ *
+ * **A régua nova, e ela é a disciplina da casa:** a **observação** (o rendimento medido) não
+ * sobrescreve a **declaração do dono** (o `loteBase` da ficha) **em silêncio**. Ela substitui
+ * quando CONCORDA; quando destoa, vale o declarado e o sistema **AVISA**.
+ *
+ * ⚠️ É a mesma régua de *"categoria é decisão do dono — o sistema PERGUNTA quando estranha,
+ * nunca reclassifica sozinho"* (17/08), aplicada ao rendimento. O `loteBase` é o que ele
+ * escreveu; a média é o que a cozinha fez. **Divergência grande é sinal de que um dos dois
+ * está errado — e escolher calado é o que produziu o caso de hoje.**
+ *
+ * ⭐ Medido na Caçula (43 fichas de produção): **13 passam de ±20%**, e a pior é
+ * `QUEIJO CHEDDAR FATIADO` com **medido 10,2704 contra teórico 1 — 1027%**. Pedir 10 ali
+ * separaria material pra **1 unidade**. Era bomba armada, e a faixa a desarma.
+ *
+ * ⚠️ **E o número NÃO foi escolhido a dedo:** ±20% é a MESMA faixa do M2 (plausibilidade da
+ * dose, 02/10), pelo mesmo motivo — abaixo dela está a folga real de trim/manipulação que a
+ * cozinha tem todo dia (o `beef de hamburger` roda em 93-95% e é legítimo, por isso o dono o
+ * chamou de "OK"); acima dela, é dado torto.
+ *
+ * ⛔ **E ela NÃO contradiz a decisão de 01/09** (*"a medida no campo, o teórico ao lado"*, que
+ * nasceu porque pelo teórico a `porção de queijo` fazia **faltar**): aquela ficha roda em
+ * **101%** do teórico — dentro da faixa, segue usando a medida. O que a faixa barra é a média
+ * **envenenada**, não a correção fina.
+ */
+export const DISCORDANCIA_MAXIMA = 0.2
 
 /**
  * PURA. Qual rendimento manda: a média medida (a partir de 2 lotes) ou a ficha.
@@ -90,12 +123,20 @@ export interface Regua {
  */
 export function reguaDoRendimento(r: ReguaRendimento): Regua {
   const pct = r.medido != null && r.teorico > 0 ? round4(r.medido / r.teorico) : null
-  const usaMedia = r.medido != null && r.medido > 0 && r.lotes >= MIN_LOTES_PARA_MEDIA
+  const temMedia = r.medido != null && r.medido > 0 && r.lotes >= MIN_LOTES_PARA_MEDIA
+  /**
+   * ⭐ A medição DISCORDA do declarado? Então ela não manda — e o fato fica marcado pra a
+   * tela dizer. ⚠️ Sem `pct` (teórico ≤ 0) não há como comparar: aí a média é tudo que existe
+   * e usá-la é melhor que nada.
+   */
+  const discordante = temMedia && pct != null && Math.abs(pct - 1) > DISCORDANCIA_MAXIMA
+  const usaMedia = temMedia && !discordante
   return {
     valor: usaMedia ? (r.medido as number) : r.teorico,
     daMedia: usaMedia,
     lotes: r.lotes,
     pct,
+    discordante,
   }
 }
 

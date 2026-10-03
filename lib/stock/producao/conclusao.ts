@@ -116,9 +116,46 @@ export async function rendimentoMedidoDeFichas(
   }
   for (const [fichaId, rends] of porFicha) {
     if (!rends.length) continue
-    out.set(fichaId, { media: round4(rends.reduce((s, r) => s + r, 0) / rends.length), lotes: rends.length })
+    out.set(fichaId, { media: medianaDosRendimentos(rends), lotes: rends.length })
   }
   return out
+}
+
+/**
+ * ⛔⛔⛔ MEDIANA, NÃO MÉDIA — e isto é a raiz do caso do `beef de xis` (03/10/2026).
+ *
+ * **O caso vivo:** ordem de **10 beef de xis** propondo separar material pra **~6,7**. A conta
+ * é `escala = pedido ÷ rendimento`, e o rendimento desta ficha estava em **1,4749**. Os cinco
+ * lotes que formavam essa média:
+ *
+ * ```
+ * 1,0400 · 1,0598 · 1,2532 · 1,8803 · 2,1411   →  MÉDIA 1,4749  ·  MEDIANA 1,2532
+ * ```
+ *
+ * ⚠️ Os dois últimos são **outliers de conclusão** (27/09 declarou 173 un com consumo pra 92;
+ * 29/09 declarou 94 com consumo pra 44). **Dois lotes em 27 envenenaram o plano de todas as
+ * ordens seguintes** — e a média é o que deixou isso acontecer: *ela se move pro outlier*.
+ *
+ * ⭐⭐ **E O LAÇO É O QUE TORNA ISSO GRAVE, não o erro de um dia:** separa menos → a cozinha faz
+ * os 10 de verdade → o consumo real fica acima do plano → o rendimento medido **SOBE** → a
+ * próxima ordem separa **ainda menos**. É realimentação positiva, e é exatamente o
+ * **Σ −24,91 KG de acém "além do plano"** que a perícia do caso B mediu em 02/10 sem saber a
+ * causa. ⭐ **O caso B não era operação: era esta raiz.**
+ *
+ * ⭐ A mediana não se move quando um lote foge — é a MESMA lição que o M2 me ensinou um dia
+ * antes (02/10), ali na comparação entre componentes irmãos. Com 5 valores, dois outliers no
+ * mesmo lado ainda deslocam a mediana (1,2532), e é por isso que ela **não vem sozinha**: a
+ * faixa de concordância de `reguaDoRendimento` é a segunda camada.
+ *
+ * ⚠️ `LOTES_NA_MEDIA` é 5 e o nome do campo segue `media` — renomear tocaria ~10 leitores e o
+ * que importa aqui é a CONTA, não a palavra. O que a função devolve é a **tendência central
+ * robusta** dos últimos lotes.
+ */
+export function medianaDosRendimentos(rends: number[]): number | null {
+  if (!rends.length) return null
+  const o = [...rends].sort((a, b) => a - b)
+  const meio = Math.floor(o.length / 2)
+  return round4(o.length % 2 ? o[meio] : (o[meio - 1] + o[meio]) / 2)
 }
 
 /** casca fina histórica — só a média, pros callers que não precisam da contagem. */

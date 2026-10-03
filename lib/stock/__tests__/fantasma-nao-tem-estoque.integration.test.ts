@@ -125,6 +125,70 @@ describe('⛔⛔ M3 — phantom com saldo é dinheiro no LIMBO', () => {
   })
 })
 
+describe('⛔⛔ M5 — o lote declarado tem que ser COMPARÁVEL (a raiz do beef de xis)', () => {
+  it('⛔ ficha que produz UN declarando o lote em KG = vermelho, dizendo o que corrigir', async () => {
+    /**
+     * ⚠️ É a raiz MEDIDA do caso de 03/10: a ficha do `beef de xis` diz `1 KG`, o beef se conta
+     * em `UN`, e o teórico "1" vale por **coincidência numérica**. Aí a conversão
+     * *"quero 10"* → escala passa a depender só do rendimento medido — que 2 lotes outliers
+     * envenenaram, fazendo a ordem propor material pra 6,7.
+     *
+     * ⭐ Medido em prod: **36 das 43** fichas de produção da Caçula estão assim.
+     */
+    const insumo = await prisma.stockItem.create({
+      data: { companyId, nome: 'ACEM', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' },
+    })
+    await criarFicha(
+      {
+        companyId,
+        nomeProduzido: 'beef de xis',
+        unidadeProduzido: 'UN',       // ⭐ o produto se CONTA em UN
+        tipoProduto: 'INTERMEDIARIO',
+        loteBase: 1,
+        unidadeLoteBase: 'KG',        // ⛔ mas o lote é declarado em KG
+        componentes: [{ itemId: insumo.id, qtdPlanejada: 0.091, unidade: 'KG' }],
+      },
+      prisma,
+    )
+    const m = await M('M5')
+    expect(m).toHaveLength(1)
+    expect(m[0].nivel).toBeUndefined() // ⛔ ERRO
+    expect(m[0].detalhe).toContain('beef de xis')
+    expect(m[0].detalhe).toContain('1 KG')
+    expect(m[0].detalhe).toContain('se CONTA em UN')
+    expect(m[0].detalhe).toContain('Declare o lote em UN')
+  })
+
+  it('⭐ ficha COERENTE (lote em UN, produto em UN) não acende', async () => {
+    const insumo = await prisma.stockItem.create({
+      data: { companyId, nome: 'MILHO LATA', unidadeControle: 'UN', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' },
+    })
+    await criarFicha(
+      {
+        companyId,
+        nomeProduzido: 'ABRIR MILHO',
+        unidadeProduzido: 'UN',
+        tipoProduto: 'INTERMEDIARIO',
+        loteBase: 1,
+        unidadeLoteBase: 'UN',
+        componentes: [{ itemId: insumo.id, qtdPlanejada: 1, unidade: 'UN' }],
+      },
+      prisma,
+    )
+    expect(await M('M5')).toEqual([])
+  })
+
+  it('⚠️ invólucro de CARDÁPIO não é cobrado — nele não existe "lote"', async () => {
+    /**
+     * ⛔ O `beforeEach` cria justamente uma ficha PRODUTO_FINAL com lote `1 UN` e produto em
+     * `UN`; mas mesmo que divergisse, ela não entra: quem não é produzido por ordem não tem
+     * lote pra declarar, e cobrar ali seria 146 alarmes falsos (o nº de phantom em prod).
+     */
+    const m = await M('M5')
+    expect(m.some((f) => f.detalhe.includes('(menu)'))).toBe(false)
+  })
+})
+
 describe('⛔⛔⛔ M4 — item que É estocado marcado como ATRAVESSA = baixa DUPLA silenciosa', () => {
   it('⭐ ficha PRODUTO_FINAL com ordem de produção acende, explicando a dupla baixa', async () => {
     /**

@@ -32,6 +32,29 @@
  * são invólucros de cardápio (phantom). O que muda é a régua ter **NOME e um lugar só**, em
  * vez de viver dentro de um `if` no meio da recursão.
  *
+ * ═══ ⛔⛔⛔ A SEMÂNTICA DO LOTE — declarada aqui, UMA vez (item 4a, 03/10/2026) ═══
+ *
+ * **O contrato, e todos os fluxos herdam dele:**
+ *
+ * > A ficha declara que **1 execução da receita produz `loteBase` `unidadeLoteBase`** do item
+ * > produzido, consumindo as `qtdPlanejada` de cada componente. A **escala** de uma ordem é
+ * > *quantas execuções da receita*, e o consumo é sempre **`escala × dose`** — nada mais.
+ *
+ * ⛔ **CONSEQUÊNCIA QUE PRECISA ESTAR ESCRITA: `loteBase` só é um RENDIMENTO comparável quando
+ * `unidadeLoteBase` é a unidade em que o item produzido se CONTA.** Se a ficha diz `1 KG` e o
+ * produto se conta em `UN`, o número `1` não responde *"quantas unidades saem de uma
+ * execução?"* — e quem converter `pedido → escala` dividindo por ele está dividindo por uma
+ * grandeza de outra natureza.
+ *
+ * ⚠️⚠️ **E ISSO NÃO É TEORIA: medido em prod (03/10), 36 das 43 fichas de produção da Caçula
+ * declaram o lote em `KG` com o produto contado em `UN`.** Todas com `loteBase = 1` — então o
+ * teórico "funciona" por **coincidência numérica**, e a conversão `pedido → escala` passa a
+ * depender inteiramente do rendimento MEDIDO. Foi assim que o `beef de xis`, com a média
+ * envenenada por 2 lotes, propôs separar material pra **6,7** numa ordem de **10**.
+ *
+ * ⭐ O juiz **M5** (`fantasma-invariants.ts`) cobra essa coerência. Ele nasce com 36 achados —
+ * não é alarme falso, é o retrato do que está declarado torto.
+ *
  * ═══ ⛔ SEM ARREDONDAMENTO NO MEIO ═══
  *
  * A conta acumula **exata** e arredonda **uma vez, na borda**. Era `round6` a cada passo da

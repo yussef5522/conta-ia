@@ -101,5 +101,52 @@ export async function checkFantasmaInvariants(db: PrismaClient): Promise<StockIn
     })
   }
 
+  /**
+   * ═══ ⭐⭐ M5 (erro) — O LOTE DECLARADO TEM QUE SER COMPARÁVEL (item 4a, 03/10/2026) ═══
+   *
+   * `unidadeLoteBase` da ficha ≠ `unidadeControle` do item produzido ⇒ o `loteBase` **não é um
+   * rendimento**: ele não responde *"quantas unidades saem de 1 execução da receita?"*. E quem
+   * converte `pedido → escala` divide por ele.
+   *
+   * ⛔⛔ **É A RAIZ MEDIDA DO CASO DO `beef de xis` (03/10):** a ficha diz `1 KG`, o beef se
+   * conta em `UN`, o teórico "1" vale por coincidência numérica — e aí a escala passa a
+   * depender só do rendimento MEDIDO, que 2 lotes outliers envenenaram. Ordem de 10 propôs
+   * separar pra 6,7, e o laço de realimentação produziu o **Σ −24,91 KG de acém** que a
+   * perícia do caso B mediu sem saber a causa.
+   *
+   * ⚠️ **NASCE COM 36 ACHADOS de 43 fichas, e isso é o retrato — não ruído.** A faixa de
+   * concordância (`DISCORDANCIA_MAXIMA`) já protege o plano HOJE; o M5 é o que faz a declaração
+   * torta parar de ser invisível. ⭐ Corrigir ficha é **gesto do dono** (receita é decisão
+   * dele desde 17/08) — o invariante nomeia, não conserta.
+   */
+  const fichasAtivas = await db.stockFicha.findMany({
+    where: { ativo: true },
+    select: { id: true, companyId: true, tipoProduto: true, itemProduzidoId: true, versaoAtual: true },
+  })
+  for (const f of fichasAtivas) {
+    // ⚠️ só ficha que a cozinha PRODUZ por ordem: no invólucro de cardápio não existe "lote"
+    if (comoConsome(f.tipoProduto) === 'ATRAVESSA') continue
+    const v = await db.stockFichaVersao.findFirst({
+      where: { companyId: f.companyId, fichaId: f.id, versao: f.versaoAtual },
+      select: { loteBase: true, unidadeLoteBase: true },
+    })
+    const prod = await db.stockItem.findFirst({
+      where: { id: f.itemProduzidoId, companyId: f.companyId },
+      select: { unidadeControle: true },
+    })
+    if (!v || !prod) continue
+    if (v.unidadeLoteBase === prod.unidadeControle) continue
+    fails.push({
+      invariante: 'M5',
+      companyId: f.companyId,
+      detalhe:
+        `a ficha de «${nomes.get(f.itemProduzidoId) ?? f.itemProduzidoId}» declara que 1 receita produz ` +
+        `${v.loteBase} ${v.unidadeLoteBase}, mas o item se CONTA em ${prod.unidadeControle} — ` +
+        `então o lote base não responde "quantas ${prod.unidadeControle} saem de 1 receita" e a conversão ` +
+        `"quero N" → escala fica dependendo só do rendimento medido (foi a raiz do beef de xis em 03/10). ` +
+        `Declare o lote em ${prod.unidadeControle}.`,
+    })
+  }
+
   return fails
 }
