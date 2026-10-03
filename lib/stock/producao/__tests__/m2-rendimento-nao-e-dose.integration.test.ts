@@ -14,6 +14,11 @@
  *
  * ⚠️ E era o tamanho do estrago em prod: **107 de 319 conclusões** acusadas, na pergunta que
  * o P3 já fazia.
+ *
+ * ⚠️⚠️ **E A RÉGUA EVOLUIU DEPOIS DE UMA SEGUNDA RODADA EM PROD:** a escala do PLANO também não
+ * é confiável no histórico (razões de +15344%), então o M2 passou a comparar os componentes
+ * **ENTRE SI** (normalizados pela mediana). Por isso a ficha deste cenário tem **DOIS**
+ * componentes: com um só, não há irmão com que comparar e a resposta honesta é calar.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
@@ -34,12 +39,22 @@ const M2 = async () =>
  * @param rendimento quantas unidades sai de CADA lote (25 = a porção de queijo real)
  */
 async function ordemLimpa(escala: number, rendimento: number, dose: number) {
-  const insumo = await prisma.stockItem.create({
-    data: { companyId, nome: 'QUEIJO MUSSARELA', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' },
-  })
-  await prisma.stockMovement.create({
-    data: { companyId, itemId: insumo.id, tipo: 'ENTRADA_NF', quantidade: 500, custoUnitario: 31.9, custoTotal: 15950, origem: 'SEFAZ' },
-  })
+  const mk = async (nome: string) => {
+    const it = await prisma.stockItem.create({
+      data: { companyId, nome, unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' },
+    })
+    await prisma.stockMovement.create({
+      data: { companyId, itemId: it.id, tipo: 'ENTRADA_NF', quantidade: 500, custoUnitario: 31.9, custoTotal: 15950, origem: 'SEFAZ' },
+    })
+    return it.id
+  }
+  /**
+   * ⚠️ **TRÊS** componentes: a régua compara os irmãos entre si e a mediana só é robusta com
+   * 3+ — com 2 ela fica no meio do desvio e cala em silêncio (ver `plausibilidade-da-dose.ts`).
+   */
+  const insumo = { id: await mk('QUEIJO MUSSARELA') }
+  const irmao = { id: await mk('CREME DE LEITE') }
+  const irmao2 = { id: await mk('SAL REFINADO') }
   const f = await criarFicha(
     {
       companyId,
@@ -48,7 +63,11 @@ async function ordemLimpa(escala: number, rendimento: number, dose: number) {
       tipoProduto: 'INTERMEDIARIO',
       loteBase: 1,
       unidadeLoteBase: 'UN',
-      componentes: [{ itemId: insumo.id, qtdPlanejada: dose, unidade: 'KG' }],
+      componentes: [
+        { itemId: insumo.id, qtdPlanejada: dose, unidade: 'KG' },
+        { itemId: irmao.id, qtdPlanejada: dose / 2, unidade: 'KG' },
+        { itemId: irmao2.id, qtdPlanejada: dose / 4, unidade: 'KG' },
+      ],
     },
     prisma,
   )
@@ -64,14 +83,15 @@ async function ordemLimpa(escala: number, rendimento: number, dose: number) {
       dataProducao: new Date('2026-09-20T15:00:00Z'),
     },
   })
-  // ⭐ o consumo EXATO que a ficha manda: dose × escala
+  // ⭐ o consumo EXATO que a ficha manda, nos DOIS componentes: dose × escala
   const consumo = dose * escala
-  await prisma.stockMovement.create({
-    data: { companyId, itemId: insumo.id, tipo: 'SEPARACAO_SAIDA', quantidade: -consumo, custoUnitario: 31.9, custoTotal: -consumo * 31.9, receiptId: ordem.id, origem: 'MANUAL' },
-  })
-  await prisma.stockMovement.create({
-    data: { companyId, itemId: insumo.id, tipo: 'PRODUCAO_CONSUMO', quantidade: -consumo, custoUnitario: 31.9, custoTotal: -consumo * 31.9, receiptId: ordem.id, origem: 'MANUAL' },
-  })
+  for (const [id, q] of [[insumo.id, consumo], [irmao.id, consumo / 2], [irmao2.id, consumo / 4]] as const) {
+    for (const tipo of ['SEPARACAO_SAIDA', 'PRODUCAO_CONSUMO'] as const) {
+      await prisma.stockMovement.create({
+        data: { companyId, itemId: id, tipo, quantidade: -q, custoUnitario: 31.9, custoTotal: -q * 31.9, receiptId: ordem.id, origem: 'MANUAL' },
+      })
+    }
+  }
   const qtdGerada = escala * rendimento
   await prisma.stockProducaoConclusao.create({
     data: {
@@ -81,7 +101,7 @@ async function ordemLimpa(escala: number, rendimento: number, dose: number) {
       custoUnitarioReal: (consumo * 31.9) / qtdGerada,
     },
   })
-  return { ordemId: ordem.id, insumoId: insumo.id, consumo }
+  return { ordemId: ordem.id, insumoId: insumo.id, irmaoId: irmao.id, consumo }
 }
 
 beforeEach(async () => {
@@ -124,10 +144,11 @@ describe('⛔⛔⛔ a ficha de rendimento 25 consumindo EXATO: o M2 tem que CALA
     expect(await M2()).toEqual([])
   })
 
-  it('⛔⛔ e com a dose TORTA de verdade (consumiu 40% a mais) ele ACENDE', async () => {
+  it('⛔⛔ e com a dose de UM componente torta (40% a mais) ele ACENDE, nomeando ele', async () => {
     /**
-     * ⚠️ A outra metade do guard: calar sempre também seria defeito. Aqui o consumo não é o
-     * da ficha — e o M2 acende nomeando a dose, com rendimento 25 no meio do caminho.
+     * ⚠️ A outra metade do guard: calar sempre também seria defeito. Aqui **só o queijo** sai
+     * da ficha — o irmão fica certo —, e é justamente esse caso que o denominador não
+     * consegue esconder. Com rendimento 25 no meio do caminho.
      */
     const o = await ordemLimpa(10, 25, 0.135)
     await prisma.stockMovement.create({

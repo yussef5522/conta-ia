@@ -53,6 +53,35 @@
  * câmara). Com ±20% acende o que tem sinal; com ±10% acenderia a rotina.
  */
 
+/**
+ * ═══ ⛔⛔⛔ E A SEGUNDA RODADA EM PROD DERRUBOU TAMBÉM O DENOMINADOR NOVO ═══
+ *
+ * Com a escala da ordem, o M2 caiu de 107 pra 81 — e trouxe razões de **+15344%**, **+8200%**,
+ * **+11268%**. Medido: existem ordens cuja `escalaReceitas` (o PLANO) é pequena e a cozinha
+ * separou/consumiu um lote inteiro. **Então a escala do plano também não é confiável no
+ * histórico.**
+ *
+ * ⚠️⚠️ **A CONCLUSÃO HONESTA: "a dose está errada?" NÃO É SEPARÁVEL de "a escala está errada?"
+ * com os dados que existem.** Há **uma** equação (o consumo) e **duas** incógnitas (a dose
+ * efetiva e quantos lotes de verdade foram feitos). Qualquer denominador que eu escolha carrega
+ * a outra incógnita — foi o que aconteceu com `qtdGerada` (carregou o rendimento) e com
+ * `escalaReceitas` (carregou o erro de plano). *Invariante que não tem como estar certo é pior
+ * que invariante nenhum.*
+ *
+ * ⭐⭐ **O QUE É SEPARÁVEL — E É EXATAMENTE O QUE O DONO PEDIU NO ITEM 4b:** *"ratio IDÊNTICO nos
+ * 3 componentes = ESCALA; ratio só no acém = dose/versão da ficha — alguém mudou?"*
+ *
+ * A **comparação ENTRE COMPONENTES DA MESMA ORDEM** é imune ao denominador, porque o
+ * denominador é **o mesmo pros três**. Se o acém consumiu 40% mais *em relação ao peito e à
+ * gordura*, isso é a **DOSE dele** — não há escala no mundo que mexa num componente só.
+ *
+ * ⛔ Então o M2 passou a acusar **só a assinatura COMPONENTE**. O caso ESCALA (todos desviando
+ * junto) **já tem dono: é o P3**, que compara o rendimento com a história da própria ficha —
+ * emitir os dois seria o mesmo problema contado duas vezes, e o dono ia conferir três fichas
+ * certas. ⚠️ E ficha de UM componente só não é avaliável: não há com que comparar, e inventar
+ * um veredito ali seria o palpite que esta casa recusa em toda parte.
+ */
+
 export const DESVIO_DA_DOSE = 0.2
 
 export interface DoseDaOrdem {
@@ -67,7 +96,13 @@ export interface DoseSuspeita {
   itemId: string
   doseDaFicha: number
   doseEfetiva: number
-  /** doseEfetiva ÷ doseDaFicha — 1,21 quer dizer "21% a mais por lote" */
+  /**
+   * doseEfetiva ÷ doseDaFicha, **normalizada pela MEDIANA das razões dos irmãos**.
+   *
+   * ⭐ É isso que a torna livre do denominador: `1,40` quer dizer *"este componente consumiu
+   * 40% mais do que a ficha manda, EM RELAÇÃO aos outros componentes da mesma ordem"*. Se a
+   * escala/rendimento estiver errada, ela afeta os três igual e a normalização a cancela.
+   */
   razao: number
   lado: 'ACIMA' | 'ABAIXO'
 }
@@ -86,11 +121,46 @@ export function dosesSuspeitas(
   desvio = DESVIO_DA_DOSE,
 ): DoseSuspeita[] {
   if (!(escalaDaOrdem > 0)) return []
+
+  const uteis = doses.filter((d) => d.doseDaFicha > 0 && d.consumido > 0)
+  /**
+   * ⛔⛔ MENOS DE **TRÊS** COMPONENTES: NÃO É AVALIÁVEL — e o 3 não é gosto, é aritmética.
+   *
+   * Com **um**, não há irmão com que comparar: qualquer veredito seria o denominador falando,
+   * e o denominador é justamente o que não dá pra confiar.
+   *
+   * ⚠️⚠️ **E com DOIS a régua MENTE CALANDO — o teste pegou isto.** A mediana de dois valores
+   * é a média deles, então ela fica **no meio do desvio**: um componente 40% fora vira
+   * `1,4/1,2 = +17%` e o irmão vira `1,0/1,2 = −17%` — **os dois abaixo do teto, e o
+   * invariante cala num caso que ele existe pra achar**. Pior: cala em SILÊNCIO.
+   *
+   * ⭐ E a razão de fundo é a trava que esta casa já aplica em toda parte: com dois valores
+   * divergindo **não há como saber QUAL dos dois está errado** — é o *"dois igualmente
+   * parecidos = não sei qual é"* do PAO DE MEL (09/09) e do empate do pagamento de fatura
+   * (25/09). Três é o mínimo em que a maioria define a referência.
+   *
+   * ⚠️ Fica REGISTRADO o que isto não alcança: ficha de 2 componentes não é vigiada por este
+   * invariante. O P1 (contábil) e o P3 (rendimento) seguem valendo nela.
+   */
+  if (uteis.length < 3) return []
+
+  const razoesCruas = uteis.map((d) => d.consumido / escalaDaOrdem / d.doseDaFicha)
+  /**
+   * ⭐ A MEDIANA (não a média) é a referência: ela não se move quando UM componente está
+   * fora — que é exatamente o caso que este invariante existe pra achar. Com a média, o
+   * desviante puxaria a própria referência e se esconderia.
+   */
+  const ordenadas = [...razoesCruas].sort((a, b) => a - b)
+  const meio = Math.floor(ordenadas.length / 2)
+  const mediana = ordenadas.length % 2 ? ordenadas[meio] : (ordenadas[meio - 1] + ordenadas[meio]) / 2
+  if (!(mediana > 0)) return []
+
   const out: DoseSuspeita[] = []
-  for (const d of doses) {
-    if (!(d.doseDaFicha > 0) || !(d.consumido > 0)) continue
+  for (let i = 0; i < uteis.length; i++) {
+    const d = uteis[i]
     const doseEfetiva = d.consumido / escalaDaOrdem
-    const razao = doseEfetiva / d.doseDaFicha
+    // ⭐ normalizada: o denominador comum some, sobra a dose RELATIVA entre os irmãos
+    const razao = razoesCruas[i] / mediana
     /**
      * ⚠️ O `1e-9` NÃO é folga de régua, é RUÍDO DE FLOAT: uma ordem exatamente na borda sai
      * como `1.2000000000000002` da divisão e acenderia um aviso por 2 quatrilionésimos.
@@ -112,13 +182,16 @@ export function dosesSuspeitas(
 }
 
 /**
- * ⭐⭐ A ASSINATURA — a régua que o próprio dono ditou pra ler o resultado (04/10 do pedido):
- * *"razão IDÊNTICA nos N componentes = ESCALA (o caso da maionese); razão só em UM = dose ou
- * versão de ficha."*
+ * ⭐⭐ A ASSINATURA — a régua que o próprio dono ditou (item 4b): *"razão IDÊNTICA nos N
+ * componentes = ESCALA (o caso da maionese); razão só em UM = dose ou versão de ficha."*
  *
- * ⚠️ Isto é o que transforma o aviso em DIAGNÓSTICO: sem a assinatura, três avisos de ±21%
- * na mesma ordem parecem três problemas, quando são **um** (a escala) — e mandariam o dono
- * conferir três fichas que estão certas.
+ * ⚠️ Com a razão já NORMALIZADA pela mediana, o caso ESCALA some sozinho: se os três desviam
+ * junto, a razão de cada um contra a mediana vira ~1,00 e nenhum entra na lista. **A
+ * assinatura é, então, uma leitura do que SOBROU** — e é sempre COMPONENTE.
+ *
+ * ⛔ A função fica porque ela é o CONTRATO escrito dessa decisão: o dia em que alguém trocar a
+ * normalização por uma razão crua, este tipo volta a ter dois valores possíveis e o teste
+ * cobra. Ver o contrafactual em `plausibilidade-da-dose.test.ts`.
  */
 export type AssinaturaDoDesvio = 'ESCALA' | 'COMPONENTE' | 'INDEFINIDA'
 
@@ -129,7 +202,7 @@ export function assinaturaDoDesvio(
 ): AssinaturaDoDesvio {
   if (!suspeitas.length) return 'INDEFINIDA'
   if (suspeitas.length === 1) return totalDeComponentes > 1 ? 'COMPONENTE' : 'INDEFINIDA'
-  // ⭐ TODOS os componentes desviando com a MESMA razão = a escala, não as doses
+  // ⚠️ só alcançável com razão CRUA (normalizada, todos-iguais nunca chega aqui)
   const todos = suspeitas.length === totalDeComponentes
   const iguais = suspeitas.every((s) => Math.abs(s.razao - suspeitas[0].razao) <= tolerancia)
   return todos && iguais ? 'ESCALA' : 'COMPONENTE'
