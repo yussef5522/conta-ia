@@ -1674,6 +1674,91 @@ v2 (21/09, por marcyelle) 1 UN COCA COLA 2L + 2 UN porção queijo 135g ← pizz
 ```
 ⚠️ **E as duas telas discordam nesses casos:** o `calcularRealVsTeorico` soma **todos** os ajustes do período (a Σ da sessão, honesta) e o Radar lê o campo `divergencia` (o último delta). ⛔ **Não mudei de propósito:** derivar a variância da Σ da sessão quebraria a linha arquitetural deste módulo (*"este arquivo NÃO calcula variância — ela já está gravada"*) e mudaria o veredito de 23 linhas históricas, inclusive o placar de meses passados. **É decisão do dono qual régua vale.**
 
+## ⛔⛔⛔ SPRINT DO MOTOR — PORTA ÚNICA + O JUIZ QUE NÃO DORME · E OS 2 CASOS DE PROVA CAÍRAM NA PERÍCIA (02/10/2026)
+
+**A doença que o dono nomeou:** *"toda quebra da produção nasceu de CONTA PARALELA — escala dupla da maionese, round2 zerando dose pequena, a ficha do Combo baixando bebida que o complemento já baixava. A cura é a mesma da financeira: PORTA ÚNICA + GUARD QUE NUNCA DORME."*
+
+### ⭐⭐⭐ OS RETRATOS VIERAM PRIMEIRO (ordem dele) — E OS DOIS CASOS DE PROVA MUDARAM DE RÉU
+
+**⛔ CASO A — a metade de bolinha: O MOTOR ESTÁ CERTO, as FICHAS estão incompletas.** Dos **12 nomes de pizza mapeados**, só **2** carregam a metade (`PIZZA GRANDE PRECINHO` dose 2, `Pizza (Aiq)` dose 2); as fichas de 01-03/09 (`PEQUENA 25CM`, `FAMILIA PRECINHO`, `FAMILIA 45CM`, `GRANDE 35CM`, `PROMO 2 PIZZAS GRANDES`) **não têm nenhuma**. A explosão de 1 venda de cada uma das outras 10 mostra *"⛔ a metade NÃO aparece"* — e o motivo não é 2º nível, nem round, nem PDV: **a ficha não pede**. ⭐ **1.329 pizzas vendidas com ficha sem a metade.** No ledger: produzidas **7.428**, a venda baixou **1.749**, a produção consumiu **92**, e **as contagens tiraram 5.038 = R$ 3.677,74** (custo R$ 0,73/UN). ⚠️ **E a DOSE é decisão do dono:** pro MESMO 35 cm o `GRANDE PRECINHO` pede 2 e o `Combo Caçula` pede 3.
+
+**⛔ CASO B — o acém: a DOSE está certa nas DUAS fichas, e ninguém a mudou.** `beef de xis` **0,091/0,044/0,020** (2 versões, idênticas) e `beef de hamburger` **0,110/0,055/0,018** (3 versões, idênticas, criadas 01-06/09 pelo dono). ⚠️ **E a referência do pedido estava trocada:** os 91 g são do *xis*; o hamburger é 110 g — aplicar 91 g às separações do hamburger é o que produz o *"~192 beefs"* da conta dele. As razões efetivas ficam em **1,00–1,06** com **um outlier de 1,21 em 26/09**, e são **IDÊNTICAS nos 3 componentes** → pela régua que ele mesmo ditou, isso é **ESCALA**, não dose. `consumo == escala × dose` **EXATO em 13 de 16** ordens recentes (02/10 hamburger: escala 159,2357 × 0,11 = **17,5159** ao grama, com produção de 150 onde o plano previa 16,5). **Σ(escala − produzido) × dose em todas as ordens de beef = −24,91 KG de Acém = −R$ 846,03** (negativo: no agregado a cozinha produziu MAIS do que a escala planejou). Acém a R$ 33,96/KG.
+
+**⭐ E a varredura do surface achou um medo maior que o problema: só DUAS funções convertiam ficha→consumo** (a venda — que produtos E complementos já compartilhavam desde 02/09 — e a separação de ordem). As outras aparições de `qtdPlanejada` são **custo** ou **conversão de unidade**, que são outra pergunta.
+
+### ⭐⭐⭐ A PORTA (item 1 + 1.b + 5) — `lib/stock/explodir-receita.ts`
+
+**ESTOCADO × ATRAVESSA, declarado com NOME** (o `Component × Item` do Crunchtime, o *phantom BOM* da manufatura): **ESTOCADO** baixa o item e **PARA** (os insumos dele já saíram na ordem — descer é **baixa DUPLA**); **ATRAVESSA** desce (invólucro de cardápio, sem estoque próprio). ⭐ Hoje a resposta deriva do TIPO — o que o `montaNaVenda` já fazia desde 03/09 — mas agora tem **nome e um lugar só**, em vez de viver num `if` no meio da recursão.
+
+**⛔ SEM ARREDONDAMENTO NO MEIO:** a conta acumula exata e arredonda **uma vez, na borda**. Era `round6` a cada passo, e arredondamento composto é como a dose de 0,0003 KG de fermento virou 0 (28/09).
+
+**⭐ E A REGRA DE DESCIDA É DECLARADA POR GESTO, não um `if` escondido:** `VENDA` desce o phantom e para no estocado; **`SEPARACAO` não desce NADA** — o gesto é físico (alguém vai à câmara tirar o que a ficha lista), e descer mandaria a pessoa buscar farinha quando a ficha pede massa pronta.
+
+**⭐ O "NÃO SEI" SAI NOMEADO** (item 5): `FICHA_SEM_COMPONENTE`, `DOSE_ZERO`, `PROFUNDIDADE` — e `doseQueZeraria` avisa na borda o que gravaria 0. ⛔ Nunca engolido.
+
+**⭐⭐ O RASTRO (`viaFichas`) não é enfeite — é o que torna o juiz possível** (ver M1).
+
+**MIGRADOS os 2 fluxos**, e `explodir` virou casca fina. **Guard estrutural** (`__tests__/regras-estoque/uma-porta-pra-explosao.test.ts`): dose multiplicada fora da porta = vermelho, com **auto-teste do detector** e exceções NOMEADAS (custo, reunitizar). ⚠️ **E a previsão de tela NÃO foi proibida, foi AMARRADA por teste** — `insumoParaSaida` responde a pergunta inversa (quantas porções → quanto pegar) e um teste exige que ela concorde com a porta: se a régua da porta mudar e a tela ficar atrás, vermelho. *Proibir o que não dá pra unificar empurra pra cópia escondida.*
+
+### ⭐⭐⭐ O JUIZ (item 2) — M1 · M2 · M3 · M4
+
+**⭐⭐ M1 (`juiz-da-baixa.ts`) — Σ(motor) == Σ(ledger) por dia de baixa, por item, À GRAMA.** É o que torna a porta única **permanente**: o guard estrutural impede ESCREVER uma segunda multiplicação; o M1 pega o estrago de qualquer coisa que **desvie da porta em runtime**.
+
+**⚠️⚠️ E ELE TEM TRÊS SAÍDAS, NÃO DUAS — sem isso ele nascia mentindo.** Re-explodir hoje um dia antigo dá resposta diferente quando o mundo mudou no meio, e isso aconteceu **neste mesmo dia** (o Combo v3). Um juiz ingênuo acusaria 20/09 e 01/10 **toda noite, pra sempre**.
+
+**⛔⛔ E "O MUNDO" SÃO DUAS COISAS — a 2ª só apareceu RODANDO contra prod.** A 1ª versão olhava só a FICHA e acusou **complementos de 11/09** como ERRO (*"COCA COLA LATA 350ML: motor 15 × ledger 0"*); a causa era o dono ter **mapeado dois nomes do PDV em 14/09**. O aviso agora cobre **ficha versionada OU nome mapeado depois**, e **DIZ qual das duas** foi. ⚠️ **Lacuna declarada:** `stock_venda_produto_map` tem só `criadoEm`, então TROCAR o destino de um nome já mapeado é invisível — e o efeito cai no lado **seguro** (acusa em vez de perdoar).
+
+**⭐ REGRA 4: a comparação motor×ledger JÁ EXISTIA derivada** (o `precisaReprocessar` do planejador de complementos, 07/09). Ela **saiu de lá** e virou `confrontarMotorComLedger`, que a tela e o juiz leem — senão a tela diria "fecha" e o e-mail "não fecha".
+
+**⛔⛔⛔ M2 (plausibilidade da dose) — A LETRA DO PEDIDO NÃO SOBREVIVEU A DUAS MEDIÇÕES, e o caminho é a parte boa.**
+1. *"consumo ÷ unidades produzidas"* (a letra): mede o **RENDIMENTO**, não a dose — o rendimento da Caçula vai de **0,0386 a 3,78** (umas fichas fazem 1 receita → 184 porções). **107 de 319 acusadas**, repetindo a pergunta que o P3 já faz.
+2. *"÷ escala da ordem"* (o plano): caiu pra 81 — e trouxe razões de **+15344%**, porque existem ordens de plano pequeno em que a cozinha consumiu um lote inteiro. **O plano também não é confiável no histórico.**
+3. ⚠️⚠️ **A CONCLUSÃO HONESTA: "a dose está errada?" NÃO É SEPARÁVEL de "a escala está errada?"** — há **uma** equação (o consumo) e **duas** incógnitas. Qualquer denominador carrega a outra. *Invariante que não tem como estar certo é pior que invariante nenhum.*
+4. ⭐⭐ **O QUE É SEPARÁVEL é exatamente o item 4b do dono:** a comparação **ENTRE COMPONENTES da mesma ordem** é **imune ao denominador**, porque ele é o mesmo pros irmãos. *"Ratio só no acém"* = a dose dele; *"ratio idêntico nos três"* = escala, **e isso tem dono: o P3**. Razão normalizada pela **MEDIANA** dos irmãos; há teste provando a imunidade (**o mesmo consumo com denominador 100× errado dá o MESMO veredito**).
+
+**⚠️ DOIS ACHADOS DE ARITMÉTICA, os dois por TESTE VERMELHO (não por raciocínio):** **(a) MEDIANA, não média** — com média o desviante puxa a própria referência e se esconde; **(b) 3+ COMPONENTES, não 2** — com dois a mediana fica **no meio do desvio**, e 40% num vira `+17%/−17%`: **os dois abaixo do teto, e o guard calaria em silêncio no caso que existe pra achar**. ⭐ E a razão de fundo é a trava do PAO DE MEL: com dois divergindo **não há como saber qual dos dois está errado**.
+
+**⭐⭐ M3/M4 (`fantasma-invariants.ts`) — A REGRA DE OURO DO MRP VIRA GUARD.** **M3**: phantom com **saldo ≠ 0** = dinheiro num **LIMBO** (a explosão atravessa o item, então nenhuma venda e nenhuma produção vão baixá-lo nunca). **M4**: item que **É** estocado (tem ordem de produção) tipado como ATRAVESSA = **baixa DUPLA silenciosa** em cada venda.
+
+**⚠️⚠️ E O M3 OLHA O SALDO LÍQUIDO, NÃO "TEM MOVIMENTO?" — medido ANTES de escrever:** há **25 movimentos** em itens phantom, e são **pares `AJUSTE_CONTAGEM` + `ESTORNO`** — a própria cirurgia de 09/09, com Σ ZERO. Um guard ingênuo nasceria com **13 alarmes falsos de um problema já resolvido**.
+
+### ⭐ O QUE O JUIZ ACHOU EM PROD (e os números finais)
+
+```
+M1 — 33 achados: ⛔ 1 ERRO · 32 avisos EXPLICADOS (ficha versionada / nome mapeado depois)
+   ⛔ produtos de 22/09: TOMATE motor 2.125 × ledger 2.13 · PEPINO 0.025 × 0.03 (sobra 5 g em cada)
+      ⭐ a assinatura é o round2→round6 de 29/09: o dia foi baixado com 2 casas e o motor
+        passou a 6. É literalmente "o motor mudou e ninguém reprocessou" — o que o M1 existe
+        pra pegar. R$ irrisório; reprocessar o dia é DECISÃO DO DONO.
+M3 — ⛔ 1 ERRO: «FANTA UVA 2L» invólucro com saldo 7 UN / R$ 0,00 no limbo
+      ⭐ a cirurgia de 09/09 curou 12 dos 13 invólucros de bebida; este ficou.
+M4 — 0 (as 452 ordens são todas de ficha INTERMEDIARIO, como tem que ser)
+M2 — 0 achados, e ele ALCANÇA 83 das 386 conclusões (22%) — não é enfeite
+      ⭐ NENHUMA dose foge dos irmãos: as fichas da Caçula estão consistentes. O 1,21 do acém
+        era ESCALA (os três juntos), confirmando o retrato do caso B por um 3º caminho.
+      ⚠️ 300 das 386 conclusões têm 1 componente só → fora do alcance deste invariante
+        (P1 e P3 seguem valendo nelas). Registrado, não disfarçado.
+A PORTA contra o cardápio real: 96 nomes mapeados · 0 avisos · profundidade 1 em todos
+   Combo Caçula → 2 porção queijo + 1 caixa 35cm + 3 metade de bolinha  ⭐ v3, sem a Coca
+```
+
+### ⛔⛔ E A PROVA EM PROD ACHOU 161.810 LINHAS ÓRFÃS NO `dev.db` — a causa é IRÔNICA
+
+O golden da produção ficou vermelho e eu levei três medições pra ver que o réu era **sujeira minha**, não código. **A causa:** a rede global de limpeza apaga `WHERE companyId IN (as empresas novas que SOBRARAM)` — então **o teste DISCIPLINADO, que apaga a própria `Company` no `afterEach`, tira a empresa da lista e deixa as linhas `stock_*` órfãs pra sempre** (sem FK, sem cascade, porque o isolamento do módulo proíbe `@relation`). **Quanto mais limpo o teste, mais lixo ele deixa.**
+
+⛔ **E o lixo não era inerte:** os juízes varrem o **banco INTEIRO** (não filtram empresa), então **32 ordens órfãs em `PLANEJADA`** faziam o P1/P2 acusar. **Varredura de órfãs na rede de baixo** (REGRA 5 — impossibilidade em vez de disciplina em ~100 arquivos). ⭐ **Efeito colateral medido: a suíte caiu de 94 s pra 46 s.**
+
+**REGRA 11 — 11 defeitos repostos, 11 vermelhos. E QUATRO vieram VERDES primeiro:** o do arredondamento (`0,1 × 0,0003` **cabe** em 6 casas; o que isola é a dose que **ZERA** no meio e **desaparece em silêncio**) · o da tolerância (os cenários divergiam em 10 unidades, então **1 unidade de folga passava** — faltava o caso de 10 g) · o do denominador do M2 (o teste puro **recebe** o denominador, então passava verde com o juiz mandando o errado — exigiu teste de **integração**) · e o da mediana com 2 componentes.
+
+**871 arquivos · 11.242 verdes · TS 0 · `pg_dump pre-motor-unico-20261002-210850.dump` (7.933.691 bytes conferidos) · deploys 4/4 (`O_5nnTepxKPgbx6BvG1pC`, `wf3RhqB_GUXxCWLfsYA7I`, `acTqPSrPPjCkbrOwyH7St`) · Δ bundle +0 KB.** ⛔ **Zero escrita em prod.**
+
+📋 **FICA PRO DONO — e os retratos mudaram as perguntas:**
+1. **CASO A é das FICHAS, não do motor:** a **dose da metade por tamanho** (hoje 2 no GRANDE PRECINHO × 3 no Combo pro MESMO 35 cm) e as **10 fichas de pizza que não pedem a metade** (1.329 pizzas vendidas). ⚠️ Eu NÃO toco em receita — é decisão dele desde 17/08.
+2. **CASO B não tem dose errada:** as duas fichas estão certas e ninguém as mudou. O que existe é **escala/rendimento** (−24,91 KG de Acém = −R$ 846,03 no agregado), que é o P3 — e o **RENDIMENTO declarado por ficha** (o item 1.b que eu NÃO construí: exige tabela CREATE-only e a decisão dele sobre o % de cada ficha).
+3. **M1 do 22/09** (5 g de tomate e pepino): reprocessar o dia ou registrar divergência.
+4. **M3 da FANTA UVA 2L** (7 UN no limbo): estornar o ajuste e contar na GARRAFA.
+5. Seguem abertas: a correção de dado da parcela #22 (saldo devedor R$ 9.729,34 a mais, DRE de setembro −R$ 505,01) · as 23 linhas de recontagem onde a variância gravada subestima · os 90 UN / R$ 768,59 do Combo (recomendação: registrar divergência) · os 6 nomes de bebida pendentes nos complementos.
+
 ## ⛔⛔⛔ UMA RÉGUA PRA TRÊS TELAS — A PARCELA 22 QUITADA ERA CHAMADA DE ATRASADA (02/10/2026)
 
 **O dono, com os prints:** as 2 transações de 25/09 do **C41033828** (AMORTIZACAO 7.568,91 + LIQUIDACAO 2.665,44) estão *"parcela 22 · PELO SISTEMA · Resolvida"* ✓ e a parcela mostra *"pago em 25/09 · PAGO EM 2 PARCELAS PARCIAIS"* com os dois linkados ✓ — **mas a mesma parcela tem selo "Atrasada" + botão "Marcar paga"**, a tela de dentro do empréstimo diz atrasado e a LISTA diz em dia. ***Três leituras, três respostas.***
