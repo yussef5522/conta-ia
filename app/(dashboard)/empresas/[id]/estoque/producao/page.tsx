@@ -17,7 +17,13 @@ import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
-import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio, BarChart3, ArrowRight, CalendarDays } from 'lucide-react'
+import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio, BarChart3, ArrowRight, CalendarDays, Beef, Wheat, Scissors, ChefHat, Flame, Gauge, Clock } from 'lucide-react'
+import { formatBRL } from '@/lib/format/money'
+import { formatarDuracao } from '@/lib/format/duracao'
+import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
+import { caraDaReceita, type IconeDaReceita } from '@/lib/stock/producao/cara-da-receita'
+import { faixaDoSelo } from '@/lib/stock/producao/eficiencia-da-ordem'
+import type { Quantidade } from '@/lib/stock/producao/desempenho'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null }
@@ -26,6 +32,9 @@ interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string
 interface Setor { id: string; nome: string; ativo: boolean }
 interface Painel { emAberto: number; valorEmProducao: number; concluidasNoPeriodo: number; valorProduzidoNoPeriodo: number; rendimentoPeriodo: number | null; lotesNaMedia: number; faixaRendimento: string; abertasDeOntem: number }
 type Aberta = Ordem & { deOntem?: boolean }
+/** ⭐ o que a rota passou a mandar pro mock v3 (quem/começou/pedido) */
+interface Contexto { pedido: number | null; pedidoOrigem: 'DECLARADO' | 'DERIVADO' | null; quem: string[]; comecouEm: string | null }
+interface PedidoFeito { pedido: number | null; origem: 'DECLARADO' | 'DERIVADO' | null }
 interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string; pct: number | null; faixa: string; motivo: string | null; selo: 'FICHA' | 'SEM_DADO' }
 
 // ⭐ PALETA APROVADA NO MOCKUP (01/09/2026). Cor SÓ com significado — status, desvio,
@@ -73,6 +82,112 @@ const PAGINA = 25
 const fmtQtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 const fmtDia = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
 
+
+/**
+ * ⭐⭐ A FAMÍLIA DE COR EM 3 DEGRAUS — o pedido do dono: *"fundo tom 50, textos tons 600/800 DA
+ * MESMA família, nunca preto em fundo colorido"*. Os tokens vivem no `globals.css` escopados em
+ * `[data-tela='producao-home']`, com o espelho escuro invertendo 50↔800.
+ */
+const fam = (f: string) => ({
+  bg: `var(--fam-${f}-bg)`,
+  mid: `var(--fam-${f}-mid)`,
+  ink: `var(--fam-${f}-ink)`,
+})
+
+/** ⚠️ nome → componente: a lib `cara-da-receita` é PURA e devolve o NOME do ícone, não JSX */
+const ICONES: Record<IconeDaReceita, typeof Beef> = {
+  carne: Beef, porcao: UtensilsCrossed, massa: Wheat, preparo: Scissors, generico: Factory,
+}
+
+/** o quadradinho arredondado colorido da receita — estável por nome (hash/tipo) */
+function IconeDaFicha({ nome, forcar }: { nome: string; forcar?: { familia: string; Icone: typeof Beef } }) {
+  const c = caraDaReceita(nome)
+  const familia = forcar?.familia ?? c.familia
+  const Icone = forcar?.Icone ?? ICONES[c.icone]
+  const t = fam(familia)
+  return (
+    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px]" style={{ background: t.bg }}>
+      <Icone className="h-4 w-4" style={{ color: t.mid }} />
+    </span>
+  )
+}
+
+/**
+ * ⭐⭐ O CARTÃO DE MÉTRICA — colorido com disciplina.
+ * ⚠️ O número grande é 26px/peso 500/tabular; o rótulo e a sublinha ficam no `mid` da família,
+ * nunca em cinza neutro (seria o "preto em fundo colorido" que o dono proibiu).
+ */
+function CardMetrica({ familia, Icone, rotulo, valor, sub, barra, ativo, onClick }: {
+  familia: string; Icone: typeof Beef; rotulo: string; valor: string; sub?: string
+  /** 0..1 — a mini-barra no tom da família (só o cartão de rendimento usa) */
+  barra?: number | null
+  ativo?: boolean; onClick?: () => void
+}) {
+  const t = fam(familia)
+  const Tag = onClick ? 'button' : 'div'
+  return (
+    <Tag onClick={onClick}
+      className={`rounded-xl px-3.5 py-3 text-left ${onClick ? 'transition-opacity hover:opacity-95' : ''}`}
+      style={{ background: t.bg, boxShadow: ativo ? `inset 0 0 0 1.5px ${t.mid}` : undefined }}>
+      <div className="flex items-center gap-1.5">
+        <Icone className="h-3.5 w-3.5 shrink-0" style={{ color: t.mid }} />
+        <p className="text-[12px] font-medium" style={{ color: t.mid }}>{rotulo}</p>
+      </div>
+      <p className="num mt-0.5 text-[26px] font-medium leading-tight" style={{ color: t.ink }}>{valor}</p>
+      {sub && <p className="text-[12px]" style={{ color: t.mid }}>{sub}</p>}
+      {barra != null && (
+        /* ⚠️ a barra é VISUAL do mesmo número — nunca uma 2ª conta. Teto em 100% só pra não
+           estourar a caixa; o valor de verdade está escrito acima (ex. 205%). */
+        <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full" style={{ background: t.mid, opacity: 0.18 }}>
+          <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, barra * 100))}%`, background: t.mid, opacity: 1 }} />
+        </div>
+      )}
+    </Tag>
+  )
+}
+
+/**
+ * ⭐ A NAVEGAÇÃO — os 6 links como chips IGUAIS.
+ *
+ * ⛔⛔ **NENHUM aceso, por decisão do dono:** *"esta é a tela principal, não estamos dentro de
+ * nenhuma delas; quem diz onde estou é o título"*. Acender um deles aqui diria que o dono está
+ * numa sub-tela — e aí o chip mentiria sobre onde ele está.
+ */
+function ChipNav({ href, Icone, children }: { href: string; Icone: typeof Beef; children: React.ReactNode }) {
+  return (
+    <a href={href}
+      className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] transition-colors"
+      style={{ boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
+      <Icone className="h-3.5 w-3.5" /> {children}
+    </a>
+  )
+}
+
+/**
+ * ⭐⭐ A PÍLULA DE EFICIÊNCIA — a tela só PINTA; o degrau sai do `faixaDoSelo`, que lê as duas
+ * constantes da casa (`DESVIO_ALERTA` do P8/P3 e o `DESVIO_GRAVE` do P3). Mesma régua da tela
+ * "Por dia" — duas pílulas com réguas próprias divergiriam no primeiro ajuste de faixa.
+ */
+function PilulaEf({ pct }: { pct: number | null }) {
+  const faixa = faixaDoSelo(pct == null ? null : pct * 100)
+  if (faixa === 'SEM_PEDIDO') return null
+  const t = fam(faixa === 'DENTRO' ? 'verde' : faixa === 'FORA' ? 'ambar' : 'coral')
+  return (
+    <span className="num shrink-0 rounded-full px-2 py-[3px] text-[12px] font-medium"
+      style={{ background: t.bg, color: t.ink }}>
+      {faixa === 'EXTREMO' ? '⚠ ' : ''}{Math.round(pct! * 100)}%
+    </span>
+  )
+}
+
+/** ⭐ a data por extenso da linha editorial — `null` nunca vira data de hoje chutada */
+function dataPorExtenso(iso: string): string {
+  const [a, m, d] = iso.split('-').map(Number)
+  const dt = new Date(Date.UTC(a, m - 1, d))
+  const f = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+  return f.format(dt)
+}
+
 export default function ProducaoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [ordens, setOrdens] = useState<Ordem[] | null | undefined>(undefined)
@@ -90,6 +205,10 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
   const [painel, setPainel] = useState<Painel | null>(null)
   const [abertas, setAbertas] = useState<Aberta[]>([])
   const [concluidas, setConcluidas] = useState<Conclusao[]>([])
+  /** ⭐ o que a rota passou a mandar pro mock v3 — a tela só DESENHA isso */
+  const [contexto, setContexto] = useState<Record<string, Contexto>>({})
+  const [pedidoFeito, setPedidoFeito] = useState<Record<string, PedidoFeito>>({})
+  const [hoje, setHoje] = useState<{ dia: string; produzido: Quantidade; lotes: number } | null>(null)
   const [periodo, setPeriodo] = useState<'hoje' | 'semana' | 'mes'>('hoje')
   const [busca, setBusca] = useState('')
   const [soDeOntem, setSoDeOntem] = useState(false)
@@ -115,6 +234,7 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
     return fetch(`/api/empresas/${id}/estoque/producao/ordens?de=${de}&ate=${ate}`).then((r) => r.json()).then((j) => {
       setOrdens(j.ordens ?? []); setSugestoes(j.sugestoes ?? [])
       setPainel(j.painel ?? null); setAbertas(j.abertas ?? []); setConcluidas(j.concluidas ?? [])
+      setContexto(j.contexto ?? {}); setPedidoFeito(j.pedidoDasConcluidas ?? {}); setHoje(j.hoje ?? null)
     }).catch(() => setOrdens(null))
   }
   useEffect(() => { setMostrar(PAGINA); carregar() }, [id, periodo, custom]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -134,110 +254,136 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
 
 
   return (
-    <div className="space-y-3 -m-4 p-4 lg:-m-6 lg:p-6" style={{ background: C.fundo, minHeight: '100%' }}>
-      <div className="flex flex-wrap items-center gap-2.5">
-        <Factory className="h-5 w-5 shrink-0 text-[#185FA5]" />
-        <h1 className="text-base font-semibold text-slate-900">Produção</h1>
-        <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">Cria a ordem, separa da câmara e produz — a ficha diz a receita, aqui você faz</p>
-        <div className="ml-auto flex items-center gap-1.5">
+    <div data-tela="producao-home" className="space-y-4 -m-4 p-4 lg:-m-6 lg:p-6"
+      style={{ background: 'var(--prod-bg)', minHeight: '100%' }}>
+      {/* ──────────────────────────────────────────────────────────────────────
+          ⭐⭐⭐ 1. O TOPO (mock v3) — título grande + linha EDITORIAL serifada.
+          O dono: *"sábado, 4 de outubro — a cozinha já produziu N unidades hoje"*.
+          ⛔ O número vem do `hoje.produzido.texto` do servidor, somado POR UNIDADE
+          (`somarQuantidades`): porção em UN e massa em KG nunca viram um número só.
+          ⚠️ Enquanto o dado não chegou, a frase NÃO afirma produção nenhuma — dizer
+          "0 unidades" antes de carregar é afirmar um fato que ninguém mediu.
+          ────────────────────────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h1 className="text-[24px] font-medium leading-tight" style={{ color: 'var(--prod-primary)' }}>Produção</h1>
+          {/* ⭐ a ÚNICA coisa preenchida de cor forte na tela — é a ação principal */}
+          <button onClick={() => setNovo((v) => !v)}
+            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+            style={{ background: 'var(--fam-indigo-mid)' }}>
+            <Plus className="h-4 w-4" /> Nova ordem
+          </button>
+        </div>
+        <p className="editorial mt-1 text-[14px]" style={{ color: 'var(--prod-secondary)' }}>
+          {hoje
+            ? `${dataPorExtenso(hoje.dia)}${hoje.lotes > 0 ? ` — a cozinha já produziu ${hoje.produzido.texto} hoje` : ' — a cozinha ainda não fechou lote hoje'}`
+            : 'lendo o dia…'}
+        </p>
+
+        {/* ⭐ 1b. NAVEGAÇÃO — 6 chips IGUAIS, nenhum aceso (ver `ChipNav`) */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          <ChipNav href={`/empresas/${id}/estoque/producao/hoje`} Icone={Radio}>Hoje ao vivo</ChipNav>
+          <ChipNav href={`/empresas/${id}/estoque/producao/por-dia`} Icone={CalendarDays}>Por dia</ChipNav>
+          <ChipNav href={`/empresas/${id}/estoque/producao/receitas`} Icone={ClipboardList}>Receitas</ChipNav>
+          <ChipNav href={`/empresas/${id}/estoque/producao/pessoas`} Icone={Users}>Por pessoa</ChipNav>
+          <ChipNav href={`/empresas/${id}/estoque/cardapio`} Icone={UtensilsCrossed}>Cardápio</ChipNav>
+          <ChipNav href={`/empresas/${id}/estoque/producao/relatorios`} Icone={BarChart3}>Relatórios</ChipNav>
+          {/* ⚠️ Equipe e CSV ficam FORA dos 6 do mock: não são telas de produção, são
+              ferramentas. Mantidos discretos pra não perder a maçaneta (a lição das 11 voltas). */}
+          <a href="/equipe?filtro=cozinha" className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px]"
+            style={{ color: 'var(--prod-muted)' }}><UserPlus className="h-3.5 w-3.5" /> Equipe</a>
           <button onClick={() => baixarCsv(`ordens-producao-${hojeArquivo()}`,
             ['Produto', 'Quanto', 'Data', 'Setor', 'Estado'],
             ordens.map((o) => [o.nomeProduzido, `${o.escalaReceitas * o.loteBase} ${o.unidadeProduzido}`, fmtDia(o.dataProducao), o.setorNome ?? '', o.estado]))}
             disabled={ordens.length === 0}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"><Download className="h-3.5 w-3.5" /> CSV</button>
-          <a href={`/empresas/${id}/estoque/cardapio`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><UtensilsCrossed className="h-3.5 w-3.5" /> Cardápio</a>
-          <a href={`/empresas/${id}/estoque/producao/receitas`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><ClipboardList className="h-3.5 w-3.5" /> Receitas de produção</a>
-          {/* ⚠️ o relatório por pessoa exige stock.manage na rota — quem não tiver leva 403
-              com a permissão nomeada. O link fica visível porque esta tela já é de gestão. */}
-          <a href={`/empresas/${id}/estoque/producao/pessoas`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Users className="h-3.5 w-3.5" /> Por pessoa</a>
-          {/* ⭐ "HOJE ao vivo" — o dia em curso, ao lado do relatório do mês. As duas telas
-              respondem perguntas diferentes: esta é "o que está acontecendo AGORA". */}
-          <a href={`/empresas/${id}/estoque/producao/hoje`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Radio className="h-3.5 w-3.5" /> Hoje ao vivo</a>
-          {/* ⭐⭐ RELATÓRIOS (13/09) — o período livre mora AQUI; o HOJE é fixo no dia.
-              Duas janelas, a MESMA função por baixo (`desempenho.ts`), zero divergência. */}
-          <a href={`/empresas/${id}/estoque/producao/relatorios`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><BarChart3 className="h-3.5 w-3.5" /> Relatórios</a>
-          {/**
-            * ⭐⭐ A PORTA DO RELATÓRIO POR DIA (item 3 do dono, 04/10). Com borda e ícone, ao
-            * lado das outras três — *ação escondida sem afordância não existe, principalmente
-            * no celular* (30/08).
-            *
-            * ⚠️ É tela de GESTÃO (mostra quem concluiu e a eficiência de cada um lado a lado),
-            * e por isso vive aqui, não no tablet — a mesma régua de "Por pessoa" e "Hoje ao vivo".
-            */}
-          <a href={`/empresas/${id}/estoque/producao/por-dia`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><CalendarDays className="h-3.5 w-3.5" /> Por dia</a>
-          {/* ⭐⭐ O ATALHO QUE FALTAVA (06/09) — no TOPO, com nome de gente. O link antigo
-              vivia dentro do formulário de nova ordem, chamado "setores", e por isso o dono
-              nunca achou onde cadastrar as gurias. Atalho: a tela mora em Sistema → Equipe. */}
-          <a href="/equipe?filtro=cozinha" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><UserPlus className="h-3.5 w-3.5" /> Equipe</a>
-          <button onClick={() => setNovo((v) => !v)} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C]"><Plus className="h-3.5 w-3.5" /> Nova ordem</button>
+            className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] disabled:opacity-40"
+            style={{ color: 'var(--prod-muted)' }}><Download className="h-3.5 w-3.5" /> CSV</button>
         </div>
       </div>
 
-      {/* ⭐ 2. QUATRO CARDS clicáveis (anatomia da Contas a Pagar). Cor só onde significa:
-          âmbar = dinheiro parado; verde/âmbar no rendimento = desvio. */}
+      {/* ──────────────────────────────────────────────────────────────────────
+          ⭐⭐ 2. OS 4 CARTÕES — cada um numa FAMÍLIA de cor, com os 3 degraus.
+          ⛔ Zero conta nova: todo número vem do `painel` que o servidor já montava
+          (`cardsDoPainel`). A tela escolhe a COR, nunca o valor.
+          ────────────────────────────────────────────────────────────────────── */}
       {painel && (
-        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-          <CardPainel rotulo="Em aberto" valor={String(painel.emAberto)} sub="ordens andando"
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+          <CardMetrica familia="indigo" Icone={Flame} rotulo="Em aberto"
+            valor={String(painel.emAberto)} sub="ordens andando"
             ativo={!soDeOntem} onClick={() => setSoDeOntem(false)} />
-          {/* ⭐ ITEM 2: âmbar SÓ com valor > 0. Zerado = branco, "nada parado agora".
-              Alarme aceso sem motivo vira paisagem — a mesma razão do B3 ser aviso. */}
-          <CardPainel rotulo="Em produção"
-            valor={painel.valorEmProducao > 0 ? brl(painel.valorEmProducao) : 'R$ 0,00'}
-            sub={painel.valorEmProducao > 0 ? 'insumo fora da prateleira' : 'nada parado agora'}
-            bg={painel.valorEmProducao > 0 ? C.ambarBg : undefined}
-            tx={painel.valorEmProducao > 0 ? C.ambarTx : undefined}
-            acento={painel.valorEmProducao > 0 ? C.ambarAc : undefined} />
-          <CardPainel rotulo="Concluídas" valor={String(painel.concluidasNoPeriodo)}
-            sub={`${brl(painel.valorProduzidoNoPeriodo)} produzidos`} />
-          <CardPainel rotulo="Rendimento"
+          <CardMetrica familia="azul" Icone={ChefHat} rotulo="Na bancada"
+            valor={formatBRL(painel.valorEmProducao)}
+            sub={painel.valorEmProducao > 0 ? 'insumo fora da prateleira' : 'nada parado agora'} />
+          <CardMetrica familia="verde" Icone={CheckCircle2} rotulo="Concluídas hoje"
+            valor={String(painel.concluidasNoPeriodo)}
+            sub={`${formatBRL(painel.valorProduzidoNoPeriodo)} produzidos`} />
+          {/**
+            * ⭐ RENDIMENTO — *"a cor segue o valor, mesma régua do P8"*: âmbar 70-90, verde ≥90,
+            * vermelho <70. ⛔ `null` é CINZA com "a apurar": pintar de verde o que ninguém
+            * mediu seria afirmar que bateu (a régua do "sem contagem" do Radar).
+            */}
+          <CardMetrica
+            familia={painel.rendimentoPeriodo == null ? 'cinza'
+              : painel.rendimentoPeriodo >= 0.9 ? 'verde'
+                : painel.rendimentoPeriodo >= 0.7 ? 'ambar' : 'coral'}
+            Icone={Gauge} rotulo="Rendimento do dia"
             valor={painel.rendimentoPeriodo == null ? 'a apurar' : `${Math.round(painel.rendimentoPeriodo * 100)}%`}
             sub={painel.lotesNaMedia > 0 ? `de ${painel.lotesNaMedia} ${painel.lotesNaMedia === 1 ? 'lote' : 'lotes'}` : 'nada concluído'}
-            bg={painel.faixaRendimento === 'ABAIXO' ? C.ambarBg : painel.faixaRendimento === 'NORMAL' ? C.verdeBg : undefined}
-            tx={painel.faixaRendimento === 'ABAIXO' ? C.ambarTx : painel.faixaRendimento === 'NORMAL' ? C.verdeTx : undefined} />
+            barra={painel.rendimentoPeriodo} />
         </div>
       )}
 
-      {/* ⭐ 3. FAIXA condicional — dinheiro que atravessou o dia sem virar produto */}
-      {painel && painel.abertasDeOntem > 0 && (
-        <button onClick={() => setSoDeOntem((v) => !v)}
-          className="flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs"
-          style={{ background: C.ambarBg, color: C.ambarTx, borderColor: C.borda }}>
-          <span className="font-medium">{painel.abertasDeOntem} ordem{painel.abertasDeOntem > 1 ? 'ns' : ''} de ontem ainda em produção</span>
-          <span style={{ color: C.ambarAc }}>— o insumo saiu da prateleira e não virou produto</span>
-          <span className="ml-auto underline">{soDeOntem ? 'ver todas' : `ver as ${painel.abertasDeOntem}`}</span>
-        </button>
-      )}
+      {/**
+        * ⛔⛔ **O BANNER ÂMBAR MORREU (decisão de design do dono, 04/10):** *"NADA de fundo bege
+        * na linha inteira — o fio e o selo bastam"*. A FUNÇÃO não morreu: o alerta virou o
+        * *"N desde ontem"* com ponto coral no cabeçalho da seção «Em aberto», e ele continua
+        * sendo o BOTÃO que filtra. *Remoção sem realocação é perda* (a régua de 10/09).
+        */}
 
-      {/* ⭐ 4. CHIPS de período + busca. Período governa SÓ as concluídas. */}
+      {/**
+        * ⭐ 4. CHIPS de período + busca — MESMA função, roupa nova. Período governa SÓ as
+        * concluídas (ordem aberta nunca obedece filtro: trabalho aberto não é histórico).
+        *
+        * ⚠️ O chip ativo é `indigo-bg` + `indigo-ink`, **nunca preenchido de cor forte**: o dono
+        * foi explícito que o "Nova ordem" é a ÚNICA coisa preenchida de cor forte na tela. Dois
+        * primários competindo é o que faz a ação principal deixar de ser óbvia.
+        */}
       <div className="flex flex-wrap items-center gap-1.5">
-        {(['hoje', 'semana', 'mes'] as const).map((p) => (
-          <button key={p} onClick={() => { setCustom(null); setPeriodo(p) }}
-            className="h-8 rounded-full px-3 text-xs"
-            style={!custom && periodo === p
-              ? { background: C.primario, color: C.primarioTexto }
-              : { border: `1px solid ${C.borda}`, color: C.txt2, background: C.card }}>
-            {p === 'hoje' ? 'hoje' : p === 'semana' ? 'semana' : 'mês'}
-          </button>
-        ))}
-        <button onClick={() => setAbrirCal((v) => !v)} className="h-8 rounded-full px-3 text-xs"
+        {(['hoje', 'semana', 'mes'] as const).map((p) => {
+          const on = !custom && periodo === p
+          return (
+            <button key={p} onClick={() => { setCustom(null); setPeriodo(p) }}
+              className="h-8 rounded-full px-3 text-[12.5px] font-medium"
+              style={on
+                ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)' }
+                : { boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
+              {p === 'hoje' ? 'hoje' : p === 'semana' ? 'semana' : 'mês'}
+            </button>
+          )
+        })}
+        <button onClick={() => setAbrirCal((v) => !v)} className="h-8 rounded-full px-3 text-[12.5px] font-medium"
           style={custom
-            ? { background: C.primario, color: C.primarioTexto }
-            : { border: `1px solid ${C.borda}`, color: C.txt2, background: C.card }}>
+            ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)' }
+            : { boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
           {custom ? `${fmtDia(custom.de)} – ${fmtDia(custom.ate)}` : 'período…'}
         </button>
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar receita…"
-          className="h-8 w-[200px] rounded-lg px-2.5 text-xs" style={{ border: `1px solid ${C.borda}`, background: C.card }} />
+          className="h-8 w-[200px] rounded-lg px-2.5 text-[12.5px] outline-none"
+          style={{ background: 'var(--prod-surface)', color: 'var(--prod-primary)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }} />
       </div>
 
       {abrirCal && (
-        <div className="flex flex-wrap items-end gap-2 rounded-xl p-3" style={{ background: C.card, border: `1px solid ${C.borda}` }}>
-          <label className="text-[11px]" style={{ color: C.txt2 }}>de
+        <div className="flex flex-wrap items-end gap-2 rounded-xl p-3"
+          style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
+          <label className="text-[11px]" style={{ color: 'var(--prod-secondary)' }}>de
             <input type="date" defaultValue={custom?.de ?? janela(periodo).de} id="pdDe"
-              className="mt-1 block h-8 rounded-lg px-2 text-xs" style={{ border: `1px solid ${C.borda}` }} />
+              className="num mt-1 block h-8 rounded-lg px-2 text-[12.5px] outline-none"
+              style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }} />
           </label>
-          <label className="text-[11px]" style={{ color: C.txt2 }}>até
+          <label className="text-[11px]" style={{ color: 'var(--prod-secondary)' }}>até
             <input type="date" defaultValue={custom?.ate ?? janela(periodo).ate} id="pdAte"
-              className="mt-1 block h-8 rounded-lg px-2 text-xs" style={{ border: `1px solid ${C.borda}` }} />
+              className="num mt-1 block h-8 rounded-lg px-2 text-[12.5px] outline-none"
+              style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }} />
           </label>
           <button onClick={() => {
             const de = (document.getElementById('pdDe') as HTMLInputElement)?.value
@@ -246,44 +392,66 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
             // "não produziu nada", que é a mentira mais fácil de acreditar.
             if (!de || !ate || de > ate) return
             setCustom({ de, ate }); setAbrirCal(false)
-          }} className="h-8 rounded-lg px-3 text-xs" style={{ background: C.primario, color: C.primarioTexto }}>aplicar</button>
-          {custom && <button onClick={() => { setCustom(null); setAbrirCal(false) }} className="h-8 rounded-lg px-3 text-xs" style={{ border: `1px solid ${C.borda}`, color: C.txt2 }}>limpar</button>}
+          }} className="h-8 rounded-lg px-3 text-[12.5px] font-medium text-white"
+            style={{ background: 'var(--fam-indigo-mid)' }}>aplicar</button>
+          {custom && <button onClick={() => { setCustom(null); setAbrirCal(false) }}
+            className="h-8 rounded-lg px-3 text-[12.5px]" style={{ color: 'var(--prod-secondary)' }}>limpar</button>}
         </div>
       )}
 
       {novo && <NovaOrdem id={id} fichaInicial={fichaDaUrl} onCriada={(ordemId) => { window.location.href = `/empresas/${id}/estoque/producao/${ordemId}` }} onFechar={() => setNovo(false)} />}
 
-      {/* sugestão de produção (min/max) */}
+      {/**
+        * ⭐ SUGESTÃO DE PRODUÇÃO (min/máx) — **mesma lógica, roupa nova.** Não está no mock, mas
+        * ficaria órfã no fundo novo (ela usava `Card` do shadcn com borda âmbar do Tailwind).
+        * Agora veste a família ÂMBAR por token, e o dark mode acompanha de graça.
+        */}
       {sugestoes.length > 0 && (
-        <div>
-          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-700"><TrendingDown className="h-4 w-4" /> Sugestão de produção ({sugestoes.length})</h2>
-          <div className="space-y-2">
-            {sugestoes.map((s) => (
-              <Card key={s.fichaId} className="border-amber-200"><CardContent className="flex items-center justify-between gap-3 p-4">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900">{s.nome}</p>
-                  <p className="text-xs text-slate-500">saldo {s.saldo.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} {s.unidade} · abaixo do mínimo {s.estoqueMin} · faltam ~{s.faltam.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} {s.unidade}{s.rendimentoMedio == null && ' · rendimento a apurar'}</p>
+        <section>
+          <h2 className="mb-1.5 flex items-center gap-1.5 text-[13.5px] font-medium" style={{ color: 'var(--fam-ambar-ink)' }}>
+            <TrendingDown className="h-3.5 w-3.5" /> Sugestão de produção ({sugestoes.length})
+          </h2>
+          <div className="overflow-hidden rounded-xl" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
+            {sugestoes.map((sg, i) => (
+              <div key={sg.fichaId} className="flex items-center gap-3 px-3.5 py-[14px]"
+                style={{ borderLeft: '3px solid var(--fam-ambar-mid)', ...(i > 0 ? { borderTop: '1px solid var(--prod-line)' } : {}) }}>
+                <IconeDaFicha nome={sg.nome} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>{sg.nome}</p>
+                  <p className="num truncate text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+                    saldo {fmtQtd(sg.saldo)} {sg.unidade} · abaixo do mínimo {sg.estoqueMin} · faltam ~{fmtQtd(sg.faltam)} {sg.unidade}
+                    {sg.rendimentoMedio == null && ' · rendimento a apurar'}
+                  </p>
                 </div>
-                <button onClick={() => produzirSugestao(s)} disabled={criando === s.fichaId} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50">{criando === s.fichaId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Factory className="h-3.5 w-3.5" />} produzir {fmtQtd(s.faltam)} {s.unidade}</button>
-              </CardContent></Card>
+                <button onClick={() => produzirSugestao(sg)} disabled={criando === sg.fichaId}
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium disabled:opacity-50"
+                  style={{ background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
+                  {criando === sg.fichaId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Factory className="h-3.5 w-3.5" />}
+                  produzir {fmtQtd(sg.faltam)} {sg.unidade}
+                </button>
+              </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
       {ordens.length === 0 && !novo ? (
-        <Card><CardContent className="flex flex-col items-center gap-2 p-10 text-center">
-          <Factory className="h-10 w-10 text-slate-300" />
-          <p className="text-sm font-medium text-slate-700">Nenhuma ordem de produção ainda.</p>
-          <p className="max-w-md text-xs text-slate-500">Crie uma ordem a partir de uma ficha (ex: 200 porções de carne). O sistema já pré-preenche a separação com os insumos e as quantidades.</p>
-        </CardContent></Card>
+        <div className="flex flex-col items-center gap-2 rounded-xl p-10 text-center"
+          style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
+          <Factory className="h-10 w-10" style={{ color: 'var(--prod-muted)' }} />
+          <p className="text-[14px] font-medium" style={{ color: 'var(--prod-primary)' }}>Nenhuma ordem de produção ainda.</p>
+          <p className="max-w-md text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>Crie uma ordem a partir de uma ficha (ex: 200 porções de carne). O sistema já pré-preenche a separação com os insumos e as quantidades.</p>
+        </div>
       ) : (
         <>
           {/* ⭐⭐ 5. ABERTAS — A REGRA CENTRAL: ordem aberta NUNCA obedece o período.
               Planejada/Separada/Em produção aparecem SEMPRE, em qualquer filtro.
               Trabalho aberto não é histórico — some do filtro e o dono perde o insumo
               parado de vista. Só a busca e o clique na faixa de ontem as filtram. */}
-          <ListaAbertas id={id}
+          <ListaAbertas id={id} ctx={contexto}
+            deOntem={painel?.abertasDeOntem ?? 0}
+            soDeOntem={soDeOntem}
+            onFiltrarOntem={() => setSoDeOntem((v) => !v)}
             ordens={abertas
               .filter((o) => !soDeOntem || o.deOntem)
               .filter((o) => !busca.trim() || o.nomeProduzido.toLowerCase().includes(busca.trim().toLowerCase()))} />
@@ -296,7 +464,9 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
               const o = ordens.find((x) => x.id === c.ordemId)
               return (o?.nomeProduzido ?? '').toLowerCase().includes(busca.trim().toLowerCase())
             })}
-            nomePorOrdem={new Map(ordens.map((o) => [o.id, o.nomeProduzido]))} />
+            nomePorOrdem={new Map(ordens.map((o) => [o.id, o.nomeProduzido]))}
+            unidadePorOrdem={new Map(ordens.map((o) => [o.id, o.unidadeProduzido]))}
+            pedidoFeito={pedidoFeito} />
         </>
       )}
     </div>
@@ -581,32 +751,106 @@ function CardPainel({ rotulo, valor, sub, bg, tx, acento, ativo, onClick }: {
   )
 }
 
-/** ⭐ ABERTAS — sempre visíveis, com a previsão de saída e a etiqueta coral de ontem. */
-function ListaAbertas({ id, ordens }: { id: string; ordens: Aberta[] }) {
+/**
+ * ⭐⭐⭐ EM ABERTO (mock v3) — filete + quadradinho + nome + sublinha + PEDIDO grande à direita.
+ *
+ * **A linguagem da ordem ATRASADA é CORAL** (filete, ícone de relógio, sublinha e selo), e
+ * ⛔ **sem fundo bege na linha** — *"o fio e o selo bastam"*, palavras do dono. O banner âmbar
+ * que existia morreu; o alerta virou o *"N desde ontem"* no cabeçalho, que continua filtrando.
+ *
+ * ⚠️ Toda a hierarquia é do pedido do dono: nome em peso 500 escuro, o *"há X"* em índigo peso
+ * 500, e o PEDIDO em 16px tabular à direita — porque é o número que ele compara com o que saiu.
+ */
+function ListaAbertas({ id, ordens, ctx, deOntem, soDeOntem, onFiltrarOntem }: {
+  id: string; ordens: Aberta[]; ctx: Record<string, Contexto>
+  deOntem: number; soDeOntem: boolean; onFiltrarOntem: () => void
+}) {
   if (!ordens.length) return null
+  const coral = fam('coral')
+  const indigo = fam('indigo')
   return (
     <section>
-      <h2 className={`mb-1.5 ${T.titulo}`} style={{ color: C.tituloTx, fontWeight: 500 }}>Abertas ({ordens.length})</h2>
-      <div className="overflow-hidden rounded-xl" style={{ background: C.card, border: `1px solid ${C.borda}` }}>
+      <div className="mb-1.5 flex items-center gap-2">
+        <h2 className="text-[13.5px] font-medium" style={{ color: 'var(--prod-secondary)' }}>
+          Em aberto ({ordens.length})
+        </h2>
+        {/* ⭐ o alerta de ontem, na roupa nova: ponto coral + botão que filtra */}
+        {deOntem > 0 && (
+          <button onClick={onFiltrarOntem} className="ml-auto inline-flex items-center gap-1.5 text-[12.5px]"
+            style={{ color: coral.ink }}>
+            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: coral.mid }} />
+            {soDeOntem ? 'ver todas' : `${deOntem} desde ontem`}
+          </button>
+        )}
+      </div>
+
+      <div className="overflow-hidden rounded-xl" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
         {ordens.map((o, i) => {
-          const p = PILL[o.estado] ?? PILL.PLANEJADA
+          const c = ctx[o.id]
+          const atrasada = !!o.deOntem
+          const t = atrasada ? coral : indigo
+          /**
+           * ⚠️ "há X" vem do `formatarDuracao` (o formatador único), nunca de `% 60` à mão: era
+           * ali que o float vazava e imprimia "3h21.830000000000013" (04/10).
+           */
+          const haQuanto = c?.comecouEm
+            ? formatarDuracao((Date.now() - new Date(c.comecouEm).getTime()) / 60000)
+            : null
           return (
             <a key={o.id} href={`/empresas/${id}/estoque/producao/${o.id}`}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-3 hover:bg-black/[0.02]"
-              style={i > 0 ? { borderTop: `1px solid ${C.borda}` } : undefined}>
-              <span className={`rounded-xl px-2 py-0.5 ${T.pill}`} style={{ background: p.bg, color: p.tx, fontWeight: 500 }}>
-                {ESTADO[o.estado]?.label ?? o.estado}
-              </span>
-              <span className={`min-w-0 flex-1 truncate ${T.nome}`} style={{ color: C.nomeTx, fontWeight: 500 }}>{o.nomeProduzido}</span>
-              <span className={`${T.qtd} tabular-nums`} style={{ color: C.qtdTx }}>
-                ~{fmtQtd(o.escalaReceitas * o.loteBase)} {o.unidadeProduzido} esperadas
-              </span>
-              {o.deOntem && (
-                <span className={`rounded-xl px-2 py-0.5 ${T.pill}`} style={{ background: C.coralBg, color: C.coralTx }}>
-                  desde ontem {fmtDia(o.dataProducao)}
+              /**
+               * ⚠️⚠️ **REGRA 12 com UMA marcação, não duas.** O pedido do dono é *"linha vira 2
+               * andares com o pedido embaixo à direita"* — e isso é o RESULTADO, não o
+               * mecanismo. Pra uma LINHA de lista, `flex-wrap` + `w-full lg:w-auto` entrega os
+               * dois andares com UM markup; duas composições (`lg:hidden` × `hidden lg:block`)
+               * é justamente o que o guard da casa existe pra policiar, porque elas divergem no
+               * primeiro selo novo. O `pl-11` alinha o 2º andar depois do quadradinho.
+               */
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-[14px] transition-colors hover:bg-[var(--prod-surface-1)]"
+              style={{
+                // ⭐ o FILETE de 3px — índigo normal, coral quando atrasada
+                borderLeft: `3px solid ${t.mid}`,
+                ...(i > 0 ? { borderTop: '1px solid var(--prod-line)' } : {}),
+              }}>
+              <IconeDaFicha nome={o.nomeProduzido}
+                forcar={atrasada ? { familia: 'coral', Icone: Clock } : undefined} />
+
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
+                  {o.nomeProduzido}
                 </span>
-              )}
-              <ChevronRight className="h-3.5 w-3.5 shrink-0" style={{ color: C.txt3 }} />
+                {atrasada ? (
+                  <span className="block text-[12.5px]" style={{ color: coral.ink }}>
+                    desde ontem {fmtDia(o.dataProducao)} — insumo saiu e não virou produto
+                  </span>
+                ) : (
+                  <span className="block truncate text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+                    {c?.quem.length ? c.quem.join(' e ') : <i>ninguém pegou ainda</i>}
+                    {c?.comecouEm && ` · começou ${hhmm(c.comecouEm)}`}
+                    {haQuanto && <> · <b className="font-medium" style={{ color: indigo.mid }}>há {haQuanto}</b></>}
+                  </span>
+                )}
+              </span>
+
+              {/* ⭐⭐ O PEDIDO GRANDE — e ordem antiga sem pedido DIZ isso, em muted discreto */}
+              <span className="w-full shrink-0 pl-11 text-right lg:w-auto lg:pl-0">
+                {c?.pedido == null ? (
+                  <span className="text-[13px]" style={{ color: 'var(--prod-muted)' }}>sem pedido</span>
+                ) : (
+                  <span className="num text-[16px] font-medium" style={{ color: 'var(--prod-primary)' }}>
+                    {fmtQtd(c.pedido)} {o.unidadeProduzido}
+                    <span className="ml-1 text-[12.5px] font-normal" style={{ color: 'var(--prod-muted)' }}>pedidas</span>
+                  </span>
+                )}
+                {atrasada && (
+                  <span className="mt-0.5 block">
+                    <span className="rounded-full px-2 py-[2px] text-[11.5px] font-medium"
+                      style={{ background: coral.bg, color: coral.ink }}>atrasada</span>
+                  </span>
+                )}
+              </span>
+
+              <ChevronRight className="hidden h-4 w-4 shrink-0 lg:block" style={{ color: 'var(--prod-muted)' }} />
             </a>
           )
         })}
@@ -615,9 +859,23 @@ function ListaAbertas({ id, ordens }: { id: string; ordens: Aberta[] }) {
   )
 }
 
-/** CONCLUÍDAS do período — % do rendimento colorido pelas faixas do avaliarVariacao. */
-function ListaConcluidas({ id, itens, periodo, nomePorOrdem, mostrar, onMais }: {
-  id: string; itens: Conclusao[]; periodo: string; nomePorOrdem: Map<string, string>
+/**
+ * ⭐⭐⭐ CONCLUÍDAS (mock v3) — avatar colorido + nome + sublinha + o par *"pedido → fez"* + pílula.
+ *
+ * ⚠️⚠️ **O PAR E A PÍLULA TÊM DENOMINADORES DIFERENTES, e é de propósito.** O par diz *"o que eu
+ * pedi → o que saiu"* (o `stockOrdemMeta`); a pílula diz *"o que saiu ÷ o que a FICHA promete"*
+ * — a eficiência CONGELADA que o juiz P8 lê. **`fez ÷ pedido` NÃO é a pílula.** Quem
+ * "simplificar" isso numa divisão vai fazer a tela e o e-mail do P8 discordarem sobre o mesmo
+ * lote, que é a doença que este módulo mais paga.
+ *
+ * ⭐ O avatar é o MESMO componente da tela "Por dia" (`AvatarPessoa`): cor estável por hash do
+ * nome, iniciais 1º+último. Dois avatares com hashes próprios dariam cores diferentes pra mesma
+ * pessoa em duas telas — e a coluna existe justamente pra ser reconhecida.
+ */
+function ListaConcluidas({ id, itens, periodo, nomePorOrdem, unidadePorOrdem, pedidoFeito, mostrar, onMais }: {
+  id: string; itens: Conclusao[]; periodo: string
+  nomePorOrdem: Map<string, string>; unidadePorOrdem: Map<string, string>
+  pedidoFeito: Record<string, PedidoFeito>
   mostrar: number; onMais: () => void
 }) {
   const rotulo = periodo === 'hoje' ? 'hoje' : periodo === 'semana' ? 'últimos 7 dias' : periodo === 'mes' ? 'últimos 30 dias' : periodo
@@ -627,49 +885,72 @@ function ListaConcluidas({ id, itens, periodo, nomePorOrdem, mostrar, onMais }: 
   const faltam = itens.length - visiveis.length
   return (
     <section>
-      <h2 className={`mb-1.5 ${T.titulo}`} style={{ color: C.tituloTx, fontWeight: 500 }}>Concluídas · {rotulo} ({itens.length})</h2>
+      <h2 className="mb-1.5 text-[13.5px] font-medium" style={{ color: 'var(--prod-secondary)' }}>
+        Concluídas · {rotulo} ({itens.length})
+      </h2>
       {itens.length === 0 ? (
-        <div className="rounded-xl px-3.5 py-6 text-center text-xs" style={{ background: C.card, border: `1px solid ${C.borda}`, color: C.txt3 }}>
+        <div className="rounded-xl px-3.5 py-6 text-center text-[12.5px]"
+          style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)', color: 'var(--prod-muted)' }}>
           Nada concluído {rotulo}. As ordens abertas continuam acima.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl" style={{ background: C.card, border: `1px solid ${C.borda}` }}>
-          {visiveis.map((c, i) => (
-            <a key={c.id} href={`/empresas/${id}/estoque/producao/${c.ordemId}`}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-3 hover:bg-black/[0.02]"
-              style={i > 0 ? { borderTop: `1px solid ${C.borda}` } : undefined}>
-              <span className={`rounded-xl px-2 py-0.5 ${T.pill}`} style={{ background: C.verdeBg, color: C.verdeTx, fontWeight: 500 }}>Concluída</span>
-              {/* ⭐ peso 500 escuro SÓ aqui e no custo — as duas coisas da regra */}
-              <span className={`min-w-0 flex-1 truncate ${T.nome}`} style={{ color: C.nomeTx, fontWeight: 500 }}>{nomePorOrdem.get(c.ordemId) ?? '—'}</span>
-              <span className={`${T.qtd} tabular-nums`} style={{ color: C.qtdTx }}>{fmtQtd(c.qtdGerada)} un</span>
-              <span className={`${T.custo} tabular-nums`} style={{ color: C.nomeTx, fontWeight: 500 }}>{brl(c.custoUnitarioReal)}/un</span>
-              {/* ⭐ ITEM 3: o selo de % por linha — faixas do `avaliarVariacao`, a MESMA
-                  régua do card e do aviso que o operador viu ao concluir. */}
-              {/* ⭐⭐ DOIS ESTADOS (03/10) — eram três, e a fusão é a decisão do dono:
-                  FICHA    → % COLORIDO contra o que a receita promete. É a EFICIÊNCIA, e
-                             ela vale desde o 1º lote (a receita é régua sem precisar de
-                             histórico). Antes isto era `MEDIDA` e exigia 2 lotes; o `TEORICO`
-                             mostrava o mesmo número em CINZA, *"referência, não julgamento"* —
-                             e era justamente o lote novo, onde um 72% passava sem uma palavra.
-                  SEM_DADO → nada (lote anterior ao sprint; recalcular daria ficção — o
-                             fóssil de 21/08 daria 2500% por causa da ficha da época) */}
-              {c.selo === 'FICHA' && c.pct != null && (
-                <span className={`rounded-xl px-2 py-0.5 ${T.pill} tabular-nums`} style={
-                  c.faixa === 'ABAIXO' ? { background: C.ambarBg, color: C.ambarTx }
-                    : c.faixa === 'ACIMA' ? { background: C.azulBg, color: C.azulTx }
-                      : { background: C.verdeBg, color: C.verdeTx }} title="o que saiu contra o que a receita promete">
-                  {Math.round(c.pct * 100)}%
+        <div className="overflow-hidden rounded-xl" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
+          {visiveis.map((c, i) => {
+            const pf = pedidoFeito[c.ordemId]
+            const un = unidadePorOrdem.get(c.ordemId) ?? ''
+            return (
+              <a key={c.id} href={`/empresas/${id}/estoque/producao/${c.ordemId}`}
+                /* ⚠️ 2 andares no celular com UMA marcação — ver o bloco em `ListaAbertas` */
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-[14px] transition-colors hover:bg-[var(--prod-surface-1)]"
+                style={i > 0 ? { borderTop: '1px solid var(--prod-line)' } : undefined}>
+                {/* ⭐ avatar: cor estável por pessoa (o componente da tela "Por dia") */}
+                <AvatarPessoa nome={c.colaboradorNome} apenasAvatar tamanho={30} />
+
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
+                    {nomePorOrdem.get(c.ordemId) ?? '—'}
+                  </span>
+                  <span className="block truncate text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+                    {c.colaboradorNome ?? 'sem responsável'} · {hhmm(c.criadoEm)}
+                    {/* ⛔ moeda pelo formatador da casa — o "R$ 638,5" de hoje nasceu de formatar à mão */}
+                    {c.custoUnitarioReal != null && ` · ${formatBRL(c.custoUnitarioReal)}/un`}
+                    {c.motivo && <i> · {c.motivo}</i>}
+                  </span>
                 </span>
-              )}
-              {c.motivo && <span className={`${T.quem} italic`} style={{ color: C.txt3 }}>{c.motivo}</span>}
-              {c.colaboradorNome && <span className={T.quem} style={{ color: C.txt3 }}>{c.colaboradorNome}</span>}
-              <span className={`${T.hora} tabular-nums`} style={{ color: C.txt2 }}>{hhmm(c.criadoEm)}</span>
-              <ChevronRight className="h-3.5 w-3.5 shrink-0" style={{ color: C.txt3 }} />
-            </a>
-          ))}
+
+                {/**
+                  * ⭐⭐ O PAR "pedido → fez", tipográfico: o pedido desce um degrau (muted), a seta
+                  * é muted, e o FEZ é o protagonista (16px, escuro, peso 500).
+                  * ⚠️ Ordem antiga sem pedido mostra SÓ o "fez" — inventar um pedido pra completar
+                  * o par seria o "pedido 0" que a tela Por dia já teve que consertar.
+                  */}
+                <span className="num ml-auto shrink-0 whitespace-nowrap pl-11 text-right lg:ml-0 lg:pl-0">
+                  {pf?.pedido != null && (
+                    <>
+                      <span className="text-[14.5px]" style={{ color: 'var(--prod-muted)' }}>{fmtQtd(pf.pedido)}</span>
+                      <ArrowRight className="mx-1 inline h-3.5 w-3.5 align-[-2px]" style={{ color: 'var(--prod-muted)' }} />
+                    </>
+                  )}
+                  <span className="text-[16px] font-medium" style={{ color: 'var(--prod-primary)' }}>
+                    {fmtQtd(c.qtdGerada)}
+                  </span>
+                  {un && <span className="ml-1 text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>{un}</span>}
+                </span>
+
+                {/**
+                  * ⭐ A PÍLULA — `selo === 'FICHA'` é o que separa lote JULGADO de FÓSSIL: lote
+                  * anterior ao sprint não tem régua congelada, e recalcular daria ficção (o
+                  * fóssil de 21/08 daria 2500% por causa da ficha da época).
+                  */}
+                {c.selo === 'FICHA' && <PilulaEf pct={c.pct} />}
+
+                <ChevronRight className="hidden h-4 w-4 shrink-0 lg:block" style={{ color: 'var(--prod-muted)' }} />
+              </a>
+            )
+          })}
           {faltam > 0 && (
-            <button onClick={onMais} className="w-full py-2.5 text-xs hover:bg-black/[0.02]"
-              style={{ borderTop: `1px solid ${C.borda}`, color: C.txt2 }}>
+            <button onClick={onMais} className="w-full py-2.5 text-[12.5px] transition-colors hover:bg-[var(--prod-surface-1)]"
+              style={{ borderTop: '1px solid var(--prod-line)', color: 'var(--prod-secondary)' }}>
               carregar mais ({faltam} restante{faltam > 1 ? 's' : ''})
             </button>
           )}

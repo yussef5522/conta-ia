@@ -9,6 +9,8 @@ import { listOrdens, criarOrdem, OrdemError } from '@/lib/stock/producao/ordens'
 import { sugestoesDeProducao } from '@/lib/stock/producao/sugestao-cardapio'
 import { cardsDoPainel, lotesDoPeriodo, ESTADOS_ABERTOS, ehDeOntem } from '@/lib/stock/producao/painel-producao'
 import { conclusoesNoPeriodo } from '@/lib/stock/producao/conclusao'
+import { contextoDasAbertas, pedidoPorOrdem } from '@/lib/stock/producao/contexto-das-abertas'
+import { somarQuantidades } from '@/lib/stock/producao/desempenho'
 import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
 
 interface Params { params: Promise<{ id: string }> }
@@ -48,8 +50,46 @@ export async function GET(request: NextRequest, { params }: Params) {
     .filter((o) => (ESTADOS_ABERTOS as readonly string[]).includes(o.estado))
     .map((o) => ({ ...o, deOntem: ehDeOntem(new Date(o.dataProducao), agora) }))
 
+  /**
+   * ⭐⭐ O CONTEXTO DAS ABERTAS (mock v3, 04/10) — *"quem · começou HHhMM"* + o PEDIDO.
+   * ⛔ Em LOTE (3 queries pra N ordens), nunca uma por ordem: é a lição medida dos 4.909 ms
+   * da lista de receitas (28/09).
+   */
+  const contexto = await contextoDasAbertas(companyId, abertas, prisma)
+
+  /**
+   * ⭐ O PEDIDO das concluídas, pro par *"pedido → fez"*. ⚠️ Vem do MESMO `pedidoDaOrdem` das
+   * abertas — e NÃO é o denominador da pílula (ver o bloco em `contexto-das-abertas.ts`).
+   */
+  const ordensDasConclusoes = ordens.filter((o) => concluidas.some((c) => c.ordemId === o.id))
+  const metasDasConclusoes = ordensDasConclusoes.length
+    ? await prisma.stockOrdemMeta.findMany({
+        where: { companyId, ordemId: { in: ordensDasConclusoes.map((o) => o.id) } },
+        select: { ordemId: true, unidades: true },
+      })
+    : []
+  const pedidoDasConcluidas = pedidoPorOrdem(ordensDasConclusoes, metasDasConclusoes)
+
+  /**
+   * ⭐⭐ O Σ DE HOJE da linha editorial do topo (*"a cozinha já produziu N unidades hoje"*).
+   *
+   * ⛔⛔ **POR UNIDADE, pelo `somarQuantidades`** — somar porção (UN) com massa (KG) num número
+   * só é o `1.415,84 un` de 13/09, *"um número que não existe"*.
+   * ⚠️ E é SEMPRE o dia de hoje, independente do chip de período: a frase diz "hoje", então ela
+   * não pode somar o mês. Quando o período JÁ é hoje, reusa a lista (zero query a mais).
+   */
+  const janelaHoje = janelaDoDiaSP(hoje, hoje)
+  const mesmaJanela = de.getTime() === janelaHoje.de.getTime() && ate.getTime() === janelaHoje.ate.getTime()
+  const doDia = mesmaJanela ? concluidas : await conclusoesNoPeriodo(companyId, janelaHoje.de, janelaHoje.ate, prisma)
+  const unidadePorOrdem = new Map(ordens.map((o) => [o.id, o.unidadeProduzido]))
+  const produzidoHoje = somarQuantidades(
+    doDia.map((c) => ({ unidades: c.qtdGerada, unidade: unidadePorOrdem.get(c.ordemId) ?? 'UN' })),
+  )
+
   return NextResponse.json({
-    ordens, sugestoes, painel, abertas,
+    ordens, sugestoes, painel, abertas, contexto, pedidoDasConcluidas,
+    /** ⚠️ `lotes` é a contagem de conclusões de hoje — a frase usa o TEXTO por unidade */
+    hoje: { dia: hoje, produzido: produzidoHoje, lotes: doDia.length },
     concluidas: concluidas.map((c) => {
       const s = seloPorConclusao.get(c.id)
       return { ...c, pct: s?.pct ?? null, faixa: s?.faixa ?? 'SEM_REGUA', motivo: s?.motivo ?? null, selo: s?.selo ?? 'SEM_DADO' }

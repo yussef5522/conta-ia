@@ -422,7 +422,11 @@
    adiciona a classe `dark`** (medido: zero chamadores). Ou seja — o bloco escuro abaixo está
    CERTO e ainda NÃO RENDERIZA. Isto é dark-READY, não dark-provado.
    ═══════════════════════════════════════════════════════════════════════════ */
-[data-tela='producao-por-dia'] {
+/* ⭐ DUAS TELAS, UMA PALETA: a home da Produção entrou no MESMO bloco em 04/10. Um 2º bloco
+   com tons "quase iguais" é literalmente como o verde do cartão ≍ e o do card de 10/09 saíram
+   diferentes — a cicatriz que o `radar-tokens.ts` existe pra não repetir. */
+[data-tela='producao-por-dia'],
+[data-tela='producao-home'] {
   --prod-bg: #f6f5fb;
   --prod-surface: #fff;
   /* ⭐ surface-1: o degrau de hover/zebra — "calma editorial" do Mercury */
@@ -448,7 +452,9 @@
 }
 
 .dark [data-tela='producao-por-dia'],
-[data-tela='producao-por-dia'].dark {
+[data-tela='producao-por-dia'].dark,
+.dark [data-tela='producao-home'],
+[data-tela='producao-home'].dark {
   --prod-bg: #0f1117;
   --prod-surface: #171a23;
   --prod-surface-1: #1d212c;
@@ -471,7 +477,56 @@
 }
 
 /* ⭐ a fonte TABULAR que o dono pediu pros números — alinhamento de coluna financeira */
-[data-tela='producao-por-dia'] .num {
+[data-tela='producao-por-dia'] .num,
+[data-tela='producao-home'] .num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ⭐⭐ AS FAMÍLIAS DE COR — 3 degraus cada (04/10/2026, mock v3 da home de Produção).
+
+   **Pedido do dono:** *"Cada cartão numa família de cor (fundo tom 50, textos tons 600/800/900
+   DA MESMA família — nunca preto em fundo colorido)."*
+   É a regra que o mock de 01/09 já ditava em palavras (*"texto sobre fundo colorido usa o tom
+   escuro da MESMA família, nunca preto puro"*) e que agora tem token pra ser obedecida.
+   ⛔ `-bg` e `-mid` são os tons que a casa JÁ tinha (o `radar-tokens.ts`); o `-ink` é o degrau
+   novo (o "800"), e ele existe porque texto em 600 sobre fundo 50 não passa em contraste.
+
+   ⚠️⚠️ **E NO ESCURO O 50 E O 800 TROCAM DE LADO** — o pedido é literal: *"nos cartões
+   coloridos, inverter 50↔800 como as telas modernas fazem"*. Sem isso o cartão índigo viraria
+   um bloco claro queimando no meio de uma tela preta.
+   ───────────────────────────────────────────────────────────────────────────── */
+[data-tela='producao-por-dia'],
+[data-tela='producao-home'] {
+  --fam-indigo-bg: #efedfb; --fam-indigo-mid: #534ab7; --fam-indigo-ink: #322c80;
+  --fam-azul-bg:   #e8effd; --fam-azul-mid:   #2563eb; --fam-azul-ink:   #17398c;
+  --fam-verde-bg:  #e7f7ee; --fam-verde-mid:  #0f9d58; --fam-verde-ink:  #0a5e35;
+  --fam-ambar-bg:  #fdf3e0; --fam-ambar-mid:  #c47b0a; --fam-ambar-ink:  #7d4e06;
+  --fam-coral-bg:  #fdecec; --fam-coral-mid:  #e5484d; --fam-coral-ink:  #8f2327;
+  --fam-teal-bg:   #e4f5f2; --fam-teal-mid:   #0d7c74; --fam-teal-ink:   #08504b;
+  --fam-rosa-bg:   #fdeaf3; --fam-rosa-mid:   #c0397b; --fam-rosa-ink:   #7c2050;
+  --fam-cinza-bg:  #f1f3f8; --fam-cinza-mid:  #94a0b8; --fam-cinza-ink:  #4b5162;
+}
+
+.dark [data-tela='producao-por-dia'],
+[data-tela='producao-por-dia'].dark,
+.dark [data-tela='producao-home'],
+[data-tela='producao-home'].dark {
+  /* ⭐ o 50 vira fundo ESCURO da família e o texto sobe pros tons claros — 50↔800 trocados */
+  --fam-indigo-bg: #1e1b4a; --fam-indigo-mid: #8a81f0; --fam-indigo-ink: #cdc8fb;
+  --fam-azul-bg:   #14244f; --fam-azul-mid:   #6aa0fb; --fam-azul-ink:   #c2d8fe;
+  --fam-verde-bg:  #11291f; --fam-verde-mid:  #3ecf8e; --fam-verde-ink:  #b4ebd0;
+  --fam-ambar-bg:  #2b2114; --fam-ambar-mid:  #e8a33d; --fam-ambar-ink:  #f7dcae;
+  --fam-coral-bg:  #2d1618; --fam-coral-mid:  #ff6369; --fam-coral-ink:  #ffc4c6;
+  --fam-teal-bg:   #0c2622; --fam-teal-mid:   #3ec8bb; --fam-teal-ink:   #b6e9e4;
+  --fam-rosa-bg:   #2b1322; --fam-rosa-mid:   #ef7fb4; --fam-rosa-ink:   #f9cfe2;
+  --fam-cinza-bg:  #1d212c; --fam-cinza-mid:  #7b8194; --fam-cinza-ink:  #b2b8c8;
+}
+
+/* ⭐ A LINHA EDITORIAL do topo — itálico serifado, a "calma editorial" do Mercury.
+   ⚠️ Usa a pilha serif do sistema: nenhuma fonte nova entra por causa de uma linha. */
+[data-tela='producao-home'] .editorial {
+  font-family: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+  font-style: italic;
 }

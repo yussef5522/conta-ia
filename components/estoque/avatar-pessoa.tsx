@@ -57,7 +57,15 @@ export function iniciais(nome: string): string {
   return (ps[0][0] + ps[ps.length - 1][0]).toUpperCase()
 }
 
-export function AvatarPessoa({ nome, tamanho = 22 }: { nome: string | null; tamanho?: number }) {
+/**
+ * ⭐ `apenasAvatar` desenha SÓ o círculo (04/10) — a home da Produção põe o nome na sublinha,
+ * e repetir ele ao lado do avatar seria a mesma informação duas vezes na mesma linha.
+ * ⚠️ O `title` fica no círculo nos dois modos: sem o nome escrito, as iniciais precisam de
+ * alguém que as traduza no hover.
+ */
+export function AvatarPessoa({ nome, tamanho = 22, apenasAvatar = false }: {
+  nome: string | null; tamanho?: number; apenasAvatar?: boolean
+}) {
   /**
    * ⛔ SEM NOME NÃO INVENTA PESSOA: um círculo com `?` e o texto *"—"*. A ordem antiga sem
    * colaborador registrado é um FATO (ninguém assinou), não um nome que a tela deve adivinhar.
@@ -69,10 +77,11 @@ export function AvatarPessoa({ nome, tamanho = 22 }: { nome: string | null; tama
           className="inline-flex shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
           style={{ width: tamanho, height: tamanho, background: 'var(--prod-mudo-bg)', color: 'var(--prod-mudo)' }}
           aria-hidden
+          title="sem responsável registrado"
         >
           ?
         </span>
-        <span className="text-[13px]">—</span>
+        {!apenasAvatar && <span className="text-[13px]">—</span>}
       </span>
     )
   }
@@ -86,7 +95,7 @@ export function AvatarPessoa({ nome, tamanho = 22 }: { nome: string | null; tama
       >
         {iniciais(nome)}
       </span>
-      <span className="truncate text-[13px]" style={{ color: 'var(--prod-secondary)' }}>{nome}</span>
+      {!apenasAvatar && <span className="truncate text-[13px]" style={{ color: 'var(--prod-secondary)' }}>{nome}</span>}
     </span>
   )
 }

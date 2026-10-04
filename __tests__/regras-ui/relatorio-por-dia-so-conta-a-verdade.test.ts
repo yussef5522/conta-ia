@@ -121,13 +121,28 @@ describe('⭐⭐ e a maçaneta existe (a família que esta casa pagou 11 vezes)'
     }
   })
 
+  /**
+   * ⚠️⚠️ **REAPONTADO EM 04/10: ele quebrou COM A TELA CERTA.** A home de Produção ganhou o visual
+   * novo e os 6 atalhos viraram o componente `ChipNav` — então a afordância **mudou de casa**: o
+   * `<a>` com borda não está mais no corpo da página, está dentro do componente que os 6 links
+   * compartilham. É a razão de existir da REGRA 3: *grep não distingue "refatorei" de "quebrei".*
+   *
+   * ⭐ **A régua é a mesma, e ficou MAIS FORTE:** antes ela conferia o atalho do por-dia; agora
+   * confere o `ChipNav`, e isso vale pros SEIS de uma vez. *Ação escondida sem afordância não
+   * existe, principalmente no celular, onde hover não existe* (30/08).
+   */
   it('⭐ a Produção leva pro relatório, com afordância visível (não hover-only)', () => {
     const tela = semComentario(ler(TELA_DA_PRODUCAO))
-    const links = [...tela.matchAll(/<a\b[\s\S]*?>/g)].filter((m) => m[0].includes('producao/por-dia'))
-    expect(links.length, 'nenhum <a> aponta pro relatório por dia').toBeGreaterThan(0)
-    for (const m of links) {
-      expect(/border|bg-|rounded/.test(m[0]), 'o atalho precisa de borda/fundo — no celular não existe hover').toBe(true)
-    }
+    // o atalho existe e aponta pro relatório
+    expect(tela, 'nada aponta pro relatório por dia').toMatch(/<ChipNav href=\{`\/empresas\/\$\{id\}\/estoque\/producao\/por-dia`\}/)
+
+    // e o componente que ele usa desenha um <a> com contorno VISÍVEL (não hover-only)
+    const chip = tela.slice(tela.indexOf('function ChipNav'))
+    expect(chip, 'o ChipNav tem que renderizar um <a> de verdade').toMatch(/<a\s/)
+    expect(
+      /rounded-full|boxShadow: 'inset/.test(chip.slice(0, chip.indexOf('</a>'))),
+      'o chip precisa de contorno/fundo — no celular não existe hover',
+    ).toBe(true)
   })
 
   /**
