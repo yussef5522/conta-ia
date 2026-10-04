@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { explodirSeparacao, OrdemError } from '@/lib/stock/producao/ordens'
 import { listConclusoes, rendimentoMedidoDaFicha } from '@/lib/stock/producao/conclusao'
+import { pedidoDaOrdem } from '@/lib/stock/producao/pedido-da-ordem'
 
 interface Params { params: Promise<{ id: string; ordemId: string }> }
 
@@ -50,8 +51,28 @@ export async function GET(request: NextRequest, { params }: Params) {
       dataPlausivel: dataEhPlausivel(bruta.dataProducao),
     })
 
+    /**
+     * ⭐⭐ O PEDIDO, DO INÍCIO AO FIM (item 2 do dono, 04/10) — *"o pedido fica visível o dia
+     * inteiro"*.
+     *
+     * ⛔ Resolvido no SERVIDOR pelo dono único da pergunta, com a ORIGEM junto. Se a tela
+     * resolvesse, ela diria um pedido e a eficiência (que vem do mesmo lugar) compararia com
+     * outro — e o dono veria 98% de um número que ele não reconhece.
+     *
+     * ⚠️ As 471 ordens que nasceram antes deste campo não têm meta: elas caem no DERIVADO, e a
+     * tela DIZ que é derivado. Carimbar meta retroativa inventaria um pedido que ninguém fez.
+     */
+    const meta = await prisma.stockOrdemMeta.findFirst({
+      where: { companyId, ordemId }, select: { unidades: true },
+    })
+    const pedido = pedidoDaOrdem({
+      meta: meta?.unidades ?? null,
+      escala: ordem.escalaReceitas,
+      loteBase: ordem.loteBase,
+    })
+
     // `lotes` vai junto: a tela precisa dizer "média de 4 lotes" e só adota a medida com 2+
-    return NextResponse.json({ ordem, linhas, conclusoes, colaboradores, rendimentoMedio: medido.media, rendimentoLotes: medido.lotes, parada })
+    return NextResponse.json({ ordem, linhas, conclusoes, colaboradores, rendimentoMedio: medido.media, rendimentoLotes: medido.lotes, parada, pedido })
   } catch (e) {
     if (e instanceof OrdemError) return NextResponse.json({ erro: e.message }, { status: 404 })
     throw e

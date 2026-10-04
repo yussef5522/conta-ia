@@ -51,6 +51,20 @@ export interface CriarOrdemInput {
   origem?: 'MANUAL' | 'SUGESTAO'
   observacao?: string | null
   userId?: string
+  /**
+   * ⭐⭐ O PEDIDO EM UNIDADES DO PRODUTO — *"quero produzir: 80 UN"* (item 2 do dono, 04/10).
+   *
+   * ⛔⛔ **É ELE que faltava ser GRAVADO.** `stock_ordem_meta` existe desde 13/09 com DOIS
+   * leitores e **zero writers** — 0 linhas em 471 ordens —, então o *"pedido 130 → entregue 137
+   * (105%)"* do relatório por tarefa nunca tinha um pedido pra comparar. *Campo que ninguém
+   * escreve é promessa que a tela não cumpre.*
+   *
+   * ⚠️ OPCIONAL de propósito: `escalaReceitas` continua sendo o que a ordem grava e o que a
+   * separação usa. O pedido é o que o DONO disse — e nem todo caminho tem um (a sugestão de
+   * min/máx calcula a escala, ela não "pede" nada). Sem ele, quem responde é o DERIVADO de
+   * `pedidoDaOrdem`, marcado como tal.
+   */
+  pedidoUnidades?: number | null
 }
 
 export async function criarOrdem(input: CriarOrdemInput, db: Db = defaultPrisma): Promise<{ ordemId: string }> {
@@ -66,6 +80,24 @@ export async function criarOrdem(input: CriarOrdemInput, db: Db = defaultPrisma)
       estado: 'PLANEJADA', criadoPorId: input.userId ?? null,
     },
   })
+  /**
+   * ⭐⭐ O PEDIDO VIRA LINHA AQUI — o writer que a tabela esperava desde 13/09.
+   *
+   * ⚠️ Grava **logo depois da ordem e antes das etapas**: se falhasse, a ordem existiria sem
+   * meta — que é exatamente o estado das 471 de hoje, e o `pedidoDaOrdem` cobre com o DERIVADO.
+   * Degrada, não quebra. ⛔ E é `create` simples, não upsert: o `@@unique(companyId, ordemId)`
+   * torna a meta duplicada **impossível**, e a ordem acabou de nascer — não há o que atualizar.
+   */
+  if (input.pedidoUnidades != null && input.pedidoUnidades > 0) {
+    await db.stockOrdemMeta.create({
+      data: {
+        companyId: input.companyId,
+        ordemId: ordem.id,
+        unidades: input.pedidoUnidades,
+        registradoPorId: input.userId ?? null,
+      },
+    })
+  }
   // ⭐ as etapas nascem COM a ordem (snapshot do método da versão). Receita sem etapa
   // declarada vira UMA etapa "produção" — a régua mora em `resolverEtapas`, num lugar só.
   const versao = await db.stockFichaVersao.findFirst({

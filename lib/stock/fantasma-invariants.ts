@@ -32,6 +32,7 @@ import type { PrismaClient } from '@prisma/client'
 import type { StockInvariantFail } from './stock-invariants'
 import { comoConsome } from './explodir-receita'
 import { saldosDaEmpresa } from './saldo'
+import { loteEhComparavel } from './producao/lote-comparavel'
 
 export async function checkFantasmaInvariants(db: PrismaClient): Promise<StockInvariantFail[]> {
   const fails: StockInvariantFail[] = []
@@ -135,7 +136,13 @@ export async function checkFantasmaInvariants(db: PrismaClient): Promise<StockIn
       select: { unidadeControle: true },
     })
     if (!v || !prod) continue
-    if (v.unidadeLoteBase === prod.unidadeControle) continue
+    /**
+     * ⭐ A pergunta tem DONO ÚNICO (`lote-comparavel.ts`) desde 04/10 — o juiz, a lista de
+     * pendentes do assistente de conversão e o atalho do aviso da ordem leem a MESMA régua.
+     * Comparar `unidadeLoteBase === unidadeControle` aqui na mão seria a 2ª cópia, e ela
+     * divergiria no primeiro caso de borda (é a lição do B1 e dos 7 detectores de par).
+     */
+    if (loteEhComparavel(v.unidadeLoteBase, prod.unidadeControle)) continue
     fails.push({
       invariante: 'M5',
       companyId: f.companyId,

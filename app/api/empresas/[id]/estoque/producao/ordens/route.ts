@@ -67,6 +67,19 @@ const criarSchema = z.object({
   dataProducao: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Escolha a data no calendário (ano com 4 dígitos).'),
   setorId: z.string().nullable().optional(),
   observacao: z.string().max(500).nullable().optional(),
+  /**
+   * ⭐⭐ O PEDIDO EM UNIDADES (item 2 do dono, 04/10) — *"quero produzir: 80 UN"*.
+   *
+   * ⚠️ **OPCIONAL no schema, e isso é o que mantém o caminho antigo vivo.** A sugestão de
+   * min/máx cria ordem com a escala calculada e não "pede" nada; a cozinha pelo tablet
+   * também não. Exigir aqui quebraria os dois — e quem cobre a ausência é o DERIVADO de
+   * `pedidoDaOrdem`, **marcado como derivado**, nunca fingindo ser declarado.
+   *
+   * ⛔ E ele NÃO substitui `escalaReceitas`: a separação continua sendo ficha × pedido pela
+   * porta única (a decisão de 03/10). Este campo é o que o DONO DISSE, pra tela e relatório
+   * terem contra o que comparar o produzido.
+   */
+  pedidoUnidades: z.number().positive().max(1_000_000).nullable().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {

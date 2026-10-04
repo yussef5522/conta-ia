@@ -11,17 +11,18 @@ import { Card, CardContent } from '@/components/ui/card'
 import { eficienciaMedia } from '@/lib/stock/producao/previsao-rendimento'
 import { escalaDoPedido } from '@/lib/stock/producao/escala-da-ordem'
 import { avisosDaEscala } from '@/lib/stock/producao/escala-do-pedido'
+import { listaDoQueVaiSeparar } from '@/lib/stock/producao/lista-da-separacao'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
-import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio, BarChart3 } from 'lucide-react'
+import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio, BarChart3, ArrowRight, CalendarDays } from 'lucide-react'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null }
 interface Sugestao { fichaId: string; itemProduzidoId: string; nome: string; unidade: string; saldo: number; estoqueMin: number; estoqueMax: number | null; faltam: number; escalaSugerida: number | null; rendimentoMedio: number | null }
-interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string; loteBase: number; unidadeLoteBase: string; rendimentoMedio: number | null; rendimentoLotes: number; tipoProduto: string; componentes?: { nome: string; qtdPlanejada: number }[] }
+interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string; loteBase: number; unidadeLoteBase: string; rendimentoMedio: number | null; rendimentoLotes: number; tipoProduto: string; componentes?: { itemId: string; nome: string; unidade: string; qtdPlanejada: number; custoMedio: number | null }[] }
 interface Setor { id: string; nome: string; ativo: boolean }
 interface Painel { emAberto: number; valorEmProducao: number; concluidasNoPeriodo: number; valorProduzidoNoPeriodo: number; rendimentoPeriodo: number | null; lotesNaMedia: number; faixaRendimento: string; abertasDeOntem: number }
 type Aberta = Ordem & { deOntem?: boolean }
@@ -155,6 +156,15 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
           {/* ⭐⭐ RELATÓRIOS (13/09) — o período livre mora AQUI; o HOJE é fixo no dia.
               Duas janelas, a MESMA função por baixo (`desempenho.ts`), zero divergência. */}
           <a href={`/empresas/${id}/estoque/producao/relatorios`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><BarChart3 className="h-3.5 w-3.5" /> Relatórios</a>
+          {/**
+            * ⭐⭐ A PORTA DO RELATÓRIO POR DIA (item 3 do dono, 04/10). Com borda e ícone, ao
+            * lado das outras três — *ação escondida sem afordância não existe, principalmente
+            * no celular* (30/08).
+            *
+            * ⚠️ É tela de GESTÃO (mostra quem concluiu e a eficiência de cada um lado a lado),
+            * e por isso vive aqui, não no tablet — a mesma régua de "Por pessoa" e "Hoje ao vivo".
+            */}
+          <a href={`/empresas/${id}/estoque/producao/por-dia`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><CalendarDays className="h-3.5 w-3.5" /> Por dia</a>
           {/* ⭐⭐ O ATALHO QUE FALTAVA (06/09) — no TOPO, com nome de gente. O link antigo
               vivia dentro do formulário de nova ordem, chamado "setores", e por isso o dono
               nunca achou onde cadastrar as gurias. Atalho: a tela mora em Sistema → Equipe. */}
@@ -395,6 +405,24 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
       })
     : []
 
+  /**
+   * ⭐⭐ O QUE VAI SAIR DA CÂMARA — item 2 do dono: *"a lista do que VAI SEPARAR do estoque
+   * (componente a componente, da ficha × pedido) ANTES de confirmar"*.
+   *
+   * ⛔ A régua mora na LIB pura (`listaDoQueVaiSeparar`), que chama a PORTA — a tela só desenha.
+   * Multiplicar aqui seria a segunda conta da separação: a tela prometeria um material e a
+   * ordem separaria outro.
+   */
+  const vaiSair = ficha?.componentes?.length && alvoNum > 0
+    ? listaDoQueVaiSeparar(
+        ficha.componentes.map((c) => ({
+          itemId: c.itemId, nome: c.nome, unidade: c.unidade, porLote: c.qtdPlanejada, custoMedio: c.custoMedio,
+        })),
+        alvoNum,
+        ficha.loteBase,
+      )
+    : null
+
   const criar = async () => {
     setErro(null)
     const alvo = Number(quanto.replace(',', '.'))
@@ -406,7 +434,7 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
     if (!data) return setErro('Informe a data de produção.')
     setBusy(true)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fichaId, escalaReceitas: esc, dataProducao: data, setorId: setorId || null }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fichaId, escalaReceitas: esc, dataProducao: data, setorId: setorId || null, pedidoUnidades: alvo }) })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui criar.'); return }
       onCriada(j.ordemId)
@@ -424,10 +452,17 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
             <label className="flex-1 min-w-[200px] text-xs text-slate-500">Ficha (o que produzir)
               <select value={fichaId} onChange={(e) => setFichaId(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 py-2 px-3 text-sm"><option value="">escolher…</option>{fichas.map((f) => <option key={f.id} value={f.id}>{f.nomeProduzido}</option>)}</select>
             </label>
-            <label className="text-xs text-slate-500">Quantas unidades quer produzir?
-              <div className="mt-1 flex items-center gap-1.5">
-                <input value={quanto} onChange={(e) => setQuanto(e.target.value)} inputMode="decimal" placeholder="200" className="block w-28 rounded-lg border border-slate-300 py-2 px-3 text-sm tabular-nums" />
-                <span className="text-xs text-slate-400">{ficha?.unidadeProduzido ?? ''}</span>
+            {/**
+              * ⭐⭐ O CAMPO DO PEDIDO, GRANDE E CLARO (item 2 do dono, 04/10) — *"quero
+              * produzir: 80 UN"*. É a pergunta da tela, então é o maior elemento dela.
+              *
+              * ⚠️ E a UNIDADE fica do lado, grande: foi a unidade escondida que deixou 37
+              * fichas declarando lote em KG num produto contado em UN sem ninguém reparar.
+              */}
+            <label className="text-xs text-slate-500">Quero produzir
+              <div className="mt-1 flex items-center gap-2">
+                <input value={quanto} onChange={(e) => setQuanto(e.target.value)} inputMode="decimal" placeholder="80" className="block w-32 rounded-lg border border-slate-300 py-2 px-3 text-[22px] font-medium tabular-nums text-slate-900" />
+                <span className="text-[17px] font-medium text-slate-500">{ficha?.unidadeProduzido ?? ''}</span>
               </div>
               {/* ⭐ A conta é SEMPRE a ficha (03/10). O espelho vai ao lado, como informação. */}
               <span className="mt-1 block text-[11px] font-normal text-slate-400">
@@ -445,12 +480,75 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
             {/* ⚠️ ATALHO, não segunda tela: o cadastro de gente mora em Sistema → Equipe. */}
             <a href="/equipe?filtro=cozinha" className="inline-flex items-center gap-1 pb-2 text-[11px] text-slate-400 hover:text-slate-600"><Settings className="h-3 w-3" /> setores e equipe</a>
           </div>
+          {/**
+            * ⭐⭐ A LISTA DO QUE SAI — ela vem ANTES dos avisos de propósito: é a resposta à
+            * pergunta que o dono acabou de fazer ("quero 80"), e o aviso é a ressalva. Dizer a
+            * ressalva antes da resposta manda ele procurar no lugar errado (16/09).
+            */}
+          {vaiSair && vaiSair.linhas.length > 0 && (
+            <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: 'rgba(0,0,0,0.08)' }}>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  vai sair do estoque pra este pedido
+                </p>
+                <p className="text-[13px] tabular-nums text-slate-600">
+                  {/* ⚠️ total só quando TODOS têm custo — parcial com cara de total é a
+                      mentira mais fácil numa tela de dinheiro (a régua do "a definir") */}
+                  {vaiSair.custoTotal != null
+                    ? brl(vaiSair.custoTotal)
+                    : `custo a definir · ${vaiSair.semCusto} componente(s) sem custo médio`}
+                </p>
+              </div>
+              <div className="mt-1.5 overflow-x-auto">
+                <table className="density-normal w-full">
+                  <tbody>
+                    {vaiSair.linhas.map((l, i) => (
+                      <tr key={l.itemId} style={{ background: i % 2 === 1 ? '#FAF9F6' : undefined }}>
+                        <td className="px-2 py-0 text-[13px] text-slate-800">{l.nome}</td>
+                        <td className="px-2 py-0 text-right text-[13px] font-medium tabular-nums text-slate-900">
+                          {l.quantidade == null ? '—' : fmtQtd(l.quantidade)} {l.unidade}
+                        </td>
+                        <td className="hidden px-2 py-0 text-right text-[12px] tabular-nums text-slate-400 sm:table-cell">
+                          {fmtQtd(l.porLote)} {l.unidade} por receita
+                        </td>
+                        <td className="px-2 py-0 text-right text-[12px] tabular-nums text-slate-500">
+                          {l.custoTotal == null ? 'a definir' : brl(l.custoTotal)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           {avisos.length > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">confira antes de criar</p>
               <ul className="mt-1 space-y-1">
                 {avisos.map((a) => (
-                  <li key={a.motivo} className="text-xs leading-snug text-amber-900">· {a.frase}</li>
+                  <li key={a.motivo} className="text-xs leading-snug text-amber-900">
+                    · {a.frase}
+                    {/**
+                      * ⭐⭐ O ATALHO QUE O DONO PEDIU — e ele é a METADE QUE FALTA do aviso.
+                      *
+                      * ⛔ Este aviso existe desde 03/10 e dizia o problema **sem dizer onde
+                      * resolver**: o dono lia "o lote base não diz quantas UN saem de uma
+                      * receita" e ficava com o problema na mão. É a família da *"porta sem
+                      * maçaneta"*, que esta casa já pagou 11 vezes — alarme sem porta é
+                      * alarme que se aprende a ignorar.
+                      *
+                      * ⚠️ Vai SÓ no `LOTE_NAO_COMPARAVEL`: o `MEDIA_DESTOA` não se resolve
+                      * convertendo lote nenhum (é eficiência, e a decisão lá é outra).
+                      */}
+                    {a.motivo === 'LOTE_NAO_COMPARAVEL' && fichaId && (
+                      <a
+                        href={`/empresas/${id}/estoque/fichas/conversao?ficha=${fichaId}`}
+                        className="ml-1 inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+                      >
+                        corrigir o lote desta ficha <ArrowRight className="h-3 w-3" />
+                      </a>
+                    )}
+                  </li>
                 ))}
               </ul>
               {/* ⛔ AVISA, NÃO BLOQUEIA: travar pararia a cozinha por ficha mal declarada

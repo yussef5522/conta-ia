@@ -78,6 +78,9 @@ describe('toda rota de estoque tem trava', () => {
       'relatórios de produção (13/09) — tempo, rendimento e custo por PESSOA lado a lado, em período livre. '
       + 'Mesma régua das duas acima, e a ordem do dono é explícita: "SÓ na tela do dono/gerente — o TABLET DA COZINHA '
       + 'NUNCA mostra o placar". Guard próprio em __tests__/regras-ui/tablet-nunca-ve-o-placar.ts prova os dois lados',
+    'producao/relatorio-por-dia/route.ts':
+      'relatório de produção por dia (04/10) — mostra QUEM CONCLUIU cada lote e a eficiência dele lado a lado, '
+      + 'em período livre. Mesma régua das três acima: conversa de gestão, nunca telão de cozinha',
   }
 
   it('GET nunca exige operar/gerenciar (ler é ler), fora as leituras sensíveis nomeadas', () => {

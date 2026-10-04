@@ -29,18 +29,67 @@ const semComentarios = (s: string) =>
  * aprove por mock mobile precisa OU entrar nesta lista, OU ter a decisão registrada de que
  * ela é mobile-only (o tablet da cozinha, por exemplo, que é um aparelho só).
  */
-const COM_COCKPIT = ['components/perfis/dashboard-pf.tsx']
+const COM_COCKPIT = [
+  'components/perfis/dashboard-pf.tsx',
+  /**
+   * ⭐ ENTROU em 04/10 (item 3 do dono): relatório de produção por dia. Tabela no desktop,
+   * cards no celular, **os MESMOS dados** — o que muda é o layout, nunca o conteúdo.
+   */
+  'app/(dashboard)/empresas/[id]/estoque/producao/por-dia/page.tsx',
+]
+
+/**
+ * ⚠️⚠️ **O DETECTOR VIROU ESTRUTURAL, e isso o deixou MAIS FORTE — não mais frouxo.**
+ *
+ * A 1ª versão fazia `toContain('hidden lg:block')`: ela exigia os dois utilitários
+ * **colados nessa ordem**. Uma composição legítima como `"hidden overflow-x-auto lg:block"`
+ * ficava VERMELHA com a tela certa — é a mesma cegueira que o próprio arquivo registra sobre
+ * o `col-span-4` ("guard que mede o texto e não a composição vira falso vermelho no primeiro
+ * refactor legítimo"). ⛔ O que ele pergunta agora é o que importa: *existe um elemento que
+ * está escondido por padrão e aparece a partir de `lg`?*
+ */
+function temComposicao(src: string, modo: 'DESKTOP' | 'CELULAR'): boolean {
+  for (const m of src.matchAll(/className="([^"]*)"/g)) {
+    const classes = m[1].split(/\s+/)
+    if (modo === 'DESKTOP' && classes.includes('hidden') && classes.includes('lg:block')) return true
+    if (modo === 'CELULAR' && classes.includes('lg:hidden')) return true
+  }
+  return false
+}
 
 /** largura mínima que um container principal pode ter no desktop sem "boiar" */
 const LARGURA_MINIMA_DESKTOP = 1100
+
+/**
+ * ⚠️ **AUTO-TESTE DO DETECTOR** — senão o guard passaria por CEGUEIRA, que é como 7 guards
+ * desta casa nasceram mentindo. Ele tem que ver as DUAS formas (colada e espalhada) e NÃO ver
+ * a ausência.
+ */
+describe('o detector de composição', () => {
+  it('vê `hidden lg:block` colado E espalhado — a composição é a mesma', () => {
+    expect(temComposicao('<div className="hidden lg:block">', 'DESKTOP')).toBe(true)
+    expect(temComposicao('<div className="hidden overflow-x-auto lg:block">', 'DESKTOP')).toBe(true)
+    expect(temComposicao('<div className="lg:block hidden">', 'DESKTOP')).toBe(true)
+  })
+
+  it('⛔ NÃO vê onde não há (nem por substring de outra classe)', () => {
+    expect(temComposicao('<div className="overflow-x-auto">', 'DESKTOP')).toBe(false)
+    // ⚠️ `lg:hidden` não é composição de DESKTOP, e `hidden` sozinho também não
+    expect(temComposicao('<div className="hidden">', 'DESKTOP')).toBe(false)
+    expect(temComposicao('<div className="space-y-1.5 lg:hidden">', 'DESKTOP')).toBe(false)
+    // ⛔ e `sm:hidden` (outro breakpoint) não conta como a composição de celular desta régua
+    expect(temComposicao('<div className="sm:hidden">', 'CELULAR')).toBe(false)
+    expect(temComposicao('<div className="space-y-1.5 lg:hidden">', 'CELULAR')).toBe(true)
+  })
+})
 
 describe('⛔⛔ no desktop a tela não é o celular esticado', () => {
   it.each(COM_COCKPIT)('%s tem UMA composição de celular e UMA de desktop', (arq) => {
     const src = semComentarios(ler(arq))
     // o celular só existe abaixo do breakpoint…
-    expect(src, 'a composição de celular não some no desktop').toContain('lg:hidden')
+    expect(temComposicao(src, 'CELULAR'), 'a composição de celular não some no desktop').toBe(true)
     // …e o cockpit só existe acima
-    expect(src, 'não existe composição de desktop').toContain('hidden lg:block')
+    expect(temComposicao(src, 'DESKTOP'), 'não existe composição de desktop').toBe(true)
   })
 
   it.each(COM_COCKPIT)('%s: NENHUM container ativo no desktop é mais estreito que 1100px', (arq) => {

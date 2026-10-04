@@ -52,6 +52,19 @@ const FORA_DA_PORTA = [
   'lib/stock/producao/escala-do-pedido.ts',
   'lib/stock/producao/ordens.ts',
   'lib/stock/producao/sugestao-cardapio.ts',
+  /**
+   * ⭐ ENTROU EM 04/10 com o assistente de conversão KG→UN: ele mostra a separação **ANTES ×
+   * DEPOIS** pro dono decidir, então ele calcula separação — e tem que calcular pela PORTA.
+   * Se ele fizesse `dose × pedido` por conta própria, o preview prometeria um material que a
+   * ordem não vai separar, e o dono descobriria com a carne na mão.
+   */
+  'lib/stock/producao/preview-da-conversao.ts',
+  /**
+   * ⭐ ENTROU em 04/10 com o item 2: ele monta a lista *"o que vai sair da câmara"* que a tela
+   * mostra ANTES de criar a ordem. Se calculasse por conta própria, a tela prometeria um
+   * material e a ordem separaria outro.
+   */
+  'lib/stock/producao/lista-da-separacao.ts',
   'app/(dashboard)/empresas/[id]/estoque/producao/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/producao/[ordemId]/page.tsx',
 ]
@@ -211,5 +224,64 @@ describe('⭐⭐ AUTO-TESTE DOS DETECTORES — as formas que JÁ quebraram', () 
     for (const rel of CAMINHO_DA_SEPARACAO) {
       expect(() => statSync(join(raiz, rel)), `${rel} está na lista e não existe mais`).not.toThrow()
     }
+  })
+})
+
+/**
+ * ═══ ⭐⭐⭐ A FRONTEIRA DO ASSISTENTE DE CONVERSÃO (04/10/2026) ═══
+ *
+ * ⚠️⚠️ **ESTE BLOCO EXISTE PORQUE O ASSISTENTE PARECE VIOLAR A DECISÃO E NÃO VIOLA — e alguém
+ * (eu, em três meses) vai olhar `sugestoesDaConversao` devolvendo o MEDIDO e achar que achou um
+ * bug.** A régua do dono tem QUATRO itens, e o 4º é o que autoriza isto:
+ *
+ * > *"Se um dia eu quiser declarar perda (ex. acém limpo = 95% do cru), **EU mudo a ficha** ou o
+ * > campo declarado — nunca o sistema sozinho pela medição."*
+ *
+ * ⭐ **A distinção é QUEM e QUANDO:**
+ * - ⛔ **PROIBIDO**: o medido dividir o pedido **na hora da separação** (o laço que aprende o
+ *   roubo — a ordem de 10 beef separando pra 6,7).
+ * - ⭐ **AUTORIZADO**: o medido ser **SUGERIDO** ao dono, ele **CONFIRMAR**, e aquilo virar uma
+ *   **VERSÃO NOVA DA FICHA**. Daí em diante a separação é ficha × pedido como sempre — a
+ *   medição não está mais na conta, está no documento que o dono assinou.
+ *
+ * ⛔ As duas travas que fazem isso ser verdade, e não intenção:
+ */
+describe('⭐⭐ o assistente de conversão SUGERE o medido — e nada converte sozinho', () => {
+  const CONVERSOR = 'lib/stock/producao/converter-lote.ts'
+
+  it('⛔ o CONVERSOR não lê rendimento de ninguém: ele RECEBE o número que o dono confirmou', () => {
+    /**
+     * ⭐ É a REGRA 5 aplicada aqui: enquanto `converterLote` só aceitar um `number` por
+     * parâmetro, é **impossível** ele se auto-alimentar da medição. Se alguém importar um leitor
+     * de rendimento neste arquivo, o passo "o dono confirma" deixa de existir sem ninguém ver.
+     */
+    const src = readFileSync(join(raiz, CONVERSOR), 'utf8')
+    const imports = src.match(/^import[\s\S]*?from\s+'[^']+'/gm) ?? []
+    expect(
+      imports,
+      'converter-lote.ts tem que ser PURO: sem import, ele não pode buscar o rendimento sozinho.\n' +
+        'O medido chega como SUGESTÃO (sugestoesDaConversao) e só vira ficha depois do clique do dono.',
+    ).toEqual([])
+  })
+
+  it('⛔ e a conversão NUNCA é a resposta automática da sugestão: quem escolhe é o dono', () => {
+    /**
+     * ⚠️ A trava é de FORMA: `sugestoesDaConversao` devolve candidatas e, no máximo, uma
+     * `recomendada` — ela **não chama** `converterLote` em lugar nenhum. Se um dia chamar, o
+     * assistente passa a converter pela medição, que é exatamente a decisão que o dono revogou.
+     */
+    const limpo = semComentario(readFileSync(join(raiz, CONVERSOR), 'utf8'))
+    const corpoDaSugestao = limpo.slice(limpo.indexOf('export function sugestoesDaConversao'))
+    expect(
+      corpoDaSugestao.includes('converterLote('),
+      'sugestoesDaConversao() não pode converter: ela SUGERE. Converter é gesto do dono.',
+    ).toBe(false)
+  })
+
+  it('⭐ e o preview da conversão segue separando pela PORTA (a amarra que importa)', () => {
+    const limpo = semComentario(readFileSync(join(raiz, 'lib/stock/producao/preview-da-conversao.ts'), 'utf8'))
+    // ⛔ as duas pontas (antes e depois) pela mesma função — nunca `dose * pedido` à mão
+    expect((limpo.match(/insumoDoPedido\(/g) ?? []).length).toBeGreaterThanOrEqual(2)
+    expect(limpo).toMatch(/from\s+'\.\/escala-da-ordem'/)
   })
 })

@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState, use } from 'react'
 import { escalaDoConsumo, preverSaida, eficienciaMedia, avaliarVariacao } from '@/lib/stock/producao/previsao-rendimento'
 import { insumoDoPedido } from '@/lib/stock/producao/escala-da-ordem'
 import { eficienciaDaOrdem } from '@/lib/stock/producao/eficiencia-da-ordem'
+import { fraseDoCiclo } from '@/lib/stock/producao/pedido-da-ordem'
 import { formatarQtd } from '@/lib/stock/quantidade'
 import { Card, CardContent } from '@/components/ui/card'
 import { EtapasDaOrdem } from '@/components/estoque/etapas-da-ordem'
@@ -44,6 +45,13 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const [etapasAssinadas, setEtapasAssinadas] = useState(false)
   /** ⭐ o aviso da ordem PARADA com as três portas (19/09) — vem do SERVIDOR, não da tela */
   const [parada, setParada] = useState<{ avisar: boolean; motivo: string | null; portas: { acao: string; rotulo: string; efeito: string; primaria?: boolean }[] } | null>(null)
+  /**
+   * ⭐⭐ O PEDIDO RESOLVIDO (item 2 do dono, 04/10) — vem do SERVIDOR, com a ORIGEM.
+   *
+   * ⛔ Resolver aqui seria a 2ª resposta pra *"qual é o pedido?"*: a tela diria um número e a
+   * eficiência (que sai da mesma lib, no servidor) compararia com outro.
+   */
+  const [pedido, setPedido] = useState<{ unidades: number | null; origem: 'DECLARADO' | 'DERIVADO' | null; comoSoube: string | null } | null>(null)
   const [diaQueContinua, setDiaQueContinua] = useState('')
   // ⛔ as etapas ABERTAS: concluir por aqui vai LEVÁ-LAS junto, sem tempo medido. O
   // encarregado tem que saber ANTES de apertar — escolha consciente, não efeito colateral.
@@ -59,6 +67,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
     setOrdem(j.ordem); setLinhas(j.linhas ?? [])
     setConclusoes(j.conclusoes ?? []); setColaboradores(j.colaboradores ?? []); setRendimentoMedio(j.rendimentoMedio ?? null); setRendimentoLotes(j.rendimentoLotes ?? 0)
     setParada(j.parada ?? null)
+    setPedido(j.pedido ?? null)
     if (j.ordem.estado === 'PLANEJADA') setSep(Object.fromEntries((j.linhas ?? []).map((l: Linha) => [l.itemId, String(l.qtdPlanejada)])))
   }).catch(() => setOrdem(null))
   useEffect(() => { carregar() }, [id, ordemId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -158,6 +167,28 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
         <Factory className="h-5 w-5 shrink-0 text-[#185FA5]" />
         <div className="flex-1">
           <h1 className="text-base font-semibold text-slate-900">{ordem.nomeProduzido}</h1>
+          {/**
+            * ⭐⭐ O PEDIDO VISÍVEL O DIA INTEIRO (item 2 do dono) — *"pedido: 80 UN — em
+            * produção"*. Ele é a 2ª linha do cabeçalho, acima de tudo que é detalhe.
+            *
+            * ⚠️ A ORIGEM VAI JUNTO quando é DERIVADO: as 471 ordens que nasceram antes deste
+            * campo não têm pedido declarado, e dizer "pedido 80" seco ali afirmaria que o dono
+            * pediu 80 quando foi a ficha que calculou. É a mesma disciplina do `~previsto` dos
+            * empréstimos e do selo `[sistema]` do Fluxo: visível, usado, dizendo de onde veio.
+            */}
+          {pedido?.unidades != null && (
+            <p className="text-[15px] font-medium text-slate-900">
+              pedido: <span className="tabular-nums">{num(pedido.unidades)} {ordem.unidadeProduzido}</span>
+              <span className="ml-1.5 text-[13px] font-normal text-slate-500">
+                — {PASSO_LABEL[ordem.estado]?.toLowerCase() ?? ordem.estado.toLowerCase()}
+              </span>
+              {pedido.origem === 'DERIVADO' && (
+                <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-normal text-slate-500" title={pedido.comoSoube ?? ''}>
+                  calculado pela ficha
+                </span>
+              )}
+            </p>
+          )}
           <p className="text-sm text-slate-500">{ordem.escalaReceitas}× a receita (v{ordem.versaoFicha}) · {fmtDia(ordem.dataProducao)}{ordem.setorNome ? ` · ${ordem.setorNome}` : ''}</p>
         </div>
         {ordem.estado === 'CANCELADA' && <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600">Cancelada</span>}
@@ -408,8 +439,28 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                   : 'bg-emerald-50 text-emerald-700'}`}>
               {Math.round(eficiencia.pct * 100)}%
             </span>
+            {/**
+              * ⭐⭐ O CICLO FECHADO que o dono pediu (item 2): *"pedido 80 · separado X ·
+              * produzido 78 · 98%"*. A frase sai da LIB (`fraseDoCiclo`) — montá-la aqui faria
+              * a mesma sentença existir em dois lugares (esta tela e o relatório do item 3) e
+              * divergir no primeiro ajuste de rótulo.
+              *
+              * ⚠️ **`separado` é o CONSUMIDO em R$, não o `qtdSeparada`** — duas armadilhas num
+              * campo: (a) `qtdSeparada` é *em-produção* (`SEP − DEV − CON`), ~zero numa ordem
+              * CONCLUÍDA por construção, e imprimiria "separado 0" em toda ordem fechada (a
+              * cicatriz de 03/10); (b) somar a QUANTIDADE dos componentes misturaria KG com UN
+              * — o pecado de 13/09. Dinheiro soma; grandeza física, não.
+              */}
             <span className="text-xs text-slate-500">
-              pedi {num(eficiencia.pedido!)} {ordem.unidadeProduzido} · produziu {num(eficiencia.produzido)}
+              {fraseDoCiclo({
+                pedido: pedido?.unidades ?? eficiencia.pedido,
+                unidadeProduto: ordem.unidadeProduzido,
+                // ⚠️ em R$: somar KG com UN num número só é o pecado de 13/09
+                separadoReais: linhas.length
+                  ? Math.round((linhas.reduce((t, l) => t + l.qtdConsumida * (l.custoMedio ?? 0), 0) + 1e-9) * 100) / 100
+                  : null,
+                produzido: eficiencia.produzido,
+              })}
             </span>
           </div>
           {/* ⚠️ A FRASE SÓ NO LADO DE BAIXO: render acima do prometido não é prejuízo (é ficha

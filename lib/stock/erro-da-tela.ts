@@ -25,6 +25,9 @@ import { SaidaError } from './saida'
 import { portaDoNegativo, type FatosDoNegativo } from './porta-do-negativo'
 import { VendaMapError } from './vendas/venda-map'
 import { GrandezaImplausivelError } from './producao/conclusao'
+// ⭐ 04/10 — o assistente de conversão KG→UN: a recusa mais importante dele é a 2ª conversão
+// ("já foi convertida enquanto você decidia"), e ela PRECISA chegar ao dono com a frase inteira.
+import { ConversaoError } from './producao/aplicar-conversao'
 
 export interface RespostaDeErro {
   erro: string
@@ -51,7 +54,7 @@ export interface RespostaDeErro {
 const DE_DOMINIO = [
   ContagemError, MovementInvalidError, ItensManuaisError, EntradaManualError,
   PonteError, RecusaError, ReunitizarError, SaidaError, VendaMapError,
-  GrandezaImplausivelError,
+  GrandezaImplausivelError, ConversaoError,
 ] as const
 
 export function ehErroDeDominio(e: unknown): e is Error {
