@@ -104,6 +104,22 @@ export interface RelatorioPorDia {
   vazio: boolean
 }
 
+/**
+ * ⭐⭐ O TEXTO DO PEDIDO — e ele existe por um defeito que SÓ a prova em prod pegou (04/10).
+ *
+ * ⛔⛔ Com as 471 ordens antigas sem meta, `somarQuantidades([])` devolve `texto: '0'` — o
+ * contrato DELE está certo ("zero de nada"), mas a tela imprimia **"pedido 0"**, e isso lê
+ * como ***"pedi zero"***. É exatamente o pecado que este sprint inteiro combate: *ausência
+ * NÃO é zero* (a régua do "sem contagem" do estoque e do "a apurar" das vendas).
+ *
+ * ⚠️ A régua mora AQUI, não no JSX: a tela do relatório, o CSV e qualquer leitor futuro
+ * precisam da mesma frase — duas versões divergiriam no primeiro ajuste de rótulo.
+ */
+export function textoDoPedido(q: Quantidade, semPedido: number, lotes: number): string {
+  if (semPedido >= lotes) return 'sem pedido registrado'
+  return q.texto
+}
+
 /** média honesta: `null` quando não há amostra (nunca 0, que leria como "deu zero") */
 function media(xs: number[]): number | null {
   if (!xs.length) return null

@@ -31,6 +31,8 @@ import { BarChart3, ChevronRight, Loader2, Search, X } from 'lucide-react'
  * É a dívida registrada em 01/09: *interface escrita à mão sobre payload é promessa, não prova*.
  */
 import type { Quantidade } from '@/lib/stock/producao/desempenho'
+// ⭐ a frase do pedido tem DONO: "pedido 0" leria como "pedi zero" (achado na prova em prod)
+import { textoDoPedido } from '@/lib/stock/producao/relatorio-por-dia'
 interface Linha {
   ordemId: string; dia: string; tarefa: string; unidade: string
   pedido: number | null; produzido: number; pctDoPedido: number | null
@@ -292,7 +294,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
                         </td>
                         <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>{r.lotes}</td>
                         {/* ⛔ a frase vem do servidor (`somarQuantidades`): UN e KG nunca viram um número só */}
-                        <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>{r.pedido.texto}</td>
+                        <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>{textoDoPedido(r.pedido, r.semPedido, r.lotes)}</td>
                         <td className="px-2 py-0 text-right text-[13px] font-medium tabular-nums" style={{ color: RADAR.ink }}>{r.produzido.texto}</td>
                         <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>
                           {r.pctMedio == null ? 'sem pedido' : `${Math.round(r.pctMedio)}%`}
@@ -320,7 +322,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
               <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <p className="text-[14px] font-bold" style={{ color: RADAR.ink }}>{dia(d.dia)}</p>
                 <p className="text-[12px]" style={{ color: RADAR.sub }}>
-                  {d.lotes} {d.lotes === 1 ? 'ordem' : 'ordens'} · pedido {d.pedido.texto} · produziu {d.produzido.texto}
+                  {d.lotes} {d.lotes === 1 ? 'ordem' : 'ordens'} · pedido {textoDoPedido(d.pedido, d.semPedido, d.lotes)} · produziu {d.produzido.texto}
                   {d.semPedido > 0 && ` · ${d.semPedido} sem pedido registrado`}
                 </p>
                 <span className="inline-flex rounded-full px-2 py-0.5 text-[12px] font-bold tabular-nums"

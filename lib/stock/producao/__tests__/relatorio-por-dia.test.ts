@@ -6,7 +6,7 @@
  * número que não existe"*. Se este arquivo passar a somar cruzado, o relatório inteiro mente.
  */
 import { describe, it, expect } from 'vitest'
-import { agruparPorDia, agruparPorReceita, type LinhaDoRelatorio } from '../relatorio-por-dia'
+import { agruparPorDia, agruparPorReceita, textoDoPedido, type LinhaDoRelatorio } from '../relatorio-por-dia'
 
 const linha = (p: Partial<LinhaDoRelatorio>): LinhaDoRelatorio => ({
   ordemId: 'o1', dia: '2026-10-04', tarefa: 'porcao coxao 80 grama', unidade: 'UN',
@@ -87,6 +87,42 @@ describe('⭐⭐ subtotal do dia', () => {
       linha({ ordemId: 'c', dia: '2026-10-02' }),
     ])
     expect(ds.map((d) => d.dia)).toEqual(['2026-10-04', '2026-10-02', '2026-10-01'])
+  })
+})
+
+/**
+ * ⛔⛔ ESTE BLOCO NASCEU DE UM DEFEITO QUE SÓ A PROVA EM PROD PEGOU (04/10).
+ *
+ * Com as 471 ordens antigas sem meta, a tela imprimia **"pedido 0"** nos 29 dias — e isso lê
+ * como ***"pedi zero"***. O `somarQuantidades([])` está certo no contrato dele (texto `'0'`);
+ * errado era a TELA afirmar um pedido que ninguém registrou. *Ausência não é zero* — a régua
+ * do "sem contagem" do estoque e do "a apurar" das vendas.
+ */
+describe('⛔⛔ "pedido 0" não existe — ausência é AUSÊNCIA', () => {
+  it('⛔ nenhum lote com pedido → "sem pedido registrado", nunca "0"', () => {
+    const [d] = agruparPorDia([
+      linha({ ordemId: 'a', pedido: null, pctDoPedido: null, seloDoPedido: 'SEM_META' }),
+      linha({ ordemId: 'b', pedido: null, pctDoPedido: null, seloDoPedido: 'SEM_META' }),
+    ])
+    expect(d.semPedido).toBe(2)
+    expect(d.pedido.texto, 'o somarQuantidades devolve "0" — e ele está certo no contrato dele').toBe('0')
+    // ⭐ quem traduz pra tela é a régua, e ela DIZ a ausência
+    expect(textoDoPedido(d.pedido, d.semPedido, d.lotes)).toBe('sem pedido registrado')
+    expect(textoDoPedido(d.pedido, d.semPedido, d.lotes)).not.toContain('0')
+  })
+
+  it('⭐ com pedido em ALGUNS, o número aparece (e o resto é dito à parte)', () => {
+    const [d] = agruparPorDia([
+      linha({ ordemId: 'a', pedido: 80 }),
+      linha({ ordemId: 'b', pedido: null, pctDoPedido: null, seloDoPedido: 'SEM_META' }),
+    ])
+    expect(textoDoPedido(d.pedido, d.semPedido, d.lotes)).toBe('80 UN')
+    expect(d.semPedido).toBe(1)
+  })
+
+  it('⭐ e vale igual na agregação por receita', () => {
+    const [r] = agruparPorReceita([linha({ pedido: null, pctDoPedido: null, seloDoPedido: 'SEM_META' })])
+    expect(textoDoPedido(r.pedido, r.semPedido, r.lotes)).toBe('sem pedido registrado')
   })
 })
 
