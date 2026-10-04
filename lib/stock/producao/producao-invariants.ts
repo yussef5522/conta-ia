@@ -7,14 +7,20 @@ import type { StockInvariantFail } from '../stock-invariants'
 import { rendimentoMedioDaFicha } from './conclusao'
 import { emProducaoPorOrdem } from './em-producao'
 import { dosesSuspeitas, assinaturaDoDesvio, DESVIO_DA_DOSE } from './plausibilidade-da-dose'
-import { EFICIENCIA_MINIMA } from './eficiencia-da-ordem'
+import { EFICIENCIA_MINIMA, DESVIO_GRAVE } from './eficiencia-da-ordem'
 import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const round4 = (n: number) => Math.round((n + 1e-9) * 1e4) / 1e4
-const P3_DESVIO = 0.25 // ±25% grave
+/**
+ * ⭐ O ±25% do P3 MUDOU DE CASA pra `eficiencia-da-ordem.ts` (`DESVIO_GRAVE`), onde moram as
+ * faixas. Motivo: o selo da tela do relatório precisa do MESMO degrau pro vermelho — o dono
+ * pediu *"a cor segue a régua que o P8/eficienciaDaOrdem já usa, a tela só pinta"* —, e este
+ * arquivo não é importável do cliente (ele carrega o juiz inteiro). Digitar 0,25 no componente
+ * seria a segunda régua no dia em que o "grave" mudar.
+ */
 const P5_DIAS = 14
 const P6_DIAS = 7
 const TIPOS_ORDEM = ['SEPARACAO_SAIDA', 'DEVOLUCAO_PRODUCAO', 'PRODUCAO_CONSUMO']
@@ -160,7 +166,7 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
     const media = await rendimentoMedioDaFicha(c.companyId, fichaId, db as PrismaClient, c.id)
     if (media && media > 0) {
       const desvio = Math.abs((c.rendimento - media) / media)
-      if (desvio > P3_DESVIO) F('P3', c.companyId, `conclusão ${c.id}: rendimento ${round2(c.rendimento)} desvia ${Math.round(desvio * 100)}% da média ${round2(media)} — revisar (carne ruim? porção errada? sobra não contada?).`)
+      if (desvio > DESVIO_GRAVE) F('P3', c.companyId, `conclusão ${c.id}: rendimento ${round2(c.rendimento)} desvia ${Math.round(desvio * 100)}% da média ${round2(media)} — revisar (carne ruim? porção errada? sobra não contada?).`)
     }
   }
 

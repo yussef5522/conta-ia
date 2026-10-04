@@ -402,3 +402,76 @@
     transition: height 150ms ease-out;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ⭐⭐ TOKENS DA TELA "PRODUÇÃO POR DIA" (04/10/2026) — visual Mercury/Stripe.
+   
+   **A régua do dono:** *"nenhum hex fixo de texto — usar os tokens; dark mode funcionando."*
+   
+   ⭐ Os valores CLAROS são os MESMOS de `components/estoque/radar-tokens.ts` — a casa tem UMA
+   paleta, e um tom "quase igual" escrito aqui é como o verde do cartão ≍ e o do card de 10/09
+   acabaram diferentes. O que esta camada acrescenta é (a) poder usar `var()` no lugar de hex
+   cravado no JSX e (b) o espelho ESCURO.
+   
+   ⛔⛔ **ESCOPADO EM `[data-tela="producao-por-dia"]`, de propósito.** A decisão de 20/09 é que
+   o dark global é SPRINT PRÓPRIO (e ele tem que conferir os 107 arquivos que já têm `dark:` e
+   nunca renderizaram). Um `:root` aqui faria esta camada vazar pro app inteiro; escopada, ela
+   deixa ESTA tela correta no dia em que o interruptor global for ligado, sem tocar no resto.
+   
+   ⚠️ **E O INTERRUPTOR ESTÁ DESLIGADO HOJE:** `darkMode:['class']` no Tailwind e **nada no app
+   adiciona a classe `dark`** (medido: zero chamadores). Ou seja — o bloco escuro abaixo está
+   CERTO e ainda NÃO RENDERIZA. Isto é dark-READY, não dark-provado.
+   ═══════════════════════════════════════════════════════════════════════════ */
+[data-tela='producao-por-dia'] {
+  --prod-bg: #f6f5fb;
+  --prod-surface: #fff;
+  /* ⭐ surface-1: o degrau de hover/zebra — "calma editorial" do Mercury */
+  --prod-surface-1: #f6f5fb;
+  --prod-surface-2: #efedfb;
+  /* ⭐⭐ texto PRINCIPAL escuro de verdade (o dono: "nada de cinza lavado") */
+  --prod-primary: #171a26;
+  --prod-secondary: #4b5162;
+  --prod-muted: #7b8194;
+  --prod-line: #eae9f2;
+  /* ⚠️ a divisória entre linhas é mais clara que a borda do rodapé — é hierarquia, não enfeite */
+  --prod-line-strong: #d8d6e4;
+  --prod-accent: #534ab7;
+  --prod-verde: #0f9d58;
+  --prod-verde-bg: #e7f7ee;
+  --prod-ambar: #c47b0a;
+  --prod-ambar-bg: #fdf3e0;
+  --prod-coral: #e5484d;
+  --prod-coral-bg: #fdecec;
+  --prod-mudo: #94a0b8;
+  --prod-mudo-bg: #f1f3f8;
+  --prod-sombra: 0 1px 2px rgba(23, 26, 38, 0.05);
+}
+
+.dark [data-tela='producao-por-dia'],
+[data-tela='producao-por-dia'].dark {
+  --prod-bg: #0f1117;
+  --prod-surface: #171a23;
+  --prod-surface-1: #1d212c;
+  --prod-surface-2: #252a39;
+  --prod-primary: #f2f3f7;
+  --prod-secondary: #b2b8c8;
+  --prod-muted: #7b8194;
+  --prod-line: #262b38;
+  --prod-line-strong: #39404f;
+  --prod-accent: #8a81f0;
+  --prod-verde: #3ecf8e;
+  --prod-verde-bg: #11291f;
+  --prod-ambar: #e8a33d;
+  --prod-ambar-bg: #2b2114;
+  --prod-coral: #ff6369;
+  --prod-coral-bg: #2d1618;
+  --prod-mudo: #7b8194;
+  --prod-mudo-bg: #1d212c;
+  --prod-sombra: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* ⭐ a fonte TABULAR que o dono pediu pros números — alinhamento de coluna financeira */
+[data-tela='producao-por-dia'] .num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}

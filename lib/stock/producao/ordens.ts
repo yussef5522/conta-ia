@@ -153,9 +153,60 @@ export async function separadoPorItem(companyId: string, ordemId: string, db: Db
  * que a panela comeu.
  */
 export async function consumidoPorItem(companyId: string, ordemId: string, db: Db): Promise<Map<string, number>> {
-  const movs = await db.stockMovement.findMany({ where: { companyId, receiptId: ordemId, tipo: TIPO_CONSUMO }, select: { itemId: true, quantidade: true } })
+  // ⭐ UMA consulta, duas respostas: a quantidade é a leitura magra do MESMO consumo
   const m = new Map<string, number>()
-  for (const mv of movs) m.set(mv.itemId, round6((m.get(mv.itemId) ?? 0) + Math.abs(mv.quantidade)))
+  for (const [itemId, c] of await consumoDaOrdem(companyId, ordemId, db)) m.set(itemId, c.qtd)
+  return m
+}
+
+export interface ConsumoDoItem {
+  /** Σ|quantidade| dos PRODUCAO_CONSUMO — na unidade de controle do item */
+  qtd: number
+  /**
+   * ⭐⭐ O CUSTO **CONGELADO** no instante da conclusão — somado do `custoTotal` do próprio
+   * ledger, nunca `qtd × custoMedio de hoje`.
+   *
+   * ⛔⛔ **MEDIDO EM PROD ANTES DE ESCREVER ISTO (04/10), nas 12 conclusões mais recentes:**
+   * ```
+   * Σ do LEDGER (custoTotal)      × custoLoteReal → maior |dif| R$ 0,01 · 0 fora de 2 centavos
+   * Σ (qtd × custo médio de HOJE) × custoLoteReal → maior |dif| R$ 40,96 · 5 de 12 fora
+   * ```
+   * A razão é estrutural: `conclusao.ts` grava o `custoLoteReal` e os movimentos de consumo
+   * **com o MESMO `custoMap`** daquele instante (linhas 195 e 235). O custo médio de hoje já
+   * andou com as compras posteriores — e o bloco "o que saiu do estoque" passaria a somar
+   * **R$ 40,96 diferente** do "Saiu do estoque" da linha-mãe, no MESMO lote.
+   *
+   * ⚠️ O centavo que sobra é aritmética e não some: `custoLoteReal` é `round2(Σ qtd×custo)` e
+   * o ledger guarda `Σ round2(qtd×custo)`. Quem lê tolera 1 centavo por componente.
+   */
+  custoTotal: number
+  /** o custo médio **daquele dia**, pra a tela mostrar a conta por extenso */
+  custoUnitario: number | null
+}
+
+/**
+ * ⭐⭐ O CONSUMO DA ORDEM com o custo CONGELADO — a fonte do bloco *"o que saiu do estoque"*.
+ *
+ * ⛔ É a MESMA leitura que `consumidoPorItem` faz (um `findMany`, um tipo de movimento): ela
+ * delega pra cá. Uma 2ª consulta daria duas respostas pra *"o que a panela comeu?"* — e é
+ * exatamente a doença que o `separadoPorItem` × `consumidoPorItem` já custou em 03/10.
+ */
+export async function consumoDaOrdem(companyId: string, ordemId: string, db: Db): Promise<Map<string, ConsumoDoItem>> {
+  const movs = await db.stockMovement.findMany({
+    where: { companyId, receiptId: ordemId, tipo: TIPO_CONSUMO },
+    select: { itemId: true, quantidade: true, custoTotal: true, custoUnitario: true },
+  })
+  const m = new Map<string, ConsumoDoItem>()
+  for (const mv of movs) {
+    const a = m.get(mv.itemId) ?? { qtd: 0, custoTotal: 0, custoUnitario: null as number | null }
+    m.set(mv.itemId, {
+      qtd: round6(a.qtd + Math.abs(mv.quantidade)),
+      custoTotal: round2(a.custoTotal + Math.abs(mv.custoTotal)),
+      // ⚠️ produção PARCIAL: o mesmo item pode ter 2 movimentos com custos de dias diferentes.
+      // O unitário mostrado é o do ÚLTIMO (informativo); o que FECHA é o `custoTotal`.
+      custoUnitario: mv.custoUnitario !== 0 ? Math.abs(mv.custoUnitario) : a.custoUnitario,
+    })
+  }
   return m
 }
 

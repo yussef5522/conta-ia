@@ -81,6 +81,9 @@ describe('toda rota de estoque tem trava', () => {
     'producao/relatorio-por-dia/route.ts':
       'relatório de produção por dia (04/10) — mostra QUEM CONCLUIU cada lote e a eficiência dele lado a lado, '
       + 'em período livre. Mesma régua das três acima: conversa de gestão, nunca telão de cozinha',
+    'producao/ordens/[ordemId]/consumo/route.ts':
+      'o detalhe que a linha do relatório por dia abre ("o que saiu do estoque pra esta ordem", com custo). '
+      + 'Mesma trava da tela que o abre — se fosse `view`, o relatório de gestão teria uma porta lateral aberta',
   }
 
   it('GET nunca exige operar/gerenciar (ler é ler), fora as leituras sensíveis nomeadas', () => {

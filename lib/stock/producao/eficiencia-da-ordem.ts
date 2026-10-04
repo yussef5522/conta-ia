@@ -27,6 +27,48 @@ const round4 = (n: number) => Math.round((n + 1e-9) * 10000) / 10000
  * é a segunda régua no dia em que a faixa mudar.
  */
 export const EFICIENCIA_MINIMA = round4(1 - DESVIO_ALERTA)
+export const EFICIENCIA_MAXIMA = round4(1 + DESVIO_ALERTA)
+
+/**
+ * ⭐ O desvio **GRAVE** (±25%) — mudou de casa do `producao-invariants.ts` (onde era o
+ * `P3_DESVIO`) pra cá em 04/10, porque passou a ter DOIS leitores: o juiz P3 e o **selo da
+ * tela** do relatório por dia. ⛔ O arquivo do juiz não é importável do cliente (carrega o
+ * juiz inteiro), e copiar o `0.25` pro componente seria a segunda régua no dia em que o
+ * "grave" mudar — a doença que este módulo mais paga.
+ */
+export const DESVIO_GRAVE = 0.25
+
+export type FaixaDoSelo = 'DENTRO' | 'FORA' | 'EXTREMO' | 'SEM_PEDIDO'
+
+/**
+ * ⭐⭐ A COR DO SELO DE EFICIÊNCIA — **traduz, não decide.**
+ *
+ * **Pedido do dono:** *"EFICIÊNCIA em pílula colorida: verde 90-110% · âmbar fora disso ·
+ * VERMELHO com ⚠ nos extremos (ex. 205% do frango frito) — a cor segue a régua que o
+ * P8/eficienciaDaOrdem já usa, a tela só pinta."*
+ *
+ * ⚠️⚠️ **E AS DUAS METADES DO PEDIDO NÃO BATIAM — ESTA É A RESOLUÇÃO, ESCRITA:** ele pediu a
+ * banda verde em **90-110%** e, na mesma frase, *"a régua que o P8 já usa"* — que é
+ * **±15% (85-115%)**, o `DESVIO_ALERTA` que o P3 e o aviso de variação também usam. Os dois
+ * não podem ser verdade juntos. **Ficou a régua da casa**, por um motivo de consequência:
+ * mudar a banda aqui mudaria **o e-mail do P8 junto** (é a mesma constante), e os 42 lotes que
+ * ele denuncia hoje viram outro número sem ninguém pedir. ⭐ Se o dono quiser 90-110, o lugar
+ * é o `DESVIO_ALERTA` — e aí tela, juiz e e-mail andam juntos, que é o ponto.
+ *
+ * ⭐ **O terceiro degrau também é número da casa, não escolhido a dedo:** o extremo é o
+ * `DESVIO_GRAVE` (±25%) do P3. Então os três graus saem de duas constantes que já existiam —
+ * **zero régua nova** — e o 205% do frango frito cai no vermelho por construção.
+ *
+ * ⛔ Pedido nulo devolve `SEM_PEDIDO`: sem denominador não existe eficiência, e pintar de
+ * verde a ausência seria afirmar que bateu.
+ */
+export function faixaDoSelo(pct: number | null | undefined): FaixaDoSelo {
+  if (pct == null || !Number.isFinite(pct)) return 'SEM_PEDIDO'
+  const razao = pct / 100
+  if (razao >= EFICIENCIA_MINIMA && razao <= EFICIENCIA_MAXIMA) return 'DENTRO'
+  if (razao < 1 - DESVIO_GRAVE || razao > 1 + DESVIO_GRAVE) return 'EXTREMO'
+  return 'FORA'
+}
 
 export type FaixaEficiencia = 'NORMAL' | 'ABAIXO' | 'ACIMA' | 'SEM_PEDIDO'
 

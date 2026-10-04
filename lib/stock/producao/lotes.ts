@@ -90,6 +90,7 @@ export async function lotesDaJanela(companyId: string, janela: JanelaDeLotes = {
       // ⭐ SOMA dos cronômetros — nunca a janela do lote (o sono não é trabalho)
       minutos: minutosDoLote(doLote),
       dia: diaBrasil(v.quando),
+      encerradoAs: v.quando.toISOString(),
     })
   }
   return out.sort((a, b) => a.dia.localeCompare(b.dia))

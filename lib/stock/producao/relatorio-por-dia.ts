@@ -58,6 +58,12 @@ export interface LinhaDoRelatorio {
   relampago: boolean
   setor: string | null
   quemConcluiu: string | null
+  /**
+   * quando a conclusão foi lançada (ISO) — alimenta o "encerrou às" do cabeçalho do dia.
+   * ⚠️ OPCIONAL: campo obrigatório aqui obrigaria toda fixture de linha a inventar um instante,
+   * e conclusão antiga legitimamente não tem. Ausente == `null` == a tela cala.
+   */
+  encerradoAs?: string | null
 }
 
 export interface SubtotalDoDia {
@@ -76,6 +82,14 @@ export interface SubtotalDoDia {
   minutos: number | null
   semTempo: number
   relampagos: number
+  /**
+   * ⭐ O SUBTÍTULO DO DIA — *"N ordens · setores · hora de encerramento"* (pedido do dono).
+   * Sai daqui e não da tela: lista distinta e máximo são tradução, e a régua desta tela é
+   * *"a tela desenha, a lib traduz"*.
+   */
+  setores: string[]
+  /** HH:MM da ÚLTIMA ordem encerrada no dia — `null` quando nenhum lote carrega o instante */
+  encerrouAs: string | null
 }
 
 export interface PorReceitaNoPeriodo {
@@ -212,6 +226,7 @@ export async function relatorioPorDia(
       relampago: ehRelampago(l.minutos),
       setor: setorId ? nomeSetor.get(setorId) ?? null : null,
       quemConcluiu: quemPorOrdem.get(l.ordemId) ?? null,
+      encerradoAs: l.encerradoAs ?? null,
     }
   })
 
@@ -224,6 +239,21 @@ export async function relatorioPorDia(
   const dias = agruparPorDia(linhas)
   const porReceita = agruparPorReceita(linhas)
   return { linhas, dias, porReceita, periodo, vazio: false }
+}
+
+/**
+ * PURA — a hora (HH:MM, fuso do Brasil) da última conclusão do dia.
+ *
+ * ⚠️ Formata em `America/Sao_Paulo` pelo MESMO motivo que o `dia` do lote é datado lá: o
+ * servidor roda em UTC, e às 21h de SP o relógio cru diria a hora de amanhã.
+ */
+export function horaDeEncerramento(ls: { encerradoAs?: string | null }[]): string | null {
+  const isos = ls.map((l) => l.encerradoAs ?? null).filter((x): x is string => !!x)
+  if (!isos.length) return null
+  const ultima = isos.reduce((a, b) => (a > b ? a : b))
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit',
+  }).format(new Date(ultima))
 }
 
 /** PURA — os subtotais do dia. Exportada pra ser testável sem banco. */
@@ -252,6 +282,13 @@ export function agruparPorDia(linhas: LinhaDoRelatorio[]): SubtotalDoDia[] {
         minutos: medidos.length ? medidos.reduce((s, l) => s + l.minutos!, 0) : null,
         semTempo: ls.length - medidos.length,
         relampagos: ls.filter((l) => l.relampago).length,
+        setores: [...new Set(ls.map((l) => l.setor).filter((x): x is string => !!x))].sort(),
+        /**
+         * ⚠️ O MÁXIMO, não o mínimo: *"encerrou às"* é a hora em que a cozinha fechou o dia.
+         * Lote sem instante (conclusão antiga) simplesmente não entra — e se NENHUM tiver,
+         * devolve `null`, que a tela cala. Inventar uma hora seria afirmar um fato.
+         */
+        encerrouAs: horaDeEncerramento(ls),
       }
     })
     .sort((a, b) => b.dia.localeCompare(a.dia))

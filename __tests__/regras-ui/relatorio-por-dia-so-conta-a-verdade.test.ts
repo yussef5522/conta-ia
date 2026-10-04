@@ -23,6 +23,7 @@ const semComentario = (src: string) =>
 const LIB = 'lib/stock/producao/relatorio-por-dia.ts'
 const ROTA = 'app/api/empresas/[id]/estoque/producao/relatorio-por-dia/route.ts'
 const TELA = 'app/(dashboard)/empresas/[id]/estoque/producao/por-dia/page.tsx'
+const ROTA_CONSUMO = 'app/api/empresas/[id]/estoque/producao/ordens/[ordemId]/consumo/route.ts'
 const TELA_DA_PRODUCAO = 'app/(dashboard)/empresas/[id]/estoque/producao/page.tsx'
 
 describe('⭐⭐ o relatório TRADUZ — não calcula', () => {
@@ -129,11 +130,65 @@ describe('⭐⭐ e a maçaneta existe (a família que esta casa pagou 11 vezes)'
     }
   })
 
-  it('⛔ clicar na linha abre a ORDEM (o pedido do dono), nos dois viewports', () => {
+  /**
+   * ⚠️⚠️ **ESTE TESTE FOI REAPONTADO EM 04/10 PORQUE O GESTO MUDOU POR PEDIDO DO DONO — ele
+   * ficou vermelho COM A TELA CERTA.** A versão anterior afirmava *"clicar na linha NAVEGA pra
+   * ordem"*; o dono pediu *"clicar na linha EXPANDE embaixo dela o bloco «o que saiu do estoque
+   * pra esta ordem»"*.
+   *
+   * ⭐ **A régua que continua mordendo é a que importa: a ORDEM continua ALCANÇÁVEL da linha, nos
+   * DOIS viewports** — agora pelo *"abrir a ordem →"* dentro do bloco que abre. Se alguém tirar o
+   * caminho pra ordem, isto fica vermelho igual; o que deixou de ser exigido é a FORMA (navegar
+   * no clique), não o destino. *Trocar um gesto não pode virar desculpa pra perder o destino.*
+   */
+  it('⭐ tocar a linha ABRE os produtos, e a ordem segue alcançável — nos dois viewports', () => {
     const tela = semComentario(ler(TELA))
-    // desktop: a linha da tabela navega
-    expect(tela).toMatch(/estoque\/producao\/\$\{l\.ordemId\}/)
-    // celular: o card é um <a> de verdade (não um div com onClick)
-    expect(tela).toMatch(/<a[\s\S]{0,200}estoque\/producao\/\$\{l\.ordemId\}/)
+
+    // o endereço da ordem tem UM dono na tela (href montado num lugar só)
+    expect(tela, 'o href da ordem precisa de um construtor único').toMatch(
+      /const ordemHref = \(ordemId: string\) => `\/empresas\/\$\{id\}\/estoque\/producao\/\$\{ordemId\}`/,
+    )
+
+    /**
+     * ⛔ DOIS usos de cada, um por composição (REGRA 12): o gesto que ABRE e o caminho que
+     * LEVA à ordem existem no desktop E no celular. Com um só, uma das duas telas perdeu
+     * metade do comportamento — e é exatamente a metade que ninguém testa no notebook.
+     */
+    const toques = tela.match(/alternar\(l\.ordemId\)/g) ?? []
+    expect(toques.length, 'o toque que abre tem que existir nas DUAS composições').toBe(2)
+
+    const caminhos = tela.match(/href=\{ordemHref\(l\.ordemId\)\}/g) ?? []
+    expect(caminhos.length, 'o caminho pra ordem tem que existir nas DUAS composições').toBe(2)
+
+    // e o bloco que recebe esse href desenha um <a> de verdade (não um div com onClick)
+    expect(tela).toMatch(/<a\s+href=\{href\}/)
+    expect(tela).toContain('abrir a ordem →')
+  })
+
+  /**
+   * ⭐⭐ O BLOCO QUE ABRE LÊ A MESMA FONTE DA TELA DA ORDEM — *"NUNCA recalcular por fora;
+   * REGRA 11: fonte paralela = vermelho"* (palavras do dono).
+   *
+   * ⛔ E o `✓` do rodapé sai do **`bate` do SERVIDOR**, nunca de uma comparação feita aqui: a
+   * tela não pode *"achar que bate"*. Medido em prod antes de escolher a fonte: `qtd × custo
+   * médio de HOJE` diverge do `custoLoteReal` em até **R$ 40,96** (5 de 12 ordens), enquanto o
+   * `custoTotal` congelado do ledger fecha a **R$ 0,01** — é por isso que a rota lê o ledger.
+   */
+  it('⛔⛔ o bloco do consumo NÃO soma nem confere nada — quem faz é o servidor', () => {
+    const tela = semComentario(ler(TELA))
+    const rota = semComentario(ler(ROTA_CONSUMO))
+
+    // a tela desenha o total e o veredito que vieram prontos
+    expect(tela).toMatch(/brl\(estado\.total\)/)
+    expect(tela).toMatch(/estado\.bate === true/)
+    // ⛔ nenhuma Σ própria do consumo na tela (a régua "a tela não soma", aplicada ao bloco novo)
+    expect(/reduce\(/.test(tela), 'a tela não soma: o total do bloco vem do servidor').toBe(false)
+
+    // e a rota lê o DONO ÚNICO do consumo, o mesmo que a tela de eficiência da ordem usa
+    expect(rota, 'a rota tem que chamar consumoDaOrdem').toContain('consumoDaOrdem(')
+    expect(
+      /stockMovement\.findMany/.test(rota),
+      'a rota não monta query própria de movimento — quem responde "o que consumiu" é consumoDaOrdem',
+    ).toBe(false)
   })
 })

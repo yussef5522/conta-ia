@@ -1,26 +1,37 @@
 'use client'
 
 /**
- * ⭐⭐⭐ RELATÓRIO DE PRODUÇÃO POR DIA — item 3 do dono (04/10/2026).
+ * ⭐⭐⭐ RELATÓRIO DE PRODUÇÃO POR DIA — VISUAL MERCURY/STRIPE (04/10/2026).
  *
- * **Pedido:** *"Calendário/período livre (como o Real×Teórico): escolho dia 25 do mês passado e
- * vejo POR ORDEM/RECEITA — pedido (UN) · separado do estoque (R$) · produzido real (UN) ·
- * eficiência % colorida · TEMPO de produção. Subtotais do dia e por receita no período. Clicar
- * na linha abre a ordem. Filtros: receita, setor, quem concluiu; chips casaBusca."*
+ * **Pedido do dono:** *"Mercury = calma editorial, Stripe = tabela financeira. Texto principal
+ * ESCURO de verdade, nada de cinza lavado; números em fonte TABULAR à direita; linhas separadas
+ * com respiro; eficiência em pílula; QUEM com avatar; TOTAL DO DIA no rodapé. Clicar na linha
+ * expande «o que saiu do estoque pra esta ordem»."*
  *
- * ⛔⛔ **A TELA SÓ CONTA A VERDADE — zero conta aqui.** Todo número vem de `relatorioPorDia`, que
- * traduz `lotesDaJanela` + a eficiência **CONGELADA** (a mesma coluna que o juiz P8 lê). A ordem
- * foi explícita: *"NENHUMA conta nova fora da porta (REGRA 11: paralela = vermelho)"*.
+ * ⛔⛔ **ZERO CONTA NOVA — a ordem foi literal: *"só vestir a tela que já existe"*.** Todo número
+ * vem de `relatorioPorDia` (que traduz `lotesDaJanela` + a eficiência CONGELADA do juiz P8) e o
+ * bloco que abre vem de `consumoDaOrdem` — o MESMO leitor que a tela de eficiência da ordem usa.
+ * ⚠️ É por isso que o **TOTAL DO DIA** desenha `d.produzido`/`d.separadoReais`/`d.eficienciaMedia`
+ * do SERVIDOR em vez de somar as linhas aqui: Σ na tela seria a segunda derivação, e o rodapé
+ * passaria a poder dizer um número que as linhas acima não somam.
  *
- * ⚠️ Tokens do RADAR (a casa tem UMA paleta), zebra, chips, e as DUAS composições — tabela no
- * desktop, cards no celular (REGRA 12).
+ * ⭐ **TOKENS NUM LUGAR SÓ, e ESCOPADOS:** o `[data-tela='producao-por-dia']` do `globals.css`
+ * declara `--prod-*` com os valores do RADAR (uma paleta) **e um espelho escuro**. Escopado
+ * porque o dark global é sprint próprio (decisão de 20/09: `darkMode:['class']` e ninguém liga a
+ * classe) — pintar app-wide aqui mudaria 107 arquivos sem ninguém pedir.
+ *
+ * ⚠️ Esta tela SAI do `density-normal` de propósito (o dono especificou o respiro dela: ~13px e
+ * divisória de 1px). O CSS global segue intocado — aqui só não se consome, como a Mesa v2.
  */
 
-import { useCallback, useEffect, useMemo, useState, use } from 'react'
-import { RADAR } from '@/components/estoque/radar-tokens'
+import { Fragment, useCallback, useEffect, useMemo, useState, use } from 'react'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { casaBusca } from '@/lib/busca-texto'
+import { formatBRL } from '@/lib/format/money'
+import { formatarQtd } from '@/lib/stock/quantidade'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
+import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
+import { faixaDoSelo } from '@/lib/stock/producao/eficiencia-da-ordem'
 import { BarChart3, ChevronRight, Loader2, Search, X } from 'lucide-react'
 
 /**
@@ -33,6 +44,7 @@ import { BarChart3, ChevronRight, Loader2, Search, X } from 'lucide-react'
 import type { Quantidade } from '@/lib/stock/producao/desempenho'
 // ⭐ a frase do pedido tem DONO: "pedido 0" leria como "pedi zero" (achado na prova em prod)
 import { textoDoPedido } from '@/lib/stock/producao/relatorio-por-dia'
+
 interface Linha {
   ordemId: string; dia: string; tarefa: string; unidade: string
   pedido: number | null; produzido: number; pctDoPedido: number | null
@@ -45,6 +57,7 @@ interface Dia {
   dia: string; lotes: number; pedido: Quantidade; produzido: Quantidade; semPedido: number
   eficienciaMedia: number | null; lotesComEficiencia: number; separadoReais: number
   minutos: number | null; semTempo: number; relampagos: number
+  setores: string[]; encerrouAs: string | null
 }
 interface PorReceita {
   tarefa: string; unidade: string; lotes: number; pedido: Quantidade; produzido: Quantidade
@@ -57,6 +70,16 @@ interface Payload {
   filtros: { tarefas: string[]; setores: string[]; pessoas: string[] }
 }
 
+/** o payload do bloco que abre — ⛔ a soma e o "bate" vêm do SERVIDOR, não daqui */
+interface ConsumoLinha {
+  itemId: string; nome: string; unidade: string
+  quantidade: number; custoUnitario: number | null; custoTotal: number
+}
+interface Consumo {
+  ordemId: string; linhas: ConsumoLinha[]; total: number
+  custoLoteReal: number | null; bate: boolean | null; vazio: boolean
+}
+
 const PILULAS = [
   { chave: 'HOJE', rotulo: 'hoje', dias: 0 },
   { chave: 'SETE', rotulo: '7 dias', dias: -6 },
@@ -64,23 +87,135 @@ const PILULAS = [
 ] as const
 type Chave = (typeof PILULAS)[number]['chave'] | 'LIVRE'
 
-const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
-const qtd = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 4 }))
 const dia = (iso: string) => iso.split('-').reverse().join('/')
 /** ⚠️ `null` é "não dá pra dizer", nunca "0 min" — a régua do tempo medido (13/09) */
 const min = (m: number | null) => (m == null ? 'a apurar' : m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m}min`)
+/** ⛔ dinheiro pelo formatador da casa — `formatBRL` já traz o R$ (a cicatriz do "R$ R$") */
+const brl = (n: number | null) => (n == null ? '—' : formatBRL(n))
 
 /**
- * ⭐ O TOM DA EFICIÊNCIA — os MESMOS degraus do bloco da ordem e do juiz P8 (±15%).
- * ⛔ `null` é cinza com "a apurar": pintar de verde o que ninguém mediu seria afirmar que bateu.
+ * ⭐⭐ O SELO DA EFICIÊNCIA — a tela **só pinta**; quem decide o degrau é `faixaDoSelo`, que lê
+ * as duas constantes da casa (`DESVIO_ALERTA` do P8/P3 e o `DESVIO_GRAVE` do P3).
+ *
+ * ⚠️⚠️ **MUDANÇA DELIBERADA vs 03/10, com o motivo escrito:** naquele dia o ACIMA era AZUL
+ * (*"render acima do prometido não é prejuízo — é ficha generosa"*). O dono pediu agora
+ * **VERMELHO com ⚠ nos extremos**, citando os *205% do frango frito* — e ele está certo pro
+ * extremo: 205% não é generosidade da ficha, é a quantidade declarada não fechando com o
+ * consumo (foi exatamente o que as 2 conclusões outlier de 27 e 29/09 mostraram). O
+ * **moderado acima** (115–125%) fica ÂMBAR, não vermelho: ali ainda cabe perda de trim.
+ * ⛔ O **e-mail do P8 não mudou** — ele segue alertando só o lado de baixo; o que mudou é a cor.
  */
-function tomDaEficiencia(pct: number | null) {
-  if (pct == null) return { bg: RADAR.mudoBg, cor: RADAR.mudo, texto: 'a apurar' }
-  const n = Math.round(pct * 100)
-  if (n < 85) return { bg: RADAR.coralBg, cor: RADAR.coral, texto: `${n}%` }
-  // ⭐ ACIMA é AZUL, não vermelho: render acima do prometido não é prejuízo — é ficha generosa
-  if (n > 115) return { bg: RADAR.azulBg, cor: RADAR.azul, texto: `${n}%` }
-  return { bg: RADAR.verdeBg, cor: RADAR.verde, texto: `${n}%` }
+function selo(pct: number | null) {
+  const faixa = faixaDoSelo(pct == null ? null : pct * 100)
+  if (faixa === 'SEM_PEDIDO') return { bg: 'var(--prod-mudo-bg)', cor: 'var(--prod-mudo)', texto: 'a apurar' }
+  const n = `${Math.round(pct! * 100)}%`
+  if (faixa === 'DENTRO') return { bg: 'var(--prod-verde-bg)', cor: 'var(--prod-verde)', texto: n }
+  if (faixa === 'FORA') return { bg: 'var(--prod-ambar-bg)', cor: 'var(--prod-ambar)', texto: n }
+  return { bg: 'var(--prod-coral-bg)', cor: 'var(--prod-coral)', texto: `⚠ ${n}` }
+}
+
+function Pilula({ pct }: { pct: number | null }) {
+  const s = selo(pct)
+  return (
+    <span className="num inline-flex rounded-full px-2.5 py-[3px] text-[12.5px] font-semibold" style={{ background: s.bg, color: s.cor }}>
+      {s.texto}
+    </span>
+  )
+}
+
+/** o cabeçalho de coluna — o único lugar onde maiúscula com tracking é bem-vinda */
+function Th({ children, dir = 'right' }: { children: React.ReactNode; dir?: 'left' | 'right' }) {
+  return (
+    <th
+      className={`px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide ${dir === 'left' ? 'text-left' : 'text-right'}`}
+      style={{ color: 'var(--prod-muted)' }}
+    >
+      {children}
+    </th>
+  )
+}
+
+/**
+ * ⭐⭐ "O QUE SAIU DO ESTOQUE PRA ESTA ORDEM" — o bloco que a linha abre (padrão Stripe).
+ *
+ * ⛔ **Ele NÃO busca nada.** Recebe o estado já carregado por prop e desenha. É deliberado: um
+ * `useEffect` que busca dentro de componente que nasce a cada render é a bomba do laço de
+ * 20 req/s de 14/09 — aqui a busca é do GESTO (o toque que abre), nunca de dependência.
+ *
+ * ⚠️ E a soma do rodapé é a **do servidor** (`total`), com o `bate` já resolvido lá: a tela não
+ * tem como *"achar que bate"*. Recalcular aqui seria a fonte paralela que a ordem proíbe.
+ */
+function BlocoDoConsumo({ estado, href }: { estado: Consumo | null | 'carregando'; href: string }) {
+  if (estado === 'carregando') {
+    return (
+      <p className="flex items-center gap-2 px-3 py-3 text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> lendo o que saiu do estoque…
+      </p>
+    )
+  }
+  if (estado === null) {
+    return (
+      <p className="px-3 py-3 text-[12.5px]" style={{ color: 'var(--prod-ambar)' }}>
+        Não consegui carregar o que saiu do estoque desta ordem. Toque de novo pra tentar.
+      </p>
+    )
+  }
+  return (
+    <div className="px-3 py-3">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
+        O que saiu do estoque pra esta ordem
+      </p>
+
+      {/* ⚠️ ordem sem consumo lançado NÃO é "R$ 0,00" — é ordem que ainda não consumiu nada */}
+      {estado.vazio ? (
+        <p className="text-[12.5px]" style={{ color: 'var(--prod-secondary)' }}>
+          Nenhum consumo lançado nesta ordem.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[420px]">
+            <thead>
+              <tr>
+                <Th dir="left">produto</Th>
+                <Th>quantidade</Th>
+                <Th>custo médio</Th>
+                <Th>total</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {estado.linhas.map((c) => (
+                <tr key={c.itemId} style={{ borderTop: '1px solid var(--prod-line)' }}>
+                  <td className="px-3 py-2 text-[12.5px]" style={{ color: 'var(--prod-secondary)' }}>{c.nome}</td>
+                  {/* ⛔ a quantidade na unidade DO ITEM, pelo formatador da casa (KG<1 vira grama) */}
+                  <td className="num px-3 py-2 text-right text-[12.5px]" style={{ color: 'var(--prod-secondary)' }}>
+                    {formatarQtd(c.quantidade, c.unidade)}
+                  </td>
+                  <td className="num px-3 py-2 text-right text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>{brl(c.custoUnitario)}</td>
+                  <td className="num px-3 py-2 text-right text-[12.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>{brl(c.custoTotal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1" style={{ borderTop: '1px solid var(--prod-line-strong)', paddingTop: 8 }}>
+        <p className="num text-[12.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
+          {estado.linhas.length} {estado.linhas.length === 1 ? 'produto' : 'produtos'} · {brl(estado.total)}
+          {/* ⭐ o ✓ sai do `bate` do SERVIDOR, conferido contra o custoLoteReal da conclusão */}
+          {estado.bate === true && <span className="ml-1" style={{ color: 'var(--prod-verde)' }}>✓</span>}
+        </p>
+        {estado.bate === false && (
+          <p className="num text-[12px]" style={{ color: 'var(--prod-ambar)' }}>
+            difere do «saiu do estoque» da ordem ({brl(estado.custoLoteReal)}) — vale conferir
+          </p>
+        )}
+        <a href={href} className="ml-auto text-[12.5px] font-medium underline" style={{ color: 'var(--prod-accent)' }}>
+          abrir a ordem →
+        </a>
+      </div>
+    </div>
+  )
 }
 
 export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: string }> }) {
@@ -95,6 +230,12 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
   const [abrirTarefas, setAbrirTarefas] = useState(false)
   const [buscaTarefa, setBuscaTarefa] = useState('')
   const [data, setData] = useState<Payload | null | undefined>(undefined)
+  /**
+   * ⚠️ **O estado NÃO PERSISTE, por pedido do dono** (*"abre fechada"*) — e várias podem estar
+   * abertas ao mesmo tempo, então é um mapa, não um id só.
+   */
+  const [abertas, setAbertas] = useState<Record<string, boolean>>({})
+  const [consumo, setConsumo] = useState<Record<string, Consumo | null | 'carregando'>>({})
 
   const aplicarPilula = (c: typeof PILULAS[number]) => {
     setChave(c.chave)
@@ -115,6 +256,23 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
 
   useEffect(() => { void carregar() }, [carregar])
 
+  /**
+   * ⭐ O TOGGLE — busca **sob demanda**, e só na 1ª abertura (o resultado fica em cache no
+   * estado). ⛔ Carregar o consumo das 364 ordens junto do relatório é como o badge virou
+   * 1,3 s em 11/09.
+   * ⚠️ Falha anterior é re-tentada: `null` em cache voltaria a mostrar o erro pra sempre.
+   */
+  const alternar = useCallback((ordemId: string) => {
+    setAbertas((a) => ({ ...a, [ordemId]: !a[ordemId] }))
+    setConsumo((c) => {
+      if (c[ordemId] && c[ordemId] !== null) return c
+      void fetchComTimeout<Consumo>(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/consumo`)
+        .then((r) => setConsumo((p) => ({ ...p, [ordemId]: r.ok ? r.data! : null })))
+        .catch(() => setConsumo((p) => ({ ...p, [ordemId]: null })))
+      return { ...c, [ordemId]: 'carregando' }
+    })
+  }, [id])
+
   /** ⭐ a busca da casa: palavra em qualquer ordem, sem caixa e sem acento (08/09) */
   const tarefasFiltradas = useMemo(
     // ⚠️ `casaBusca(texto, termo)` — o NOME da receita é o palheiro, o digitado é a agulha.
@@ -129,49 +287,62 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
     return m
   }, [data?.linhas])
 
+  const ordemHref = (ordemId: string) => `/empresas/${id}/estoque/producao/${ordemId}`
+
   return (
-    <div style={{ background: RADAR.bg }} className="-mx-4 -my-6 min-h-screen px-4 py-6 lg:-mx-6 lg:px-6">
+    <div
+      data-tela="producao-por-dia"
+      style={{ background: 'var(--prod-bg)' }}
+      className="-mx-4 -my-6 min-h-screen px-4 py-6 lg:-mx-6 lg:px-6"
+    >
       {/* ── cabeçalho ───────────────────────────────────────────────────────── */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <BarChart3 className="h-5 w-5 shrink-0" style={{ color: RADAR.roxo }} />
-        <h1 className="text-[15px] font-bold" style={{ color: RADAR.ink }}>Produção por dia</h1>
-        <p className="hidden flex-1 truncate text-[12px] lg:block" style={{ color: RADAR.sub }}>
-          pedido · o que saiu do estoque · produzido · eficiência · tempo — por ordem e por receita
+        <BarChart3 className="h-5 w-5 shrink-0" style={{ color: 'var(--prod-accent)' }} />
+        <h1 className="text-[15px] font-semibold" style={{ color: 'var(--prod-primary)' }}>Produção por dia</h1>
+        <p className="hidden flex-1 truncate text-[12px] lg:block" style={{ color: 'var(--prod-muted)' }}>
+          pedido · o que saiu do estoque · produzido · eficiência · tempo — toque na linha pra ver os produtos
         </p>
       </div>
 
       {/* ── filtros ─────────────────────────────────────────────────────────── */}
-      <div className="mb-3 flex flex-wrap items-center gap-1.5 rounded-[14px] p-2" style={{ background: RADAR.card }}>
+      <div
+        className="mb-4 flex flex-wrap items-center gap-1.5 rounded-[14px] p-2"
+        style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}
+      >
         {PILULAS.map((p) => (
           <button
             key={p.chave}
             onClick={() => aplicarPilula(p)}
-            className="h-8 rounded-full px-3 text-[12.5px] font-bold"
-            style={chave === p.chave ? { background: RADAR.roxo, color: '#fff' } : { background: RADAR.bg, color: RADAR.sub }}
+            className="h-8 rounded-full px-3 text-[12.5px] font-semibold"
+            style={chave === p.chave
+              ? { background: 'var(--prod-accent)', color: '#fff' }
+              : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
           >
             {p.rotulo}
           </button>
         ))}
         {/* ⭐ período LIVRE — *"escolho dia 25 do mês passado"* (o calendário do Real×Teórico) */}
-        <div className="flex items-center gap-1 rounded-full px-2.5 py-1" style={{ background: chave === 'LIVRE' ? RADAR.roxoBg : RADAR.bg }}>
+        <div className="flex items-center gap-1 rounded-full px-2.5 py-1" style={{ background: chave === 'LIVRE' ? 'var(--prod-surface-2)' : 'var(--prod-surface-1)' }}>
           <input
             type="date" value={de} max={hojeBR}
             onChange={(e) => { setDe(e.target.value); setChave('LIVRE') }}
-            className="h-6 bg-transparent text-[12px] font-semibold outline-none" style={{ color: RADAR.ink }}
+            className="num h-6 bg-transparent text-[12px] font-medium outline-none" style={{ color: 'var(--prod-primary)' }}
           />
-          <span className="text-[11px]" style={{ color: RADAR.sub }}>até</span>
+          <span className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>até</span>
           <input
             type="date" value={ate} max={hojeBR}
             onChange={(e) => { setAte(e.target.value); setChave('LIVRE') }}
-            className="h-6 bg-transparent text-[12px] font-semibold outline-none" style={{ color: RADAR.ink }}
+            className="num h-6 bg-transparent text-[12px] font-medium outline-none" style={{ color: 'var(--prod-primary)' }}
           />
         </div>
 
         {/* receita (chips com busca) */}
         <button
           onClick={() => setAbrirTarefas((v) => !v)}
-          className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-[12.5px] font-bold"
-          style={tarefa ? { background: RADAR.roxo, color: '#fff' } : { background: RADAR.bg, color: RADAR.sub }}
+          className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-[12.5px] font-semibold"
+          style={tarefa
+            ? { background: 'var(--prod-accent)', color: '#fff' }
+            : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
         >
           <Search className="h-3.5 w-3.5" /> {tarefa ?? 'receita'}
         </button>
@@ -182,8 +353,10 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
         {(data?.filtros.setores.length ?? 0) > 0 && (
           <select
             value={setor ?? ''} onChange={(e) => setSetor(e.target.value || null)}
-            className="h-8 rounded-full px-3 text-[12.5px] font-bold outline-none"
-            style={setor ? { background: RADAR.roxo, color: '#fff' } : { background: RADAR.bg, color: RADAR.sub }}
+            className="h-8 rounded-full px-3 text-[12.5px] font-semibold outline-none"
+            style={setor
+              ? { background: 'var(--prod-accent)', color: '#fff' }
+              : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
           >
             <option value="">setor</option>
             {data!.filtros.setores.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -192,8 +365,10 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
         {(data?.filtros.pessoas.length ?? 0) > 0 && (
           <select
             value={quem ?? ''} onChange={(e) => setQuem(e.target.value || null)}
-            className="h-8 rounded-full px-3 text-[12.5px] font-bold outline-none"
-            style={quem ? { background: RADAR.roxo, color: '#fff' } : { background: RADAR.bg, color: RADAR.sub }}
+            className="h-8 rounded-full px-3 text-[12.5px] font-semibold outline-none"
+            style={quem
+              ? { background: 'var(--prod-accent)', color: '#fff' }
+              : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
           >
             <option value="">quem concluiu</option>
             {data!.filtros.pessoas.map((p) => <option key={p} value={p}>{p}</option>)}
@@ -203,7 +378,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
           <button
             onClick={() => { setTarefa(null); setSetor(null); setQuem(null) }}
             className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[12px]"
-            style={{ background: RADAR.bg, color: RADAR.sub }}
+            style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
           >
             <X className="h-3.5 w-3.5" /> limpar
           </button>
@@ -211,26 +386,28 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
       </div>
 
       {abrirTarefas && (
-        <div className="mb-3 rounded-[14px] p-2.5" style={{ background: RADAR.card }}>
+        <div className="mb-4 rounded-[14px] p-2.5" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
           <input
             value={buscaTarefa} onChange={(e) => setBuscaTarefa(e.target.value)}
             placeholder="buscar receita… (ex: coxao porcao)"
             className="mb-2 h-8 w-full rounded-lg px-2.5 text-[12.5px] outline-none"
-            style={{ background: RADAR.bg, color: RADAR.ink }}
+            style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }}
           />
           <div className="flex flex-wrap gap-1.5">
             {tarefasFiltradas.map((t) => (
               <button
                 key={t}
                 onClick={() => { setTarefa(t === tarefa ? null : t); setAbrirTarefas(false) }}
-                className="rounded-full px-2.5 py-1 text-[12px] font-semibold"
-                style={t === tarefa ? { background: RADAR.roxo, color: '#fff' } : { background: RADAR.bg, color: RADAR.sub }}
+                className="rounded-full px-2.5 py-1 text-[12px] font-medium"
+                style={t === tarefa
+                  ? { background: 'var(--prod-accent)', color: '#fff' }
+                  : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
               >
                 {t}
               </button>
             ))}
             {!tarefasFiltradas.length && (
-              <p className="text-[12px]" style={{ color: RADAR.sub }}>
+              <p className="text-[12px]" style={{ color: 'var(--prod-muted)' }}>
                 nada com «{buscaTarefa}» entre as {data?.filtros.tarefas.length ?? 0} receitas que produziram neste período
               </p>
             )}
@@ -239,24 +416,24 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
       )}
 
       {data === undefined && (
-        <p className="flex items-center gap-2 text-[13px]" style={{ color: RADAR.sub }}>
+        <p className="flex items-center gap-2 text-[13px]" style={{ color: 'var(--prod-muted)' }}>
           <Loader2 className="h-4 w-4 animate-spin" /> lendo a produção…
         </p>
       )}
       {/* ⛔ erro e vazio NUNCA juntos: sem a carga, o sistema não SABE se está vazio (09/09) */}
       {data === null && (
-        <div className="rounded-[14px] p-4" style={{ background: RADAR.ambarBg }}>
-          <p className="text-[13px]" style={{ color: RADAR.ambar }}>Não consegui carregar o relatório.</p>
-          <button onClick={() => void carregar()} className="mt-1 text-[12px] underline" style={{ color: RADAR.ambar }}>
+        <div className="rounded-[14px] p-4" style={{ background: 'var(--prod-ambar-bg)' }}>
+          <p className="text-[13px]" style={{ color: 'var(--prod-ambar)' }}>Não consegui carregar o relatório.</p>
+          <button onClick={() => void carregar()} className="mt-1 text-[12px] underline" style={{ color: 'var(--prod-ambar)' }}>
             tentar de novo
           </button>
         </div>
       )}
       {/* ⚠️ o vazio DIZ o recorte — "sem produção" seco faria o dono achar que o dado sumiu */}
       {data && data.vazio && (
-        <div className="rounded-[14px] p-6 text-center" style={{ background: RADAR.card }}>
-          <p className="text-[13px] font-semibold" style={{ color: RADAR.ink }}>Sem produção neste recorte.</p>
-          <p className="mt-1 text-[12px]" style={{ color: RADAR.sub }}>
+        <div className="rounded-[14px] p-6 text-center" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
+          <p className="text-[13px] font-medium" style={{ color: 'var(--prod-primary)' }}>Sem produção neste recorte.</p>
+          <p className="mt-1 text-[12px]" style={{ color: 'var(--prod-muted)' }}>
             {dia(data.periodo.de)} a {dia(data.periodo.ate)}
             {tarefa ? ` · receita «${tarefa}»` : ''}{setor ? ` · setor ${setor}` : ''}{quem ? ` · concluído por ${quem}` : ''}
           </p>
@@ -266,50 +443,46 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
       {data && !data.vazio && (
         <>
           {/* ── por receita no período ─────────────────────────────────────── */}
-          <div className="mb-3 rounded-[14px] p-3" style={{ background: RADAR.card }}>
-            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide" style={{ color: RADAR.sub }}>
+          <div className="mb-4 rounded-[14px] p-3" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
               por receita · {dia(data.periodo.de)} a {dia(data.periodo.ate)}
             </p>
             <div className="overflow-x-auto">
-              <table className="density-normal w-full">
+              <table className="w-full min-w-[640px]">
                 <thead>
                   <tr>
-                    {['receita', 'lotes', 'pedido', 'produzido', '% do pedido', 'eficiência', 'tempo/lote', 'saiu do estoque'].map((h, i) => (
-                      <th key={h} className={`px-2 py-1.5 text-[11px] uppercase tracking-wide ${i === 0 ? 'text-left' : 'text-right'}`} style={{ color: RADAR.sub }}>{h}</th>
-                    ))}
+                    <Th dir="left">receita</Th>
+                    <Th>lotes</Th><Th>pedido</Th><Th>produzido</Th>
+                    <Th>% do pedido</Th><Th>eficiência</Th><Th>tempo/lote</Th><Th>saiu do estoque</Th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.porReceita.map((r, i) => {
-                    const ef = tomDaEficiencia(r.eficienciaMedia)
-                    return (
-                      <tr key={r.tarefa} style={{ background: i % 2 === 1 ? RADAR.bg : undefined }}>
-                        <td className="px-2 py-0 text-[13px] font-medium" style={{ color: RADAR.ink }}>
-                          {r.tarefa}
-                          {r.semPedido > 0 && (
-                            <span className="ml-1.5 text-[11px]" style={{ color: RADAR.sub }}>
-                              ({r.semPedido} sem pedido registrado)
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>{r.lotes}</td>
-                        {/* ⛔ a frase vem do servidor (`somarQuantidades`): UN e KG nunca viram um número só */}
-                        <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>{textoDoPedido(r.pedido, r.semPedido, r.lotes)}</td>
-                        <td className="px-2 py-0 text-right text-[13px] font-medium tabular-nums" style={{ color: RADAR.ink }}>{r.produzido.texto}</td>
-                        <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>
-                          {r.pctMedio == null ? 'sem pedido' : `${Math.round(r.pctMedio)}%`}
-                        </td>
-                        <td className="px-2 py-0 text-right">
-                          <span className="inline-flex rounded-full px-2 py-0.5 text-[12px] font-bold tabular-nums" style={{ background: ef.bg, color: ef.cor }}>{ef.texto}</span>
-                        </td>
-                        <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>
-                          {min(r.minutosPorLote)}
-                          {r.semTempo > 0 && <span className="ml-1 text-[11px]">({r.semTempo} sem tempo)</span>}
-                        </td>
-                        <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>{brl(r.separadoReais)}</td>
-                      </tr>
-                    )
-                  })}
+                  {data.porReceita.map((r) => (
+                    <tr key={r.tarefa} style={{ borderTop: '1px solid var(--prod-line)' }} className="hover:bg-[var(--prod-surface-1)]">
+                      <td className="px-3 py-[13px] text-[13.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
+                        {r.tarefa}
+                        {/* ⚠️ "sem pedido" em MUTED — informação de ordem antiga não grita */}
+                        {r.semPedido > 0 && (
+                          <span className="ml-1.5 text-[11.5px] font-normal" style={{ color: 'var(--prod-muted)' }}>
+                            ({r.semPedido} sem pedido)
+                          </span>
+                        )}
+                      </td>
+                      <td className="num px-3 py-[13px] text-right text-[13px]" style={{ color: 'var(--prod-secondary)' }}>{r.lotes}</td>
+                      {/* ⛔ a frase vem do servidor (`somarQuantidades`): UN e KG nunca viram um número só */}
+                      <td className="num px-3 py-[13px] text-right text-[13px]" style={{ color: 'var(--prod-secondary)' }}>{textoDoPedido(r.pedido, r.semPedido, r.lotes)}</td>
+                      <td className="num px-3 py-[13px] text-right text-[13px] font-medium" style={{ color: 'var(--prod-primary)' }}>{r.produzido.texto}</td>
+                      <td className="num px-3 py-[13px] text-right text-[13px]" style={{ color: 'var(--prod-secondary)' }}>
+                        {r.pctMedio == null ? 'sem pedido' : `${Math.round(r.pctMedio)}%`}
+                      </td>
+                      <td className="px-3 py-[13px] text-right"><Pilula pct={r.eficienciaMedia} /></td>
+                      <td className="num px-3 py-[13px] text-right text-[13px]" style={{ color: 'var(--prod-secondary)' }}>
+                        {min(r.minutosPorLote)}
+                        {r.semTempo > 0 && <span className="ml-1 text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>({r.semTempo} sem tempo)</span>}
+                      </td>
+                      <td className="num px-3 py-[13px] text-right text-[13px]" style={{ color: 'var(--prod-secondary)' }}>{brl(r.separadoReais)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -317,97 +490,170 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
 
           {/* ── dia por dia ────────────────────────────────────────────────── */}
           {data.dias.map((d) => (
-            <div key={d.dia} className="mb-3 rounded-[14px] p-3" style={{ background: RADAR.card }}>
-              {/* subtotal do dia */}
-              <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <p className="text-[14px] font-bold" style={{ color: RADAR.ink }}>{dia(d.dia)}</p>
-                <p className="text-[12px]" style={{ color: RADAR.sub }}>
-                  {d.lotes} {d.lotes === 1 ? 'ordem' : 'ordens'} · pedido {textoDoPedido(d.pedido, d.semPedido, d.lotes)} · produziu {d.produzido.texto}
-                  {d.semPedido > 0 && ` · ${d.semPedido} sem pedido registrado`}
-                </p>
-                <span className="inline-flex rounded-full px-2 py-0.5 text-[12px] font-bold tabular-nums"
-                  style={{ background: tomDaEficiencia(d.eficienciaMedia).bg, color: tomDaEficiencia(d.eficienciaMedia).cor }}>
-                  {tomDaEficiencia(d.eficienciaMedia).texto}
-                  {d.lotesComEficiencia > 0 && d.lotesComEficiencia < d.lotes && (
-                    <span className="ml-1 font-normal">de {d.lotesComEficiencia} de {d.lotes}</span>
+            <div key={d.dia} className="mb-4 rounded-[14px] p-3" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
+              {/**
+                * ⭐⭐ CABEÇALHO DO DIA (Mercury): data GRANDE e ESCURA, subtítulo com o contexto,
+                * e os 3 cartões de resumo em fundo surface SUAVE, SEM borda — o pedido do dono.
+                */}
+              <div className="mb-3">
+                <p className="num text-[22px] font-medium leading-tight" style={{ color: 'var(--prod-primary)' }}>{dia(d.dia)}</p>
+                <p className="mt-0.5 text-[12px]" style={{ color: 'var(--prod-muted)' }}>
+                  {d.lotes} {d.lotes === 1 ? 'ordem' : 'ordens'}
+                  {d.setores.length > 0 && ` · ${d.setores.join(', ')}`}
+                  {d.encerrouAs && ` · encerrou às ${d.encerrouAs}`}
+                  {d.semPedido > 0 && (
+                    <span style={{ color: 'var(--prod-muted)' }}> · {d.semPedido} sem pedido</span>
                   )}
-                </span>
-                <p className="ml-auto text-[12px] tabular-nums" style={{ color: RADAR.sub }}>
-                  saiu do estoque {brl(d.separadoReais)} · {min(d.minutos)}
-                  {d.relampagos > 0 && ` · ${d.relampagos} registro(s) retroativo(s), fora do tempo`}
                 </p>
+
+                <div className="mt-2.5 grid grid-cols-3 gap-2">
+                  {/* ⛔ os 3 cartões leem o subtotal DO SERVIDOR — nenhuma Σ nasce aqui */}
+                  <div className="rounded-xl px-3 py-2" style={{ background: 'var(--prod-surface-1)' }}>
+                    <p className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>produzido</p>
+                    <p className="num mt-0.5 text-[15px] font-medium" style={{ color: 'var(--prod-primary)' }}>{d.produzido.texto}</p>
+                  </div>
+                  <div className="rounded-xl px-3 py-2" style={{ background: 'var(--prod-surface-1)' }}>
+                    <p className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>saiu do estoque</p>
+                    <p className="num mt-0.5 text-[15px] font-medium" style={{ color: 'var(--prod-primary)' }}>{brl(d.separadoReais)}</p>
+                  </div>
+                  <div className="rounded-xl px-3 py-2" style={{ background: 'var(--prod-surface-1)' }}>
+                    <p className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>eficiência</p>
+                    <div className="mt-0.5"><Pilula pct={d.eficienciaMedia} /></div>
+                    {d.lotesComEficiencia > 0 && d.lotesComEficiencia < d.lotes && (
+                      <p className="num mt-0.5 text-[10.5px]" style={{ color: 'var(--prod-muted)' }}>de {d.lotesComEficiencia} de {d.lotes}</p>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* ─── DESKTOP: tabela ─── */}
               <div className="hidden overflow-x-auto lg:block">
-                <table className="density-normal w-full">
+                <table className="w-full min-w-[820px]">
                   <thead>
                     <tr>
-                      {['receita', 'pedido', 'produzido', '%', 'eficiência', 'tempo', 'saiu do estoque', 'quem', ''].map((h, i) => (
-                        <th key={h + i} className={`px-2 py-1.5 text-[11px] uppercase tracking-wide ${i === 0 ? 'text-left' : 'text-right'}`} style={{ color: RADAR.sub }}>{h}</th>
-                      ))}
+                      <Th dir="left">receita</Th>
+                      <Th>pedido</Th><Th>produzido</Th><Th>eficiência</Th><Th>tempo</Th><Th>saiu do estoque</Th>
+                      <Th dir="left">quem</Th>
+                      <Th> </Th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(linhasPorDia.get(d.dia) ?? []).map((l, i) => {
-                      const ef = tomDaEficiencia(l.eficiencia)
-                      return (
+                    {(linhasPorDia.get(d.dia) ?? []).map((l) => (
+                      <Fragment key={l.ordemId}>
                         <tr
-                          key={l.ordemId}
-                          onClick={() => { window.location.href = `/empresas/${id}/estoque/producao/${l.ordemId}` }}
-                          className="cursor-pointer hover:brightness-[0.98]"
-                          style={{ background: i % 2 === 1 ? RADAR.bg : undefined }}
+                          onClick={() => alternar(l.ordemId)}
+                          className="cursor-pointer hover:bg-[var(--prod-surface-1)]"
+                          style={{ borderTop: '1px solid var(--prod-line)' }}
+                          aria-expanded={!!abertas[l.ordemId]}
                         >
-                          <td className="px-2 py-0 text-[13px] font-medium" style={{ color: RADAR.ink }}>{l.tarefa}</td>
-                          <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>
-                            {l.pedido == null ? 'sem pedido' : `${qtd(l.pedido)} ${l.unidade}`}
+                          <td className="px-3 py-[13px] text-[13.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>{l.tarefa}</td>
+                          <td className="num px-3 py-[13px] text-right text-[13px]" style={{ color: l.pedido == null ? 'var(--prod-muted)' : 'var(--prod-secondary)' }}>
+                            {l.pedido == null ? 'sem pedido' : formatarQtd(l.pedido, l.unidade)}
                           </td>
-                          <td className="px-2 py-0 text-right text-[13px] font-medium tabular-nums" style={{ color: RADAR.ink }}>{qtd(l.produzido)} {l.unidade}</td>
-                          <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>
-                            {l.pctDoPedido == null ? '—' : `${l.pctDoPedido}%`}
-                          </td>
-                          <td className="px-2 py-0 text-right">
-                            <span className="inline-flex rounded-full px-2 py-0.5 text-[12px] font-bold tabular-nums" style={{ background: ef.bg, color: ef.cor }}>{ef.texto}</span>
-                          </td>
-                          <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>
+                          <td className="num px-3 py-[13px] text-right text-[13px] font-medium" style={{ color: 'var(--prod-primary)' }}>{formatarQtd(l.produzido, l.unidade)}</td>
+                          <td className="px-3 py-[13px] text-right"><Pilula pct={l.eficiencia} /></td>
+                          <td className="num px-3 py-[13px] text-right text-[13px]" style={{ color: 'var(--prod-secondary)' }}>
                             {l.relampago ? 'retroativo' : min(l.minutos)}
                           </td>
-                          <td className="px-2 py-0 text-right text-[13px] tabular-nums" style={{ color: RADAR.sub }}>{brl(l.separadoReais)}</td>
-                          <td className="px-2 py-0 text-right text-[13px]" style={{ color: RADAR.sub }}>{l.quemConcluiu ?? '—'}</td>
-                          <td className="px-2 py-0 text-right"><ChevronRight className="h-4 w-4" style={{ color: RADAR.sub }} /></td>
+                          <td className="num px-3 py-[13px] text-right text-[13px]" style={{ color: 'var(--prod-secondary)' }}>{brl(l.separadoReais)}</td>
+                          <td className="px-3 py-[13px]"><AvatarPessoa nome={l.quemConcluiu} /></td>
+                          <td className="px-3 py-[13px] text-right">
+                            <ChevronRight
+                              className={`h-4 w-4 transition-transform ${abertas[l.ordemId] ? 'rotate-90' : ''}`}
+                              style={{ color: 'var(--prod-muted)' }}
+                            />
+                          </td>
                         </tr>
-                      )
-                    })}
+                        {abertas[l.ordemId] && (
+                          <tr style={{ background: 'var(--prod-surface-1)' }}>
+                            <td colSpan={8} className="p-0">
+                              <BlocoDoConsumo estado={consumo[l.ordemId] ?? 'carregando'} href={ordemHref(l.ordemId)} />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+
+                    {/**
+                      * ⭐⭐ TOTAL DO DIA — borda superior MAIS FORTE e números em peso 500.
+                      * ⛔ Ele desenha o subtotal **do servidor**, nunca uma Σ das linhas daqui: o
+                      * guard de sempre (*"a tela não soma"*) continua valendo, e é ele que garante
+                      * que o rodapé não possa divergir das linhas de cima.
+                      */}
+                    <tr style={{ borderTop: '2px solid var(--prod-line-strong)' }}>
+                      <td className="px-3 py-[13px] text-[12.5px] font-medium uppercase tracking-wide" style={{ color: 'var(--prod-secondary)' }}>
+                        total do dia
+                      </td>
+                      <td className="num px-3 py-[13px] text-right text-[13px] font-medium" style={{ color: 'var(--prod-secondary)' }}>
+                        {textoDoPedido(d.pedido, d.semPedido, d.lotes)}
+                      </td>
+                      <td className="num px-3 py-[13px] text-right text-[13px] font-medium" style={{ color: 'var(--prod-primary)' }}>{d.produzido.texto}</td>
+                      <td className="px-3 py-[13px] text-right"><Pilula pct={d.eficienciaMedia} /></td>
+                      <td className="num px-3 py-[13px] text-right text-[13px] font-medium" style={{ color: 'var(--prod-secondary)' }}>
+                        {min(d.minutos)}
+                        {d.semTempo > 0 && <span className="ml-1 text-[11.5px] font-normal" style={{ color: 'var(--prod-muted)' }}>({d.semTempo} sem tempo)</span>}
+                      </td>
+                      <td className="num px-3 py-[13px] text-right text-[13px] font-medium" style={{ color: 'var(--prod-primary)' }}>{brl(d.separadoReais)}</td>
+                      <td colSpan={2} />
+                    </tr>
                   </tbody>
                 </table>
+                {d.relampagos > 0 && (
+                  <p className="px-3 pt-2 text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                    {d.relampagos} registro(s) retroativo(s) — contam na produção, fora do tempo.
+                  </p>
+                )}
               </div>
 
-              {/* ─── CELULAR: cards (REGRA 12 — composição própria, MESMOS dados) ─── */}
-              <div className="space-y-1.5 lg:hidden">
-                {(linhasPorDia.get(d.dia) ?? []).map((l) => {
-                  const ef = tomDaEficiencia(l.eficiencia)
-                  return (
-                    <a
-                      key={l.ordemId}
-                      href={`/empresas/${id}/estoque/producao/${l.ordemId}`}
-                      className="block rounded-xl p-2.5"
-                      style={{ background: RADAR.bg }}
+              {/**
+                * ─── CELULAR: cartões empilhados (REGRA 12) ───
+                * ⚠️ Composição própria, MESMOS dados e MESMO gesto: tocar abre os produtos igual.
+                * ⛔ *"nada de scroll lateral"* — é por isso que aqui não existe tabela.
+                */}
+              <div className="space-y-2 lg:hidden">
+                {(linhasPorDia.get(d.dia) ?? []).map((l) => (
+                  <div key={l.ordemId} className="rounded-xl" style={{ background: 'var(--prod-surface-1)' }}>
+                    <button
+                      onClick={() => alternar(l.ordemId)}
+                      className="w-full px-3 py-2.5 text-left"
+                      aria-expanded={!!abertas[l.ordemId]}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium" style={{ color: RADAR.ink }}>{l.tarefa}</span>
-                        <span className="shrink-0 rounded-full px-2 py-0.5 text-[12px] font-bold tabular-nums" style={{ background: ef.bg, color: ef.cor }}>{ef.texto}</span>
+                        <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>{l.tarefa}</span>
+                        <Pilula pct={l.eficiencia} />
+                        <ChevronRight
+                          className={`h-4 w-4 shrink-0 transition-transform ${abertas[l.ordemId] ? 'rotate-90' : ''}`}
+                          style={{ color: 'var(--prod-muted)' }}
+                        />
                       </div>
-                      <p className="mt-0.5 text-[12px] tabular-nums" style={{ color: RADAR.sub }}>
-                        {l.pedido == null ? 'sem pedido' : `pedido ${qtd(l.pedido)} ${l.unidade}`} · produziu {qtd(l.produzido)} {l.unidade}
-                        {l.pctDoPedido != null && ` · ${l.pctDoPedido}%`}
+                      <p className="num mt-1 text-[12.5px]" style={{ color: 'var(--prod-secondary)' }}>
+                        {l.pedido == null
+                          ? <span style={{ color: 'var(--prod-muted)' }}>sem pedido</span>
+                          : `pedido ${formatarQtd(l.pedido, l.unidade)}`} · produziu {formatarQtd(l.produzido, l.unidade)}
                       </p>
-                      <p className="text-[12px] tabular-nums" style={{ color: RADAR.sub }}>
+                      <p className="num text-[12.5px]" style={{ color: 'var(--prod-secondary)' }}>
                         {brl(l.separadoReais)} · {l.relampago ? 'retroativo' : min(l.minutos)}
-                        {l.quemConcluiu ? ` · ${l.quemConcluiu}` : ''}
                       </p>
-                    </a>
-                  )
-                })}
+                      <div className="mt-1"><AvatarPessoa nome={l.quemConcluiu} /></div>
+                    </button>
+                    {abertas[l.ordemId] && (
+                      <div style={{ background: 'var(--prod-surface)', borderTop: '1px solid var(--prod-line)' }} className="rounded-b-xl">
+                        <BlocoDoConsumo estado={consumo[l.ordemId] ?? 'carregando'} href={ordemHref(l.ordemId)} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* TOTAL DO DIA no celular — mesmo subtotal do servidor, destacado */}
+                <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--prod-surface-2)', borderTop: '2px solid var(--prod-line-strong)' }}>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-secondary)' }}>total do dia</p>
+                  <p className="num mt-0.5 text-[13px] font-medium" style={{ color: 'var(--prod-primary)' }}>
+                    {d.produzido.texto} · {brl(d.separadoReais)}
+                  </p>
+                  <p className="num text-[12px]" style={{ color: 'var(--prod-secondary)' }}>
+                    pedido {textoDoPedido(d.pedido, d.semPedido, d.lotes)} · {min(d.minutos)}
+                  </p>
+                </div>
               </div>
             </div>
           ))}

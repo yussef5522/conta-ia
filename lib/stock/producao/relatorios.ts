@@ -33,6 +33,16 @@ export interface Lote {
   dia: string
   /** ⭐ a unidade do que saiu — nenhuma soma atravessa unidades diferentes */
   unidade: string
+  /**
+   * ⭐ QUANDO a conclusão foi lançada (ISO) — é o `quando` que o reader JÁ calcula pra decidir
+   * o `dia`; só estava guardado pra ele. O relatório por dia usa pra dizer *"encerrou às HH:MM"*.
+   *
+   * ⚠️ OPCIONAL de propósito: campo obrigatório aqui quebraria toda fixture de `Lote` que
+   * existe, e nenhum leitor antigo precisa dele.
+   * ⚠️ Produção PARCIAL tem VÁRIAS conclusões no mesmo lote — este é o **1º lançamento**, o
+   * mesmo instante que datou o lote. Datar pelo último faria o lote poder trocar de DIA.
+   */
+  encerradoAs?: string
 }
 
 export interface PontoDoDia {
