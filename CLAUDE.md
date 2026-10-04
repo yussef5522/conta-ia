@@ -1815,7 +1815,26 @@ O servidor passou a devolver `selo: 'FICHA'` e a tela de produção só desenhav
 ⭐ P8: 385 lotes com julgamento congelado · 42 abaixo de 85%
 ```
 
-**874 arquivos · 11.276 verdes · TS 0 · deploy 4/4 (`uWgyFR7aCuVlfU3dgCtpq`, SHA `7911d58c`).** ⛔ **Zero escrita em prod.**
+### ⭐ A EFICIÊNCIA NA TELA — e o item 1 estava PELA METADE até eu conferir o bundle
+
+**Achado conferindo o bundle que prod serve:** a lib e o juiz P8 usavam `eficienciaDaOrdem` e **nenhuma tela desenhava** o *"pedi 10 · produziu 9"* com plano × real. **Lib sem tela é a porta sem maçaneta** — a família que este projeto mais paga. Entrou bloco na ordem CONCLUÍDA: % colorido + *"pedi N · produziu M"* + tabela **plano (ficha) × real (consumido) × diferença**, da MESMA lib que o P8 usa (tela e e-mail não têm como discordar).
+
+**⚠️⚠️ E EU QUASE DESENHEI COM O NÚMERO ERRADO:** ia usar `qtdSeparada` como o "real", e ele é **em-produção** (`SEP − DEV − CON`), que numa ordem concluída é **~ZERO por construção** (é o que o P4 vigia). A tabela mostraria *"plano 5, real 0"* em **toda** ordem fechada — **100% de desvio inventado, justamente na tela que existe pra denunciar desvio.** Nasceu `consumidoPorItem` (Σ|PRODUCAO_CONSUMO|) e um teste que trava a diferença entre as duas funções. **Medido em prod: o em-produção dessas ordens soma 0,0002.**
+
+**⚠️ E DOIS DEFEITOS MEUS SÓ APARECERAM NO BUNDLE:** (a) a frase do `MEDIA_DESTOA` carregava `**A separação segue a ficha**` e a tela renderiza `{a.frase}` como **texto puro** — o dono veria os asteriscos; **markdown é a convenção dos COMENTÁRIOS deste repo e não atravessa pra UI** (guard: nenhuma frase de tela carrega `**`/`__`/HTML); (b) o comentário de `eficienciaDaOrdem` afirmava *"a MESMA conta que a separação usa (`insumoDoPedido`)"* e era **falso** — eu escrevia `dose × escala` à mão. **Comentário que promete fonte única sem chamar a fonte é pior que nenhum.** ⚠️ E o campo chamava `dosePorLote`, que **escapava do guard da porta única por CASE** (`PorLote` maiúsculo; o detector é case-sensitive) — renomeado pro vocabulário da casa, e aí o guard morde.
+
+**PROVADO EM PROD, pelo caminho da tela, em 4 ordens reais:**
+```
+🔵 porçao frango frito 200g   pedi 45,91 · produziu 153 → 333%  FILE DE FRANGO plano 9,18 real 14,95 (+5,77)
+✓  porcao coxao 80 grama      pedi 67,95 · produziu  76 → 112%  Coxão plano 12,23 real 12,06 (−0,17)
+✓  metade de bolinha massa    pedi 380   · produziu 384 → 101%  farinha 57 → 50,7 · leite 6,84 → 6,08 · …
+🔵 beef de xis                pedi 67,80 · produziu  92 → 136%  acém plano 6,17 real 6,17 (ao grama)
+⛔ em-produção somado nas 4 (o número que eu quase usei): 0,0002
+```
+
+**874 arquivos · 11.279 verdes · TS 0 · deploys 4/4 (`uWgyFR7aCuVlfU3dgCtpq` · `dmXfqJl_M_Tp86ACcx1dc` · `thov9kls1kbxnJ_IRhtdF`) · Δ bundle +4 KB.** ⛔ **Zero escrita em prod.**
+
+⚠️ **E UMA CICATRIZ REPETIDA, minha:** usei `git checkout --` pra desfazer uma reposição de REGRA 11 num arquivo com trabalho **não commitado** e **apaguei a correção junto** — é a lição de 14/09 em roupa nova. **Reposição se desfaz com `cp` de backup, nunca com git.**
 
 📋 **FICA PRO DONO:** (a) **os 42 lotes abaixo de 85%** que o P8 passa a denunciar — o e-mail de amanhã sai com eles; (b) **os 37 achados do M5** (`unidadeLoteBase` em KG com produto contado em UN) — é ele que divide o pedido agora, então o aviso ficou MAIS importante, não menos; (c) **as duas conclusões outlier** (`frango frito` 2% e 379%) — `qtdGerada` não bate com o consumo, e só ele sabe se declarou unidades a mais ou se faltou lançar consumo.
 
