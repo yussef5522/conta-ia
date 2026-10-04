@@ -45,12 +45,30 @@ describe('⭐⭐ o topo: título, linha editorial e UM primário', () => {
    * aparecer no "Nova ordem" e no "aplicar" do calendário (o primário DAQUELE painel, que é
    * transiente e só existe depois do dono abri-lo). Mais que isso e a ação principal se perde.
    */
+  /**
+   * ⚠️⚠️ REAPONTADO em 04/10 (sprint dos dois temas), **não afrouxado** — e ficou MAIS FORTE.
+   * A régua é a mesma (*"cor forte preenchida só nos primários, e são DOIS"*); o que mudou é
+   * que o "Nova ordem" passou a ler `--prod-acao-bg`/`--prod-acao-ink` em vez de
+   * `--fam-indigo-mid` + `text-white` cravado. O motivo é de CONTRASTE: no tema escuro o fundo
+   * da ação CLAREIA (#7F77DD) e o texto tem que ESCURECER junto — com `text-white` fixo o
+   * único botão forte da tela ficaria branco sobre lilás claro. Então o guard passou a exigir
+   * também o TOKEN DE TINTA, que a versão anterior nem olhava.
+   */
   it('⭐⭐ cor forte preenchida aparece em DOIS lugares, e os dois são primários', () => {
     const tela = semComentario(ler(TELA))
-    const usos = [...tela.matchAll(/background: 'var\(--fam-[a-z]+-mid\)'/g)]
-    expect(usos.length, 'cor forte preenchida fora dos primários = dois primários competindo').toBe(2)
-    // e os dois são índigo (o primário da casa), nunca outra família
-    for (const u of usos) expect(u[0]).toContain('--fam-indigo-mid')
+    const familia = [...tela.matchAll(/background: 'var\(--fam-[a-z]+-mid\)'/g)]
+    const acao = [...tela.matchAll(/background: 'var\(--prod-acao-bg\)'/g)]
+    expect(
+      familia.length + acao.length,
+      'cor forte preenchida fora dos primários = dois primários competindo',
+    ).toBe(2)
+    // ⭐ a ação principal é UMA, e ela usa o par de tokens (fundo + tinta)
+    expect(acao.length, 'o "Nova ordem" é o primário da TELA').toBe(1)
+    expect(tela, 'e a TINTA dele também é token — senão o escuro fica ilegível').toMatch(
+      /color: 'var\(--prod-acao-ink\)'/,
+    )
+    // o outro é o primário do painel transiente, e ele é índigo (nunca outra família)
+    for (const u of familia) expect(u[0]).toContain('--fam-indigo-mid')
   })
 
   /**
@@ -166,10 +184,25 @@ describe('⭐ as listas: avatar, par tipográfico e pílula', () => {
 })
 
 describe('⭐⭐ acabamento: tokens, dark mode e os 3 degraus da família', () => {
-  it('⭐⭐ a home entrou no MESMO bloco de tokens da tela "Por dia" (uma paleta)', () => {
+  /**
+   * ⚠️⚠️ REAPONTADO em 04/10 (sprint dos dois temas) — e a mudança de casa é o ponto do sprint.
+   * Este guard afirmava o bloco ESCOPADO (`[data-tela='producao-por-dia'], [data-tela='producao-home']`),
+   * e os tokens subiram pra **RAIZ** por ordem do dono (*"2 mapas de tokens NA RAIZ; as telas
+   * modernas ganham o escuro de graça"*). ⛔ E não é preferência: `[data-tela='x']` (0,1,0)
+   * EMPATA com `.dark` (0,1,0) — o bloco escopado venceria por ordem de arquivo e a tela
+   * ficaria CLARA dentro do tema escuro. A régua continua sendo *"uma paleta só"*; quem a
+   * guarda em detalhe agora é `dois-temas-na-raiz.test.ts`.
+   */
+  it('⭐⭐ a paleta das duas telas vive na RAIZ (uma paleta, dois temas)', () => {
     const css = ler(CSS)
-    expect(css, 'claro').toMatch(/\[data-tela='producao-por-dia'\],\s*\n\[data-tela='producao-home'\] \{/)
-    expect(css, 'e o espelho ESCURO').toMatch(/\.dark \[data-tela='producao-home'\]/)
+    expect(css, 'o mapa CLARO na raiz').toMatch(/:root \{[\s\S]*?--prod-bg:/)
+    expect(css, 'e o espelho ESCURO na raiz').toMatch(/\.dark \{[\s\S]*?--prod-bg:/)
+    /** ⚠️ sem comentário: o bloco que DOCUMENTA a armadilha cita `[data-tela=…]` em texto, e o
+     *  guard mordia a própria documentação dele (a lição de 21/09 pela enésima vez). */
+    expect(
+      semComentario(css),
+      'token escopado volta a sombrear o .dark',
+    ).not.toMatch(/\[data-tela=[^\]]+\][^{]*\{[^}]*--prod-/)
   })
 
   it('⭐⭐ cada família tem os 3 degraus, no claro E no escuro', () => {

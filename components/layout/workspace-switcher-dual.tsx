@@ -110,7 +110,7 @@ export function WorkspaceSwitcherDual() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-2 rounded-md px-2.5 py-1.5 hover:bg-zinc-100 text-sm font-medium text-zinc-900 transition-colors min-w-0 max-w-[260px]"
+          className="flex items-center gap-2 rounded-md px-2.5 py-1.5 hover:bg-accent text-sm font-medium text-foreground transition-colors min-w-0 max-w-[260px]"
         >
           {/* Pill colorida indicando contexto */}
           <span
@@ -142,20 +142,20 @@ export function WorkspaceSwitcherDual() {
               </>
             )}
           </span>
-          <ChevronsUpDown className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+          <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[320px] p-0">
         {/* Search */}
         <div className="border-b p-2">
           <div className="relative">
-            <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-zinc-400 pointer-events-none" />
+            <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             <input
               type="text"
               placeholder="Buscar workspace…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              className="w-full h-8 pl-7 pr-2 text-sm rounded-md bg-zinc-50 border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full h-8 pl-7 pr-2 text-sm rounded-md bg-muted border-0 focus:outline-none focus:ring-1 focus:ring-primary"
               autoFocus
             />
           </div>
@@ -170,7 +170,7 @@ export function WorkspaceSwitcherDual() {
             </span>
           </div>
           {empresasFiltradas.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-zinc-500">
+            <div className="px-3 py-2 text-xs text-muted-foreground">
               {q ? 'Nenhuma empresa encontrada' : 'Você não tem empresas'}
             </div>
           ) : (
@@ -194,7 +194,7 @@ export function WorkspaceSwitcherDual() {
             </span>
           </div>
           {perfisFiltrados.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-zinc-500">
+            <div className="px-3 py-2 text-xs text-muted-foreground">
               {q
                 ? 'Nenhum perfil encontrado'
                 : wsCtx.loadingProfiles
@@ -258,7 +258,7 @@ function RowPJ({
           {empresa.tradeName ?? empresa.name}
         </div>
         {empresa.tradeName && (
-          <div className="text-xs text-zinc-500 truncate">{empresa.name}</div>
+          <div className="text-xs text-muted-foreground truncate">{empresa.name}</div>
         )}
       </div>
       {isCurrent && <Check className="h-4 w-4 text-blue-600 shrink-0" />}
@@ -289,7 +289,7 @@ function RowPF({
       </span>
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate">{profile.name}</div>
-        <div className="text-xs text-zinc-500 truncate flex items-center gap-1">
+        <div className="text-xs text-muted-foreground truncate flex items-center gap-1">
           {profile.isSelf && <span className="text-emerald-700">Meu</span>}
           {profile.isSelf && profile.type === 'DEPENDENT' && <span>·</span>}
           <span>{profile.type === 'DEPENDENT' ? 'Dependente' : profile.isSelf ? 'Titular' : 'Perfil'}</span>

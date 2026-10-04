@@ -198,7 +198,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
 
   return (
     <ProvedorPermissoesMenu value={{ permissoes }}>
-    <aside className="w-60 border-r bg-white flex flex-col h-full overflow-y-auto">
+    <aside className="w-60 border-r bg-card flex flex-col h-full overflow-y-auto">
       {/* Hotfix sidebar-remove-logo (29/05/2026): bloco do logo do header
           REMOVIDO. Logo já aparece no breadcrumb do TopBar — 2 logos
           empilhados poluem. Mantém só o padding pra não colar Dashboard
@@ -766,7 +766,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-3 pt-3 pb-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+    <p className="px-3 pt-3 pb-1 text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
       {children}
     </p>
   )

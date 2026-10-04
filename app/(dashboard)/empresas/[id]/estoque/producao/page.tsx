@@ -20,6 +20,7 @@ import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
 import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio, BarChart3, ArrowRight, CalendarDays, Beef, Wheat, Scissors, ChefHat, Flame, Gauge, Clock } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
 import { formatarDuracao } from '@/lib/format/duracao'
+import { BlocoDeAvisos } from '@/components/avisos/bloco-do-setor'
 import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
 import { caraDaReceita, type IconeDaReceita } from '@/lib/stock/producao/cara-da-receita'
 import { faixaDoSelo } from '@/lib/stock/producao/eficiencia-da-ordem'
@@ -268,9 +269,12 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="text-[24px] font-medium leading-tight" style={{ color: 'var(--prod-primary)' }}>Produção</h1>
           {/* ⭐ a ÚNICA coisa preenchida de cor forte na tela — é a ação principal */}
+          {/* ⚠️ o TEXTO também é token (04/10): no tema escuro o fundo CLAREIA (#7F77DD) e
+              `text-white` cravado deixaria branco sobre lilás claro — ilegível justamente no
+              único botão forte da tela. */}
           <button onClick={() => setNovo((v) => !v)}
-            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
-            style={{ background: 'var(--fam-indigo-mid)' }}>
+            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-[13px] font-medium transition-opacity hover:opacity-90"
+            style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
             <Plus className="h-4 w-4" /> Nova ordem
           </button>
         </div>
@@ -332,6 +336,15 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
             barra={painel.rendimentoPeriodo} />
         </div>
       )}
+
+      {/**
+        * ⭐⭐⭐ O BLOCO DE AVISOS DE **PRODUÇÃO** — entre os cartões e as listas, como o dono
+        * pediu. ⛔⛔ E ele recebe `setor="producao"` CRAVADO: *"financeiro NUNCA aparece na
+        * produção"* é LEI, e a lei é aplicada no WHERE da rota (`avisosDoSetor`), não numa
+        * escolha desta tela — se a tela decidisse, a próxima tela decidiria de novo.
+        * ⭐ Some sozinho quando não há aviso: móvel zerado treina o dono a não olhar.
+        */}
+      <BlocoDeAvisos empresaId={id} setor="producao" />
 
       {/**
         * ⛔⛔ **O BANNER ÂMBAR MORREU (decisão de design do dono, 04/10):** *"NADA de fundo bege

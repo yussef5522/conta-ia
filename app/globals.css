@@ -29,6 +29,52 @@
     --sidebar-foreground: 210 40% 98%;
     --sidebar-border: 217.2 32.6% 17.5%;
   }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     ⭐⭐ O ESPELHO ESCURO DOS TOKENS DO shadcn (04/10/2026).
+
+     ⛔⛔ **ELE NÃO EXISTIA — e sem ele o tema escuro era IMPOSSÍVEL por construção.**
+     Medido antes de escrever: `darkMode: ['class']` no Tailwind desde sempre, **109 arquivos
+     com 1.012 utilitários `dark:`** escritos ao longo de meses… e ZERO bloco `.dark` pros
+     tokens. Ou seja: `bg-background`, `text-foreground`, `border-border` e `bg-card` — que são
+     o chão e o texto de QUASE TODA tela do app — continuariam **claros** com a classe ligada.
+     O resultado seria a pior metade do caminho: componente colorido escurecendo e o fundo
+     branco, que é mais ilegível que o tema claro inteiro.
+
+     ⚠️ Os valores vêm do pedido do dono (*"escuro premium: canvas ~#16151D, superfícies
+     ~#1E1D28 com borda #2A2936, texto #F4F3FB, secundário lavanda-acinzentado"*), convertidos
+     pra HSL porque é o formato que o `tailwind.config.ts` consome (`hsl(var(--background))`).
+     Escrever hex aqui faria o Tailwind gerar `hsl(#16151D)`, que é cor inválida — e o fundo
+     cairia silenciosamente pro transparente.
+     ═══════════════════════════════════════════════════════════════════════════ */
+  .dark {
+    --background: 249 14% 10%;        /* #16151D — o canvas */
+    --foreground: 252 47% 97%;        /* #F4F3FB */
+    --card: 249 14% 14%;              /* #1E1D28 — a superfície */
+    --card-foreground: 252 47% 97%;
+    --popover: 249 14% 14%;
+    --popover-foreground: 252 47% 97%;
+    /* ⭐ o índigo CLARO do escuro — o mesmo tom do botão de ação (#7F77DD) */
+    --primary: 244 59% 67%;
+    /* ⚠️ e o texto SOBRE ele vira ESCURO: índigo claro com texto branco não tem contraste */
+    --primary-foreground: 249 14% 10%;
+    --secondary: 249 13% 18%;
+    --secondary-foreground: 252 30% 92%;
+    --muted: 249 13% 18%;
+    --muted-foreground: 250 12% 65%;  /* lavanda-acinzentado */
+    --accent: 249 13% 22%;
+    --accent-foreground: 252 30% 92%;
+    --destructive: 0 72% 60%;
+    --destructive-foreground: 252 47% 97%;
+    --border: 248 13% 19%;            /* #2A2936 */
+    --input: 248 13% 19%;
+    --ring: 244 59% 67%;
+    /* ⚠️ a sidebar JÁ era escura no claro (222 47% 11%) — no escuro ela acompanha o canvas,
+       senão ela viraria a parte mais CLARA da tela, invertendo a hierarquia visual. */
+    --sidebar: 249 14% 12%;
+    --sidebar-foreground: 252 47% 97%;
+    --sidebar-border: 248 13% 19%;
+  }
 }
 
 @layer base {
@@ -404,41 +450,43 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   ⭐⭐ TOKENS DA TELA "PRODUÇÃO POR DIA" (04/10/2026) — visual Mercury/Stripe.
-   
-   **A régua do dono:** *"nenhum hex fixo de texto — usar os tokens; dark mode funcionando."*
-   
-   ⭐ Os valores CLAROS são os MESMOS de `components/estoque/radar-tokens.ts` — a casa tem UMA
-   paleta, e um tom "quase igual" escrito aqui é como o verde do cartão ≍ e o do card de 10/09
-   acabaram diferentes. O que esta camada acrescenta é (a) poder usar `var()` no lugar de hex
-   cravado no JSX e (b) o espelho ESCURO.
-   
-   ⛔⛔ **ESCOPADO EM `[data-tela="producao-por-dia"]`, de propósito.** A decisão de 20/09 é que
-   o dark global é SPRINT PRÓPRIO (e ele tem que conferir os 107 arquivos que já têm `dark:` e
-   nunca renderizaram). Um `:root` aqui faria esta camada vazar pro app inteiro; escopada, ela
-   deixa ESTA tela correta no dia em que o interruptor global for ligado, sem tocar no resto.
-   
-   ⚠️ **E O INTERRUPTOR ESTÁ DESLIGADO HOJE:** `darkMode:['class']` no Tailwind e **nada no app
-   adiciona a classe `dark`** (medido: zero chamadores). Ou seja — o bloco escuro abaixo está
-   CERTO e ainda NÃO RENDERIZA. Isto é dark-READY, não dark-provado.
+   ⭐⭐⭐ OS DOIS TEMAS DA CASA — DOIS MAPAS DE TOKENS NA RAIZ (04/10/2026).
+
+   **Ordem do dono:** *"implementação POR TOKEN, nunca por página: os temas são 2 mapas de
+   design tokens (CSS variables) NA RAIZ; as telas modernas que já usam tokens ganham o escuro
+   DE GRAÇA."*
+
+   ⛔⛔ **ESTES BLOCOS ERAM ESCOPADOS EM `[data-tela='producao-*']` ATÉ HOJE, E A PROMOÇÃO PRA
+   `:root` NÃO É COSMÉTICA — É O QUE TORNA O TEMA POSSÍVEL.** A armadilha é de ESPECIFICIDADE:
+   `[data-tela='x']` vale (0,1,0) e `.dark` vale (0,1,0) também — **EMPATE**, e no empate ganha
+   quem vem depois no arquivo. Se os blocos escopados continuassem existindo, eles **venceriam
+   ou empatariam** com o `.dark` da raiz e a tela de produção ficaria **clara dentro do tema
+   escuro**, justamente nas duas telas que o dono mais usa. Por isso eles saíram: dois donos pra
+   mesma variável é a doença que este projeto mais paga, agora em CSS.
+
+   ⭐ **O QUE AS TELAS PRECISAM MUDAR: NADA.** Elas já leem `var(--prod-*)`/`var(--fam-*)`; o
+   valor passa a vir da raiz. Era exatamente pra isso que a camada de token nasceu em 04/10.
+
+   ⚠️ **E O CLARO MUDOU DE TOM, por decisão do dono:** o lilás de antes (`#f6f5fb`) deu lugar ao
+   **slate frio da linhagem Stripe/Linear** — canvas `#F8FAFC`, cartões BRANCOS com borda
+   `#E2E8F0`, texto `#0F172A`. Os cartões coloridos e o índigo da ação **seguem como estavam**.
    ═══════════════════════════════════════════════════════════════════════════ */
-/* ⭐ DUAS TELAS, UMA PALETA: a home da Produção entrou no MESMO bloco em 04/10. Um 2º bloco
-   com tons "quase iguais" é literalmente como o verde do cartão ≍ e o do card de 10/09 saíram
-   diferentes — a cicatriz que o `radar-tokens.ts` existe pra não repetir. */
-[data-tela='producao-por-dia'],
-[data-tela='producao-home'] {
-  --prod-bg: #f6f5fb;
+:root {
+  /* ─── CLARO: slate frio ─── */
+  --prod-bg: #f8fafc;
   --prod-surface: #fff;
-  /* ⭐ surface-1: o degrau de hover/zebra — "calma editorial" do Mercury */
-  --prod-surface-1: #f6f5fb;
-  --prod-surface-2: #efedfb;
+  /* ⭐ surface-1: o degrau de hover/zebra */
+  --prod-surface-1: #f1f5f9;
+  --prod-surface-2: #e8effd;
   /* ⭐⭐ texto PRINCIPAL escuro de verdade (o dono: "nada de cinza lavado") */
-  --prod-primary: #171a26;
-  --prod-secondary: #4b5162;
-  --prod-muted: #7b8194;
-  --prod-line: #eae9f2;
+  --prod-primary: #0f172a;
+  --prod-secondary: #475569;
+  /* ⚠️ `#94a3b8` (slate-400) era o "muted" óbvio e **MEDIDO ele reprova**: 2,56:1 sobre branco,
+     abaixo até do piso de 3:1. Discreto é tom, não ilegibilidade — slate-500 dá 4,76:1. */
+  --prod-muted: #64748b;
+  --prod-line: #e2e8f0;
   /* ⚠️ a divisória entre linhas é mais clara que a borda do rodapé — é hierarquia, não enfeite */
-  --prod-line-strong: #d8d6e4;
+  --prod-line-strong: #cbd5e1;
   --prod-accent: #534ab7;
   --prod-verde: #0f9d58;
   --prod-verde-bg: #e7f7ee;
@@ -446,24 +494,31 @@
   --prod-ambar-bg: #fdf3e0;
   --prod-coral: #e5484d;
   --prod-coral-bg: #fdecec;
-  --prod-mudo: #94a0b8;
+  /* ⚠️ MESMA correção na pílula "sem pedido": `#94a0b8` sobre `#f1f3f8` dava 2,37:1 — o que
+     o olho lê como "apagado" era, na conta, texto que não se lê. O mudo vem do FUNDO cinza
+     ao lado das pílulas coloridas, não de apagar a tinta. */
+  --prod-mudo: #475569;
   --prod-mudo-bg: #f1f3f8;
-  --prod-sombra: 0 1px 2px rgba(23, 26, 38, 0.05);
+  --prod-sombra: 0 1px 2px rgba(15, 23, 42, 0.05);
+  /* ⭐⭐ A AÇÃO PRIMÁRIA tem TOKEN de fundo **e de texto** — e o texto é a metade que importa.
+     No claro é índigo forte com texto branco; no escuro o fundo CLAREIA (#7F77DD) e o texto
+     tem que ESCURECER junto. Com `text-white` cravado no JSX (como estava), o botão do tema
+     escuro seria branco sobre lilás claro: ilegível exatamente no único botão forte da tela. */
+  --prod-acao-bg: #534ab7;
+  --prod-acao-ink: #fff;
 }
 
-.dark [data-tela='producao-por-dia'],
-[data-tela='producao-por-dia'].dark,
-.dark [data-tela='producao-home'],
-[data-tela='producao-home'].dark {
-  --prod-bg: #0f1117;
-  --prod-surface: #171a23;
-  --prod-surface-1: #1d212c;
-  --prod-surface-2: #252a39;
-  --prod-primary: #f2f3f7;
-  --prod-secondary: #b2b8c8;
-  --prod-muted: #7b8194;
-  --prod-line: #262b38;
-  --prod-line-strong: #39404f;
+.dark {
+  /* ─── ESCURO premium ─── */
+  --prod-bg: #16151d;
+  --prod-surface: #1e1d28;
+  --prod-surface-1: #262533;
+  --prod-surface-2: #2f2d3e;
+  --prod-primary: #f4f3fb;
+  --prod-secondary: #a9a5bd;
+  --prod-muted: #7d7a93;
+  --prod-line: #2a2936;
+  --prod-line-strong: #3b3950;
   --prod-accent: #8a81f0;
   --prod-verde: #3ecf8e;
   --prod-verde-bg: #11291f;
@@ -471,14 +526,17 @@
   --prod-ambar-bg: #2b2114;
   --prod-coral: #ff6369;
   --prod-coral-bg: #2d1618;
-  --prod-mudo: #7b8194;
-  --prod-mudo-bg: #1d212c;
+  --prod-mudo: #a9a5bd;
+  --prod-mudo-bg: #262533;
   --prod-sombra: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --prod-acao-bg: #7f77dd;
+  --prod-acao-ink: #16151d;
 }
 
-/* ⭐ a fonte TABULAR que o dono pediu pros números — alinhamento de coluna financeira */
-[data-tela='producao-por-dia'] .num,
-[data-tela='producao-home'] .num {
+/* ⭐ a fonte TABULAR que o dono pediu pros números — alinhamento de coluna financeira.
+   ⚠️ Esta regra fica GLOBAL (e não escopada como antes): ela não é token, é utilitário —
+   qualquer tela que queira coluna de número alinhada põe `.num` e pronto. */
+.num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
 }
@@ -497,8 +555,7 @@
    coloridos, inverter 50↔800 como as telas modernas fazem"*. Sem isso o cartão índigo viraria
    um bloco claro queimando no meio de uma tela preta.
    ───────────────────────────────────────────────────────────────────────────── */
-[data-tela='producao-por-dia'],
-[data-tela='producao-home'] {
+:root {
   --fam-indigo-bg: #efedfb; --fam-indigo-mid: #534ab7; --fam-indigo-ink: #322c80;
   --fam-azul-bg:   #e8effd; --fam-azul-mid:   #2563eb; --fam-azul-ink:   #17398c;
   --fam-verde-bg:  #e7f7ee; --fam-verde-mid:  #0f9d58; --fam-verde-ink:  #0a5e35;
@@ -509,10 +566,7 @@
   --fam-cinza-bg:  #f1f3f8; --fam-cinza-mid:  #94a0b8; --fam-cinza-ink:  #4b5162;
 }
 
-.dark [data-tela='producao-por-dia'],
-[data-tela='producao-por-dia'].dark,
-.dark [data-tela='producao-home'],
-[data-tela='producao-home'].dark {
+.dark {
   /* ⭐ o 50 vira fundo ESCURO da família e o texto sobe pros tons claros — 50↔800 trocados */
   --fam-indigo-bg: #1e1b4a; --fam-indigo-mid: #8a81f0; --fam-indigo-ink: #cdc8fb;
   --fam-azul-bg:   #14244f; --fam-azul-mid:   #6aa0fb; --fam-azul-ink:   #c2d8fe;

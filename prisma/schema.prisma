@@ -4223,6 +4223,82 @@ model StockPorDiaPreferencia {
   @@map("stock_por_dia_preferencia")
 }
 
+/// ⭐⭐ O TEMA DE CADA USUÁRIO (04/10/2026) — claro | escuro, default claro.
+///
+/// ⛔ **`userId` é a CHAVE PRIMÁRIA, não um campo com índice único** — "duas preferências de
+/// tema pro mesmo usuário" deixa de ser um estado checado e passa a ser **impossível** (REGRA 5),
+/// e o upsert fica trivial.
+///
+/// ⚠️ **NÃO é por empresa, de propósito:** tema é preferência da PESSOA (contraste, luz do
+/// ambiente, vista), não configuração do negócio. Amarrar à empresa faria o dono trocar de
+/// workspace e a tela mudar de cor sem ele pedir.
+///
+/// ⚠️ Sem `@relation` com `User`: é o mesmo desenho do resto das preferências desta casa
+/// (valor indexado, não FK), e mantém a migration **aditiva pura** — ela não referencia
+/// nenhuma tabela existente, então não há ALTER em tabela com dado real.
+/// ⭐⭐⭐ A CENTRAL DE AVISOS (04/10/2026) — o canal que faltava entre o juiz e o dono.
+///
+/// ⛔⛔ **POR QUE ELA EXISTE, com número:** em 30/08 a varredura achou **R$ 21.968,02 em 8
+/// boletos** parados, 2 já vencidos — e o juiz **estava avisando** (5 achados F3, com a frase
+/// certa) **todas as noites, por e-mail**. O alarme funcionava; o CANAL é que não. A lição que
+/// ficou escrita naquele dia: ***e-mail noturno não é lugar de dívida vencendo — o dono lê
+/// TELA***. Esta tabela é onde o alarme passa a ter tela.
+///
+/// ⚠️ O e-mail CONTINUA (é cópia, não substituto): quem está fora do sistema precisa ser
+/// alcançado. O que muda é que a verdade passa a ter um lugar que o dono abre.
+model Aviso {
+  id         String @id @default(cuid())
+  companyId  String // REGRA 8 — valor indexado, sem @relation
+  /// producao | estoque | financeiro | sistema.
+  /// ⛔⛔ **É LEI DO DONO que financeiro NUNCA apareça na produção** — o bloco por setor filtra
+  /// por esta coluna, e é ela que torna a lei aplicável em vez de combinada.
+  setor      String
+  /// vermelho | coral | ambar | azul | verde — vira o FILETE de cor do aviso.
+  severidade String
+  /// ⛔⛔ O TÍTULO É A **AÇÃO**, na língua do balcão: *"Não cria ordem de QUEIJO CHEDDAR antes
+  /// de corrigir a ficha"*. Nunca o nome técnico do invariante.
+  titulo     String
+  /// o PORQUÊ, em 1-2 frases de gente: *"se alguém pedir 10, separa queijo pra 1 só"*.
+  corpo      String
+  /// ⛔⛔ **"O QUE FAZER" É OBRIGATÓRIO — e o banco recusa vazio.** Aviso sem ação clara não
+  /// pode ser criado (ordem do dono): alarme que não diz o que fazer é o ruído que ensina o
+  /// dono a parar de ler (os 111 falsos de 26/08).
+  oQueFazer  String
+  /// o botão que leva DIRETO ao lugar. ⚠️ Nulo é permitido só quando a ação não tem tela
+  /// própria (ex.: "conte o item na próxima contagem") — e aí o `oQueFazer` carrega o caminho.
+  acaoRotulo String?
+  acaoHref   String?
+  /// QUAL guard/juiz falou (ex.: `P8`, `M5`, `F3`). Entra na chave de dedupe.
+  origem     String
+  /// O OBJETO do aviso (id da ficha, da ordem, do item…). ⭐ `origem + alvo` é o que faz o
+  /// MESMO problema ATUALIZAR o aviso existente em vez de criar 10 — o anti-spam é estrutural.
+  alvo       String
+  /// ⭐ quantas vezes o produtor reafirmou o mesmo problema — é o que permite dizer
+  /// "4 lotes seguidos" sem criar 4 avisos.
+  vezes      Int       @default(1)
+  criadoEm   DateTime  @default(now())
+  atualizadoEm DateTime @updatedAt
+  lidoEm     DateTime?
+  /// ⭐ resolvido SOME da tela (ordem do dono). Não apaga: o rastro fica, e se o problema
+  /// voltar o mesmo `origem+alvo` REABRE a linha em vez de nascer outra.
+  resolvidoEm DateTime?
+
+  @@unique([companyId, origem, alvo])
+  @@index([companyId, setor, resolvidoEm])
+  @@map("aviso")
+}
+
+model UserTemaPreferencia {
+  userId       String   @id
+  /// 'claro' | 'escuro'. ⚠️ O VOCABULÁRIO vive em `lib/tema/preferencia.ts`; o CHECK do banco
+  /// valida só a FORMA (não-vazio, minúsculo) — a cicatriz de 21/09, em que CHECK com lista
+  /// fechada numa tabela de CONFIGURAÇÃO virou parede no dia seguinte.
+  tema         String
+  atualizadoEm DateTime @updatedAt
+
+  @@map("user_tema_preferencia")
+}
+
 model StockRadarWatchlist {
   id          String   @id @default(cuid())
   companyId   String // REGRA 8 — valor, sem @relation

@@ -103,7 +103,7 @@ export function UserMenu({ userName, userEmail, devToolsEnabled = false }: Props
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 hover:bg-zinc-200 text-xs font-semibold text-zinc-700 transition-colors"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-muted hover:bg-accent text-xs font-semibold text-foreground transition-colors"
           aria-label="Menu do usuário"
         >
           {initials(userName)}
@@ -112,7 +112,7 @@ export function UserMenu({ userName, userEmail, devToolsEnabled = false }: Props
       <DropdownMenuContent align="end" className="w-56">
         <div className="px-3 py-2 border-b">
           <p className="text-sm font-medium truncate">{userName}</p>
-          <p className="text-xs text-zinc-500 truncate">{userEmail}</p>
+          <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
         </div>
         <DropdownMenuItem
           className="cursor-pointer text-sm"
@@ -131,7 +131,7 @@ export function UserMenu({ userName, userEmail, devToolsEnabled = false }: Props
         <DropdownMenuItem className="cursor-pointer text-sm" disabled>
           <Settings className="mr-2 h-4 w-4" />
           Configurações
-          <span className="ml-auto text-[10px] text-zinc-400">breve</span>
+          <span className="ml-auto text-[10px] text-muted-foreground">breve</span>
         </DropdownMenuItem>
 
         {/* 🧪 Dev tools — só aparece em sandbox (server passa devToolsEnabled) */}

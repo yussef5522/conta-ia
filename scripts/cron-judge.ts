@@ -10,6 +10,7 @@ import { expurgarTextosAntigos } from '@/lib/credit-card/quarentena-fatura'
 import { expurgarTextosDeVendaAntigos } from '@/lib/stock/vendas/quarentena-venda'
 import { runModuleJudge } from '../lib/loans/run-module-judge'
 import { runAndPersistStockJudge } from '../lib/stock/run-stock-judge'
+import { rodarProdutoresDeAviso } from '@/lib/avisos/produtores/rodar'
 import { buildJudgeAlertEmail } from '../lib/loans/judge-alert-email'
 import { sendEmail } from '../lib/email/send'
 import { checkInfra } from '../lib/infra/health'
@@ -23,6 +24,19 @@ const ALERT_TO = process.env.JUDGE_ALERT_EMAIL
 async function main() {
   const rep = await runModuleJudge(prisma)
   const stockRep = await runAndPersistStockJudge(prisma) // tabela isolada stock_judge_report
+
+  /**
+   * ⭐⭐ A CENTRAL DE AVISOS (04/10) — o juiz passa a GRAVAR AVISO além de mandar e-mail.
+   *
+   * ⛔⛔ **Por que isto entrou aqui e não num cron próprio:** a lição medida de 30/08 é que o
+   * alarme FUNCIONAVA (5 achados F3, com a frase certa, todas as noites) e **o canal não** —
+   * R$ 21.968,02 em boletos ficaram 10 dias parados, 2 já vencidos, porque *"e-mail noturno não
+   * é lugar de dívida vencendo: o dono lê TELA"*. Mesma rodada, mesmo relógio: o que o juiz
+   * descobre às 3h passa a existir na tela quando ele abrir o sistema.
+   *
+   * ⚠️ **O e-mail CONTINUA** — aviso é canal NOVO, não substituto.
+   */
+  const avisos = await rodarProdutoresDeAviso()
   await prisma.loanModuleJudgeReport.create({
     data: {
       passed: rep.passed,
@@ -72,6 +86,15 @@ async function main() {
     console.log(`[juiz ${stamp}]   top 5 por p95: ${top}`)
     for (const c of rotas.checks) console.log(`[juiz ${stamp}]   ${c.invariante} (${c.nivel}): ${c.detalhe}`)
   }
+
+  console.log(
+    `[juiz ${stamp}] avisos: ${avisos.gravados} gravados · ${avisos.reabertos} reabertos · ` +
+      `${avisos.resolvidos} resolvidos · ${avisos.verdesSemanais} verde(s) semanal · ` +
+      `${avisos.recusados.length} recusado(s) · ${avisos.falhas.length} falha(s)`,
+  )
+  /** ⚠️ aviso RECUSADO pela lei da língua do balcão é erro MEU no produtor — tem que aparecer */
+  for (const x of avisos.recusados) console.log(`[juiz ${stamp}]   ⛔ aviso recusado (${x.empresa}): ${x.motivo} — "${x.titulo}"`)
+  for (const x of avisos.falhas) console.log(`[juiz ${stamp}]   ⛔ central de avisos falhou em ${x.empresa}: ${x.erro}`)
 
   console.log(`[juiz ${stamp}] ${rep.passed ? '✓ OK' : '✗ FALHA'} · ${rep.totalContracts - rep.totalFail}/${rep.totalContracts} contratos · balance ${rep.balanceIssues} · dup ${rep.dupIssues} · venda ${rep.vendaIssues} · cartão ${rep.cardIssues} · estoque ${stockRep.stockIssues} · ${rep.durationMs}ms`)
 
