@@ -73,7 +73,7 @@ async function padraoDeRendimento(companyId: string, r: ResumoDaCarga, db: Db): 
 
   const desvios = await db.stockProducaoDesvio.findMany({
     where: { companyId, criadoEm: { gte: desde } },
-    select: { ordemId: true, pctTeorico: true, criadoEm: true, criadoPorId: true },
+    select: { ordemId: true, conclusaoId: true, pctTeorico: true, criadoEm: true },
     orderBy: { criadoEm: 'asc' },
   })
   if (!desvios.length) {
@@ -93,6 +93,23 @@ async function padraoDeRendimento(companyId: string, r: ResumoDaCarga, db: Db): 
   })
   const nomeDoItem = new Map(itens.map((i) => [i.id, i.nome]))
 
+  /**
+   * ⛔⛔⛔ **O NOME DE QUEM FEZ VEM DA CONCLUSÃO, NÃO DO DESVIO — defeito meu, medido em prod.**
+   *
+   * Eu lia `stockProducaoDesvio.criadoPorId` achando que era colaborador. **Medido: ele é id de
+   * USUÁRIO** (marcyelle, Yussef, cristian — quem operou o SISTEMA) e só existe em **78 de 400**
+   * linhas; nenhum deles casa com `stock_colaborador`. Resultado: os 7 avisos de padrão saíram
+   * com *"feitos por sem nome registrado"* — justamente o nome que o dono pediu.
+   *
+   * ⭐ Quem fez o lote está em `stock_producao_conclusao.colaboradorId` (**353 de 400**: Cristian,
+   * Carlisle, nadine, rodrigo, eliane…). É a distinção que esta casa já tinha escrito em 09/09:
+   * *"quem CONTOU, não quem abriu a sessão"* — operador do sistema ≠ pessoa que fez o trabalho.
+   */
+  const conclusoes = await db.stockProducaoConclusao.findMany({
+    where: { companyId, id: { in: desvios.map((d) => d.conclusaoId) } },
+    select: { id: true, colaboradorId: true },
+  })
+  const colabDaConclusao = new Map(conclusoes.map((c) => [c.id, c.colaboradorId]))
   const colabs = await db.stockColaborador.findMany({
     where: { companyId },
     select: { id: true, nome: true },
@@ -111,7 +128,10 @@ async function padraoDeRendimento(companyId: string, r: ResumoDaCarga, db: Db): 
       ordemId: d.ordemId,
       encerradoEm: d.criadoEm.toISOString(),
       pct: d.pctTeorico,
-      quem: d.criadoPorId ? (nomeDoColab.get(d.criadoPorId) ?? null) : null,
+      quem: (() => {
+        const cid = colabDaConclusao.get(d.conclusaoId)
+        return cid ? (nomeDoColab.get(cid) ?? null) : null
+      })(),
     })
   }
 
@@ -139,7 +159,9 @@ async function padraoDeRendimento(companyId: string, r: ResumoDaCarga, db: Db): 
       {
         companyId,
         setor: 'producao',
-        severidade: p.sentido === 'MISTO' || p.seguidos >= 4 ? 'vermelho' : 'ambar',
+        /** ⚠️ grandeza impossível é DADO impossível → vermelho sempre; padrão de rendimento de
+         *  verdade escala com o tamanho do padrão. */
+        severidade: p.grandezaImpossivel || p.seguidos >= 4 ? 'vermelho' : 'ambar',
         titulo: f.titulo,
         corpo: f.corpo,
         oQueFazer: f.oQueFazer,

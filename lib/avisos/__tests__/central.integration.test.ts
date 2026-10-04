@@ -262,3 +262,78 @@ describe('⛔⛔ as DUAS redes do aviso mudo (lib + banco)', () => {
     )
   })
 })
+
+/**
+ * ⭐⭐⭐ O PRODUTOR CONTRA O BANCO — o teste que a REGRA 11 EXIGIU (04/10/2026).
+ *
+ * ⛔⛔ **ELE NASCEU PORQUE UM DEFEITO REPOSTO VEIO VERDE.** Repus o produtor lendo o USUÁRIO do
+ * sistema no lugar do colaborador da conclusão (`quem: null`) e os 72 testes passaram — porque
+ * todos eles exercitavam a LIB (`fraseDoPadrao`) e **nenhum perguntava pro PRODUTOR**. É o
+ * *"guard que testa a lib e aprova a tela que ignora a lib"* desta casa, pela enésima vez — e
+ * aqui ele teria deixado em prod exatamente o defeito que a preview acusou: 7 avisos dizendo
+ * *"feitos por sem nome registrado"*, sem o nome que o dono pediu.
+ */
+describe('⛔⛔ o PRODUTOR lê o nome de quem FEZ (não o usuário do sistema)', () => {
+  it('⭐⭐ o aviso do padrão sai com o nome do colaborador da conclusão', async () => {
+    const { produzirAvisosDeProducao } = await import('../produtores/producao')
+
+    /** ⚠️ a ficha declara o lote na MESMA unidade do produto — senão a supressão do
+     *  "uma causa, um alarme" entraria e o padrão nem seria avaliado. */
+    const item = await prisma.stockItem.create({
+      data: {
+        companyId, nome: 'PORCAO TESTE', unidadeControle: 'UN',
+        categoria: 'INTERMEDIARIO', criadoVia: 'MANUAL',
+      },
+    })
+    const ficha = await prisma.stockFicha.create({
+      data: { companyId, itemProduzidoId: item.id, tipoProduto: 'INTERMEDIARIO', versaoAtual: 1 },
+    })
+    await prisma.stockFichaVersao.create({
+      data: { companyId, fichaId: ficha.id, versao: 1, loteBase: 1, unidadeLoteBase: 'UN' },
+    })
+    const quem = await prisma.stockColaborador.create({ data: { companyId, nome: 'rodrigo' } })
+
+    /** 3 lotes seguidos a 70% — padrão de rendimento DE VERDADE, fora da faixa impossível */
+    for (let i = 0; i < 3; i++) {
+      const ordem = await prisma.stockProductionOrder.create({
+        data: {
+          companyId, fichaId: ficha.id, versaoFicha: 1, itemProduzidoId: item.id,
+          dataProducao: new Date('2026-10-01T15:00:00.000Z'), escalaReceitas: 1, estado: 'CONCLUIDA',
+        },
+      })
+      const conc = await prisma.stockProducaoConclusao.create({
+        data: {
+          companyId, ordemId: ordem.id, qtdGerada: 7, colaboradorId: quem.id,
+          escalaConsumida: 1, custoLoteReal: 10, rendimento: 7,
+        },
+      })
+      await prisma.stockProducaoDesvio.create({
+        data: {
+          companyId, conclusaoId: conc.id, ordemId: ordem.id, pctTeorico: 70,
+          /** ⛔ o `criadoPorId` do desvio é o USUÁRIO do sistema — medido em prod: 78 de 400
+           *  linhas, e NENHUM casa com `stock_colaborador`. Está aqui de propósito, com um id
+           *  que não é colaborador nenhum: se o produtor voltar a ler daqui, o nome desaparece. */
+          criadoPorId: 'user-do-sistema',
+        },
+      })
+    }
+
+    const r = await produzirAvisosDeProducao(companyId)
+    expect(r.recusados, 'nenhuma frase pode ser recusada pela lei do balcão').toEqual([])
+
+    const avisos = await avisosDoSetor(companyId, 'producao')
+    const padrao = avisos.find((a) => a.origem === 'PADRAO_RENDIMENTO')
+    expect(padrao, 'o padrão de 3 lotes a 70% tem que virar aviso').toBeTruthy()
+    expect(padrao!.corpo, 'o NOME de quem fez — o pedido literal do dono').toMatch(/rodrigo/)
+    expect(padrao!.corpo).not.toMatch(/sem nome registrado/)
+    expect(padrao!.oQueFazer).toMatch(/rodrigo/)
+  })
+
+  afterEach(async () => {
+    for (const t of ['stockProducaoDesvio', 'stockProducaoConclusao', 'stockProductionOrder',
+                     'stockFichaVersao', 'stockFicha', 'stockColaborador', 'stockItem'] as const) {
+      // @ts-expect-error dinâmico — `stock_*` não cascateia (o isolamento proíbe @relation)
+      await prisma[t].deleteMany({ where: { companyId } })
+    }
+  })
+})

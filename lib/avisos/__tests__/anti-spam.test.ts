@@ -11,7 +11,10 @@
  * 26/08 ensinaram a esta casa.
  */
 import { describe, it, expect } from 'vitest'
-import { acharPadrao, fraseDoPadrao, LOTES_SEGUIDOS_PRA_PADRAO, type LoteMedido } from '../padrao-de-rendimento'
+import {
+  acharPadrao, fraseDoPadrao, LOTES_SEGUIDOS_PRA_PADRAO,
+  PCT_IMPOSSIVEL_BAIXO, PCT_IMPOSSIVEL_ALTO, type LoteMedido,
+} from '../padrao-de-rendimento'
 import { montarSemanaVerde, semanaIso, ehDomingoNoBrasil } from '../semana-verde'
 import { setoresVisiveis, podeVerSetor } from '../visibilidade'
 import { exigirLinguaDoBalcao } from '../lingua-do-balcao'
@@ -87,6 +90,69 @@ describe('⛔⛔ rendimento: PADRÃO sim, lote isolado NUNCA', () => {
         origem: 'PADRAO_RENDIMENTO', alvo: 'f1',
       }),
     ).not.toThrow()
+  })
+})
+
+/**
+ * ⛔⛔⛔ OS CASOS REAIS DA PREVIEW EM PROD — 7 receitas deram padrão com **1% em 12-14 lotes
+ * seguidos** (`ABRIR MILHO`, `tomate em rodela`, `PICAR BRÓCOLIS`, `ABRIR ERVILHA`…).
+ * Render 1% catorze vezes não é a mão da cozinha: é o lote base da ficha em outra GRANDEZA.
+ * Mandar *"confira a porção com o rodrigo"* ali é acusar o campo errado — a lição de 16/09.
+ */
+describe('⛔⛔ grandeza IMPOSSÍVEL é outra causa, outra frase, outra ação', () => {
+  const MILHO = [lote(1, 1), lote(2, 1), lote(3, 1), lote(4, 1)]
+
+  it('⭐⭐ o padrão é marcado como grandeza impossível', () => {
+    const p = acharPadrao(MILHO)!
+    expect(p.grandezaImpossivel).toBe(true)
+    expect(PCT_IMPOSSIVEL_BAIXO).toBe(10)
+    expect(PCT_IMPOSSIVEL_ALTO).toBe(1000)
+  })
+
+  it('⛔⛔ a frase manda CORRIGIR O LOTE BASE — e NÃO fala da mão de ninguém', () => {
+    const f = fraseDoPadrao('ABRIR MILHO', acharPadrao(MILHO)!)
+    expect(f.titulo).toMatch(/Corrija quantas unidades rende/)
+    expect(f.oQueFazer).toMatch(/lote base/)
+    expect(f.corpo, 'não é variação de cozinha').toMatch(/não é variação de cozinha/)
+    expect(f.oQueFazer, 'não cobra a porção de quem fez').not.toMatch(/porção com/)
+  })
+
+  /** ⚠️ BASTA UM lote lixo: com um número impossível no meio, não dá pra julgar a mão de ninguém */
+  it('⭐ um ÚNICO lote impossível no meio já muda a frase (o caso CUBA MAIONESE: 1·1·0·999)', () => {
+    const p = acharPadrao([lote(1, 1), lote(2, 1), lote(3, 0.4), lote(4, 999)])!
+    expect(p.grandezaImpossivel).toBe(true)
+    expect(fraseDoPadrao('CUBA MAIONESE', p).titulo).toMatch(/Corrija quantas unidades rende/)
+  })
+
+  it('⭐ padrão de rendimento DE VERDADE (80-70-65%) segue com a frase da porção', () => {
+    const p = acharPadrao([lote(1, 80), lote(2, 70), lote(3, 65)])!
+    expect(p.grandezaImpossivel).toBe(false)
+    const f = fraseDoPadrao('beef de xis', p)
+    expect(f.titulo).toMatch(/Revise a receita/)
+    expect(f.oQueFazer).toMatch(/porção com rodrigo/)
+  })
+})
+
+describe('⛔ sem nome registrado, a frase NÃO fala de pessoa', () => {
+  /**
+   * ⛔⛔ Na preview em prod os 7 avisos saíram com *"feitos por sem nome registrado"* — texto de
+   * sistema vazando pro balcão. A causa era eu ler o USUÁRIO do sistema (`criadoPorId`, 78 de
+   * 400 linhas) em vez do colaborador da CONCLUSÃO (353 de 400). Consertada a fonte, a frase
+   * ainda precisa aguentar o caso legítimo: lote antigo sem colaborador gravado.
+   */
+  it('⛔ nem no corpo nem no "o que fazer"', () => {
+    const p = acharPadrao([lote(1, 80, null), lote(2, 70, null), lote(3, 65, null)])!
+    const f = fraseDoPadrao('beef de xis', p)
+    expect(f.corpo).not.toMatch(/sem nome registrado/)
+    expect(f.corpo, 'a frase simplesmente não menciona pessoa').not.toMatch(/feitos por/)
+    expect(f.oQueFazer).not.toMatch(/sem nome registrado/)
+    expect(f.oQueFazer).not.toMatch(/com :/)
+  })
+
+  it('⭐ com nome, ele aparece nos dois', () => {
+    const f = fraseDoPadrao('beef de xis', acharPadrao([lote(1, 80), lote(2, 70), lote(3, 65)])!)
+    expect(f.corpo).toMatch(/feitos por rodrigo/)
+    expect(f.oQueFazer).toMatch(/com rodrigo/)
   })
 })
 

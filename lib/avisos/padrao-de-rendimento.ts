@@ -40,6 +40,22 @@ export interface LoteMedido {
   quem: string | null
 }
 
+/**
+ * ⛔⛔⛔ A FAIXA DO **IMPOSSÍVEL** — e ela separa duas causas que a frase confundia.
+ *
+ * **Achado na preview em prod:** 7 receitas deram padrão com **1%, 2%, 3% em 12-14 lotes
+ * seguidos** (`ABRIR MILHO`, `tomate em rodela`, `PICAR BRÓCOLIS`, `ABRIR ERVILHA`…). Render
+ * 1% catorze vezes **não é a mão da cozinha** — é o lote base da ficha declarado em outra
+ * GRANDEZA (a unidade até bate; o NÚMERO está ~100× errado). É a família do `22864` que eram
+ * 22,864 kg (19/09) e do creme de leite 100× (20/09).
+ *
+ * ⚠️ Mandar *"confira a porção com o rodrigo"* nesse caso é **acusar o campo errado** — a lição
+ * literal de 16/09 (*"mensagem que acusa o campo errado faz o dono caçar um erro que não
+ * existe"*), e aqui ela custaria a confiança de quem fez o lote.
+ */
+export const PCT_IMPOSSIVEL_BAIXO = 10
+export const PCT_IMPOSSIVEL_ALTO = 1000
+
 export interface PadraoDeRendimento {
   /** quantos lotes seguidos, do mais recente pra trás, estão fora da faixa */
   seguidos: number
@@ -49,6 +65,11 @@ export interface PadraoDeRendimento {
   quem: string[]
   /** 'BAIXO' quando todos renderam MENOS; 'ALTO' quando todos renderam mais; 'MISTO' */
   sentido: 'BAIXO' | 'ALTO' | 'MISTO'
+  /**
+   * ⭐ `true` quando QUALQUER lote do padrão cai na faixa impossível. Basta UM: com um número
+   * lixo no meio, não dá pra julgar a mão de ninguém — a conta inteira está sob suspeita.
+   */
+  grandezaImpossivel: boolean
 }
 
 function sentidoDe(pct: number): 'BAIXO' | 'ALTO' {
@@ -99,6 +120,9 @@ export function acharPadrao(
     lotes: doMaisAntigo,
     quem,
     sentido: sentidos.size === 1 ? [...sentidos][0] : 'MISTO',
+    grandezaImpossivel: doMaisAntigo.some(
+      (l) => (l.pct as number) <= PCT_IMPOSSIVEL_BAIXO || (l.pct as number) >= PCT_IMPOSSIVEL_ALTO,
+    ),
   }
 }
 
@@ -112,11 +136,31 @@ export function acharPadrao(
 export function fraseDoPadrao(receita: string, p: PadraoDeRendimento): { titulo: string; corpo: string; oQueFazer: string } {
   const pcts = p.lotes.map((l) => `${Math.round(l.pct as number)}%`).join(' · ')
   const nomes =
-    p.quem.length === 0
-      ? 'sem nome registrado'
-      : p.quem.length === 1
-        ? p.quem[0]
-        : `${p.quem.slice(0, -1).join(', ')} e ${p.quem[p.quem.length - 1]}`
+    p.quem.length === 1
+      ? p.quem[0]
+      : p.quem.length > 1
+        ? `${p.quem.slice(0, -1).join(', ')} e ${p.quem[p.quem.length - 1]}`
+        : ''
+  /** ⚠️ sem nome, a frase simplesmente NÃO fala de pessoa — *"feitos por sem nome registrado"*
+   *  é texto de sistema vazando pro balcão, e o dono pediu a língua dele. */
+  const porQuem = nomes ? `, feitos por ${nomes}` : ''
+
+  /**
+   * ⛔⛔ GRANDEZA IMPOSSÍVEL: outra causa, outra frase, outra ação. Aqui o problema é o NÚMERO
+   * do lote base da ficha, não a porção que saiu da mão de ninguém.
+   */
+  if (p.grandezaImpossivel) {
+    return {
+      titulo: `Corrija quantas unidades rende a receita de ${receita}`,
+      corpo:
+        `Os últimos ${p.seguidos} lotes de ${receita} deram ${pcts} do que a ficha promete${porQuem}. ` +
+        `Número assim não é variação de cozinha: a ficha diz que uma receita rende muito mais (ou muito ` +
+        `menos) do que ela rende de verdade.`,
+      oQueFazer:
+        `Abra a ficha de ${receita} e acerte o lote base — quantas unidades saem de UMA receita. ` +
+        `Enquanto estiver torto, a separação pede material errado e o custo por unidade também sai errado.`,
+    }
+  }
 
   const lado =
     p.sentido === 'BAIXO'
@@ -128,11 +172,11 @@ export function fraseDoPadrao(receita: string, p: PadraoDeRendimento): { titulo:
   return {
     titulo: `Revise a receita de ${receita} — ${p.seguidos} lotes seguidos fora`,
     corpo:
-      `Os últimos ${p.seguidos} lotes de ${receita} saíram ${lado} (${pcts}), feitos por ${nomes}. ` +
+      `Os últimos ${p.seguidos} lotes de ${receita} saíram ${lado} (${pcts})${porQuem}. ` +
       `Um lote fora é normal; ${p.seguidos} seguidos é padrão.`,
     oQueFazer:
       p.sentido === 'BAIXO'
-        ? `Confira a ficha e a porção com ${nomes}: ou a receita pede mais do que precisa, ou está saindo porção maior que a combinada.`
+        ? `Confira a ficha e a porção${nomes ? ` com ${nomes}` : ''}: ou a receita pede mais do que precisa, ou está saindo porção maior que a combinada.`
         : `Confira a ficha de ${receita}: se está saindo mais do que ela promete, a dose da ficha está alta e o custo por unidade está errado.`,
   }
 }
