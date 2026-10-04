@@ -52,9 +52,15 @@ export interface VeredictoDaOrdemParada {
 }
 
 /** ⭐ 24h é o mesmo limiar do P2 — uma régua, um dono */
+
+import { formatBRL } from '@/lib/format/money'
 export const HORAS_PARA_AVISAR = 24
 
-const brl = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// ⭐ a 6ª cópia da decisão de moeda virou casca do formatador da casa (04/10). Ela estava
+// CERTA (tinha `minimumFractionDigits`), mas cópia correta hoje é cópia que diverge amanhã —
+// e foi a irmã dela, sem o `minimum`, que imprimiu "R$ 638,5" na tela do dono.
+// ⚠️ `formatBRL` já traz o "R$" (com espaço não-quebrável), então o prefixo sai do template.
+const brl = formatBRL
 
 /**
  * ⭐⭐ A DECISÃO, pura.
@@ -72,7 +78,7 @@ export function saidasDaOrdemParada(e: EstadoDaOrdemParada): VeredictoDaOrdemPar
   const dias = Math.floor(e.horasParada / 24)
   const tempo = dias >= 1 ? `há ${dias} dia${dias === 1 ? '' : 's'}` : `há ${Math.round(e.horasParada)}h`
   const dinheiro = e.valorPreso > 0.01
-    ? ` R$ ${brl(e.valorPreso)} saíram da prateleira e ainda não viraram produto.`
+    ? ` ${brl(e.valorPreso)} saíram da prateleira e ainda não viraram produto.`
     : ''
   // ⚠️ a data torta entra no MOTIVO porque ela explica o sumiço — sem isso o dono lê
   //    "parada há 2 dias" numa ordem que ele jurava não existir (o caso do ano 202).
@@ -89,7 +95,7 @@ export function saidasDaOrdemParada(e: EstadoDaOrdemParada): VeredictoDaOrdemPar
       {
         acao: 'CANCELAR_E_DEVOLVER', rotulo: 'cancelar e devolver os insumos',
         efeito: e.valorPreso > 0.01
-          ? `os R$ ${brl(e.valorPreso)} voltam pra prateleira e a ordem fica cancelada no histórico`
+          ? `os ${brl(e.valorPreso)} voltam pra prateleira e a ordem fica cancelada no histórico`
           : 'a ordem fica cancelada no histórico',
       },
       {

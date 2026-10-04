@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from 'react'
 import { Loader2, Check, Clock, User, CircleSlash, BellRing, UserCheck, X } from 'lucide-react'
+import { formatarDuracao } from '@/lib/format/duracao'
 
 interface Etapa {
   id: string; posicao: number; nome: string
@@ -38,8 +39,7 @@ const hhmm = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('pt
 /** ⚠️ "1h12", não "72min": é como a cozinha fala */
 export function duracao(min: number | null): string {
   if (min == null) return '—'
-  if (min < 60) return `${min}min`
-  return `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`
+  return formatarDuracao(min)
 }
 
 export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, aoSaberAbertas }: {

@@ -91,6 +91,7 @@ export async function lotesDaJanela(companyId: string, janela: JanelaDeLotes = {
       minutos: minutosDoLote(doLote),
       dia: diaBrasil(v.quando),
       encerradoAs: v.quando.toISOString(),
+      itemId: o.itemProduzidoId,
     })
   }
   return out.sort((a, b) => a.dia.localeCompare(b.dia))

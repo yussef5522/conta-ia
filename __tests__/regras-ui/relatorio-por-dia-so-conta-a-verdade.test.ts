@@ -192,3 +192,113 @@ describe('⭐⭐ e a maçaneta existe (a família que esta casa pagou 11 vezes)'
     ).toBe(false)
   })
 })
+
+/**
+ * ⭐⭐⭐ "ESCOLHER O QUE EU VEJO" — a escolha do dono, persistida (04/10/2026).
+ *
+ * **Pedido:** *"Escolha SALVA EM TABELA por usuário (a régua do Real×Teórico: nunca
+ * localStorage) — volto amanhã e está como deixei."*
+ */
+describe('⭐⭐ o seletor de receitas: escolha do dono, em TABELA', () => {
+  const LIB_PREF = 'lib/stock/producao/receitas-ocultas.ts'
+
+  /**
+   * ⛔⛔ localStorage é por NAVEGADOR, e o dono confere no celular E no notebook — a escolha
+   * feita num sumiria no outro. *"Salva por usuário" só é verdade se for no banco* (a decisão
+   * da Mesa, 29/09). O guard proíbe a tela de inventar o atalho.
+   */
+  it('⛔⛔ NUNCA localStorage — a escolha mora no banco', () => {
+    const tela = semComentario(ler(TELA))
+    expect(/localStorage|sessionStorage/.test(tela), 'a preferência é TABELA, não navegador').toBe(false)
+    const lib = semComentario(ler(LIB_PREF))
+    expect(lib, 'a lib grava na tabela da preferência').toContain('stockPorDiaPreferencia')
+    expect(lib, 'por (empresa, usuário) — a chave única do banco').toMatch(/companyId_userId/)
+  })
+
+  /**
+   * ⛔⛔ **DELTA, nunca a lista inteira.** O painel só conhece as receitas do período ABERTO; se
+   * ele mandasse a lista completa, abrir "hoje" (onde o TOMATE PICADO não produziu) e mexer em
+   * qualquer coisa **apagaria o TOMATE da preferência em silêncio** — o dono voltaria amanhã e o
+   * preparo que ele escondeu estaria de volta. *Só se decide sobre o que se vê.*
+   */
+  it('⛔⛔ a tela manda DELTA (ocultar/mostrar), nunca a lista inteira', () => {
+    const tela = semComentario(ler(TELA))
+    expect(tela, 'o gesto manda delta').toMatch(/salvarPref\(\{\s*(ocultar|mostrar)/)
+    expect(
+      /body: JSON\.stringify\(\{\s*ocultas/.test(tela),
+      'substituir a lista apagaria em silêncio o que foi escondido fora do período',
+    ).toBe(false)
+    const rota = semComentario(ler(ROTA))
+    expect(rota, 'a rota aplica o delta pela lib').toContain('aplicarDelta(')
+    // ⚠️ o schema aceita os dois lados do delta, e NÃO um campo de lista inteira
+    expect(rota).toContain('ocultar: z.array')
+    expect(rota).toContain('mostrar: z.array')
+  })
+
+  /**
+   * ⛔⛔ O TESTE QUE IMPEDE O PAINEL DE SE SUICIDAR: a lista que ele desenha é a COMPLETA
+   * (`receitasDoPeriodo`), não as linhas filtradas. Derivá-la do que sobrou tiraria a receita
+   * oculta do próprio painel que existe pra desocultá-la.
+   */
+  it('⭐⭐ o painel lê a lista COMPLETA, não as linhas desenhadas', () => {
+    const tela = semComentario(ler(TELA))
+    expect(tela).toMatch(/receitasFiltradas = useMemo\(\s*\(\)\s*=>\s*\(data\?\.receitasDoPeriodo/)
+    expect(
+      /receitasDoPeriodo.*=.*data\.linhas|new Set\(data\.linhas\.map/.test(tela),
+      'derivar das linhas filtradas esconderia o gesto de desfazer',
+    ).toBe(false)
+    // ⚠️ e o CHIP de filtro também: a rota tira as tarefas da lista completa
+    const rota = semComentario(ler(ROTA))
+    expect(rota).toMatch(/tarefas: r\.receitasDoPeriodo/)
+  })
+
+  /**
+   * ⭐ HONESTIDADE: *"a tela diz que está filtrando"*. E o número é o do PERÍODO, nunca o
+   * tamanho da preferência — 10 ocultas com 3 produzindo no recorte são 3.
+   */
+  it('⭐⭐ o rodapé DIZ quantas estão ocultas, e oferece o [mostrar]', () => {
+    const tela = semComentario(ler(TELA))
+    expect(tela).toMatch(/receitas? ocultas?/)
+    expect(tela, 'com o gesto de desfazer ao lado').toMatch(/>\s*mostrar\s*</)
+    expect(tela, 'conta o do PERÍODO').toMatch(/ocultas = data\?\.ocultasNoPeriodo/)
+    // ⛔ e some quando não há nenhuma (móvel zerado treina o dono a não olhar)
+    expect(tela).toMatch(/\{ocultas > 0 && \(/)
+  })
+
+  /**
+   * ⭐ O SUFIXO "(das visíveis)" — sem ele o dono compararia o total de hoje com o de ontem sem
+   * saber que a régua mudou. ⛔ Nos DOIS viewports (REGRA 12).
+   */
+  it('⭐ com oculta, o total ganha "(das visíveis)" — nos dois viewports', () => {
+    const tela = semComentario(ler(TELA))
+    expect(tela).toContain("const suf = ocultas > 0 ? ' (das visíveis)' : ''")
+    const usos = tela.match(/total do dia\{suf\}/g) ?? []
+    expect(usos.length, 'o TOTAL DO DIA é marcado no desktop E no celular').toBe(2)
+    expect(tela, 'e o cabeçalho do período também').toMatch(/a \{dia\(data\.periodo\.ate\)\}\{suf\}/)
+  })
+
+  /**
+   * ⛔⛔ E O INVARIANTE QUE SEGURA TUDO: o recorte entra **antes** das agregações. Esconder só no
+   * desenho deixaria o subtotal somando lote que a tela não mostra.
+   */
+  it('⛔⛔ o oculto é cortado ANTES de agregar (é o que faz o Σ fechar)', () => {
+    const lib = semComentario(ler(LIB))
+    const chamada = lib.indexOf('recortarPorReceitasVisiveis(linhas')
+    /**
+     * ⚠️⚠️ **A 1ª VERSÃO DESTE TESTE VEIO VERDE COM O DEFEITO REPOSTO — "menção, não uso" pela
+     * 11ª vez nesta casa.** Eu media só a ORDEM (`chamada < agregação`); repondo o defeito real
+     * — apagar o `linhas = recorte.linhas`, ou seja CHAMAR o recorte e **jogar o resultado
+     * fora** — a ordem seguia certa e o guard passava, com o relatório mostrando as receitas
+     * que o dono escondeu. *Chamar não é usar.*
+     *
+     * ⭐ O que morde é a ATRIBUIÇÃO: a lista que vai pra agregação tem que SER a do recorte.
+     */
+    const uso = lib.indexOf('linhas = recorte.linhas')
+    const jDia = lib.indexOf('agruparPorDia(linhas)')
+    const jRec = lib.indexOf('agruparPorReceita(linhas)')
+    expect(chamada, 'não achei a chamada do recorte').toBeGreaterThan(0)
+    expect(uso, 'o resultado do recorte tem que SUBSTITUIR as linhas, não só ser calculado').toBeGreaterThan(0)
+    expect(uso, 'e a substituição vem ANTES do agruparPorDia').toBeLessThan(jDia)
+    expect(uso, 'e ANTES do agruparPorReceita').toBeLessThan(jRec)
+  })
+})

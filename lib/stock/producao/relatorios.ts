@@ -43,6 +43,12 @@ export interface Lote {
    * mesmo instante que datou o lote. Datar pelo último faria o lote poder trocar de DIA.
    */
   encerradoAs?: string
+  /**
+   * ⭐ o ITEM que o lote produziu. Serve pra o dono ESCONDER uma receita do relatório por ID —
+   * ⚠️ nunca por NOME: esta casa renomeia item, e por nome a receita oculta reapareceria
+   * sozinha no dia do rename. OPCIONAL pelo mesmo motivo do `encerradoAs` (fixture antiga).
+   */
+  itemId?: string
 }
 
 export interface PontoDoDia {

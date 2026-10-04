@@ -11,9 +11,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { relatorioPorDia } from '@/lib/stock/producao/relatorio-por-dia'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
+import { lerOcultas, aplicarDelta } from '@/lib/stock/producao/receitas-ocultas'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -42,9 +45,17 @@ export async function GET(request: NextRequest, { params }: Params) {
   const sp = request.nextUrl.searchParams
   const { de, ate, janela } = janelaDaUrl(sp)
 
+  /**
+   * ⭐ A ESCOLHA DO DONO SOBRE O QUE ELE VÊ — lida da TABELA, por usuário.
+   * ⚠️ Falha macia: preferência ilegível volta a lista vazia (tudo visível). Derrubar o
+   * relatório por causa de um JSON torto seria perder o relatório pra salvar o filtro.
+   */
+  const ocultas = await lerOcultas(companyId, a.user.sub, prisma)
+
   const r = await relatorioPorDia(companyId, {
     de: janela.de,
     ate: janela.ate,
+    ocultas,
     tarefa: sp.get('tarefa') || undefined,
     setor: sp.get('setor') || undefined,
     quemConcluiu: sp.get('quem') || undefined,
@@ -62,9 +73,43 @@ export async function GET(request: NextRequest, { params }: Params) {
      * um setor que não produziu nada ali é oferecer um filtro que devolve vazio.
      */
     filtros: {
-      tarefas: [...new Set(r.linhas.map((l) => l.tarefa))].sort((x, y) => x.localeCompare(y)),
+      /**
+       * ⚠️ Sai de `receitasDoPeriodo` (a lista COMPLETA, antes de esconder), não das linhas
+       * filtradas: derivar das linhas tiraria a receita oculta do chip de filtro também — e aí
+       * ela ficaria inalcançável por dois caminhos de uma vez.
+       */
+      tarefas: r.receitasDoPeriodo.map((x) => x.tarefa).sort((x, y) => x.localeCompare(y)),
       setores: [...new Set(r.linhas.map((l) => l.setor).filter((x): x is string => !!x))].sort((x, y) => x.localeCompare(y)),
       pessoas: [...new Set(r.linhas.map((l) => l.quemConcluiu).filter((x): x is string => !!x))].sort((x, y) => x.localeCompare(y)),
     },
   })
+}
+
+/**
+ * ⭐⭐ SALVA A ESCOLHA — e ela é um **DELTA**, nunca a lista inteira.
+ *
+ * ⛔⛔ **POR QUE DELTA:** o painel só conhece as receitas DO PERÍODO ABERTO. Se ele mandasse a
+ * lista completa, abrir "hoje" (onde o TOMATE PICADO não produziu) e mexer em qualquer coisa
+ * **apagaria o TOMATE da preferência em silêncio** — o dono voltaria amanhã e o preparo miúdo
+ * que ele escondeu estaria de volta, sem ninguém ter pedido. Com delta, o que ele não viu não
+ * muda: *só se decide sobre o que se vê.*
+ *
+ * ⛔ `stock.manage`: a mesma trava do relatório que ela configura — e escrita nunca se contenta
+ * com `view`.
+ */
+const bodySchema = z.object({
+  ocultar: z.array(z.string().min(1)).max(500).optional(),
+  mostrar: z.array(z.string().min(1)).max(500).optional(),
+})
+
+export async function PUT(request: NextRequest, { params }: Params) {
+  const { id: companyId } = await params
+  const a = await guardStock(request, companyId, 'stock.manage')
+  if (a.erro) return a.erro
+
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) return NextResponse.json({ erro: 'Corpo inválido.' }, { status: 400 })
+
+  const ocultas = await aplicarDelta(companyId, a.user.sub, parsed.data, prisma)
+  return NextResponse.json({ ocultas })
 }

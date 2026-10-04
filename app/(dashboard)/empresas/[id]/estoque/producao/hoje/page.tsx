@@ -19,6 +19,8 @@
 import { useEffect, useState, use, useCallback } from 'react'
 import { ArrowLeft, Loader2, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw, Clock } from 'lucide-react'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
+import { formatarDuracao } from '@/lib/format/duracao'
+import { formatBRL } from '@/lib/format/money'
 // ⛔ o cronômetro é FUNÇÃO DE LIB, testada — a lição do tablet que passou dois dias
 // mentindo zero porque a conta morava dentro do componente.
 import { PlacarDaEquipe, type LinhaDoPlacar } from '@/components/estoque/placar-da-equipe'
@@ -69,7 +71,7 @@ const SEGUNDOS_ATE_RECARREGAR = 30
 
 const hora = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
-const duracaoCurta = (min: number) => (min < 60 ? `${min}min` : `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`)
+const duracaoCurta = formatarDuracao // ⭐ formatador único da casa (era a 2ª cópia do `% 60`)
 const inicial = (n: string) => (n.trim()[0] ?? '?').toUpperCase()
 const DIA_SEMANA = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado']
 const MES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
@@ -341,7 +343,7 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                       {e.loteFechado && (
                         <div className="ml-[4.6rem] mt-0.5 text-[12px] text-slate-400">
                           └ lote fechado · {num(e.loteFechado.qtdGerada)} {e.loteFechado.unidade}
-                          {e.loteFechado.custoUnitario != null && ` · R$ ${num(e.loteFechado.custoUnitario)}/un`}
+                          {e.loteFechado.custoUnitario != null && ` · ${formatBRL(e.loteFechado.custoUnitario)}/un`}
                         </div>
                       )}
                     </li>
@@ -457,7 +459,7 @@ function CardDaPessoa({ p, empresaId, agoraMs, colaboradores, onMudou }: {
                       <span className={`rounded-[8px] px-[7px] py-px text-[12px] font-extrabold ${SELO_RENDIMENTO[t.rendimento!.selo]}`}>{t.rendimento!.pct}%</span>
                     </>
                   )}
-                  {t.loteFechado.custoUnitario != null && ` · R$ ${num(t.loteFechado.custoUnitario)}/un`}
+                  {t.loteFechado.custoUnitario != null && ` · ${formatBRL(t.loteFechado.custoUnitario)}/un`}
                 </span>
               )}
             </li>

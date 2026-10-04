@@ -22,6 +22,10 @@ const r1 = (n: number) => Math.round(n * 10) / 10
 const r2 = (n: number) => Math.round(n * 100) / 100
 
 /** ⭐ quantos lotes MEDIDOS uma tarefa precisa ter pra ganhar média (régua do dono) */
+// ⭐ o ÚNICO import deste módulo (que é puro): o formatador de duração da casa.
+// ⚠️ `lib/format/duracao` também é puro — nenhuma dependência de banco/React entra aqui.
+import { formatarDuracao } from '@/lib/format/duracao'
+
 export const LOTES_PRA_TER_MEDIA = 3
 /** ⭐ a faixa em que o rendimento é "no alvo" — fora dela, âmbar dos DOIS lados */
 export const RENDIMENTO_OK = { min: 95, max: 110 } as const
@@ -199,7 +203,9 @@ export interface DesempenhoDaPessoa {
   barraEmLotes: boolean
 }
 
-const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${String(Math.round(m % 60)).padStart(2, '0')}` : `${Math.round(m)}min`)
+// ⭐ a 5ª cópia virou casca. ⚠️ ESTA alimenta FRASES que o golden trava ao caractere —
+// `formatarDuracao` produz a MESMA saída pra todo inteiro; só os casos de borda (1h60) mudam.
+const fmtMin = formatarDuracao
 
 /**
  * ⭐⭐ O PLACAR — **a MESMA função pro HOJE e pros Relatórios**. A única coisa que muda é a

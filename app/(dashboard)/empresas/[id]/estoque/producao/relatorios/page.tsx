@@ -13,6 +13,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { fetchJson } from '@/lib/http/fetch-json'
 import type { RelatorioDaTarefa, GeralDoPeriodo, BarraDaPessoa } from '@/lib/stock/producao/relatorios'
+import { formatarDuracao } from '@/lib/format/duracao'
 // ⭐ o piso vem do DONO ÚNICO — digitar "5" na tela seria a 2ª régua no dia em que ele mudar
 import { PISO_DE_DURACAO_MIN } from '@/lib/stock/producao/desempenho'
 
@@ -37,7 +38,7 @@ interface Dados {
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const diaCurto = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
-const fmt = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${String(Math.round(m % 60)).padStart(2, '0')}` : `${Math.round(m)}min`)
+const fmt = formatarDuracao // ⭐ formatador único (arredondava o RESTO, não o total: "1h60" era alcançável)
 
 export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)

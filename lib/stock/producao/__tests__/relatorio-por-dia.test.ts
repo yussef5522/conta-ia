@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest'
 import { agruparPorDia, agruparPorReceita, textoDoPedido, type LinhaDoRelatorio } from '../relatorio-por-dia'
 
 const linha = (p: Partial<LinhaDoRelatorio>): LinhaDoRelatorio => ({
-  ordemId: 'o1', dia: '2026-10-04', tarefa: 'porcao coxao 80 grama', unidade: 'UN',
+  ordemId: 'o1', dia: '2026-10-04', tarefa: 'porcao coxao 80 grama', itemId: 'it-coxao', unidade: 'UN',
   pedido: 80, produzido: 78, pctDoPedido: 98, seloDoPedido: 'OK',
   eficiencia: 0.98, separadoReais: 412.3, minutos: 95, relampago: false,
   setor: 'COZINHA', quemConcluiu: 'rodrigo', ...p,

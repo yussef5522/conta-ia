@@ -38,6 +38,8 @@ export interface LinhaDoRelatorio {
   ordemId: string
   dia: string
   tarefa: string
+  /** ⭐ o item produzido — a chave por onde o dono OCULTA uma receita (por id, nunca por nome) */
+  itemId: string
   unidade: string
   /** o pedido em unidades do produto — `null` quando a ordem nasceu sem meta */
   pedido: number | null
@@ -93,6 +95,7 @@ export interface SubtotalDoDia {
 }
 
 export interface PorReceitaNoPeriodo {
+  itemId: string
   tarefa: string
   unidade: string
   lotes: number
@@ -108,10 +111,33 @@ export interface PorReceitaNoPeriodo {
   relampagos: number
 }
 
+/** uma receita que produziu no período — a lista que o SELETOR oferece */
+export interface ReceitaDoPeriodo {
+  itemId: string
+  tarefa: string
+  /** quantos lotes ela fez no período — o seletor ordena por isso, não alfabético */
+  lotes: number
+  oculta: boolean
+}
+
 export interface RelatorioPorDia {
   linhas: LinhaDoRelatorio[]
   dias: SubtotalDoDia[]
   porReceita: PorReceitaNoPeriodo[]
+  /**
+   * ⭐⭐ TODAS as receitas do período, **antes** de esconder — com a marca de quem está oculta.
+   *
+   * ⛔ É a lista que o seletor desenha, e ela TEM que ser a completa: derivá-la das linhas
+   * filtradas tiraria a receita oculta do próprio painel que existe pra desocultá-la. *Esconder
+   * o gesto de desfazer é como uma escolha reversível vira permanente.*
+   */
+  receitasDoPeriodo: ReceitaDoPeriodo[]
+  /**
+   * ⚠️ Quantas receitas estão REALMENTE sendo escondidas DESTA VISTA — não o tamanho da
+   * preferência. O dono pode ter 10 ocultas e só 3 terem produzido no recorte; dizer "10
+   * ocultas" seria a tela afirmando um filtro que ela não está aplicando.
+   */
+  ocultasNoPeriodo: number
   /** o recorte que produziu estes números — a tela ECOA, nunca escreve a data na mão */
   periodo: { de: string | null; ate: string | null }
   /** ⚠️ quando o período não tem lote nenhum, a tela DIZ o motivo em vez de mostrar zeros */
@@ -142,6 +168,8 @@ function media(xs: number[]): number | null {
 const r2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
 export interface FiltrosDoRelatorio extends JanelaDeLotes {
+  /** ⭐ os itemId que o DONO escolheu esconder (preparos miúdos). Decisão dele, persistida. */
+  ocultas?: string[]
   setor?: string
   quemConcluiu?: string
 }
@@ -161,7 +189,7 @@ export async function relatorioPorDia(
     de: filtros.de ? filtros.de.toISOString().slice(0, 10) : null,
     ate: filtros.ate ? filtros.ate.toISOString().slice(0, 10) : null,
   }
-  if (!lotes.length) return { linhas: [], dias: [], porReceita: [], periodo, vazio: true }
+  if (!lotes.length) return { linhas: [], dias: [], porReceita: [], periodo, receitasDoPeriodo: [], ocultasNoPeriodo: 0, vazio: true }
 
   const ordemIds = lotes.map((l) => l.ordemId)
   const [desvios, conclusoes, ordens] = await Promise.all([
@@ -214,6 +242,7 @@ export async function relatorioPorDia(
       ordemId: l.ordemId,
       dia: l.dia,
       tarefa: l.tarefa,
+      itemId: l.itemId ?? '',
       unidade: l.unidade,
       pedido: rend.pedido,
       produzido: l.entregue,
@@ -234,11 +263,60 @@ export async function relatorioPorDia(
   // da lista recortada — senão o dia somaria lotes que a tela não mostra.
   if (filtros.setor) linhas = linhas.filter((l) => l.setor === filtros.setor)
   if (filtros.quemConcluiu) linhas = linhas.filter((l) => l.quemConcluiu === filtros.quemConcluiu)
-  if (!linhas.length) return { linhas: [], dias: [], porReceita: [], periodo, vazio: true }
+
+  /**
+   * ⭐⭐ O RECORTE DO QUE O DONO ESCOLHEU VER — **depois** dos outros filtros, **antes** das
+   * agregações. A função é PURA e exportada (ver o bloco dela): é lá que o invariante vive.
+   */
+  const recorte = recortarPorReceitasVisiveis(linhas, filtros.ocultas ?? [])
+  const { receitasDoPeriodo, ocultasNoPeriodo } = recorte
+  linhas = recorte.linhas
+
+  const vazio = { linhas: [], dias: [], porReceita: [], periodo, receitasDoPeriodo, ocultasNoPeriodo, vazio: true }
+  if (!linhas.length) return vazio
 
   const dias = agruparPorDia(linhas)
   const porReceita = agruparPorReceita(linhas)
-  return { linhas, dias, porReceita, periodo, vazio: false }
+  return { linhas, dias, porReceita, periodo, receitasDoPeriodo, ocultasNoPeriodo, vazio: false }
+}
+
+/**
+ * ⭐⭐ PURA — aplica a escolha "o que eu vejo" e devolve a lista do seletor junto.
+ *
+ * ⛔⛔ **A ORDEM É O INVARIANTE.** Esconder ANTES de agregar é o que faz `Σ(linhas) == total`
+ * continuar fechando **por construção**: esconder só no desenho deixaria o subtotal do dia
+ * somando lote que a tela não mostra, e o rodapé passaria a dizer um número que as linhas acima
+ * não somam — a doença do cabeçalho que afirmava *"69 duplicatas"* com a aba dizendo 0.
+ *
+ * ⭐ **E a lista do seletor sai da lista COMPLETA**, antes do corte: derivá-la das linhas que
+ * sobraram tiraria a receita oculta do próprio painel que existe pra desocultá-la. *Esconder o
+ * gesto de desfazer é como escolha reversível vira permanente.*
+ *
+ * ⚠️ `ocultasNoPeriodo` conta o que está REALMENTE sendo escondido DESTA vista, nunca o tamanho
+ * da preferência: 10 ocultas com 3 produzindo no recorte são **3**, senão a tela afirma um
+ * filtro que ela não aplicou.
+ */
+export function recortarPorReceitasVisiveis(
+  linhas: LinhaDoRelatorio[],
+  ocultasIds: string[],
+): { linhas: LinhaDoRelatorio[]; receitasDoPeriodo: ReceitaDoPeriodo[]; ocultasNoPeriodo: number } {
+  const ocultas = new Set(ocultasIds)
+
+  const contaPorItem = new Map<string, { tarefa: string; lotes: number }>()
+  for (const l of linhas) {
+    const a = contaPorItem.get(l.itemId) ?? { tarefa: l.tarefa, lotes: 0 }
+    contaPorItem.set(l.itemId, { tarefa: a.tarefa, lotes: a.lotes + 1 })
+  }
+  const receitasDoPeriodo: ReceitaDoPeriodo[] = [...contaPorItem.entries()]
+    .map(([itemId, v]) => ({ itemId, tarefa: v.tarefa, lotes: v.lotes, oculta: ocultas.has(itemId) }))
+    // ⭐ por LOTES: o preparo miúdo que o dono quer esconder cai no fim sozinho
+    .sort((a, b) => b.lotes - a.lotes || a.tarefa.localeCompare(b.tarefa))
+
+  return {
+    linhas: ocultas.size ? linhas.filter((l) => !ocultas.has(l.itemId)) : linhas,
+    receitasDoPeriodo,
+    ocultasNoPeriodo: receitasDoPeriodo.filter((r) => r.oculta).length,
+  }
 }
 
 /**
@@ -310,6 +388,7 @@ export function agruparPorReceita(linhas: LinhaDoRelatorio[]): PorReceitaNoPerio
       const comPct = ls.filter((l) => l.pctDoPedido != null)
       const comEf = ls.filter((l) => l.eficiencia != null)
       return {
+        itemId: ls[0].itemId,
         tarefa,
         unidade: ls[0].unidade,
         lotes: ls.length,

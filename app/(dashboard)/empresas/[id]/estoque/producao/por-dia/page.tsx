@@ -28,11 +28,12 @@ import { Fragment, useCallback, useEffect, useMemo, useState, use } from 'react'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { casaBusca } from '@/lib/busca-texto'
 import { formatBRL } from '@/lib/format/money'
+import { formatarDuracao } from '@/lib/format/duracao'
 import { formatarQtd } from '@/lib/stock/quantidade'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
 import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
 import { faixaDoSelo } from '@/lib/stock/producao/eficiencia-da-ordem'
-import { BarChart3, ChevronRight, Loader2, Search, X } from 'lucide-react'
+import { BarChart3, ChevronRight, Eye, EyeOff, Loader2, Search, X } from 'lucide-react'
 
 /**
  * ⚠️⚠️ **DERIVADO DA LIB, não reescrito à mão.** A 1ª versão declarou
@@ -64,8 +65,12 @@ interface PorReceita {
   semPedido: number; pctMedio: number | null; eficienciaMedia: number | null
   separadoReais: number; minutosPorLote: number | null; semTempo: number; relampagos: number
 }
+/** uma receita que produziu no período — o que o SELETOR oferece */
+interface ReceitaDoPeriodo { itemId: string; tarefa: string; lotes: number; oculta: boolean }
 interface Payload {
   linhas: Linha[]; dias: Dia[]; porReceita: PorReceita[]; vazio: boolean
+  /** ⭐ a lista COMPLETA (antes de esconder) + quantas estão sendo escondidas DESTA vista */
+  receitasDoPeriodo: ReceitaDoPeriodo[]; ocultasNoPeriodo: number
   periodo: { de: string; ate: string }
   filtros: { tarefas: string[]; setores: string[]; pessoas: string[] }
 }
@@ -88,8 +93,12 @@ const PILULAS = [
 type Chave = (typeof PILULAS)[number]['chave'] | 'LIVRE'
 
 const dia = (iso: string) => iso.split('-').reverse().join('/')
-/** ⚠️ `null` é "não dá pra dizer", nunca "0 min" — a régua do tempo medido (13/09) */
-const min = (m: number | null) => (m == null ? 'a apurar' : m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m}min`)
+/**
+ * ⚠️ `null` é "não dá pra dizer", nunca "0 min" — a régua do tempo medido (13/09).
+ * ⛔ E o h/min vem do `formatarDuracao`: era aqui que o float vazava (`201.83 % 60` =
+ * 21.830000000000013, o "3h21.830000000000013" do print).
+ */
+const min = (m: number | null) => (m == null ? 'a apurar' : formatarDuracao(m))
 /** ⛔ dinheiro pelo formatador da casa — `formatBRL` já traz o R$ (a cicatriz do "R$ R$") */
 const brl = (n: number | null) => (n == null ? '—' : formatBRL(n))
 
@@ -236,6 +245,11 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
    */
   const [abertas, setAbertas] = useState<Record<string, boolean>>({})
   const [consumo, setConsumo] = useState<Record<string, Consumo | null | 'carregando'>>({})
+  /** o painel "o que eu vejo" — a escolha mora em TABELA, isto é só a gaveta aberta */
+  const [abrirReceitas, setAbrirReceitas] = useState(false)
+  const [buscaReceita, setBuscaReceita] = useState('')
+  const [salvandoPref, setSalvandoPref] = useState(false)
+  const [erroPref, setErroPref] = useState<string | null>(null)
 
   const aplicarPilula = (c: typeof PILULAS[number]) => {
     setChave(c.chave)
@@ -273,12 +287,40 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
     })
   }, [id])
 
+  /**
+   * ⭐⭐ SALVA A ESCOLHA e RECARREGA — nessa ordem, e as duas coisas importam.
+   *
+   * ⛔ Manda **DELTA**, nunca a lista inteira: o painel só conhece as receitas do período
+   * ABERTO, e substituir apagaria em silêncio o que o dono escondeu num período que não está
+   * na tela (ver o PUT da rota).
+   * ⛔ E recarrega porque os TOTAIS mudam — esconder só no desenho deixaria o subtotal somando
+   * lote que a tela não mostra, e o guard `Σ(linhas) == total` pararia de fechar.
+   * ⚠️ Falha NUNCA é silenciosa: o painel diz que não salvou (senão o dono clica, vê a tela
+   * mudar pelo reload que não aconteceu, e acha que gravou).
+   */
+  const salvarPref = useCallback(async (delta: { ocultar?: string[]; mostrar?: string[] }) => {
+    setSalvandoPref(true); setErroPref(null)
+    const r = await fetchComTimeout<{ ocultas: string[] }>(
+      `/api/empresas/${id}/estoque/producao/relatorio-por-dia`,
+      { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(delta) },
+    ).catch(() => ({ ok: false } as { ok: boolean }))
+    setSalvandoPref(false)
+    if (!r.ok) { setErroPref('Não consegui salvar a escolha — tente de novo.'); return }
+    await carregar()
+  }, [id, carregar])
+
   /** ⭐ a busca da casa: palavra em qualquer ordem, sem caixa e sem acento (08/09) */
   const tarefasFiltradas = useMemo(
     // ⚠️ `casaBusca(texto, termo)` — o NOME da receita é o palheiro, o digitado é a agulha.
     // Invertido, ele procuraria o nome da receita DENTRO do que o dono digitou (sempre falso).
     () => (data?.filtros.tarefas ?? []).filter((t) => casaBusca(t, buscaTarefa)),
     [data?.filtros.tarefas, buscaTarefa],
+  )
+
+  /** ⚠️ a MESMA `casaBusca` dos chips de receita — uma régua de busca, não duas */
+  const receitasFiltradas = useMemo(
+    () => (data?.receitasDoPeriodo ?? []).filter((r) => casaBusca(r.tarefa, buscaReceita)),
+    [data?.receitasDoPeriodo, buscaReceita],
   )
 
   const linhasPorDia = useMemo(() => {
@@ -288,6 +330,12 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
   }, [data?.linhas])
 
   const ordemHref = (ordemId: string) => `/empresas/${id}/estoque/producao/${ordemId}`
+  /**
+   * ⭐ O SUFIXO DA HONESTIDADE — *"se houver ocultas, o total ganha «(das visíveis)»"*.
+   * ⚠️ Sem ele o dono compararia o total de hoje com o de ontem sem saber que a régua mudou.
+   */
+  const ocultas = data?.ocultasNoPeriodo ?? 0
+  const suf = ocultas > 0 ? ' (das visíveis)' : ''
 
   return (
     <div
@@ -346,6 +394,23 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
         >
           <Search className="h-3.5 w-3.5" /> {tarefa ?? 'receita'}
         </button>
+        {/**
+          * ⭐⭐ "RECEITAS (N)" — a escolha do dono sobre o que ele VÊ (pedido de 04/10).
+          * ⚠️ O botão fica ACESO quando há oculta: *tela que filtra tem que PARECER que filtra*
+          * — senão o dono procura um preparo que ele mesmo escondeu semanas atrás.
+          */}
+        {(data?.receitasDoPeriodo.length ?? 0) > 0 && (
+          <button
+            onClick={() => setAbrirReceitas((v) => !v)}
+            className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-[12.5px] font-semibold"
+            style={(data?.ocultasNoPeriodo ?? 0) > 0
+              ? { background: 'var(--prod-accent)', color: '#fff' }
+              : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
+          >
+            <Eye className="h-3.5 w-3.5" />
+            receitas ({data!.receitasDoPeriodo.length - data!.ocultasNoPeriodo})
+          </button>
+        )}
         {/**
           * ⚠️ setor e pessoa saem da PRÓPRIA lista do período (a rota devolve). Oferecer um
           * setor que não produziu nada ali é oferecer um filtro que devolve vazio.
@@ -415,6 +480,77 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
         </div>
       )}
 
+
+      {/**
+        * ⭐⭐ O PAINEL "O QUE EU VEJO" — lista completa do período, busca e marcar/desmarcar.
+        *
+        * ⛔ A lista vem de `receitasDoPeriodo` (a COMPLETA, antes de esconder). Derivá-la das
+        * linhas desenhadas tiraria a receita oculta do próprio painel que existe pra
+        * desocultá-la — *esconder o gesto de desfazer é como escolha reversível vira permanente*.
+        * ⚠️ Ordenada por LOTES (a rota devolve assim): o preparo miúdo que ele quer esconder cai
+        * no fim sozinho, e o que mais produziu fica à mão.
+        */}
+      {abrirReceitas && data && data.receitasDoPeriodo.length > 0 && (
+        <div className="mb-4 rounded-[14px] p-2.5" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            <p className="flex-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
+              o que aparece no relatório · {data.receitasDoPeriodo.length - data.ocultasNoPeriodo} de {data.receitasDoPeriodo.length}
+            </p>
+            {/* ⚠️ "todas/nenhuma" age SÓ sobre o que está na tela — só se decide sobre o que se vê */}
+            <button
+              disabled={salvandoPref}
+              onClick={() => void salvarPref({ mostrar: data.receitasDoPeriodo.map((r) => r.itemId) })}
+              className="h-7 rounded-full px-2.5 text-[12px] font-medium disabled:opacity-40"
+              style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
+            >
+              todas
+            </button>
+            <button
+              disabled={salvandoPref}
+              onClick={() => void salvarPref({ ocultar: data.receitasDoPeriodo.map((r) => r.itemId) })}
+              className="h-7 rounded-full px-2.5 text-[12px] font-medium disabled:opacity-40"
+              style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
+            >
+              nenhuma
+            </button>
+          </div>
+
+          <input
+            value={buscaReceita} onChange={(e) => setBuscaReceita(e.target.value)}
+            placeholder="buscar receita… (ex: tomate picado)"
+            className="mb-2 h-8 w-full rounded-lg px-2.5 text-[12.5px] outline-none"
+            style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }}
+          />
+
+          <div className="flex flex-wrap gap-1.5">
+            {receitasFiltradas.map((r) => (
+              <button
+                key={r.itemId}
+                disabled={salvandoPref}
+                onClick={() => void salvarPref(r.oculta ? { mostrar: [r.itemId] } : { ocultar: [r.itemId] })}
+                className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-medium disabled:opacity-40"
+                style={r.oculta
+                  ? { background: 'transparent', color: 'var(--prod-muted)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }
+                  : { background: 'var(--prod-surface-2)', color: 'var(--prod-primary)' }}
+                title={r.oculta ? 'está oculta — toque pra mostrar' : 'aparece — toque pra esconder'}
+              >
+                {r.oculta ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                {r.tarefa}
+                <span className="num" style={{ color: 'var(--prod-muted)' }}>{r.lotes}</span>
+              </button>
+            ))}
+            {!receitasFiltradas.length && (
+              <p className="text-[12px]" style={{ color: 'var(--prod-muted)' }}>
+                nada com «{buscaReceita}» entre as {data.receitasDoPeriodo.length} receitas do período
+              </p>
+            )}
+          </div>
+
+          {/* ⛔ falha de gravação NUNCA em silêncio: o dono clicou e precisa saber se pegou */}
+          {erroPref && <p className="mt-2 text-[12px]" style={{ color: 'var(--prod-ambar)' }}>{erroPref}</p>}
+        </div>
+      )}
+
       {data === undefined && (
         <p className="flex items-center gap-2 text-[13px]" style={{ color: 'var(--prod-muted)' }}>
           <Loader2 className="h-4 w-4 animate-spin" /> lendo a produção…
@@ -445,7 +581,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
           {/* ── por receita no período ─────────────────────────────────────── */}
           <div className="mb-4 rounded-[14px] p-3" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
-              por receita · {dia(data.periodo.de)} a {dia(data.periodo.ate)}
+              por receita · {dia(data.periodo.de)} a {dia(data.periodo.ate)}{suf}
             </p>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px]">
@@ -582,7 +718,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
                       */}
                     <tr style={{ borderTop: '2px solid var(--prod-line-strong)' }}>
                       <td className="px-3 py-[13px] text-[12.5px] font-medium uppercase tracking-wide" style={{ color: 'var(--prod-secondary)' }}>
-                        total do dia
+                        total do dia{suf}
                       </td>
                       <td className="num px-3 py-[13px] text-right text-[13px] font-medium" style={{ color: 'var(--prod-secondary)' }}>
                         {textoDoPedido(d.pedido, d.semPedido, d.lotes)}
@@ -646,7 +782,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
 
                 {/* TOTAL DO DIA no celular — mesmo subtotal do servidor, destacado */}
                 <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--prod-surface-2)', borderTop: '2px solid var(--prod-line-strong)' }}>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-secondary)' }}>total do dia</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-secondary)' }}>total do dia{suf}</p>
                   <p className="num mt-0.5 text-[13px] font-medium" style={{ color: 'var(--prod-primary)' }}>
                     {d.produzido.texto} · {brl(d.separadoReais)}
                   </p>
@@ -657,6 +793,33 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
               </div>
             </div>
           ))}
+
+          {/**
+            * ⭐⭐ O RODAPÉ HONESTO — *"a tela diz que está filtrando"* (pedido do dono).
+            *
+            * ⛔ Ele conta `ocultasNoPeriodo`, **não** o tamanho da preferência: o dono pode ter
+            * 10 escondidas e só 3 terem produzido no recorte, e dizer "10 ocultas" seria a tela
+            * afirmando um filtro que ela não está aplicando.
+            * ⚠️ E some quando não há nenhuma — móvel zerado treina o dono a não olhar (a lição
+            * do card de dupla contagem da Conciliação).
+            */}
+          {ocultas > 0 && (
+            <div className="flex flex-wrap items-center gap-2 px-1 pb-2">
+              <p className="text-[12px]" style={{ color: 'var(--prod-muted)' }}>
+                {ocultas} {ocultas === 1 ? 'receita oculta' : 'receitas ocultas'} neste período
+                {' — '}
+                {data.receitasDoPeriodo.filter((r) => r.oculta).map((r) => r.tarefa).join(', ')}
+              </p>
+              <button
+                disabled={salvandoPref}
+                onClick={() => void salvarPref({ mostrar: data.receitasDoPeriodo.filter((r) => r.oculta).map((r) => r.itemId) })}
+                className="text-[12px] font-medium underline disabled:opacity-40"
+                style={{ color: 'var(--prod-accent)' }}
+              >
+                mostrar
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

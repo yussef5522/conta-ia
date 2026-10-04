@@ -4209,6 +4209,20 @@ model StockMesaPreferencia {
   @@map("stock_mesa_preferencia")
 }
 
+model StockPorDiaPreferencia {
+  id           String   @id @default(cuid())
+  companyId    String // REGRA 8 — valor, sem @relation
+  userId       String
+  /// JSON com os itemId das receitas OCULTAS. ⚠️ itemId e não NOME: esta casa renomeia item
+  /// (11 renomeios em 09/09, com apelido de busca), e guardar por nome faria a receita oculta
+  /// REAPARECER sozinha no dia do rename — sem ninguém pedir e sem nada dizer.
+  ocultas      String
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([companyId, userId])
+  @@map("stock_por_dia_preferencia")
+}
+
 model StockRadarWatchlist {
   id          String   @id @default(cuid())
   companyId   String // REGRA 8 — valor, sem @relation
