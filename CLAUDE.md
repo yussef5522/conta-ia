@@ -1759,6 +1759,127 @@ O golden da produção ficou vermelho e eu levei três medições pra ver que o 
 4. **M3 da FANTA UVA 2L** (7 UN no limbo): estornar o ajuste e contar na GARRAFA.
 5. Seguem abertas: a correção de dado da parcela #22 (saldo devedor R$ 9.729,34 a mais, DRE de setembro −R$ 505,01) · as 23 linhas de recontagem onde a variância gravada subestima · os 90 UN / R$ 768,59 do Combo (recomendação: registrar divergência) · os 6 nomes de bebida pendentes nos complementos.
 
+## ⭐⭐⭐ PRODUÇÃO POR UNIDADE DE PONTA A PONTA — CONVERSÃO KG→UN, O PEDIDO VISÍVEL E O RELATÓRIO POR DIA (04/10/2026)
+
+**Três itens do dono, e o primeiro teve a sua própria fórmula refutada pelo dado.**
+
+### ⛔⛔⛔ ITEM 1 — O ASSISTENTE DE CONVERSÃO, E A FÓRMULA DO PEDIDO NÃO SOBREVIVEU
+
+**Pedido:** *"Eu peço produção SEMPRE em UNIDADES — mas 36-37 fichas declaram o lote em KG. Um gesto guiado: eu digito UM número → PREVIEW → eu confirmo → vira versão nova. Ficha continua sendo MINHA decisão: nada converte sozinho."*
+
+**⛔⛔ A FÓRMULA QUE ELE PROPÔS** (*"qual o peso de 1 porção? 80 grama → 0,080 KG → 12,5 UN/KG"*, dividindo as doses por `1 ÷ peso`) **produz dose absurda nas 37 fichas reais:** a `porcao coxao 80 grama` pede **0,18 KG de coxão** por porção (perda real de trim), e dividir por 12,5 daria **0,0144 KG = 14 g de coxão numa porção de 80 g**.
+
+**⭐⭐ O QUE O DADO DIZ:** a dose **JÁ É POR UNIDADE** e o `loteBase 1 KG` é só o **RÓTULO** errado. Duas evidências independentes: `dose ÷ peso-do-nome` é **exatamente 1,0 em 20 das 37**, e o rendimento **MEDIDO** é **≈1 em 28 das 30** com medição. E a prova de ouro é a **MAIONESE**, o caso INVERSO (lote `2,858 UN`, produto em KG): o medido acerta **2,858 no ponto**.
+
+**⭐ POR ISSO NÃO É UMA FÓRMULA — SÃO TRÊS FONTES COM PROVENIÊNCIA** (`MEDIDO` / `UM_POR_RECEITA` / `NOME`), cada uma com a conta escrita, e **a recomendação só existe quando DUAS concordam**. ⛔ Fonte única aqui seria chutar com cara de autoridade numa decisão que muda a receita do dono. ⚠️ **O `MEDIDO` entra só com 2+ lotes** (*uma produção não é média*, a régua de 01/09).
+
+### ⭐⭐⭐ A LEI QUE O TESTE DA MAIONESE EXPÔS — e ela é o diagnóstico inteiro em uma frase
+
+A separação é `pedido ÷ loteBase × dose`; depois da conversão é `pedido ÷ 1 × (dose ÷ N)`. As duas são iguais **se e somente se `N == loteBase`**.
+
+> **⭐⭐ Converter é NEUTRO no estoque precisamente quando o dono diz que o NÚMERO do lote já estava certo e só a UNIDADE estava errada** — que é o caso das 37.
+
+```
+porção KG→UN (as 28)   loteBase 1      · digito 1       → separação IDÊNTICA ✓
+MAIONESE (o inverso)   loteBase 2,858  · digito 2,858   → separação IDÊNTICA ✓
+a fórmula do nome      loteBase 1      · digito 12,5    → separação MUDA     ⛔
+QUEIJO CHEDDAR podre   loteBase 1      · digito 7,5572  → separação MUDA     ⛔
+```
+Provada pra pedido de 1, 7, 10, 80, 137,5 e 1000. ⭐ **E o corolário é a trava:** digitar um número DIFERENTE do loteBase não é corrigir rótulo — **é mudar a receita**, e aí a separação muda mesmo. É por isso que o preview PODE prometer *"não mexe no seu estoque"* sem mentir. ⚠️ No caso da MAIONESE as DOSES mudam (3 LT → 1,05 LT) e **a separação dá no mesmo material** — a conversão só reescreve a mesma receita numa unidade honesta; a tela tem frase própria pra isso.
+
+**AS PEÇAS:** `converter-lote.ts` (**PURO, zero import** — é o que torna **impossível** ele se auto-alimentar da medição, REGRA 5) · **`lote-comparavel.ts`, a régua do M5 com DONO ÚNICO** (o juiz passou a chamá-la) · `fichas-para-converter.ts` (a fila com progresso 37→0) · `preview-da-conversao.ts` (a separação ANTES × DEPOIS pelas **duas pontas da porta**) · `aplicar-conversao.ts`.
+
+**⭐⭐ O GESTO GRAVA PELO `atualizarFicha`, A PORTA QUE VERSIONA** — e **zero tabela nova: o rastro da conversão É a versão**, com autor e data. ⛔ Escrever `stockFichaVersao.create` ali seria a 2ª porta de gravação de receita (foi assim que o `PAGAMENTO_EMPRESTIMO` do import gravou sem split, 11/09).
+
+**⛔⛔ E ELE RE-AVALIA DENTRO DO GESTO** — o dono vai varrer 37 fichas com o celular e o notebook abertos, e a marcyelle pode estar na mesma tela. **Converter a mesma ficha 2× divide as doses 2×** (medido com o guard removido: nasce a versão 3 com as doses pela metade). A recusa DIZ o que houve: *"foi convertida enquanto você decidia — nada foi alterado"*.
+
+**⭐⭐ E A FRONTEIRA COM A DECISÃO DE 03/10 FICOU ESCRITA**, porque alguém vai reperguntar: ⛔ **PROIBIDO** o medido dividir o pedido **na hora da separação** (o laço que aprende o roubo); ⭐ **AUTORIZADO** o medido ser **SUGERIDO**, o dono **CONFIRMAR**, e aquilo virar **VERSÃO DA FICHA** — é o item 4 da própria ordem dele (*"EU mudo a ficha, nunca o sistema sozinho pela medição"*). Guard novo prova que o conversor **não lê rendimento de ninguém** e que a sugestão **não converte sozinha**.
+
+**⛔⛔ E O AVISO DA ORDEM PASSOU A CARREGAR O GESTO — a 11ª volta da "porta sem maçaneta".** O `LOTE_NAO_COMPARAVEL` existe desde **03/10** dizendo o problema e **sem dizer onde resolver**: o dono lia *"o lote base não diz quantas UN saem de uma receita"* e ficava com ele na mão. ⚠️ O atalho vai **só** nesse motivo — o `MEDIA_DESTOA` não se resolve convertendo lote nenhum.
+
+### ⭐⭐ ITEM 2 — O PEDIDO EM UN, DO INÍCIO AO FIM (e o buraco era de ESCRITA)
+
+**⛔⛔ `stock_ordem_meta` existe desde 13/09, tem DOIS leitores e ZERO WRITERS: 0 linhas em 471 ordens.** O relatório por tarefa já sabia imprimir *"pedido 130 → entregue 137 (105%)"* e **o pedido era SEMPRE null**. *Campo que ninguém escreve é promessa que a tela não cumpre* — a família do `futureParcelasNotInvoiced` ("pra MVP fica vazio", e ficou) e do `rawOfxBlob` que não gravava em todos os caminhos.
+
+- **`criarOrdem` grava a meta** junto da ordem · **`pedido-da-ordem.ts`** resolve **DECLARADO × DERIVADO** com a **ORIGEM dita** (as 471 antigas caem no derivado, **marcadas como tal** — carimbar meta retroativa inventaria um pedido que ninguém fez).
+- ⭐⭐ **E AS DUAS FONTES COINCIDEM NAS ORDENS NOVAS, por construção:** a ordem grava `escala = pedido ÷ loteBase` pela porta, então `saidaEsperadaDaFicha(escala, loteBase) == meta`. **Ligar a meta não muda número nenhum da eficiência — ela só dá NOME à fonte.**
+- **Campo "Quero produzir" grande (22px)** com a unidade do lado · **a lista do que VAI SAIR da câmara antes de confirmar** (`lista-da-separacao.ts`, pela porta única) · **o pedido no cabeçalho da ordem o dia inteiro** · `fraseDoCiclo` fechando o ciclo.
+- ⚠️ **`pedidoUnidades` é OPCIONAL no schema, e isso é o que mantém os caminhos antigos vivos:** a sugestão de min/máx calcula escala e não "pede" nada; o tablet também não. **O que não pode é a ausência virar um pedido inventado.**
+
+**⚠️⚠️ CORREÇÃO DE ROTA MINHA, antes de commitar:** o *"separado"* do ciclo é em **R$**, não quantidade. A 1ª versão somava `real` dos componentes — **KG com UN**, o pecado de 13/09 (o `1.415,84 un` que era porção somada com massa). **Dinheiro soma; grandeza física, não.**
+
+### ⭐⭐ ITEM 3 — RELATÓRIO DE PRODUÇÃO POR DIA (tela moderna)
+
+**A ordem foi explícita:** *"a tela só conta a verdade; NENHUMA conta nova fora da porta (REGRA 11: paralela = vermelho)"*. Então `relatorio-por-dia.ts` é **TRADUTOR**:
+
+| o que a tela mostra | de onde vem (e nunca é recalculado) |
+|---|---|
+| pedido · produzido · minutos · dia | **`lotesDaJanela`** — o dono da janela desde 13/09 |
+| eficiência % | **`stock_producao_desvio.pctTeorico`, CONGELADA** (a coluna que o juiz P8 lê) |
+| separado do estoque (R$) | **`custoLoteReal`** da conclusão |
+| "pedido → entregue" | **`rendimentoDoLote`** · tempo: **`foiMedido`/`ehRelampago`** · soma: **`somarQuantidades`** |
+
+⭐⭐ **Recalcular a eficiência aqui daria TRÊS percentuais pro mesmo lote** (este relatório, o bloco da ordem e o e-mail do P8). ⚠️ E a coluna se chama `pctTeorico` **por história, não por significado** — ela guarda *"saiu ÷ o que a FICHA promete"* desde 03/10; o nome ficou porque migration de estoque é CREATE-only.
+
+**Período livre (o calendário do Real×Teórico) · chips com a `casaBusca` · subtotais por dia e por receita · linha → abre a ordem · filtros de receita/setor/quem concluiu, saindo da PRÓPRIA lista do período** (oferecer um setor que não produziu nada ali é oferecer um filtro que devolve vazio). Tokens do RADAR, zebra, **2 viewports** (tabela no desktop, cards no celular — REGRA 12).
+
+⛔ **`stock.manage` e entra em `LEITURA_SENSIVEL` com o motivo escrito:** ele mostra **quem concluiu** e a eficiência de cada um lado a lado — *conversa de gestão, nunca telão de cozinha* (a régua de 06/09).
+
+### ⛔⛔ O DEFEITO QUE SÓ A PROVA EM PROD PEGOU: **"pedido 0"**
+
+Com as 471 ordens antigas sem meta, o relatório imprimia **"pedido 0"** nos 29 dias — e isso lê como ***"pedi zero"***. O `somarQuantidades([])` está certo no contrato dele (lista vazia → texto `'0'`); errado era a **TELA afirmar um pedido que ninguém registrou**. ⭐ `textoDoPedido` virou régua na LIB (a tela, o CSV e qualquer leitor futuro precisam da MESMA frase). **É o pecado que este sprint inteiro combate, cometido por mim na última tela.**
+
+### REGRA 11 — 20 DEFEITOS REPOSTOS, E **SEIS VIERAM VERDES**
+
+| veio verde | por quê, e o aperto |
+|---|---|
+| a 2ª cópia da régua do M5 | precisei repor uma cópia **DIVERGENTE** (`loteBase === 1 ⇒ tanto faz`), não uma idêntica |
+| a sugestão recomendando com fonte única | não tinha ninguém conferindo → ganhou teste |
+| o número cru na frase | **o TESTE pegou defeito real:** as frases iam pra tela com `0.18`/`2.25` **de ponto** — a cicatriz do campo de quantidade (29/09) |
+| **a eficiência recalculada** | o guard proibia a forma `produzido / pedido` e a reposição real foi **`entregue / pedido`** (os nomes de `lotesDaJanela`) — *"menção, não uso"* pela **10ª vez**; apertado pro **USO** na atribuição |
+| o link atrás do contador | meu slice de 600 caracteres caía em volta do **`fetch`**, não do `<a>` — **janela de distância pela 7ª vez** |
+| a sonda que contou 0 vermelho | o corte do python quebrou a **sintaxe** do arquivo, e meu `grep "×"` não vê erro de import — *sonda errada dá um verde tão convincente quanto um vermelho* |
+
+⚠️ **E o guard da REGRA 12 quebrou COM A TELA CERTA:** ele fazia `toContain('hidden lg:block')` e a minha composição é `"hidden overflow-x-auto lg:block"`. **Reapontado pra ESTRUTURA** (classes em qualquer ordem), com **auto-teste do detector** — ficou mais forte, não mais frouxo.
+
+**⭐ TRÊS GUARDS DA CASA PEGARAM DEFEITOS MEUS:** **CNPJ de teste colidindo (3×)** · **campo de busca sem nome** (`placeholder="coxao porcao"` era exemplo, não rótulo) · e o teste do relatório que expôs minha **interface escrita à mão sobre o payload** (`Quantidade` não é `Record<string, number>`) — **o `tsc` ficou VERDE, o teste não**. É a dívida de 01/09 cobrando: *interface de tela não tem vínculo com o tipo do servidor*.
+
+**PROVADO EM PROD, nos dois viewports:**
+```
+⭐ A FILA: 7 de 44 com o lote certo · FALTAM 37     (exatamente o medido)
+   beef de xis      medido 1,2532 · 1 [UM_POR_RECEITA] → recomendada NENHUMA (discordam)
+   CEBOLA FATIADO   medido 1,0999 · 1                  → recomendada 1,0999 (MEDIDO)
+   POÇAO MAIONESE   medido 1,0269 · 1 · 33,3333 [NOME] → recomendada 1,0269
+   ⭐ o 33,3333 do NOME é oferecido e PERDE pras duas que concordam
+   ⚠️ 17 dos 37 com as fontes DISCORDANDO — e ali o dono decide
+
+⭐ O PREVIEW (beef de xis, lote 1 KG):
+   digitando 1     → "a separação NÃO muda" · Acém 0,91 → 0,91 ✓ · Peito 0,44 → 0,44 ✓
+   digitando 12,5  → "⚠️ MUDA em 3 de 3"    · Acém 0,91 → 0,0728 ⛔ (8% do real)
+
+⭐ ITEM 2 — a lista do que sai (pedido 80 UN, ficha v2):
+   Acém 7,28 KG · Peito 3,52 KG · Gordura 1,6 KG · TOTAL R$ 383,85
+   o writer (com ROLLBACK forçado): meta nasceu 80 · resolvedor DECLARADO
+   ciclo: "pedido 80 UN · separado R$ 412,30 · produziu 78 · 98%"
+   ⛔ metas em prod depois: 0 — nada gravado
+   as 471 antigas: pedido 45/88/100 UN · origem DERIVADO (marcado)
+
+⭐ ITEM 3 — 364 lotes · 29 dias · 41 receitas · 18 pessoas
+   porçao queijo 135g   29 lotes · 8.023 UN · ef 100% · 108,68min/lote
+   beef de xis          25 lotes · 3.528 UN · ef 115% · 123,9min/lote
+   ⛔ Σ dos dias == linhas: 364 == 364 ✓ · Σ por receita: 364 == 364 ✓
+   ⭐ 5 de 29 dias com unidade MISTA — e nenhum com total cruzado
+   ⭐ "pedido 0" na tela: 0 de 29 (era 29 de 29 antes do fix)
+
+⭐⭐ O JUIZ DEPOIS DO REFACTOR: M5 = 37 · a LISTA = 37 · fichas que o M5 acusa e a
+   lista não oferece: 0 — uma régua, dois leitores, provado no dado real
+```
+
+**884 arquivos · 11.392 testes verdes · TS 0 · migration NENHUMA · zero escrita em prod · deploys 4/4 (`niVSXPJ9dH27pHLHoTkZy` e `SYR7Gu7WH2rNdSe63uZm1`) · Δ bundle +36 KB.**
+
+📋 **FICA PRO DONO (o clique é dele, REGRA 2):** varrer as 37 pela tela — e **a lei acima diz que ele está seguro**: digitando o `loteBase` atual (o número que o campo já abre), a separação não muda um grama e o M5 vai a zero. ⚠️ **Nas 17 em que as fontes discordam, a decisão é dele** — o preview mostra a dose dos dois lados. Depois: criar uma ordem com o pedido em UN pra ver o ciclo fechar, e abrir o relatório por dia no período que ele quiser. **E os 42 lotes abaixo de 85% do P8 seguem esperando** (registrado em 03/10).
+
+
 ## ⛔⛔⛔ RECEITA É LEI, RENDIMENTO É SÓ RELATÓRIO — A MEDIÇÃO SAIU DA CONTA DA SEPARAÇÃO (03/10/2026)
 
 **Decisão do dono, no mesmo dia da cura anterior, e ela REVERTE tanto a régua de 01/09 quanto a minha própria correção da manhã:**
