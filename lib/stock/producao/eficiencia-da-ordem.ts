@@ -17,6 +17,7 @@
  */
 
 import { DESVIO_ALERTA } from './previsao-rendimento'
+import { insumoDoPedido, saidaEsperadaDaFicha } from './escala-da-ordem'
 
 const round4 = (n: number) => Math.round((n + 1e-9) * 10000) / 10000
 
@@ -61,23 +62,27 @@ export interface EntradaDaEficiencia {
   escala: number
   loteBase: number
   qtdGerada: number
-  componentes: { nome: string; unidade: string; dosePorLote: number; consumido: number }[]
+  componentes: { nome: string; unidade: string; porLote: number; consumido: number }[]
 }
 
 /**
  * PURA. O espelho de uma ordem concluída: o que foi pedido, o que saiu, e o consumo real
  * componente a componente contra o que a receita mandava.
  *
- * ⚠️ `plano` é `dose × escala` — a MESMA conta que a separação usa (`insumoDoPedido`), não
- * uma segunda derivação: se divergissem, o relatório acusaria um gap que a separação nunca
+ * ⭐⭐ `plano` e `pedido` SAEM DA PORTA (`insumoDoPedido` / `saidaEsperadaDaFicha`), não de uma
+ * 2ª multiplicação aqui — se divergissem, o relatório acusaria um gap que a separação nunca
  * produziu, e o dono iria procurar material que não faltou.
+ *
+ * ⚠️⚠️ **E ISSO COMEÇOU COMO COMENTÁRIO MENTIROSO:** a 1ª versão afirmava *"a MESMA conta que
+ * a separação usa"* e escrevia `dose × escala` à mão. **Comentário que promete fonte única sem
+ * chamar a fonte é pior que nenhum** — ninguém vai conferir depois.
  */
 export function eficienciaDaOrdem(e: EntradaDaEficiencia): EficienciaDaOrdem {
-  const pedido = e.escala > 0 && e.loteBase > 0 ? round4(e.escala * e.loteBase) : null
+  const pedido = saidaEsperadaDaFicha(e.escala, e.loteBase)
   const pct = pedido != null && pedido > 0 ? round4(e.qtdGerada / pedido) : null
 
   const componentes = e.componentes.map((c) => {
-    const plano = round4(c.dosePorLote * e.escala)
+    const plano = pedido != null ? insumoDoPedido({ pedido, loteBase: e.loteBase }, c.porLote) ?? 0 : 0
     return { nome: c.nome, unidade: c.unidade, plano, real: round4(c.consumido), gap: round4(c.consumido - plano) }
   })
 

@@ -25,7 +25,7 @@ import { escalaDoPedido, insumoDoPedido } from '../escala-da-ordem'
 import { eficienciaMedia, DESVIO_ALERTA } from '../previsao-rendimento'
 import { medianaDosRendimentos } from '../conclusao'
 import { avisosDaEscala } from '../escala-do-pedido'
-import { eficienciaDaOrdem, EFICIENCIA_MINIMA } from '../eficiencia-da-ordem'
+import { eficienciaDaOrdem, fraseDaEficiencia, EFICIENCIA_MINIMA } from '../eficiencia-da-ordem'
 
 /** os rendimentos REAIS dos 5 últimos lotes de cada ficha, medidos em prod em 03/10 */
 const XIS_5 = [1.0400, 1.0598, 1.2532, 1.8803, 2.1411]
@@ -103,8 +103,8 @@ describe('⭐⭐ A MEDIÇÃO VIROU ESPELHO — eficiência por ordem (item 1 do 
     const ef = eficienciaDaOrdem({
       escala: 10, loteBase: 1, qtdGerada: 9,
       componentes: [
-        { nome: 'Acém', unidade: 'KG', dosePorLote: XIS.acem, consumido: 0.95 },
-        { nome: 'Peito', unidade: 'KG', dosePorLote: XIS.peito, consumido: 0.44 },
+        { nome: 'Acém', unidade: 'KG', porLote: XIS.acem, consumido: 0.95 },
+        { nome: 'Peito', unidade: 'KG', porLote: XIS.peito, consumido: 0.44 },
       ],
     })
     expect(ef.pedido).toBe(10)
@@ -123,7 +123,7 @@ describe('⭐⭐ A MEDIÇÃO VIROU ESPELHO — eficiência por ordem (item 1 do 
 
     const ruim = eficienciaDaOrdem({
       escala: 10, loteBase: 1, qtdGerada: 8,
-      componentes: [{ nome: 'Acém', unidade: 'KG', dosePorLote: XIS.acem, consumido: 0.91 }],
+      componentes: [{ nome: 'Acém', unidade: 'KG', porLote: XIS.acem, consumido: 0.91 }],
     })
     expect(ruim.pct).toBeCloseTo(0.8, 6)
     expect(ruim.faixa).toBe('ABAIXO')
@@ -137,7 +137,7 @@ describe('⭐⭐ A MEDIÇÃO VIROU ESPELHO — eficiência por ordem (item 1 do 
      */
     const bom = eficienciaDaOrdem({
       escala: 10, loteBase: 1, qtdGerada: 12,
-      componentes: [{ nome: 'Acém', unidade: 'KG', dosePorLote: XIS.acem, consumido: 0.91 }],
+      componentes: [{ nome: 'Acém', unidade: 'KG', porLote: XIS.acem, consumido: 0.91 }],
     })
     expect(bom.faixa).toBe('ACIMA')
     expect(bom.alerta).toBe(false)
@@ -171,6 +171,32 @@ describe('⛔⛔ OS AVISOS DO ATO DA CRIAÇÃO — denunciam, não corrigem', ()
     expect(a[0].frase).toContain('0.91')
     expect(a[1].frase).toContain('125%')
     expect(a[1].frase).toContain('A separação segue a ficha')
+  })
+
+  it('⛔ nenhuma frase de TELA carrega markdown — o dono veria os asteriscos', () => {
+    /**
+     * ⚠️⚠️ **DEFEITO REAL QUE EU INTRODUZI E SÓ APARECEU NO BUNDLE DE PROD.** Eu escrevi
+     * `**A separação segue a ficha**` pra dar ênfase; a tela renderiza `{a.frase}` como texto
+     * puro, então sairia com os asteriscos na faixa âmbar. **O `**` é a convenção dos
+     * COMENTÁRIOS deste repo e não atravessa pra UI.**
+     */
+    const frases = [
+      ...avisosDaEscala({
+        pedido: 10, loteBase: 1, unidadeLoteBase: 'KG', unidadeProduto: 'UN',
+        maiorDose: { nome: 'Acém', dose: XIS.acem }, espelho: { pct: 1.2532, lotes: 27 },
+      }).map((a) => a.frase),
+      fraseDaEficiencia(
+        eficienciaDaOrdem({
+          escala: 10, loteBase: 1, qtdGerada: 8,
+          componentes: [{ nome: 'Acém', unidade: 'KG', porLote: XIS.acem, consumido: 0.95 }],
+        }),
+        'UN',
+      ) ?? '',
+    ]
+    for (const f of frases) {
+      expect(f, f).not.toContain('**')
+      expect(f, f).not.toMatch(/[`_]{2}|<\/?[a-z]+>/i) // nem backtick/underscore de ênfase, nem HTML
+    }
   })
 
   it('⛔⛔ `SEPARACAO_DESTOA` MORREU — asserção INVERTIDA, com o motivo escrito', () => {

@@ -94,9 +94,15 @@ export function avisosDaEscala(p: PedidoDaOrdem): AvisoDaEscala[] {
     const lado = p.espelho.pct < 1 ? 'MENOS' : 'MAIS'
     out.push({
       motivo: 'MEDIA_DESTOA',
+      /**
+       * ⚠️ SEM MARKDOWN AQUI. A 1ª versão tinha `**A separação segue a ficha**` pra dar
+       * ênfase — e a tela renderiza `{a.frase}` como TEXTO PURO, então o dono veria os
+       * asteriscos. **Ênfase em string de UI vem da frase, não de sintaxe de documento**; o
+       * `**` existe nos comentários deste repo e não atravessa pra tela.
+       */
       frase:
         `os seus últimos ${p.espelho.lotes} lotes renderam ${pct(p.espelho.pct)} do que a ficha ` +
-        `promete — está saindo ${lado} do que a receita diz. **A separação segue a ficha**; se a ` +
+        `promete — está saindo ${lado} do que a receita diz. A separação segue a ficha: se a ` +
         `perda é real, mude a ficha. Se não, confira a operação e o lançamento dos lotes.`,
     })
   }
