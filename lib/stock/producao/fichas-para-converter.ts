@@ -8,13 +8,16 @@
  * uma que ele acusa), e o dono varreria a lista inteira com o alarme ainda aceso.
  */
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { comoConsome } from '../explodir-receita'
 import { rendimentoMedidoDaFicha } from './conclusao'
 import { loteEhComparavel } from './lote-comparavel'
 
-type Db = PrismaClient
+/** ⚠️ aceita client TRANSACIONAL (04/10): esta função é SÓ LEITURA (conferido — zero
+ *  `$transaction`/`$executeRaw` aqui dentro), e o produtor de avisos a chama de dentro do
+ *  preview com rollback. Sem isso o preview leria de fora da transação. */
+type Db = PrismaClient | Prisma.TransactionClient
 
 export interface FichaParaConverter {
   fichaId: string

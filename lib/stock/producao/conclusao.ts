@@ -4,7 +4,7 @@
 // com CUSTO REAL do lote) → rendimento MEDIDO contra o consumo real (nunca a escala) →
 // compara com a média (±15%) → registra. Parcial: várias conclusões na mesma ordem. Só stock_.
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento } from '../movement'
 import { custoMedioPorItem, recomputeSaldoCache } from '../saldo'
@@ -13,6 +13,16 @@ import { escalaDoConsumo, avaliarVariacao, type Variacao } from './previsao-rend
 import { avaliarPlausibilidade, type VeredictoDaPlausibilidade } from './plausibilidade'
 import { idsDeConclusoesEstornadas } from './conclusao-estornada'
 import { encerrarEtapasAbertas } from './encerrar-etapas-abertas'
+
+/**
+ * ⭐ O CLIENT DE **LEITURA** (04/10) — aceita o transacional.
+ *
+ * ⚠️ Só as 3 funções de RENDIMENTO MEDIDO usam este tipo: elas são puro `findMany`, e o produtor
+ * de avisos as alcança (via `fichasParaConverter`) de dentro de um preview com rollback. ⛔ O
+ * `concluir` e os outros continuam exigindo `PrismaClient` porque abrem `$transaction`, e
+ * `$transaction` não existe no client transacional — aninhar é proibido pelo Prisma.
+ */
+type DbLeitura = PrismaClient | Prisma.TransactionClient
 
 /** ⛔ a recusa por GRANDEZA carrega o veredicto — sem ele a tela não consegue sugerir nada */
 export class GrandezaImplausivelError extends Error {
@@ -60,7 +70,7 @@ export interface ConcluirResult {
  * dizer de quantos lotes ela vem. ⚠️ O CUSTO continua usando desde o 1º — são perguntas
  * diferentes: *"custo é 'quanto custou', previsão é 'quanto vai sair'"*.
  */
-export async function rendimentoMedidoDaFicha(companyId: string, fichaId: string, db: PrismaClient = defaultPrisma, exceptConclusaoId?: string): Promise<{ media: number | null; lotes: number }> {
+export async function rendimentoMedidoDaFicha(companyId: string, fichaId: string, db: DbLeitura = defaultPrisma, exceptConclusaoId?: string): Promise<{ media: number | null; lotes: number }> {
   const m = await rendimentoMedidoDeFichas(companyId, [fichaId], db, exceptConclusaoId)
   return m.get(fichaId) ?? { media: null, lotes: 0 }
 }
@@ -83,7 +93,7 @@ export const LOTES_NA_MEDIA = 5
  * ⛔ A régua do estornado (19/09) continua valendo igual: lote estornado NUNCA entra.
  */
 export async function rendimentoMedidoDeFichas(
-  companyId: string, fichaIds: string[], db: PrismaClient = defaultPrisma, exceptConclusaoId?: string,
+  companyId: string, fichaIds: string[], db: DbLeitura = defaultPrisma, exceptConclusaoId?: string,
 ): Promise<Map<string, { media: number | null; lotes: number }>> {
   const out = new Map<string, { media: number | null; lotes: number }>()
   for (const id of fichaIds) out.set(id, { media: null, lotes: 0 })
@@ -159,7 +169,7 @@ export function medianaDosRendimentos(rends: number[]): number | null {
 }
 
 /** casca fina histórica — só a média, pros callers que não precisam da contagem. */
-export async function rendimentoMedioDaFicha(companyId: string, fichaId: string, db: PrismaClient = defaultPrisma, exceptConclusaoId?: string): Promise<number | null> {
+export async function rendimentoMedioDaFicha(companyId: string, fichaId: string, db: DbLeitura = defaultPrisma, exceptConclusaoId?: string): Promise<number | null> {
   return (await rendimentoMedidoDaFicha(companyId, fichaId, db, exceptConclusaoId)).media
 }
 

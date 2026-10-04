@@ -21,7 +21,7 @@ import { registrarAviso, reconciliarOrigem } from '../central'
 import { avaliarLinguaDoBalcao } from '../lingua-do-balcao'
 import { acharPadrao, fraseDoPadrao, type LoteMedido } from '../padrao-de-rendimento'
 import { faixaDoSelo, DESVIO_GRAVE } from '@/lib/stock/producao/eficiencia-da-ordem'
-import { loteEhComparavel } from '@/lib/stock/producao/lote-comparavel'
+import { fichasParaConverter } from '@/lib/stock/producao/fichas-para-converter'
 import type { NovoAviso } from '../tipos'
 
 /**
@@ -115,8 +115,22 @@ async function padraoDeRendimento(companyId: string, r: ResumoDaCarga, db: Db): 
     })
   }
 
+  /**
+   * ⛔⛔⛔ **UMA CAUSA, UM ALARME — e a medição em prod é o argumento.** Das **41** receitas com
+   * lote medido nos últimos 60 dias, **33 têm o lote declarado na unidade errada** — e nelas o
+   * `pctTeorico` **não mede rendimento: mede a ficha quebrada** (é o CHEDDAR a 1027%). Sem esta
+   * supressão a central nascia com 33 avisos de "padrão de rendimento" + 1 de ficha **pro mesmo
+   * problema**, e o dono iria caçar a mão da cozinha quando o defeito é a unidade do lote.
+   *
+   * ⭐ É a régua que esta casa já aplica entre P8 e P3 (*"ele CALA o P3 no mesmo lote"*) e entre
+   * N1 e N3 no juiz de infra. O aviso da ficha já diz o que fazer; quando o dono converter, o
+   * percentual passa a significar algo e o padrão volta a valer sozinho.
+   */
+  const loteTorto = await fichasComLoteTorto(companyId, db)
+
   const vivos: string[] = []
   for (const [fichaId, g] of porFicha) {
+    if (loteTorto.has(fichaId)) continue
     const p = acharPadrao(g.lotes)
     if (!p) continue
     vivos.push(fichaId)
@@ -143,64 +157,70 @@ async function padraoDeRendimento(companyId: string, r: ResumoDaCarga, db: Db): 
 }
 
 /**
- * ⭐⭐ (2) FICHA QUE NÃO DÁ PRA COMPARAR — o caso do QUEIJO CHEDDAR a 1027%.
+ * ⭐⭐⭐ (2) AS FICHAS COM O LOTE NA UNIDADE ERRADA — **UM aviso agrupado**, não 37.
  *
- * ⛔ Este NÃO é problema de lote, é da FICHA: o lote base está declarado numa unidade que não é
- * a que o produto se conta (`unidadeLoteBase` KG × produto contado em UN), então a eficiência
- * sai em números absurdos e **a separação pede material pra 1 unidade quando o dono pede 10**.
- * É por isso que o título manda **não criar ordem** antes de corrigir — a ação que evita o
- * estrago, não a que descreve o defeito.
+ * ⛔⛔ **DUAS CORREÇÕES MEDIDAS NA PREVIEW EM PROD, as duas defeitos MEUS:**
+ *
+ * **(a) ESCOPO — eu varria TODAS as fichas ativas (38) em vez das de PRODUÇÃO (37).** A sobra
+ * era um invólucro de CARDÁPIO, e nele a pergunta não existe: produto final MONTA na venda,
+ * não tem lote. O aviso saía como *"Não cria ordem de Pizza congelada de calabresa"* — uma
+ * ordem que ninguém cria. ⭐ **A régua já tinha DONO** (`fichasParaConverter`, a fila de
+ * conversão de 04/10, com o filtro `comoConsome === 'ESTOCADO'` e o motivo escrito), e eu
+ * escrevi a segunda derivação. Agora o produtor **LÊ a fila** — e isso também garante de graça
+ * o que a prova de 04/10 mediu: *"o M5 acusa 37 · a LISTA oferece 37 · divergência 0"*.
+ *
+ * **(b) UM AVISO, NÃO 37.** A ordem do dono sobre os 42 lotes do P8 era *"como **UM** aviso de
+ * padrão agrupado"*, e a mesma régua vale aqui: 37 linhas vermelhas enterrariam a ordem parada
+ * e os padrões de rendimento, e o dono aprenderia a ignorar o sininho na primeira semana. O
+ * aviso **NOMEIA as piores** no corpo (o CHEDDAR entre elas, que foi o caso que ele citou) e o
+ * botão leva pra **fila de conversão**, que é a tela que existe justamente pra varrer as 37
+ * numa sentada, com progresso 37→0.
  */
 async function fichaNaoComparavel(companyId: string, r: ResumoDaCarga, db: Db): Promise<void> {
-  const fichas = await db.stockFicha.findMany({
-    where: { companyId, ativo: true },
-    select: { id: true, itemProduzidoId: true, versaoAtual: true },
-  })
-  /** ⚠️ consulta separada porque o ISOLAMENTO do módulo proíbe `@relation` entre `stock_*` —
-   *  as versões se resolvem por VALOR (fichaId + versao), não por include. */
-  const versoes = fichas.length
-    ? await db.stockFichaVersao.findMany({
-        where: { companyId, fichaId: { in: fichas.map((f) => f.id) } },
-        select: { fichaId: true, versao: true, unidadeLoteBase: true },
-      })
-    : []
-  const versaoAtualDaFicha = new Map(
-    versoes.map((v) => [`${v.fichaId}#${v.versao}`, v]),
-  )
-  const itens = await db.stockItem.findMany({
-    where: { companyId, id: { in: fichas.map((f) => f.itemProduzidoId) } },
-    select: { id: true, nome: true, unidadeControle: true },
-  })
-  const item = new Map(itens.map((i) => [i.id, i]))
-
-  const vivos: string[] = []
-  for (const f of fichas) {
-    const v = versaoAtualDaFicha.get(`${f.id}#${f.versaoAtual}`)
-    const it = item.get(f.itemProduzidoId)
-    if (!v || !it || !v.unidadeLoteBase) continue
-    if (loteEhComparavel(v.unidadeLoteBase, it.unidadeControle)) continue
-
-    vivos.push(f.id)
-    await gravar(
-      {
-        companyId,
-        setor: 'producao',
-        severidade: 'vermelho',
-        titulo: `Não cria ordem de ${it.nome} antes de corrigir a ficha`,
-        corpo:
-          `A ficha de ${it.nome} diz que o lote rende ${v.unidadeLoteBase}, mas o produto se conta em ` +
-          `${it.unidadeControle}. Se alguém pedir 10, o sistema separa material pra 1 só.`,
-        oQueFazer: `Abra a ficha de ${it.nome} e conserte quantas ${it.unidadeControle} saem de uma receita.`,
-        acaoRotulo: 'corrigir a ficha',
-        acaoHref: `/empresas/${companyId}/estoque/fichas/${f.id}`,
-        origem: 'FICHA_SEM_COMPARACAO',
-        alvo: f.id,
-      },
-      r,
-      db,
-    )
+  const fila = await fichasParaConverter(companyId, db)
+  if (!fila.pendentes.length) {
+    r.resolvidos += await reconciliarOrigem(companyId, 'FICHA_SEM_COMPARACAO', [], db)
+    return
   }
-  r.resolvidos += await reconciliarOrigem(companyId, 'FICHA_SEM_COMPARACAO', vivos, db)
+
+  /**
+   * ⚠️ As "piores" são as de MAIOR distorção medida (rendimento medido mais longe de 1): é onde
+   * criar uma ordem hoje separa material mais errado. Ficha sem lote medido vai pro fim — sem
+   * medição não dá pra ordenar por estrago, e inventar uma ordem seria chutar.
+   */
+  const piores = [...fila.pendentes]
+    .sort((a, b) => Math.abs((b.medido ?? 1) - 1) - Math.abs((a.medido ?? 1) - 1))
+    .slice(0, 3)
+    .map((f) => (f.medido ? `${f.nomeProduto} (${Math.round(f.medido * 100)}%)` : f.nomeProduto))
+
+  const n = fila.pendentes.length
+  await gravar(
+    {
+      companyId,
+      setor: 'producao',
+      severidade: 'vermelho',
+      titulo: `Corrija o lote de ${n} receita(s) antes de criar ordem delas`,
+      corpo:
+        `${n} de ${fila.total} receitas declaram o lote numa unidade diferente da que o produto se ` +
+        `conta. Se alguém pedir 10, o sistema separa material pra bem menos. As piores: ${piores.join(' · ')}.`,
+      oQueFazer:
+        'Abra a fila de conversão e conserte quantas unidades saem de uma receita — ela mostra o antes e o depois, e digitar o lote de hoje não mexe no estoque.',
+      acaoRotulo: `converter as ${n}`,
+      acaoHref: `/empresas/${companyId}/estoque/producao/receitas`,
+      origem: 'FICHA_SEM_COMPARACAO',
+      /** ⭐ alvo FIXO: é UM aviso da empresa, então ele atualiza em vez de nascer de novo */
+      alvo: 'fila-de-conversao',
+    },
+    r,
+    db,
+  )
+  r.resolvidos += await reconciliarOrigem(companyId, 'FICHA_SEM_COMPARACAO', ['fila-de-conversao'], db)
+}
+
+/** ⭐ as fichas cujo % medido NÃO é rendimento (é a ficha quebrada) — ver o produtor (1) */
+async function fichasComLoteTorto(companyId: string, db: Db): Promise<Set<string>> {
+  const fila = await fichasParaConverter(companyId, db)
+  return new Set(fila.pendentes.map((f) => f.fichaId))
 }
 
 /**
@@ -267,7 +287,19 @@ async function loteDeGrandezaImpossivel(companyId: string, r: ResumoDaCarga, db:
     where: { companyId, criadoEm: { gte: desde } },
     select: { ordemId: true, pctTeorico: true },
   })
-  const fora = desvios.filter((d) => faixaDoSelo(d.pctTeorico) === 'EXTREMO' && d.pctTeorico >= TETO)
+  /** ⛔ mesma supressão: num lote de ficha torta o % é lixo, e o aviso da ficha já cobre */
+  const loteTorto = await fichasComLoteTorto(companyId, db)
+  const ordensDoPeriodo = await db.stockProductionOrder.findMany({
+    where: { companyId, id: { in: [...new Set(desvios.map((d) => d.ordemId))] } },
+    select: { id: true, fichaId: true },
+  })
+  const fichaDaOrdem = new Map(ordensDoPeriodo.map((o) => [o.id, o.fichaId]))
+  const fora = desvios.filter(
+    (d) =>
+      faixaDoSelo(d.pctTeorico) === 'EXTREMO' &&
+      d.pctTeorico >= TETO &&
+      !loteTorto.has(fichaDaOrdem.get(d.ordemId) ?? ''),
+  )
 
   const ordens = fora.length
     ? await db.stockProductionOrder.findMany({
