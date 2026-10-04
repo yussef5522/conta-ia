@@ -86,7 +86,9 @@ export interface SeparacaoLinha {
   //                  tela usa pra converter "quero fazer N" ↔ "preciso tirar X". Sem ele a
   //                  tela teria que dividir qtdPlanejada pela escala e reinventar a conta.
   qtdPlanejada: number // ficha × escala
-  qtdSeparada: number // já separado (Σ SEPARACAO_SAIDA − DEVOLUCAO), 0 antes de separar
+  qtdSeparada: number // em-produção (Σ SEPARACAO − DEVOLUCAO − CONSUMO), 0 antes de separar
+  /** ⭐ o que a panela comeu (Σ|PRODUCAO_CONSUMO|) — é o "real" da eficiência por componente */
+  qtdConsumida: number
   saldoDisponivel: number // saldo atual no estoque geral
   custoMedio: number | null
   fichaIdComponente: string | null // se o componente é PRODUZIDO (tem ficha) → dá pra "produzir antes"
@@ -110,11 +112,26 @@ export async function separadoPorItem(companyId: string, ordemId: string, db: Db
   return m
 }
 
+/**
+ * ⭐ CONSUMO REAL por item desta ordem (Σ|PRODUCAO_CONSUMO|).
+ *
+ * ⚠️ **NÃO é o `separadoPorItem`**, e confundir os dois foi o que me fez quase desenhar a
+ * eficiência com o número errado: aquele é **em-produção** (SEP − DEV − CON) e numa ordem
+ * CONCLUÍDA ele é ~ZERO por construção (é o que o P4 vigia). O que a eficiência precisa é o
+ * que a panela comeu.
+ */
+export async function consumidoPorItem(companyId: string, ordemId: string, db: Db): Promise<Map<string, number>> {
+  const movs = await db.stockMovement.findMany({ where: { companyId, receiptId: ordemId, tipo: TIPO_CONSUMO }, select: { itemId: true, quantidade: true } })
+  const m = new Map<string, number>()
+  for (const mv of movs) m.set(mv.itemId, round6((m.get(mv.itemId) ?? 0) + Math.abs(mv.quantidade)))
+  return m
+}
+
 export async function explodirSeparacao(companyId: string, ordemId: string, db: Db = defaultPrisma): Promise<{ ordem: OrdemView; linhas: SeparacaoLinha[] }> {
   const ordem = await getOrdem(companyId, ordemId, db)
   if (!ordem) throw new OrdemError('Ordem não encontrada.')
   const comps = await componentesDaVersao(companyId, ordem.fichaId, ordem.versaoFicha, db)
-  const [custoMap, separado] = await Promise.all([custoMedioPorItem(db, companyId), separadoPorItem(companyId, ordemId, db)])
+  const [custoMap, separado, consumido] = await Promise.all([custoMedioPorItem(db, companyId), separadoPorItem(companyId, ordemId, db), consumidoPorItem(companyId, ordemId, db)])
   const itemIds = comps.map((c) => c.itemId)
   const [its, fichasComp] = await Promise.all([
     itemIds.length ? db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true, unidadeControle: true } }) : Promise.resolve([]),
@@ -165,6 +182,7 @@ export async function explodirSeparacao(companyId: string, ordemId: string, db: 
        */
       qtdPlanejada: round6(planejado.get(c.itemId) ?? 0),
       qtdSeparada: round6(separado.get(c.itemId) ?? 0),
+      qtdConsumida: round6(consumido.get(c.itemId) ?? 0),
       saldoDisponivel: saldo.saldo,
       custoMedio: custoMap.get(c.itemId) ?? null,
       fichaIdComponente: fichaDoItem.get(c.itemId) ?? null,

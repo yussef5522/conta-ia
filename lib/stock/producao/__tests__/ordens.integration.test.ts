@@ -5,7 +5,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { criarFicha } from '../fichas'
-import { criarOrdem, explodirSeparacao, confirmarSeparacao, iniciarProducao, devolverInsumo, cancelarOrdem, getOrdem, OrdemError } from '../ordens'
+import { criarOrdem, explodirSeparacao, confirmarSeparacao, iniciarProducao, devolverInsumo, cancelarOrdem, getOrdem, OrdemError, separadoPorItem, consumidoPorItem } from '../ordens'
+import { concluir } from '../conclusao'
+import { eficienciaDaOrdem } from '../eficiencia-da-ordem'
 import { saldoItem } from '../../saldo'
 import { snapshotClosedModules, isolationHeld } from '../../stock-invariants'
 
@@ -28,7 +30,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_stock_movement_no_update;`).catch(() => {})
   await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_stock_movement_no_delete;`).catch(() => {})
-  for (const t of ['stockMovement', 'stockProductionOrder', 'stockFichaComponente', 'stockFichaVersao', 'stockFicha', 'stockItem'] as const) {
+  for (const t of ['stockProducaoDesvio', 'stockProducaoConclusao', 'stockMovement', 'stockProductionOrder', 'stockFichaComponente', 'stockFichaVersao', 'stockFicha', 'stockItem'] as const) {
     // @ts-expect-error dinâmico
     await prisma[t].deleteMany({ where: { companyId } })
   }
@@ -120,5 +122,53 @@ describe('ordens de produção 2.1', () => {
     const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: 2, dataProducao: new Date('2026-08-21') }, prisma)
     await confirmarSeparacao(companyId, ordemId, [{ itemId: coxaoId, qtdSeparada: 2 }], prisma)
     expect(isolationHeld(antes, await snapshotClosedModules(prisma, companyId))).toBe(true)
+  })
+})
+
+describe('⭐⭐ EM-PRODUÇÃO ≠ CONSUMO — a confusão que daria a eficiência errada (03/10)', () => {
+  it('⛔⛔ numa ordem CONCLUÍDA o em-produção é ZERO e o consumo é o que a panela comeu', async () => {
+    /**
+     * ⚠️⚠️ **EU QUASE DESENHEI A EFICIÊNCIA COM O NÚMERO ERRADO.** Ia usar `qtdSeparada` como
+     * o "real" por componente — e ele é **em-produção** (`SEP − DEV − CON`), que numa ordem
+     * concluída é **~ZERO por construção** (é justamente o que o juiz P4 vigia). A tabela
+     * mostraria *"plano 5, real 0"* em toda ordem fechada: **100% de desvio inventado, na
+     * tela que existe pra denunciar desvio.**
+     *
+     * ⭐ Por isso `consumidoPorItem` nasceu separado, e este teste trava a diferença: as duas
+     * funções leem os MESMOS movimentos e respondem perguntas diferentes.
+     */
+    const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: 5, dataProducao: new Date('2026-08-21') }, prisma)
+    await confirmarSeparacao(companyId, ordemId, [{ itemId: coxaoId, qtdSeparada: 5 }], prisma)
+    await iniciarProducao(companyId, ordemId)
+    // consumiu 4,5 e sobrou 0,5 (a devolução é o que o `concluir` faz com a sobra)
+    await concluir({ companyId, ordemId, consumo: [{ itemId: coxaoId, qtdConsumida: 4.5 }], qtdGerada: 4 }, prisma)
+
+    expect((await separadoPorItem(companyId, ordemId, prisma)).get(coxaoId) ?? 0).toBeCloseTo(0, 6)
+    expect((await consumidoPorItem(companyId, ordemId, prisma)).get(coxaoId)).toBeCloseTo(4.5, 6)
+
+    // ⭐ e a LINHA que a tela desenha traz os dois, cada um no seu campo
+    const { linhas } = await explodirSeparacao(companyId, ordemId)
+    expect(linhas[0].qtdSeparada).toBeCloseTo(0, 6)
+    expect(linhas[0].qtdConsumida).toBeCloseTo(4.5, 6)
+  })
+
+  it('⭐ e a eficiência da tela fecha com o dado real: pedi 5 · produziu 4 → 80%', async () => {
+    const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: 5, dataProducao: new Date('2026-08-21') }, prisma)
+    await confirmarSeparacao(companyId, ordemId, [{ itemId: coxaoId, qtdSeparada: 5 }], prisma)
+    await iniciarProducao(companyId, ordemId)
+    await concluir({ companyId, ordemId, consumo: [{ itemId: coxaoId, qtdConsumida: 4.5 }], qtdGerada: 4 }, prisma)
+    const { ordem, linhas } = await explodirSeparacao(companyId, ordemId)
+
+    const ef = eficienciaDaOrdem({
+      escala: ordem.escalaReceitas, loteBase: 1, qtdGerada: 4,
+      componentes: linhas.map((l) => ({ nome: l.nome, unidade: l.unidade, porLote: l.porLote, consumido: l.qtdConsumida })),
+    })
+    expect(ef.pedido).toBe(5)
+    expect(ef.pct).toBeCloseTo(0.8, 6)
+    expect(ef.faixa).toBe('ABAIXO')
+    expect(ef.alerta).toBe(true)
+    // ⭐ plano × real por componente: a receita pedia 5 KG, a panela comeu 4,5 (sobrou 0,5)
+    expect(ef.componentes[0]).toMatchObject({ plano: 5, real: 4.5 })
+    expect(ef.componentes[0].gap).toBeCloseTo(-0.5, 6)
   })
 })

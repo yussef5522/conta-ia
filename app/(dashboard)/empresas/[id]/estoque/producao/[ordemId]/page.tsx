@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState, use } from 'react'
 import { escalaDoConsumo, preverSaida, eficienciaMedia, avaliarVariacao } from '@/lib/stock/producao/previsao-rendimento'
 import { insumoDoPedido } from '@/lib/stock/producao/escala-da-ordem'
+import { eficienciaDaOrdem } from '@/lib/stock/producao/eficiencia-da-ordem'
 import { formatarQtd } from '@/lib/stock/quantidade'
 import { Card, CardContent } from '@/components/ui/card'
 import { EtapasDaOrdem } from '@/components/estoque/etapas-da-ordem'
@@ -14,7 +15,7 @@ import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, Undo2, X, T
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 import { avisoDeEtapasAbertas } from '@/lib/stock/producao/aviso-etapas-abertas'
 
-interface Linha { itemId: string; nome: string; unidade: string; unidadeControle: string; porLote: number; qtdPlanejada: number; qtdSeparada: number; saldoDisponivel: number; custoMedio: number | null; fichaIdComponente: string | null }
+interface Linha { itemId: string; nome: string; unidade: string; unidadeControle: string; porLote: number; qtdPlanejada: number; qtdSeparada: number; qtdConsumida: number; saldoDisponivel: number; custoMedio: number | null; fichaIdComponente: string | null }
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null; versaoFicha: number; fichaId: string }
 interface Conclusao { id: string; qtdGerada: number; colaboradorNome: string | null; rendimento: number; custoLoteReal: number; custoUnitarioReal: number | null; validadeAte: string | null; parcial: boolean; criadoEm: string }
 interface Colaborador { id: string; nome: string }
@@ -109,6 +110,21 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
     return { min, max }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linhas, sep, ordem])
+
+  /**
+   * ⭐⭐ A EFICIÊNCIA DA ORDEM (item 1 do dono) — hook no TOPO, antes do early-return (REGRA 9).
+   *
+   * ⚠️ Ela só existe pra ordem CONCLUÍDA: antes disso o "produziu" não existe, e mostrar 0%
+   * numa ordem em andamento seria acusar quem ainda está com a mão na massa.
+   */
+  const eficiencia = useMemo(() => {
+    if (!ordem || ordem.estado !== 'CONCLUIDA' || !conclusoes.length) return null
+    const saiu = conclusoes.reduce((s, c) => s + c.qtdGerada, 0) // ⭐ soma as parciais
+    return eficienciaDaOrdem({
+      escala: ordem.escalaReceitas, loteBase: ordem.loteBase, qtdGerada: saiu,
+      componentes: linhas.map((l) => ({ nome: l.nome, unidade: l.unidade, porLote: l.porLote, consumido: l.qtdConsumida })),
+    })
+  }, [ordem, conclusoes, linhas])
 
   if (ordem === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (ordem === null) return <div className="p-6 text-sm text-slate-500">Ordem não encontrada.</div>
@@ -371,6 +387,66 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
       {/* conclusão ("quantos saíram?") — ⭐ a âncora é o alvo da 1ª porta do aviso */}
       <div id="concluir" />
       {emProducao && <ConclusaoForm id={id} ordemId={ordemId} linhas={linhas} etapasAbertas={etapasAbertas} colaboradores={etapasAssinadas ? [] : colaboradores} rendimentoMedio={rendimentoMedio} rendimentoLotes={rendimentoLotes} loteBase={ordem.loteBase} unidadeProduzido={ordem.unidadeProduzido} onConcluida={carregar} />}
+
+      {/* ⭐⭐ A EFICIÊNCIA DA ORDEM — item 1 do dono (03/10):
+          *"pedi 10 · produziu 9 → 90%, com o consumo real do lado (plano × real por componente)"*
+
+          ⛔⛔ Ela existe porque o rendimento SAIU da conta da separação. Antes a medição se
+          escondia dentro da escala: render mal fazia separar menos, a conta "fechava" e nada
+          aparecia. Com a separação fixa pela ficha, render mal SOBRA — e sobrar só vale se
+          estiver na tela. **Desvio que aparece é desvio que alguém explica.**
+
+          ⚠️ A conta vem da lib PURA (`eficienciaDaOrdem`), a MESMA que o juiz P8 usa — tela e
+          e-mail não têm como discordar sobre o mesmo lote. */}
+      {eficiencia && eficiencia.pct != null && (
+        <Card><CardContent className="p-4">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="text-sm font-semibold text-slate-900">Eficiência desta ordem</h2>
+            <span className={`rounded-xl px-2 py-0.5 text-[12px] font-semibold tabular-nums ${
+              eficiencia.faixa === 'ABAIXO' ? 'bg-rose-50 text-rose-700'
+                : eficiencia.faixa === 'ACIMA' ? 'bg-sky-50 text-sky-700'
+                  : 'bg-emerald-50 text-emerald-700'}`}>
+              {Math.round(eficiencia.pct * 100)}%
+            </span>
+            <span className="text-xs text-slate-500">
+              pedi {num(eficiencia.pedido!)} {ordem.unidadeProduzido} · produziu {num(eficiencia.produzido)}
+            </span>
+          </div>
+          {/* ⚠️ A FRASE SÓ NO LADO DE BAIXO: render acima do prometido não é prejuízo (é ficha
+              generosa), e cobrar explicação ali treinaria o dono a ignorar o bloco. */}
+          {eficiencia.alerta && (
+            <p className="mt-1 text-xs text-rose-700">
+              Saiu menos do que a receita promete — confira a operação, a sobra não contada, ou mude a ficha se a perda é real.
+            </p>
+          )}
+          <table className="density-normal mt-2.5 w-full">
+            <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <th className="px-3 py-2 font-medium">Componente</th>
+              <th className="px-3 py-2 text-right font-medium">Plano (ficha)</th>
+              <th className="px-3 py-2 text-right font-medium">Real (consumido)</th>
+              <th className="px-3 py-2 text-right font-medium">Diferença</th>
+            </tr></thead>
+            <tbody>
+              {eficiencia.componentes.map((c) => (
+                <tr key={c.nome} className="border-t border-slate-50">
+                  <td className="px-3 py-0 text-[14px] font-medium text-slate-900">{c.nome}</td>
+                  <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-700">{formatarQtd(c.plano, c.unidade)}</td>
+                  <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-700">{formatarQtd(c.real, c.unidade)}</td>
+                  {/* ⚠️ ZERO não ganha cor: consumir exatamente a ficha é o normal, e pintar
+                      o normal é o que faz ninguém mais ver a cor que importa. */}
+                  <td className={`px-3 py-0 text-right text-[13px] tabular-nums ${
+                    Math.abs(c.gap) < 0.0001 ? 'text-slate-400' : c.gap > 0 ? 'text-rose-600' : 'text-sky-700'}`}>
+                    {Math.abs(c.gap) < 0.0001 ? '—' : `${c.gap > 0 ? '+' : '−'}${formatarQtd(Math.abs(c.gap), c.unidade)}`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-1.5 text-[11px] text-slate-400">
+            O plano é a receita × o que esta ordem pediu. A separação nunca foi ajustada pela medição — se a perda é real, mude a ficha.
+          </p>
+        </CardContent></Card>
+      )}
 
       {/* histórico de conclusões + etiquetas */}
       {conclusoes.length > 0 && (
