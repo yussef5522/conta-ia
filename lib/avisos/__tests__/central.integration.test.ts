@@ -238,11 +238,25 @@ describe('⛔⛔ as DUAS redes do aviso mudo (lib + banco)', () => {
    */
   it('⛔⛔ a migration DECLARA o CHECK que torna o aviso mudo impossível (prova em prod à parte)', async () => {
     const { readFileSync } = await import('fs')
+    void readFileSync
     const sql = readFileSync('prisma/migrations/20261005123000_aviso/migration.sql', 'utf8')
       .replace(/^\s*--.*$/gm, '')
     expect(sql, 'as três frases obrigatórias').toMatch(/chk_aviso_fala/)
     expect(sql).toMatch(/length\(trim\("oQueFazer"\)\) > 0/)
     expect(sql, 'botão pela metade').toMatch(/chk_aviso_acao_completa/)
+    /**
+     * ⛔⛔ E O CHECK TEM QUE TER O `IS NOT NULL` EXPLÍCITO. A 1ª versão em prod **não
+     * bloqueava**: `length(trim(NULL))` é NULL, `false OR NULL` = NULL, e **CHECK com expressão
+     * NULL PASSA** (medido no Postgres de prod). Sem este `expect`, o furo volta na próxima
+     * tabela que alguém criar com par de colunas nullable.
+     */
+    const corrigida = readFileSync(
+      'prisma/migrations/20261005130000_aviso_check_acao_tres_valores/migration.sql',
+      'utf8',
+    ).replace(/^\s*--.*$/gm, '')
+    expect(corrigida, 'a lógica de três valores do SQL exige IS NOT NULL antes do length').toMatch(
+      /"acaoRotulo" IS NOT NULL AND "acaoHref" IS NOT NULL/,
+    )
     expect(sql, 'o dedupe por origem+alvo é UNIQUE no banco').toMatch(
       /CREATE UNIQUE INDEX "aviso_companyId_origem_alvo_key"/,
     )
