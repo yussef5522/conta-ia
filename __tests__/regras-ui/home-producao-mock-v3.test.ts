@@ -115,6 +115,16 @@ describe('⛔⛔ a linha ATRASADA fala CORAL — e o banner bege morreu', () => 
 })
 
 describe('⭐ as listas: avatar, par tipográfico e pílula', () => {
+  /**
+   * ⚠️⚠️ **ACHADO NA PROVA EM PROD:** o mock diz *"200 UN pedidas"* e assume que a meta existe —
+   * mas as 5 ordens abertas da Caçula são **todas DERIVADO** (o `stockOrdemMeta` só começou em
+   * 04/10). Chamar de "pedidas" um número que o dono nunca digitou é o *"pedido 0"* de novo.
+   */
+  it('⭐⭐ "pedidas" só no DECLARADO; o derivado diz "esperadas"', () => {
+    const tela = semComentario(ler(TELA))
+    expect(tela).toMatch(/pedidoOrigem === 'DECLARADO' \? 'pedidas' : 'esperadas'/)
+  })
+
   it('⭐⭐ o avatar é o MESMO componente da tela "Por dia"', () => {
     const tela = semComentario(ler(TELA))
     expect(tela).toMatch(/import \{ AvatarPessoa \} from '@\/components\/estoque\/avatar-pessoa'/)

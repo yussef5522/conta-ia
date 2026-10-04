@@ -839,7 +839,19 @@ function ListaAbertas({ id, ordens, ctx, deOntem, soDeOntem, onFiltrarOntem }: {
                 ) : (
                   <span className="num text-[16px] font-medium" style={{ color: 'var(--prod-primary)' }}>
                     {fmtQtd(c.pedido)} {o.unidadeProduzido}
-                    <span className="ml-1 text-[12.5px] font-normal" style={{ color: 'var(--prod-muted)' }}>pedidas</span>
+                    {/**
+                      * ⚠️⚠️ **"pedidas" SÓ quando ele PEDIU.** O mock diz *"200 UN pedidas"* e
+                      * assume que a meta existe — mas a prova em prod mostrou que **as 5 ordens
+                      * abertas de hoje são todas DERIVADO**: o `stockOrdemMeta` só começou a ser
+                      * escrito em 04/10, e as 471 anteriores não têm. Chamar de *"pedidas"* um
+                      * número que o dono nunca digitou é a mesma mentira do *"pedido 0"* que a
+                      * tela Por dia teve que consertar — então o derivado diz **"esperadas"**,
+                      * a palavra que esta tela já usava antes do mock.
+                      * ⭐ `pedidoDaOrdem` já distingue os dois; a tela só não estava dizendo.
+                      */}
+                    <span className="ml-1 text-[12.5px] font-normal" style={{ color: 'var(--prod-muted)' }}>
+                      {c.pedidoOrigem === 'DECLARADO' ? 'pedidas' : 'esperadas'}
+                    </span>
                   </span>
                 )}
                 {atrasada && (
