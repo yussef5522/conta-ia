@@ -1759,6 +1759,60 @@ O golden da produção ficou vermelho e eu levei três medições pra ver que o 
 4. **M3 da FANTA UVA 2L** (7 UN no limbo): estornar o ajuste e contar na GARRAFA.
 5. Seguem abertas: a correção de dado da parcela #22 (saldo devedor R$ 9.729,34 a mais, DRE de setembro −R$ 505,01) · as 23 linhas de recontagem onde a variância gravada subestima · os 90 UN / R$ 768,59 do Combo (recomendação: registrar divergência) · os 6 nomes de bebida pendentes nos complementos.
 
+## ⭐⭐ A HOME DA PRODUÇÃO — OS 3 AJUSTES DO DONO, E O FISCAL ACHOU 90 AVISOS DE ENXURRADA (04/10/2026)
+
+**⭐ 1. AVISOS SAEM DO MEIO DA TELA.** *"O bloco inline MORRE — avisos só no sininho do topo. Home limpa: título → cartões → listas. **Nada de aviso inline em tela nenhuma sem o dono pedir.**"* O `<BlocoDeAvisos>` saiu da home **~2h depois de subir**, e o componente fica **GUARDADO com selo de dívida** (`CAPACIDADE GUARDADA — NÃO É LIXO`): o pedido original era *"estoque e financeiro ganham o bloco depois, mesmo componente"*, e apagá-lo faria alguém escrever um segundo que divergiria na 1ª frase ajustada. ⭐ **A FUNÇÃO NÃO SE PERDEU** — o sininho global mostra os MESMOS avisos, agrupados por setor; o que saiu foi a **2ª vitrine do mesmo dado** no meio da tela de trabalho. **O guard (`avisos-so-no-sininho.test.ts`) prova OS DOIS LADOS** (nenhuma tela monta o bloco **e** o sininho continua mostrando) e **varre `app/` + `components/` inteiros** — porque o jeito de isso voltar não é alguém reeditar a home, é alguém pôr o bloco numa tela NOVA *"porque já estava pronto"*.
+
+**⭐ 2. SÓ 2 NÚMEROS NA LISTA, COM AS PALAVRAS ESCRITAS.** *"`pedido 120 · fez 148` — as palavras SEMPRE visíveis ao lado dos números, **nunca dois números soltos pra adivinhar**."* Ordem antiga sem meta mostra só **`fez 228`** (inventar pedido seria o *"pedido 0"* de 04/10 de novo). ⛔⛔ **E A PÍLULA DE % SAIU DA LISTA**, por ordem do dono: *"ela confundia — parecia fez÷pedido e não é"*. ⭐ É a confissão do defeito que o próprio guard já descrevia (*"o par e a pílula têm denominadores diferentes"*): o problema nunca foi a conta, era **a tela pôr os dois lado a lado sem a régua**. O percentual continua onde tem a coluna do pedido ao lado (a tela **"Por dia"**) e no bloco de eficiência da ordem; **`faixaDoSelo` segue viva lá e no juiz P8** — guard que só afirmasse a remoção aprovaria o dia em que o percentual sumisse de todo lugar.
+
+**⭐⭐ 3. O FISCAL CONTINUA, NO LUGAR CERTO** (`fiscalDoDeclarado`/`fraseDoFiscal` em `eficiencia-da-ordem.ts` + `fiscal-dos-lotes.ts`): a conta *"o declarado cabe no material separado?"* aparece **(a)** na **página da ordem**, com a frase de balcão; **(b)** no **SININHO** quando é caso impossível ou **padrão**; **(c)** na **lista da home**, só um **pontinho vermelho de 7px** — sem número, sem pílula.
+- **⭐⭐ ZERO CONTA NOVA, e é a álgebra que garante:** `permitido = pedido × real ÷ plano`, com `plano = insumoDoPedido(dose, pedido, loteBase)` — **o `pedido` se CANCELA**. O fiscal mede **MATERIAL**, não meta, e por isso vale igual na ordem com pedido **DECLARADO** e na antiga, **DERIVADA**. Há teste exigindo isso: mesmo consumo com pedidos diferentes ⇒ mesmo permitido.
+- **o GARGALO é o MÍNIMO** entre componentes, nunca média (*"o estoque não faz média — ele acaba"*); **dose zero não limita** (senão `permitido: 0` acusaria toda ordem); **teto de 120%** mais folgado que os ±15% do rendimento de propósito (consumo com 3 casas × dose com 6 sempre deixa resíduo); **permitido 0 com declarado > 0 é impossível por definição**, sem precisar de percentual.
+- **⛔ o fiscal é por ORDEM, nunca por conclusão** — o material é separado pela ordem, e julgar cada conclusão contra o consumo inteiro acusaria a 1ª metade de ter declarado o dobro na produção PARCIAL. E `fiscalDeOrdens` lê em **LOTE (4 consultas pra N ordens)**: a home é tela de todo dia, e `for (…) await` nela é o defeito de 28/09 (4.909 ms · 1.786 consultas).
+- **⛔ a TELA recebe só o BOOLEANO** (`fiscalImpossivel`). Se ela derivasse, seria a 2ª régua do fiscal e discordaria do sininho e da ordem no 1º ajuste de teto — provado em prod: o número **não viaja** no payload.
+
+**⚠️⚠️ E A PROVA EM PROD ACHOU UMA ENXURRADA — 90 AVISOS NUM SININHO.** A 1ª versão do produtor emitia **um aviso por ordem impossível** da janela de 60 dias. ***Alarme falso repetido é como um alarme morre*** (os 111 do juiz de vendas, o N1 que não empilha sobre o N3). Duas réguas, as duas já usadas pelos vizinhos do arquivo:
+```
+ordens concluídas (60d) ....... 402   ⛔ IMPOSSÍVEIS ... 90
+suprimidas (ficha com o lote na unidade errada — a fila de conversão já avisa) ... 73
+sobram 17 em 7 receitas  →  ⭐ 5 avisos de lote isolado + 2 de PADRÃO = 7
+```
+1. **UMA CAUSA, UM ALARME** — ficha com `loteBase` na unidade errada **sai**: ali o `permitido` não mede lançamento, **mede a ficha quebrada** (é o CHEDDAR que *"permite ~0,152 e declarou 2"*). A fila de conversão já diz o que fazer; este em cima mandaria o dono conferir a mão da cozinha. **Mesma supressão que o padrão de rendimento usa.**
+2. **REPETIU NA MESMA RECEITA = PADRÃO, e padrão é UM aviso** — exatamente as duas formas que o dono nomeou (*"quando vira padrão ou caso impossível"*). O isolado continua sendo aviso da **ORDEM**, com o nome de quem declarou; o padrão tem `alvo: ficha:<id>`, diz quantos lotes e leva ao último.
+
+**⛔⛔ E A LEI DO BALCÃO BARRAVA O AVISO DE PADRÃO — 3ª ocorrência da MESMA classe.** O produtor devolvia `recusados: 2`, e os dois eram os padrões: **`conferi`/`confir` não casam "Confer-E"**, e *"Confere a receita de X"* é como o dono escreve. ⚠️ Pior: o irmão (*"Confere o lançamento de…"*) passava **POR ACIDENTE**, pela palavra *"lançamento"* no título. ***Guard que barra o CERTO ensina a afrouxar a régua*** — igual a `corrig`×Corrija e `troc`×Troque. `confer` entrou na lista, e **não afrouxa nada** (`conferi` já casava "conferência"). Teste novo roda os **5 imperativos reais** do dono.
+
+**PROVADO EM PROD, nos DOIS viewports (REGRA 12) e nos DOIS temas:**
+```
+HOME celular 200 em 591ms · desktop 200 em 182ms · JS 862 KB · CSS 173 KB
+  ✓ "pedido " e "fez " na lista   ✓ o pontinho de 7px com nome pra leitor de tela
+  ✓ o pontinho pinta por var(--fam-coral-mid)   ✓ hex de cor cravado: 0
+  ⛔→✓ SUMIRAM: PilulaEf · o import do bloco inline · o "ver todos" dele
+  ✓ --prod-acao-bg · --prod-primary · --prod-muted · --fam-coral-mid — nos 2 mapas (claro E escuro)
+  ✓ o script do tema no HTML: classList.remove('dark')  (preferência do dono = claro)
+ORDEM (PICAR BRÓCOLIS) 200 · a frase no bundle: "pelo material separado, a receita permite ~…"
+  ✓ "confere o lan\xe7amento" + text-rose-700 no caso impossível
+ROTA /ordens 200 · ✓ manda o booleano · ✓ NÃO manda permitido/pctFisico/gargalo
+  concluídas 9 · com pontinho 1   ⭐ o pontinho é discreto porque o caso é raro
+
+A CENTRAL (preview com ROLLBACK, 0 escrita): 16 avisos — FISCAL_DECLARADO 7 · PADRAO_RENDIMENTO 7
+  · FICHA_SEM_COMPARACAO 1 · ORDEM_PARADA 1  ·  recusados 0  ·  avisos na tabela 9 → 9 ✓
+  [PADRÃO] "Confere a receita de PICAR BRÓCOLIS — 9 lotes declararam mais do que o material dava"
+     Em 9 lotes dos últimos 60 dias (3 pessoas) … no último, 2 UN com material pra ~0,9698 UN
+     (o limite é BROCOLIS). Repetir é sinal de dose da ficha acima do real, não de lançamento torto.
+```
+**REGRA 11 — 12 defeitos repostos, 12 vermelhos:** bloco inline de volta (**3**) · as palavras somindo (**3**) · o pontinho sumindo (**2**) · a frase fora da ordem (**1**) · o produtor fora do sininho (**1**) · gargalo virando MÁXIMO (**3**) · teto de 120% caindo (**3**) · dose zero voltando a limitar (**1**) · a supressão do lote torto caindo (**1**) · o agrupamento caindo (**1**) · `confer` fora da lista de verbos (**1**).
+
+⚠️⚠️ **E A REGRA 11 ME CORRIGIU NUM GUARD:** repondo o `continue` da dose zero com o componente **DEPOIS**, o teste passava **VERDE** — `0/0` dá `NaN`, e `NaN < 20` é `false`, então o menor sobrevive por acidente. **Com ele PRIMEIRO**, o `NaN` entra como `permitido` e nenhuma comparação seguinte o substitui: a tela imprimiria **"permite ~NaN"**. *Guard testado só na ordem conveniente é guard que não morde.*
+
+**⚠️ 3 GUARDS REAPONTADOS, nenhum afrouxado:** o do *"um primário só"* passou a **separar PRIMÁRIO de SINAL** e a travar o sinal **no tamanho de sinal** (pontinho com `px-`/texto = botão coral disfarçado competindo com o "Nova ordem") — ficou mais forte; o do ChipNav tinha fatia terminando em `function PilulaEf`, que **deixou de existir** (`indexOf` −1 varria a tela inteira e mordia o `ativo` legítimo do `CardMetrica`); e o da central passou a afirmar a **AUSÊNCIA** do bloco inline, com a lei (*"financeiro NUNCA na produção"*) continuando aplicada **no `where` da rota**, que é onde ela sempre morou.
+
+**893 → 898 arquivos · 11.620 verdes · TS 0 · migration NENHUMA · zero escrita em prod · deploys 4/4 (`by2f2btcu-i50jVEl2B0R`, `JkWSfV1Q0849yVqhNfMQF`, `Mo8XF7OBEn7AOX4Q5U_SQ`) · Δ bundle +4 KB.**
+
+⚠️ **SCREENSHOT INDISPONÍVEL** (a extensão do Chrome não está ligada nesta sessão): a prova dos 2 temas é **estrutural e medida no que prod serve** — os elementos novos não têm **nenhum** hex cravado (0 ocorrências) e os 4 tokens que eles leem existem **nos dois mapas** do CSS servido. É a implementação por token que o dono pediu (*"as telas modernas ganham o escuro de graça"*); falta o olho dele.
+
+📋 **FICA PRO DONO:** os **7 avisos do fiscal** no sininho — e os **2 de PADRÃO** são os mais caros, porque apontam **dose de ficha acima do real** (PICAR BRÓCOLIS 9 lotes · ENCHER TUBO MAIONESE 3 lotes), não lançamento torto. ⚠️ E os **73 suprimidos** são a fila de conversão KG→UN esperando os 37 cliques dele: enquanto o lote base estiver na unidade errada, o fiscal daquelas fichas não mede nada.
+
 ## ⭐⭐⭐ PRODUÇÃO POR UNIDADE DE PONTA A PONTA — CONVERSÃO KG→UN, O PEDIDO VISÍVEL E O RELATÓRIO POR DIA (04/10/2026)
 
 **Três itens do dono, e o primeiro teve a sua própria fórmula refutada pelo dado.**
