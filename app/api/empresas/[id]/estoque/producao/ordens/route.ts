@@ -5,7 +5,7 @@ import { dataDaOrdem, DataDaOrdemError } from '@/lib/stock/producao/data-da-orde
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
-import { listOrdens, criarOrdem, OrdemError } from '@/lib/stock/producao/ordens'
+import { listOrdens, criarOrdem, receitaDasOrdens, OrdemError } from '@/lib/stock/producao/ordens'
 import { sugestoesDeProducao } from '@/lib/stock/producao/sugestao-cardapio'
 import { cardsDoPainel, lotesDoPeriodo, ESTADOS_ABERTOS, ehDeOntem } from '@/lib/stock/producao/painel-producao'
 import { conclusoesNoPeriodo } from '@/lib/stock/producao/conclusao'
@@ -70,14 +70,25 @@ export async function GET(request: NextRequest, { params }: Params) {
    * ⭐ O PEDIDO das concluídas, pro par *"pedido → fez"*. ⚠️ Vem do MESMO `pedidoDaOrdem` das
    * abertas — e NÃO é o denominador da pílula (ver o bloco em `contexto-das-abertas.ts`).
    */
-  const ordensDasConclusoes = ordens.filter((o) => concluidas.some((c) => c.ordemId === o.id))
-  const metasDasConclusoes = ordensDasConclusoes.length
+  /**
+   * ⛔⛔ **RESOLVIDO POR ID, nunca filtrando o `ordens` (que é TRUNCADO em 200 encerradas).**
+   * Medido em prod no período de 30 dias: **379 conclusões × 207 ordens no payload → 200 linhas
+   * com nome "—", sem logo, sem pedido e sem pílula.** É o teto de leitura escondendo o item,
+   * pela 4ª vez nesta casa (o `take: 50` do fermento, o `take: 200` da ordem do ano 202, o
+   * `take: 300` do recebimento) — e aqui ele apagava o visual de MAIS DA METADE da lista.
+   */
+  const idsDasConclusoes = [...new Set(concluidas.map((c) => c.ordemId))]
+  const receitaDasConcluidas = await receitaDasOrdens(companyId, idsDasConclusoes, prisma)
+  const metasDasConclusoes = idsDasConclusoes.length
     ? await prisma.stockOrdemMeta.findMany({
-        where: { companyId, ordemId: { in: ordensDasConclusoes.map((o) => o.id) } },
+        where: { companyId, ordemId: { in: idsDasConclusoes } },
         select: { ordemId: true, unidades: true },
       })
     : []
-  const pedidoDasConcluidas = pedidoPorOrdem(ordensDasConclusoes, metasDasConclusoes)
+  const pedidoDasConcluidas = pedidoPorOrdem(
+    Object.entries(receitaDasConcluidas).map(([id, r]) => ({ id, escalaReceitas: r.escalaReceitas, loteBase: r.loteBase })),
+    metasDasConclusoes,
+  )
 
   /**
    * ⭐⭐ O Σ DE HOJE da linha editorial do topo (*"a cozinha já produziu N unidades hoje"*).
@@ -96,7 +107,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   )
 
   return NextResponse.json({
-    ordens, sugestoes, painel, abertas, contexto, pedidoDasConcluidas,
+    ordens, sugestoes, painel, abertas, contexto, pedidoDasConcluidas, receitaDasConcluidas,
     /** ⚠️ `lotes` é a contagem de conclusões de hoje — a frase usa o TEXTO por unidade */
     hoje: { dia: hoje, produzido: produzidoHoje, lotes: doDia.length },
     concluidas: concluidas.map((c) => {

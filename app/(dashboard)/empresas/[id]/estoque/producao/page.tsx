@@ -258,6 +258,12 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
   /** ⭐ o que a rota passou a mandar pro mock v3 — a tela só DESENHA isso */
   const [contexto, setContexto] = useState<Record<string, Contexto>>({})
   const [pedidoFeito, setPedidoFeito] = useState<Record<string, PedidoFeito>>({})
+  /**
+   * ⭐⭐ A RECEITA DAS CONCLUÍDAS vem resolvida POR ID (05/10). ⛔ Antes a lista montava nome e
+   * unidade a partir do `ordens`, que é **truncado em 200 encerradas** — e com 30 dias de
+   * período isso deixava 200 das 379 linhas com nome "—", sem logo e sem pílula.
+   */
+  const [receitaConcl, setReceitaConcl] = useState<Record<string, { nome: string; unidade: string }>>({})
   const [hoje, setHoje] = useState<{ dia: string; produzido: Quantidade; lotes: number } | null>(null)
   const [periodo, setPeriodo] = useState<'hoje' | 'semana' | 'mes'>('hoje')
   const [busca, setBusca] = useState('')
@@ -285,6 +291,7 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
       setOrdens(j.ordens ?? []); setSugestoes(j.sugestoes ?? [])
       setPainel(j.painel ?? null); setAbertas(j.abertas ?? []); setConcluidas(j.concluidas ?? [])
       setContexto(j.contexto ?? {}); setPedidoFeito(j.pedidoDasConcluidas ?? {}); setHoje(j.hoje ?? null)
+      setReceitaConcl(j.receitaDasConcluidas ?? {})
     }).catch(() => setOrdens(null))
   }
   useEffect(() => { setMostrar(PAGINA); carregar() }, [id, periodo, custom]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -532,8 +539,16 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
               const o = ordens.find((x) => x.id === c.ordemId)
               return (o?.nomeProduzido ?? '').toLowerCase().includes(busca.trim().toLowerCase())
             })}
-            nomePorOrdem={new Map(ordens.map((o) => [o.id, o.nomeProduzido]))}
-            unidadePorOrdem={new Map(ordens.map((o) => [o.id, o.unidadeProduzido]))}
+            /* ⭐ as duas fontes MESCLADAS: a lista geral (truncada) + a receita resolvida por
+               ID do período. A segunda manda, porque ela nunca depende do teto. */
+            nomePorOrdem={new Map([
+              ...ordens.map((o) => [o.id, o.nomeProduzido] as [string, string]),
+              ...Object.entries(receitaConcl).map(([id, r]) => [id, r.nome] as [string, string]),
+            ])}
+            unidadePorOrdem={new Map([
+              ...ordens.map((o) => [o.id, o.unidadeProduzido] as [string, string]),
+              ...Object.entries(receitaConcl).map(([id, r]) => [id, r.unidade] as [string, string]),
+            ])}
             pedidoFeito={pedidoFeito} />
         </>
       )}

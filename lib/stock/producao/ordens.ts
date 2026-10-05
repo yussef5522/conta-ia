@@ -408,6 +408,64 @@ export async function getOrdem(companyId: string, ordemId: string, db: Db = defa
   }
 }
 
+/**
+ * ⭐⭐⭐ A RECEITA DE ORDENS **POR ID** — nome, unidade, escala e lote base, em LOTE (05/10/2026).
+ *
+ * ⛔⛔ **POR QUE ISTO EXISTE: a lista de CONCLUÍDAS não pode depender do teto das encerradas.**
+ * O `listOrdens` corta as encerradas em **200** de propósito (elas são a massa e envelhecem) —
+ * mas a lista de concluídas do PERÍODO monta o nome, o logo e o pedido a partir dela. Medido em
+ * prod com o período de 30 dias: **379 conclusões e 207 ordens no payload → 200 linhas saíam com
+ * nome "—", SEM logo, SEM pedido e SEM pílula.** Mais da metade da lista perdendo o visual v4 em
+ * silêncio.
+ *
+ * ⭐ É a MESMA cura que a ordem ABERTA ganhou em 19/09 (*"trabalho pendente não é histórico"*) e
+ * que a busca de item ganhou em 16/09 (o `take: 50` que escondia o fermento): **quem precisa de
+ * uma linha específica resolve por ID**, não filtrando uma lista truncada.
+ *
+ * ⚠️ 3 consultas pra N ordens, nunca uma por ordem — a lição dos 4.909 ms de 28/09.
+ */
+export async function receitaDasOrdens(
+  companyId: string,
+  ordemIds: string[],
+  db: Db = defaultPrisma,
+): Promise<Record<string, { nome: string; unidade: string; escalaReceitas: number; loteBase: number }>> {
+  const out: Record<string, { nome: string; unidade: string; escalaReceitas: number; loteBase: number }> = {}
+  const ids = [...new Set(ordemIds)]
+  if (!ids.length) return out
+
+  const ordens = await db.stockProductionOrder.findMany({
+    where: { companyId, id: { in: ids } },
+    select: { id: true, fichaId: true, versaoFicha: true, itemProduzidoId: true, escalaReceitas: true },
+  })
+  if (!ordens.length) return out
+
+  const [versoes, itens] = await Promise.all([
+    db.stockFichaVersao.findMany({
+      where: { companyId, OR: ordens.map((o) => ({ fichaId: o.fichaId, versao: o.versaoFicha })) },
+      select: { fichaId: true, versao: true, loteBase: true },
+    }),
+    db.stockItem.findMany({
+      where: { companyId, id: { in: [...new Set(ordens.map((o) => o.itemProduzidoId))] } },
+      select: { id: true, nome: true, unidadeControle: true },
+    }),
+  ])
+  const loteDe = new Map(versoes.map((v) => [`${v.fichaId}#${v.versao}`, v.loteBase]))
+  const itemDe = new Map(itens.map((i) => [i.id, i]))
+
+  for (const o of ordens) {
+    const it = itemDe.get(o.itemProduzidoId)
+    out[o.id] = {
+      /** ⚠️ item removido NÃO vira string vazia: a linha diria o nome de ninguém */
+      nome: it?.nome ?? '(item removido)',
+      unidade: it?.unidadeControle ?? '',
+      escalaReceitas: o.escalaReceitas,
+      /** ⚠️ `1` como piso é o mesmo default do `ordemView` — versão sumida não zera o pedido */
+      loteBase: loteDe.get(`${o.fichaId}#${o.versaoFicha}`) ?? 1,
+    }
+  }
+  return out
+}
+
 export async function listOrdens(companyId: string, db: Db = defaultPrisma): Promise<OrdemView[]> {
   /**
    * ⛔⛔ A ORDEM ABERTA NUNCA DEPENDE DO TETO (19/09).

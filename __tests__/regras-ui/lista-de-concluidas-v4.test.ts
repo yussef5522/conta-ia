@@ -88,6 +88,39 @@ describe('⭐⭐ 1. PEDIDO REDONDO — e o arredondamento tem UM dono', () => {
   })
 })
 
+/**
+ * ⛔⛔⛔ **E A LISTA NÃO PODE VOLTAR A DEPENDER DO TETO.** Achado na prova em prod deste sprint:
+ * o `listOrdens` corta as encerradas em 200, e a lista de concluídas montava nome/unidade/pedido
+ * **filtrando essa lista truncada** → com 30 dias de período, **200 das 379 linhas saíam com nome
+ * "—", sem logo, sem pedido e sem pílula**. O comportamento tem teste de integração próprio
+ * (`concluidas-nao-dependem-do-teto`); aqui se trava a FORMA, que é por onde o defeito volta.
+ */
+describe('⛔⛔ a lista de concluídas resolve a receita POR ID', () => {
+  const ROTA = 'app/api/empresas/[id]/estoque/producao/ordens/route.ts'
+
+  it('⛔⛔ a rota resolve por ID, nunca filtrando o `ordens` truncado', () => {
+    const r = semComentario(ler(ROTA))
+    expect(r, 'a receita das concluídas vem do leitor por id').toMatch(
+      /receitaDasOrdens\(companyId, idsDasConclusoes, prisma\)/,
+    )
+    expect(
+      /ordens\.filter\(\(o\) => concluidas\.some/.test(r),
+      'filtrar o `ordens` (truncado em 200) é o defeito que escondia 200 linhas',
+    ).toBe(false)
+    expect(r, 'e o payload leva a receita pra tela').toMatch(/receitaDasConcluidas,/)
+  })
+
+  it('⭐ a tela MESCLA as duas fontes, e a resolvida por id manda', () => {
+    const t = tela()
+    expect(t).toMatch(/setReceitaConcl\(j\.receitaDasConcluidas \?\? \{\}\)/)
+    const mapa = t.slice(t.indexOf('nomePorOrdem={new Map(['), t.indexOf('pedidoFeito={pedidoFeito}'))
+    expect(mapa, 'a lista geral entra primeiro…').toMatch(/ordens\.map\(\(o\) => \[o\.id, o\.nomeProduzido\]/)
+    expect(mapa, '…e a do período por último (ela vence, porque não depende do teto)').toMatch(
+      /Object\.entries\(receitaConcl\)\.map\(\(\[id, r\]\) => \[id, r\.nome\]/,
+    )
+  })
+})
+
 // ─────────────── 2. o logo colorido por receita ───────────────
 
 describe('⭐⭐ 2. LOGO COLORIDO POR RECEITA — 38px, raio 11, estável', () => {
