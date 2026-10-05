@@ -22,7 +22,7 @@ import { avaliarLinguaDoBalcao } from '../lingua-do-balcao'
 import { acharPadrao, fraseDoPadrao, type LoteMedido } from '../padrao-de-rendimento'
 import { faixaDoSelo, DESVIO_GRAVE } from '@/lib/stock/producao/eficiencia-da-ordem'
 import { fichasParaConverter } from '@/lib/stock/producao/fichas-para-converter'
-import { fiscalDeOrdens } from '@/lib/stock/producao/fiscal-dos-lotes'
+import { fiscalDeOrdens, type FiscalDoLote } from '@/lib/stock/producao/fiscal-dos-lotes'
 import type { NovoAviso } from '../tipos'
 
 /**
@@ -400,38 +400,102 @@ async function fiscalDoDeclaradoNoSininho(companyId: string, r: ResumoDaCarga, d
   const nomeDoColab = new Map(colabs.map((c) => [c.id, c.nome]))
   /** ⭐ quem declarou: a ÚLTIMA conclusão da ordem é quem fechou o número */
   const quemDaOrdem = new Map<string, string | null>()
+  const quandoDaOrdem = new Map<string, Date>()
   for (const c of conclusoes) {
     quemDaOrdem.set(c.ordemId, c.colaboradorId ? (nomeDoColab.get(c.colaboradorId) ?? null) : null)
+    quandoDaOrdem.set(c.ordemId, c.criadoEm)
+  }
+
+  /**
+   * ⛔⛔⛔ **UMA CAUSA, UM ALARME — e o número medido em prod é o argumento.** A 1ª versão deste
+   * produtor emitia **90 avisos** na Caçula: um por ordem impossível da janela. Isso não é
+   * central, é enxurrada — *alarme falso repetido é como um alarme morre* (os 111 do juiz de
+   * vendas, o N1 que não empilha sobre o N3).
+   *
+   * Duas réguas, as duas já usadas pelos vizinhos deste arquivo:
+   * 1. **ficha com o lote na unidade errada SAI** — ali o `permitido` não mede lançamento, mede
+   *    a ficha quebrada (é o CHEDDAR que "permite ~0,152 e declarou 2"). O aviso da fila de
+   *    conversão já diz o que fazer; este em cima mandaria o dono conferir a mão da cozinha.
+   * 2. **repetiu na MESMA receita = PADRÃO, e padrão é UM aviso** — exatamente as duas formas
+   *    que o dono nomeou (*"quando vira padrão ou caso impossível"*). Caso isolado continua
+   *    sendo um aviso da ORDEM, com o nome de quem declarou e o link direto.
+   */
+  const loteTorto = await fichasComLoteTorto(companyId, db)
+  const porFicha = new Map<string, FiscalDoLote[]>()
+  for (const f of fiscais.values()) {
+    if (!f.impossivel || f.permitido == null) continue
+    if (loteTorto.has(f.fichaId)) continue
+    porFicha.set(f.fichaId, [...(porFicha.get(f.fichaId) ?? []), f])
   }
 
   const vivos: string[] = []
-  for (const [ordemId, f] of fiscais) {
-    if (!f.impossivel || f.permitido == null) continue
-    vivos.push(ordemId)
-    const quem = quemDaOrdem.get(ordemId)
-    /** ⚠️ sem nome a frase NÃO inventa pessoa — ela fala do lote (a lição de hoje) */
-    const sujeito = quem ? `${quem} declarou` : 'Foram declaradas'
-    const gargalo = f.gargalo ? ` (o limite é ${f.gargalo})` : ''
+  for (const [fichaId, lotes] of porFicha) {
+    /** ⭐ o mais RECENTE é o que o dono vai abrir — ordenar por quando a conclusão foi lançada */
+    const ord = [...lotes].sort(
+      (a, b) => (quandoDaOrdem.get(b.ordemId)?.getTime() ?? 0) - (quandoDaOrdem.get(a.ordemId)?.getTime() ?? 0),
+    )
+    const ultimo = ord[0]
+    const un = ultimo.unidade
+
+    if (ord.length === 1) {
+      const quem = quemDaOrdem.get(ultimo.ordemId)
+      /** ⚠️ sem nome a frase NÃO inventa pessoa — ela fala do lote (a lição de 04/10) */
+      const sujeito = quem ? `${quem} declarou` : 'Foram declaradas'
+      const gargalo = ultimo.gargalo ? ` (o limite é ${ultimo.gargalo})` : ''
+      vivos.push(ultimo.ordemId)
+      await gravar(
+        {
+          companyId,
+          setor: 'producao',
+          severidade: 'vermelho',
+          titulo: `Confere o lançamento de ${ultimo.produto} — declarou mais do que o material dava`,
+          corpo:
+            `${sujeito} ${ultimo.declarado} ${un} com material pra ~${ultimo.permitido} ${un}${gargalo}. ` +
+            `Isso não é rendimento bom: ou saiu unidade que ninguém contou, ou o consumo não foi lançado inteiro.`,
+          oQueFazer: `Abra a ordem e confira quantas ${un} saíram de verdade — e se todo o material usado foi lançado.`,
+          acaoRotulo: 'abrir a ordem',
+          acaoHref: `/empresas/${companyId}/estoque/producao/${ultimo.ordemId}`,
+          origem: 'FISCAL_DECLARADO',
+          alvo: ultimo.ordemId,
+        },
+        r,
+        db,
+      )
+      continue
+    }
+
+    /** ⭐ PADRÃO: a receita repete o descompasso — e aí quem se conserta é a RECEITA, não o lote */
+    const quem = [...new Set(ord.map((l) => quemDaOrdem.get(l.ordemId)).filter((n): n is string => !!n))]
+    const nomes = quem.length === 0 ? '' : quem.length <= 2 ? ` (${quem.join(' e ')})` : ` (${quem.length} pessoas)`
+    vivos.push(ultimo.ordemId)
     await gravar(
       {
         companyId,
         setor: 'producao',
         severidade: 'vermelho',
-        titulo: `Confere o lançamento de ${f.produto} — declarou mais do que o material dava`,
+        titulo: `Confere a receita de ${ultimo.produto} — ${ord.length} lotes declararam mais do que o material dava`,
         corpo:
-          `${sujeito} ${f.declarado} ${f.unidade} com material pra ~${f.permitido} ${f.unidade}${gargalo}. ` +
-          `Isso não é rendimento bom: ou saiu unidade que ninguém contou, ou o consumo não foi lançado inteiro.`,
-        oQueFazer: `Abra a ordem e confira quantas ${f.unidade} saíram de verdade — e se todo o material usado foi lançado.`,
-        acaoRotulo: 'abrir a ordem',
-        acaoHref: `/empresas/${companyId}/estoque/producao/${ordemId}`,
+          `Em ${ord.length} lotes dos últimos ${JANELA_DIAS} dias${nomes} saiu mais produto do que o material ` +
+          `separado permitia — no último, ${ultimo.declarado} ${un} com material pra ~${ultimo.permitido} ${un}` +
+          `${ultimo.gargalo ? ` (o limite é ${ultimo.gargalo})` : ''}. Repetir é sinal de dose da ficha acima do real, ` +
+          `não de um lançamento torto.`,
+        oQueFazer: `Abra o último lote, confira quantas ${un} saíram de verdade, e ajuste a dose da receita se ela estiver acima do real.`,
+        acaoRotulo: 'abrir o último lote',
+        acaoHref: `/empresas/${companyId}/estoque/producao/${ultimo.ordemId}`,
         origem: 'FISCAL_DECLARADO',
-        alvo: ordemId,
+        /** ⚠️ alvo é a FICHA: o padrão é dela, e assim ele não briga com o aviso do lote isolado */
+        alvo: `ficha:${fichaId}`,
       },
       r,
       db,
     )
   }
-  r.resolvidos += await reconciliarOrigem(companyId, 'FISCAL_DECLARADO', vivos, db)
+  r.resolvidos += await reconciliarOrigem(
+    companyId,
+    'FISCAL_DECLARADO',
+    [...vivos, ...[...porFicha.keys()].map((f) => `ficha:${f}`)],
+    db,
+  )
 }
 
 /**

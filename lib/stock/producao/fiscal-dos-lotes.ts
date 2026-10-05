@@ -29,6 +29,8 @@ type Db = PrismaClient | Prisma.TransactionClient
 
 export interface FiscalDoLote extends FiscalDoDeclarado {
   ordemId: string
+  /** ⭐ a RECEITA — é por ela que o sininho agrupa o padrão (e é ela que o dono conserta) */
+  fichaId: string
   /** quantas unidades a ordem declarou no total (soma das conclusões dela) */
   declarado: number
   /** o nome do produto — entra na frase do aviso */
@@ -125,6 +127,7 @@ export async function fiscalDeOrdens(
     out.set(o.id, {
       ...ef.fiscal,
       ordemId: o.id,
+      fichaId: o.fichaId,
       declarado: gerado,
       produto: prod?.nome ?? 'o produto',
       unidade: prod?.unidadeControle ?? '',

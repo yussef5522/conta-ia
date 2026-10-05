@@ -143,12 +143,41 @@ describe('⛔⛔ 3. o fiscal no lugar certo — ordem · sininho · pontinho', (
     expect(lib).toMatch(/foram declaradas/)
   })
 
+  /**
+   * ⚠️⚠️ APERTADO depois da prova em prod, **que achou uma enxurrada**: a 1ª versão emitia
+   * **90 avisos** (um por ordem impossível da janela de 60 dias). O dono pediu *"padrão **ou**
+   * caso impossível"* — e são as duas formas que o guard passou a exigir, com a supressão de
+   * *"uma causa, um alarme"* no meio.
+   */
   it('⭐⭐ (b) o SININHO ganha o aviso do caso impossível, com link pra ordem', () => {
     const prod = ler('lib/avisos/produtores/producao.ts')
     expect(prod).toMatch(/FISCAL_DECLARADO/)
-    expect(prod, 'o aviso leva DIRETO pra ordem').toMatch(/estoque\/producao\/\$\{ordemId\}/)
+    expect(prod, 'o aviso leva DIRETO pra ordem').toMatch(/estoque\/producao\/\$\{ultimo\.ordemId\}/)
     expect(prod, 'e nomeia quem declarou').toMatch(/\$\{quem\} declarou/)
-    expect(ler('lib/avisos/produtores/producao.ts')).toMatch(/fiscalDoDeclaradoNoSininho\(companyId, r, db\)/)
+    expect(prod).toMatch(/fiscalDoDeclaradoNoSininho\(companyId, r, db\)/)
+  })
+
+  /**
+   * ⛔⛔ **UMA CAUSA, UM ALARME.** Ficha com o lote na unidade errada tem aviso PRÓPRIO (a fila
+   * de conversão); ali o `permitido` não mede lançamento, mede a ficha quebrada. Sem a
+   * supressão o sininho acusava o mesmo defeito duas vezes e mandava o dono conferir a mão da
+   * cozinha.
+   */
+  it('⛔⛔ (b) ficha com lote torto NÃO vira aviso de fiscal', () => {
+    const prod = semComentario(ler('lib/avisos/produtores/producao.ts'))
+    const fn = prod.slice(prod.indexOf('async function fiscalDoDeclaradoNoSininho'))
+    expect(fn, 'a mesma supressão que o padrão de rendimento usa').toMatch(/fichasComLoteTorto\(companyId, db\)/)
+    expect(fn).toMatch(/loteTorto\.has\(f\.fichaId\)\) continue/)
+  })
+
+  /** ⛔ repetiu na MESMA receita = PADRÃO = **UM** aviso (90 avisos é enxurrada, não central) */
+  it('⛔⛔ (b) repetição na mesma receita vira UM aviso de padrão', () => {
+    const prod = semComentario(ler('lib/avisos/produtores/producao.ts'))
+    const fn = prod.slice(prod.indexOf('async function fiscalDoDeclaradoNoSininho'))
+    expect(fn, 'agrupa por receita antes de gravar').toMatch(/porFicha\.set\(f\.fichaId/)
+    expect(fn, 'caso isolado continua sendo um aviso da ORDEM').toMatch(/ord\.length === 1/)
+    expect(fn, 'o padrão é da FICHA, e o alvo diz isso').toMatch(/alvo: `ficha:\$\{fichaId\}`/)
+    expect(fn, 'e ele diz quantos lotes').toMatch(/\$\{ord\.length\} lotes/)
   })
 
   /**
