@@ -15,7 +15,7 @@
  * teste próprio. Aqui o que se trava é a FORMA que o dono aprovou no mock.
  */
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 const RAIZ = process.cwd()
@@ -27,6 +27,7 @@ const HOME = 'app/(dashboard)/empresas/[id]/estoque/producao/page.tsx'
 const AVATAR = 'components/estoque/avatar-pessoa.tsx'
 const CARA = 'lib/stock/producao/cara-da-receita.ts'
 const LIB = 'lib/stock/producao/pedido-na-tela.ts'
+const LOGO = 'components/estoque/logo-da-receita.tsx'
 
 const tela = () => semComentario(ler(HOME))
 const lista = () => {
@@ -124,12 +125,39 @@ describe('⛔⛔ a lista de concluídas resolve a receita POR ID', () => {
 // ─────────────── 2. o logo colorido por receita ───────────────
 
 describe('⭐⭐ 2. LOGO COLORIDO POR RECEITA — 38px, raio 11, estável', () => {
+  /**
+   * ⚠️ REAPONTADO em 05/10: o logo **mudou de casa** (`components/estoque/logo-da-receita.tsx`)
+   * porque a página da ORDEM pede *"o quadradinho 48px, mesma família/ícone da lista"*. A régua
+   * é a mesma; o guard ficou MAIS FORTE, porque passou a exigir **um dono só**.
+   */
   it('⭐ o logo da lista é 38/11 com o ícone proporcional', () => {
-    const t = tela()
-    const logo = t.slice(t.indexOf('function IconeDaFicha'), t.indexOf('function CardMetrica'))
-    expect(logo, '38px e raio 11 no tamanho grande').toMatch(/h-\[38px\] w-\[38px\] rounded-\[11px\]/)
+    const logo = semComentario(ler(LOGO))
+    expect(logo, '38px e raio 11 na lista').toMatch(/h-\[38px\] w-\[38px\] rounded-\[11px\]/)
     expect(logo, 'e o ícone acompanha').toMatch(/h-\[18px\] w-\[18px\]/)
+    expect(logo, 'e o 48 do cabeçalho da ordem').toMatch(/h-12 w-12 rounded-\[14px\]/)
     expect(lista(), 'a lista pede o tamanho grande').toMatch(/tamanho=\{38\}/)
+  })
+
+  /**
+   * ⛔⛔ **UM DONO SÓ PRA `nome → (ícone, cor)`.** Duas traduções divergiriam no 1º grupo novo
+   * do mapa e a MESMA receita teria caras diferentes em duas telas — e o reconhecimento (a
+   * razão de o logo existir) morre exatamente aí.
+   */
+  it('⛔⛔ ninguém mais traduz ícone de receita em componente', () => {
+    const ofensores: string[] = []
+    const varrer = (dir: string) => {
+      for (const n of readdirSync(join(RAIZ, dir))) {
+        const rel = `${dir}/${n}`
+        if (n === 'node_modules' || n === '.next') continue
+        if (statSync(join(RAIZ, rel)).isDirectory()) { varrer(rel); continue }
+        if (!/\.tsx?$/.test(n) || rel === LOGO) continue
+        const c = semComentario(readFileSync(join(RAIZ, rel), 'utf8'))
+        if (/Record<IconeDaReceita/.test(c)) ofensores.push(rel)
+      }
+    }
+    varrer('app'); varrer('components')
+    expect(ofensores, `2ª tradução de ícone em: ${ofensores.join(', ')}`).toEqual([])
+    expect(tela(), 'a home consome o dono único').toMatch(/import \{ LogoDaReceita \}/)
   })
 
   /**
@@ -138,13 +166,13 @@ describe('⭐⭐ 2. LOGO COLORIDO POR RECEITA — 38px, raio 11, estável', () =
    * é a classe do "campo que a tela não sabe desenhar". O `Record` completo já obriga no
    * TypeScript, e este teste é o cinto: ele falha com a mensagem em vez de um `tsc` genérico.
    */
-  it('⛔⛔ os 13 ícones da lib têm componente na tela', () => {
+  it('⛔⛔ os 13 ícones da lib têm componente', () => {
     const cara = semComentario(ler(CARA))
     const tipo = cara.slice(cara.indexOf('export type IconeDaReceita'), cara.indexOf('export interface CaraDaReceita'))
     const nomes = [...tipo.matchAll(/'([a-z]+)'/g)].map((m) => m[1])
     expect(nomes.length, 'o mapa cresceu de 5 pra 13 grupos (v4)').toBe(13)
-    const t = tela()
-    const mapa = t.slice(t.indexOf('const ICONES'), t.indexOf('}', t.indexOf('const ICONES')))
+    const logo = semComentario(ler(LOGO))
+    const mapa = logo.slice(logo.indexOf('const ICONES'), logo.indexOf('}', logo.indexOf('const ICONES')))
     for (const n of nomes) expect(mapa, `o ícone "${n}" precisa de componente`).toMatch(new RegExp(`\\b${n}:`))
   })
 
@@ -162,10 +190,9 @@ describe('⭐⭐ 2. LOGO COLORIDO POR RECEITA — 38px, raio 11, estável', () =
   /** ⭐ e o pontinho do fiscal mora no CANTO do logo (sinal colado no que ele acusa) */
   it('⭐⭐ o alerta do fiscal é slot do logo', () => {
     expect(lista(), 'a lista passa o alerta').toMatch(/alerta=\{c\.fiscalImpossivel \?/)
-    const t = tela()
-    const logo = t.slice(t.indexOf('function IconeDaFicha'), t.indexOf('function CardMetrica'))
+    const logo = semComentario(ler(LOGO))
     expect(logo).toMatch(/\{alerta && \(/)
-    expect(logo, 'no canto').toMatch(/absolute -right-\[3px\] -top-\[3px\]/)
+    expect(logo, 'no canto, nos 3 tamanhos').toMatch(/-right-\[3px\] -top-\[3px\]/)
   })
 })
 

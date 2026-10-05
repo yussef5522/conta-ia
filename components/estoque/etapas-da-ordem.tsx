@@ -7,10 +7,25 @@
 //
 // ⚠️ O nome vem do CADASTRO (nunca texto livre): o relatório do fim do mês agrega por pessoa,
 // e "cristian"/"Cristian "/"cris" seriam três pessoas.
+//
+// ⭐⭐⭐ VISUAL v4 (05/10/2026) — **as etapas viraram LINHA DO TEMPO.**
+//
+// **Ordem do dono:** *"ETAPAS viram linha do tempo: feita = check verde + pílula «feita · 9min»
+// + mini-avatar de quem fez + horários; a etapa ATIVA = linha acesa índigo-50 + ícone relógio
+// índigo + «no relógio · 1h26» ATUALIZANDO AO VIVO (timer no cliente, sem reload); futura =
+// apagada. Mini-avatars do componente único (hash estável)."*
+//
+// ⛔⛔ **O QUE A LINHA DO TEMPO RESOLVE E A LISTA NÃO RESOLVIA:** numa lista achatada as três
+// coisas (passado, agora, futuro) têm o MESMO peso, e a pergunta da tela é *"onde o lote está
+// agora?"*. O trilho coloca a resposta no eixo: o que já passou fica quieto em verde, o AGORA
+// acende, e o futuro apaga. ⚠️ Nada de comportamento mudou — designar, o plano da etapa e os
+// dois gestos do gerente são os MESMOS; o que mudou é a hierarquia.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, Check, Clock, User, CircleSlash, BellRing, UserCheck, X } from 'lucide-react'
 import { formatarDuracao } from '@/lib/format/duracao'
+import { textoDoCronometro, desvioDoAparelho } from '@/lib/stock/producao/cronometro'
+import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
 
 interface Etapa {
   id: string; posicao: number; nome: string
@@ -58,14 +73,41 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
   /** ⭐ o que o servidor CONFIRMOU — some sozinho em 3s */
   const [confirmado, setConfirmado] = useState<{ etapaId: string; nome: string | null } | null>(null)
 
+  /**
+   * ⭐⭐ O CRONÔMETRO VIVO DA ETAPA ATIVA (05/10) — e o desvio é MEDIDO, nunca suposto.
+   *
+   * ⛔ `desvio` é o quanto o relógio DESTE aparelho está torto em relação ao servidor. Sem ele,
+   * um tablet atrasado faria a conta dar negativo e o cronômetro **parar em 00:00 em vez de
+   * acusar** — o defeito exato de 08/09, que levou dois dias pra ser notado porque mentir zero
+   * parece "ainda não começou".
+   *
+   * ⚠️ `tick` é só pra forçar o re-render de segundo em segundo; quem calcula o texto é a lib.
+   */
+  const desvioRef = useRef(0)
+  const [, setTick] = useState(0)
+
   const carregar = () => fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/etapas`)
     .then((r) => r.json()).then((j) => {
+      // ⭐ o desvio é remedido a cada resposta: o aparelho pode ser corrigido no meio do turno
+      if (typeof j.agoraServidor === 'string') desvioRef.current = desvioDoAparelho(j.agoraServidor)
       const es: Etapa[] = j.etapas ?? []
       setEtapas(es)
       aoSaberAssinadas?.(es.some((e) => !!e.executorNome))
       aoSaberAbertas?.(es.filter((e) => e.estado === 'EM_ANDAMENTO').map((e) => ({ nome: e.nome, executorNome: e.executorNome })))
     }).catch(() => setEtapas([]))
   useEffect(() => { carregar() }, [id, ordemId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * ⚠️ O INTERVALO SÓ EXISTE QUANDO HÁ ETAPA ATIVA — ordem concluída não gasta um timer por
+   * segundo pra sempre. É a mesma régua do auto-refresh do "HOJE ao vivo", que só liga no dia
+   * de hoje: *recarregar o passado é gastar requisição num dia que não muda.*
+   */
+  const temAtiva = !!etapas?.some((e) => e.estado === 'EM_ANDAMENTO')
+  useEffect(() => {
+    if (!temAtiva) return
+    const t = setInterval(() => setTick((n) => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [temAtiva])
 
   // ⭐⭐ OS DOIS GESTOS DO GERENTE (07/09) — pra ele nunca ficar preso olhando etapa aberta.
   const gesto = async (etapaId: string, acao: 'pedir-finalizar' | 'finalizar-pelo-gerente') => {
@@ -78,6 +120,7 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
     setSalvando(null)
     // ⚠️ falha VISÍVEL: sem isso o gerente aperta e não sabe se pegou
     if (!r.ok) { setErro(j?.erro ?? 'Não consegui.'); return }
+    if (typeof j?.agoraServidor === 'string') desvioRef.current = desvioDoAparelho(j.agoraServidor)
     const es: Etapa[] = j.etapas ?? []
     setEtapas(es)
     aoSaberAbertas?.(es.filter((e) => e.estado === 'EM_ANDAMENTO').map((e) => ({ nome: e.nome, executorNome: e.executorNome })))
@@ -117,6 +160,7 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
     setSalvando(null)
     // ⚠️ falha VISÍVEL: designar sem feedback deixaria o encarregado achando que designou
     if (!r.ok) { setErro(j?.erro ?? 'Não consegui salvar quem faz essa etapa.'); return }
+    if (typeof j?.agoraServidor === 'string') desvioRef.current = desvioDoAparelho(j.agoraServidor)
     const es: Etapa[] = j.etapas ?? []
     setEtapas(es)
     // ⭐⭐ A CONFIRMAÇÃO VISÍVEL (08/09) — decisão do dono: *"eu escolho o nome e não sei se
@@ -129,7 +173,13 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
     setTimeout(() => setConfirmado((c) => (c?.etapaId === etapaId ? null : c)), 3000)
   }
 
-  if (etapas === null) return <div className="flex items-center gap-2 p-3 text-xs text-slate-400"><Loader2 className="h-3 w-3 animate-spin" /> etapas…</div>
+  if (etapas === null) {
+    return (
+      <div className="flex items-center gap-2 p-3 text-xs" style={{ color: 'var(--prod-muted)' }}>
+        <Loader2 className="h-3 w-3 animate-spin" /> etapas…
+      </div>
+    )
+  }
   // ⛔⛔ REGRA INVERTIDA EM 08/09/2026, COM O MOTIVO ESCRITO (não apagada).
   //
   // Aqui havia: `if (etapas.length <= 1 && !etapas.some(e => e.executorNome)) return null`,
@@ -143,173 +193,283 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
   // simplesmente impossível, e nada na tela dizia por quê.
   if (etapas.length === 0) return null
 
-  return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      <div className="flex items-baseline justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
-        <p className="text-[15px] font-semibold text-slate-900">Etapas</p>
-        <p className="text-[11.5px] text-slate-400">quem faz cada parte</p>
-      </div>
-      {erro && <p className="border-b border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">{erro}</p>}
-      <ul className="divide-y divide-slate-100">
-        {etapas.map((e) => (
-          <li key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11.5px] font-semibold tabular-nums text-slate-500">{e.posicao + 1}</span>
-            {/* ⭐ a ETAPA é protagonista: 15px/500. Máx 2 pesos escuros por linha — este e
-                o nome da PESSOA; o resto (estado, horas, insumos) fica em tom de apoio. */}
-            <span className="min-w-[9rem] flex-1 text-[15px] font-medium text-slate-900">{e.nome}</span>
+  /**
+   * ⭐ O ESTADO DA ETAPA NO TRILHO — três caras, derivadas do estado que o SERVIDOR mandou.
+   *
+   * ⛔ A tela NÃO decide "feita/ativa/futura" por conta própria: o `estado` vem de
+   * `derivarEstadoDaEtapa`, o dono único dos 5 estados (07/09). Uma segunda derivação aqui
+   * faria a linha do tempo discordar do "HOJE ao vivo" no primeiro caso de borda — foi
+   * exatamente isso que produziu o *"na fila"* numa ordem já concluída.
+   */
+  const faseDa = (e: Etapa): 'PASSADO' | 'AGORA' | 'FUTURO' => {
+    if (e.estado === 'EM_ANDAMENTO') return 'AGORA'
+    if (e.estado === 'AGUARDANDO') return 'FUTURO'
+    return 'PASSADO'
+  }
 
-            {/* ⛔⛔ ENCERRADA SEM FINALIZAR: a ordem acabou e levou a etapa junto. NÃO é
-                "feita" (ninguém apertou finalizar) e NÃO tem duração — dizer "1h12" aqui
-                seria inventar um tempo que ninguém mediu. */}
-            {e.estado === 'FINALIZADA_PELO_GERENTE' ? (
-              /* ⛔ NÃO é "feita": o rastro diz quem REALMENTE apertou, e o tempo é a apurar */
-              <span className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
-                <UserCheck className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-medium text-slate-800">{e.emNomeDeNome ?? e.executorNome ?? '—'}</span>
-                <span className="text-slate-500">· {e.rotulo}</span>
-                <span className="text-slate-400">· começou {hhmm(e.iniciadoEm)}</span>
-              </span>
-            ) : e.estado === 'ENCERRADA_SEM_FINALIZAR' ? (
-              <span className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                <CircleSlash className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-medium text-slate-700">{e.executorNome ?? '—'}</span>
-                <span>· {e.rotulo}</span>
-                <span className="text-slate-400">{e.iniciadoEm ? `· começou ${hhmm(e.iniciadoEm)} ` : ''}· tempo a apurar</span>
-              </span>
-            ) : e.estado === 'FEITA' ? (
-              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[12px] font-semibold text-emerald-800">
-                  <Check className="h-3.5 w-3.5" /> feita
+  return (
+    <div className="overflow-hidden rounded-xl" style={{ border: '1px solid var(--prod-line)', background: 'var(--prod-surface)' }}>
+      <div
+        className="flex items-baseline justify-between px-4 py-2.5"
+        style={{ borderBottom: '1px solid var(--prod-line)', background: 'var(--prod-surface-1)' }}
+      >
+        <p className="text-[15px] font-semibold" style={{ color: 'var(--prod-primary)' }}>Etapas</p>
+        <p className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>linha do tempo</p>
+      </div>
+      {erro && (
+        <p className="px-3 py-2 text-xs" style={{ background: 'var(--fam-coral-bg)', color: 'var(--fam-coral-ink)', borderBottom: '1px solid var(--prod-line)' }}>
+          {erro}
+        </p>
+      )}
+      <ol>
+        {etapas.map((e, i) => {
+          const fase = faseDa(e)
+          const ultima = i === etapas.length - 1
+          return (
+            <li
+              key={e.id}
+              className="relative flex gap-3 px-4 py-3"
+              style={{
+                borderTop: i > 0 ? '1px solid var(--prod-line)' : undefined,
+                // ⭐ a etapa ATIVA é a ÚNICA com fundo: é ela que responde "onde o lote está"
+                background: fase === 'AGORA' ? 'var(--fam-indigo-bg)' : undefined,
+              }}
+            >
+              {/* ⭐⭐ O TRILHO: bolinha por etapa + fio ligando. ⚠️ O fio NÃO desce depois da
+                  última — fio que termina no vazio promete uma etapa que não existe. */}
+              <span className="relative flex w-6 shrink-0 justify-center pt-0.5" aria-hidden>
+                {!ultima && (
+                  <span
+                    className="absolute top-7 bottom-[-14px] w-px"
+                    style={{ background: fase === 'PASSADO' ? 'var(--fam-verde-mid)' : 'var(--prod-line)' }}
+                  />
+                )}
+                <span
+                  className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full text-[11.5px] font-semibold tabular-nums"
+                  style={
+                    fase === 'PASSADO'
+                      ? { background: 'var(--fam-verde-bg)', color: 'var(--fam-verde-ink)' }
+                      : fase === 'AGORA'
+                        ? { background: 'var(--fam-indigo-mid)', color: 'var(--prod-acao-ink)' }
+                        : // ⚠️ FUTURA é APAGADA, não cinza-escura: ela existe e não pede nada agora
+                          { background: 'var(--prod-surface-1)', color: 'var(--prod-muted)' }
+                  }
+                >
+                  {fase === 'PASSADO' && e.estado === 'FEITA' ? <Check className="h-3.5 w-3.5" /> : e.posicao + 1}
                 </span>
-                <span className="text-[14px] font-medium text-slate-900">{e.executorNome ?? '—'}</span>
-                <span className="text-[12px] tabular-nums text-slate-500">{duracao(e.minutos)}</span>
-                <span className="text-[11.5px] tabular-nums text-slate-400">{hhmm(e.iniciadoEm)}–{hhmm(e.finalizadoEm)}</span>
               </span>
-            ) : (
-              <>
-                {/* ⭐⭐ OS DESIGNADOS COMO CHIPS (08/09) — a lacuna que o dono achou
-                    navegando: o modelo aceitava 2 e a tela só tinha UM seletor.
-                    ⛔ Quem JÁ INICIOU não tem X: o relógio dele está correndo, e tirá-lo
-                    pela designação apagaria trabalho medido. Pra esse caso existem os dois
-                    gestos do gerente, que REGISTRAM o que houve em vez de reescrever. */}
-                <span className="flex flex-wrap items-center gap-1.5">
-                  <User className="h-4 w-4 shrink-0 text-slate-400" />
-                  {e.participantes.map((pa) => (
-                    <span key={pa.colaboradorId}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white py-1 pl-2.5 pr-1 text-[13px] font-medium text-slate-900">
-                      {pa.nome}
-                      {pa.iniciou ? (
-                        <span className="ml-0.5 rounded-full bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700" title="já iniciou — só o gesto do gerente resolve">
-                          no relógio
+
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
+                {/* ⭐ a ETAPA é protagonista: 15px/500 — mas APAGA quando é futura, porque ali
+                    o protagonista da tela é a etapa de agora. */}
+                <span
+                  className="min-w-[9rem] flex-1 text-[15px] font-medium"
+                  style={{ color: fase === 'FUTURO' ? 'var(--prod-secondary)' : 'var(--prod-primary)' }}
+                >
+                  {e.nome}
+                </span>
+
+                {/* ⛔⛔ ENCERRADA SEM FINALIZAR: a ordem acabou e levou a etapa junto. NÃO é
+                    "feita" (ninguém apertou finalizar) e NÃO tem duração — dizer "1h12" aqui
+                    seria inventar um tempo que ninguém mediu. */}
+                {e.estado === 'FINALIZADA_PELO_GERENTE' ? (
+                  /* ⛔ NÃO é "feita": o rastro diz quem REALMENTE apertou, e o tempo é a apurar */
+                  <span className="flex flex-wrap items-center gap-1.5 text-xs" style={{ color: 'var(--prod-secondary)' }}>
+                    <UserCheck className="h-3.5 w-3.5" style={{ color: 'var(--prod-muted)' }} />
+                    <AvatarPessoa nome={e.emNomeDeNome ?? e.executorNome} tamanho={20} />
+                    <span style={{ color: 'var(--prod-muted)' }}>· {e.rotulo}</span>
+                    <span style={{ color: 'var(--prod-muted)' }}>· começou {hhmm(e.iniciadoEm)}</span>
+                  </span>
+                ) : e.estado === 'ENCERRADA_SEM_FINALIZAR' ? (
+                  <span className="flex flex-wrap items-center gap-1.5 text-xs" style={{ color: 'var(--prod-muted)' }}>
+                    <CircleSlash className="h-3.5 w-3.5" style={{ color: 'var(--prod-muted)' }} />
+                    <AvatarPessoa nome={e.executorNome} tamanho={20} />
+                    <span>· {e.rotulo}</span>
+                    <span>{e.iniciadoEm ? `· começou ${hhmm(e.iniciadoEm)} ` : ''}· tempo a apurar</span>
+                  </span>
+                ) : e.estado === 'FEITA' ? (
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {/* ⭐ a pílula diz O QUE e QUANTO numa coisa só: "feita · 9min" */}
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold"
+                      style={{ background: 'var(--fam-verde-bg)', color: 'var(--fam-verde-ink)' }}
+                    >
+                      <Check className="h-3.5 w-3.5" /> feita · <span className="tabular-nums">{duracao(e.minutos)}</span>
+                    </span>
+                    {/* ⭐ o mini-avatar vem do componente ÚNICO (hash estável): a mesma pessoa
+                        tem a mesma cor aqui, na home e no relatório. */}
+                    <AvatarPessoa nome={e.executorNome} tamanho={20} />
+                    <span className="text-[11.5px] tabular-nums" style={{ color: 'var(--prod-muted)' }}>
+                      {hhmm(e.iniciadoEm)}–{hhmm(e.finalizadoEm)}
+                    </span>
+                  </span>
+                ) : (
+                  <>
+                    {/* ⭐⭐ OS DESIGNADOS COMO CHIPS (08/09) — a lacuna que o dono achou
+                        navegando: o modelo aceitava 2 e a tela só tinha UM seletor.
+                        ⛔ Quem JÁ INICIOU não tem X: o relógio dele está correndo, e tirá-lo
+                        pela designação apagaria trabalho medido. Pra esse caso existem os dois
+                        gestos do gerente, que REGISTRAM o que houve em vez de reescrever. */}
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <User className="h-4 w-4 shrink-0" style={{ color: 'var(--prod-muted)' }} />
+                      {e.participantes.map((pa) => (
+                        <span key={pa.colaboradorId}
+                          className="inline-flex items-center gap-1 rounded-full py-1 pl-1.5 pr-1 text-[13px] font-medium"
+                          style={{ border: '1px solid var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}>
+                          <AvatarPessoa nome={pa.nome} tamanho={18} />
+                          {pa.iniciou ? (
+                            <span
+                              className="ml-0.5 rounded-full px-1.5 text-[10px] font-semibold"
+                              style={{ background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}
+                              title="já iniciou — só o gesto do gerente resolve"
+                            >
+                              no relógio
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => designar(e.id, e.participantes.filter((x) => x.colaboradorId !== pa.colaboradorId).map((x) => x.colaboradorId))}
+                              disabled={salvando === e.id}
+                              aria-label={`tirar ${pa.nome} da etapa`}
+                              className="rounded-full p-0.5 disabled:opacity-40"
+                              style={{ color: 'var(--prod-muted)' }}
+                            ><X className="h-3.5 w-3.5" /></button>
+                          )}
                         </span>
-                      ) : (
-                        <button
-                          onClick={() => designar(e.id, e.participantes.filter((x) => x.colaboradorId !== pa.colaboradorId).map((x) => x.colaboradorId))}
+                      ))}
+                      {/* ⚠️ o "+" some quando a vaga acaba: o teto de 2 aparece como AUSÊNCIA
+                          de opção, não como erro depois do clique. */}
+                      {e.participantes.length < 2 && (
+                        <select
+                          value=""
+                          onChange={(ev) => { if (ev.target.value) designar(e.id, [...e.participantes.map((x) => x.colaboradorId), ev.target.value]) }}
                           disabled={salvando === e.id}
-                          aria-label={`tirar ${pa.nome} da etapa`}
-                          className="rounded-full p-0.5 text-slate-300 hover:bg-slate-100 hover:text-rose-600 disabled:opacity-40"
-                        ><X className="h-3.5 w-3.5" /></button>
+                          aria-label="adicionar pessoa na etapa"
+                          className="rounded-full px-2.5 py-1 text-[13px] disabled:opacity-40"
+                          style={{ border: '1px dashed var(--prod-line-strong)', color: 'var(--prod-muted)', background: 'transparent' }}
+                        >
+                          <option value="">{e.participantes.length === 0 ? '+ quem faz' : '+ adicionar pessoa'}</option>
+                          {colaboradores
+                            .filter((c) => !e.participantes.some((pa) => pa.colaboradorId === c.id))
+                            .map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                        </select>
+                      )}
+                      {confirmado?.etapaId === e.id && (
+                        <span className="inline-flex items-center gap-1 text-[11.5px] font-medium" style={{ color: 'var(--fam-verde-ink)' }}>
+                          <Check className="h-3.5 w-3.5" /> {confirmado.nome ? `${confirmado.nome} designado(a)` : 'designação removida'}
+                        </span>
                       )}
                     </span>
-                  ))}
-                  {/* ⚠️ o "+" some quando a vaga acaba: o teto de 2 aparece como AUSÊNCIA
-                      de opção, não como erro depois do clique. */}
-                  {e.participantes.length < 2 && (
-                    <select
-                      value=""
-                      onChange={(ev) => { if (ev.target.value) designar(e.id, [...e.participantes.map((x) => x.colaboradorId), ev.target.value]) }}
-                      disabled={salvando === e.id}
-                      aria-label="adicionar pessoa na etapa"
-                      className="rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-[13px] text-slate-400 disabled:opacity-40"
-                    >
-                      <option value="">{e.participantes.length === 0 ? '+ quem faz' : '+ adicionar pessoa'}</option>
-                      {colaboradores
-                        .filter((c) => !e.participantes.some((pa) => pa.colaboradorId === c.id))
-                        .map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                    </select>
-                  )}
-                </span>
 
-                {/* ⭐⭐⭐ O PLANO DA ETAPA (15/09) — o dia dela e quem pode vê-la.
-                    ⛔ O texto antigo aqui dizia *"quem pegar com o PIN fica registrado"*, e
-                    ele descrevia o mundo que morreu: etapa sem nome **não aparece pra
-                    ninguém**. Deixá-lo seria a tela documentando uma regra que não existe
-                    mais — o defeito de 10/09, em forma de frase. */}
-                <span className="flex flex-wrap items-center gap-2 text-[11.5px]">
-                  {e.visibilidade && (
-                    <span className={`rounded-full px-2 py-0.5 font-medium ${e.liberadaParaEquipe ? 'bg-sky-50 text-sky-800' : 'bg-amber-50 text-amber-800'}`}>
-                      {e.visibilidade}
-                    </span>
-                  )}
-                  <label className="inline-flex items-center gap-1 text-slate-500">
-                    dia
-                    {/* ⚠️ vazio = o dia da ORDEM (o caso comum, tudo no mesmo dia) */}
-                    <input
-                      type="date" value={e.diaPrevisto ?? ''} disabled={salvando === e.id}
-                      onChange={(ev) => plano(e.id, { diaPrevisto: ev.target.value || null })}
-                      aria-label={`dia previsto da etapa ${e.nome}`}
-                      className="h-7 rounded-lg border border-slate-300 px-1.5 text-[11.5px] disabled:opacity-40"
-                    />
-                    {!e.diaPrevisto && <span className="text-slate-400">= o da ordem</span>}
-                  </label>
-                  {/* ⛔ LIBERAR É ESCOLHA, nunca o padrão por omissão: o silêncio não publica */}
-                  {e.participantes.length === 0 && (
-                    <button
-                      onClick={() => plano(e.id, { liberadaParaEquipe: !e.liberadaParaEquipe })}
-                      disabled={salvando === e.id}
-                      className={`inline-flex h-7 items-center rounded-lg border px-2 font-medium disabled:opacity-40 ${e.liberadaParaEquipe ? 'border-sky-300 bg-sky-50 text-sky-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      {e.liberadaParaEquipe ? 'voltar a ser rascunho' : 'liberar pra equipe'}
-                    </button>
-                  )}
-                </span>
-                {e.estado === 'EM_ANDAMENTO' ? (
-                  <>
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-semibold text-amber-800">
-                      <Clock className="h-3.5 w-3.5" /> em andamento
-                      <span className="font-medium tabular-nums">{duracao(e.minutos)}</span>
-                    </span>
-                    <span className="text-[11.5px] tabular-nums text-slate-400">desde {hhmm(e.iniciadoEm)}</span>
-                    {/* ⭐⭐ AS AÇÕES (07/09) — o gerente nunca fica preso olhando.
-                        ⚠️ "Pedir" vem PRIMEIRO e é o caminho preferido: ela aperta com o PIN
-                        dela e o tempo é DELA, medido de verdade. "Finalizar pelo gerente" é a
-                        saída de quando ela não está mais lá — e custa o tempo (a apurar). */}
-                    <span className="flex items-center gap-1.5">
-                      {e.pedidoEmAberto ? (
-                        <span className="flex items-center gap-1 rounded-lg bg-[#f1edff] px-2 py-1 text-[11px] font-medium text-[#534AB7]">
-                          <BellRing className="h-3 w-3" /> pedido enviado ao tablet
-                          <button onClick={() => gesto(e.id, 'pedir-finalizar')} disabled={salvando === e.id} className="ml-1 underline underline-offset-2 hover:text-[#3a318f]">reenviar</button>
+                    {/* ⭐⭐⭐ O PLANO DA ETAPA (15/09) — o dia dela e quem pode vê-la.
+                        ⛔ O texto antigo aqui dizia *"quem pegar com o PIN fica registrado"*, e
+                        ele descrevia o mundo que morreu: etapa sem nome **não aparece pra
+                        ninguém**. Deixá-lo seria a tela documentando uma regra que não existe
+                        mais — o defeito de 10/09, em forma de frase. */}
+                    <span className="flex flex-wrap items-center gap-2 text-[11.5px]">
+                      {e.visibilidade && (
+                        <span
+                          className="rounded-full px-2 py-0.5 font-medium"
+                          style={e.liberadaParaEquipe
+                            ? { background: 'var(--fam-azul-bg)', color: 'var(--fam-azul-ink)' }
+                            : { background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}
+                        >
+                          {e.visibilidade}
                         </span>
-                      ) : (
-                        <button onClick={() => gesto(e.id, 'pedir-finalizar')} disabled={salvando === e.id}
-                          className="inline-flex items-center gap-1 rounded-lg border border-[#534AB7]/40 px-2 py-1 text-[11px] font-medium text-[#534AB7] hover:bg-[#f1edff] disabled:opacity-50">
-                          <BellRing className="h-3 w-3" /> pedir pra finalizar
+                      )}
+                      <label className="inline-flex items-center gap-1" style={{ color: 'var(--prod-muted)' }}>
+                        dia
+                        {/* ⚠️ vazio = o dia da ORDEM (o caso comum, tudo no mesmo dia) */}
+                        <input
+                          type="date" value={e.diaPrevisto ?? ''} disabled={salvando === e.id}
+                          onChange={(ev) => plano(e.id, { diaPrevisto: ev.target.value || null })}
+                          aria-label={`dia previsto da etapa ${e.nome}`}
+                          className="h-7 rounded-lg px-1.5 text-[11.5px] disabled:opacity-40"
+                          style={{ border: '1px solid var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
+                        />
+                        {!e.diaPrevisto && <span>= o da ordem</span>}
+                      </label>
+                      {/* ⛔ LIBERAR É ESCOLHA, nunca o padrão por omissão: o silêncio não publica */}
+                      {e.participantes.length === 0 && (
+                        <button
+                          onClick={() => plano(e.id, { liberadaParaEquipe: !e.liberadaParaEquipe })}
+                          disabled={salvando === e.id}
+                          className="inline-flex h-7 items-center rounded-lg px-2 font-medium disabled:opacity-40"
+                          style={e.liberadaParaEquipe
+                            ? { border: '1px solid var(--fam-azul-mid)', background: 'var(--fam-azul-bg)', color: 'var(--fam-azul-ink)' }
+                            : { border: '1px solid var(--prod-line-strong)', color: 'var(--prod-secondary)' }}
+                        >
+                          {e.liberadaParaEquipe ? 'voltar a ser rascunho' : 'liberar pra equipe'}
                         </button>
                       )}
-                      <button
-                        onClick={() => { if (confirm(`Finalizar “${e.nome}” no lugar de ${e.executorNome ?? 'quem começou'}?\n\nO registro vai dizer que foi VOCÊ quem apertou, e o TEMPO fica “a apurar” — você não tem como saber quando ela parou de verdade.\n\nSe ela ainda estiver aí, prefira “pedir pra finalizar”.`)) gesto(e.id, 'finalizar-pelo-gerente') }}
-                        disabled={salvando === e.id}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-50">
-                        <UserCheck className="h-3 w-3" /> finalizar por ela
-                      </button>
                     </span>
+                    {e.estado === 'EM_ANDAMENTO' ? (
+                      <>
+                        {/* ⭐⭐ O CRONÔMETRO AO VIVO — ícone de relógio índigo + o tempo andando.
+                            ⚠️ O TEXTO vem de `textoDoCronometro`, o dono único da régua de
+                            relógio desta casa (`mm:ss` abaixo de 1h, `h:mm` acima) — a MESMA
+                            que o "HOJE ao vivo" usa. Formatar aqui faria o mesmo lote mostrar
+                            dois tempos em duas telas. */}
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold"
+                          style={{ background: 'var(--prod-surface)', color: 'var(--fam-indigo-ink)', border: '1px solid var(--fam-indigo-mid)' }}
+                        >
+                          <Clock className="h-3.5 w-3.5" style={{ color: 'var(--fam-indigo-mid)' }} />
+                          no relógio ·{' '}
+                          <span className="tabular-nums">
+                            {e.iniciadoEm ? textoDoCronometro(e.iniciadoEm, Date.now() + desvioRef.current) : duracao(e.minutos)}
+                          </span>
+                        </span>
+                        <span className="text-[11.5px] tabular-nums" style={{ color: 'var(--prod-muted)' }}>desde {hhmm(e.iniciadoEm)}</span>
+                        {/* ⭐⭐ AS AÇÕES (07/09) — o gerente nunca fica preso olhando.
+                            ⚠️ "Pedir" vem PRIMEIRO e é o caminho preferido: ela aperta com o PIN
+                            dela e o tempo é DELA, medido de verdade. "Finalizar pelo gerente" é a
+                            saída de quando ela não está mais lá — e custa o tempo (a apurar). */}
+                        <span className="flex items-center gap-1.5">
+                          {e.pedidoEmAberto ? (
+                            <span
+                              className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium"
+                              style={{ background: 'var(--prod-surface)', color: 'var(--fam-indigo-ink)' }}
+                            >
+                              <BellRing className="h-3 w-3" /> pedido enviado ao tablet
+                              <button onClick={() => gesto(e.id, 'pedir-finalizar')} disabled={salvando === e.id} className="ml-1 underline underline-offset-2">reenviar</button>
+                            </span>
+                          ) : (
+                            <button onClick={() => gesto(e.id, 'pedir-finalizar')} disabled={salvando === e.id}
+                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium disabled:opacity-50"
+                              style={{ border: '1px solid var(--fam-indigo-mid)', color: 'var(--fam-indigo-ink)' }}>
+                              <BellRing className="h-3 w-3" /> pedir pra finalizar
+                            </button>
+                          )}
+                          <button
+                            onClick={() => { if (confirm(`Finalizar “${e.nome}” no lugar de ${e.executorNome ?? 'quem começou'}?\n\nO registro vai dizer que foi VOCÊ quem apertou, e o TEMPO fica “a apurar” — você não tem como saber quando ela parou de verdade.\n\nSe ela ainda estiver aí, prefira “pedir pra finalizar”.`)) gesto(e.id, 'finalizar-pelo-gerente') }}
+                            disabled={salvando === e.id}
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] disabled:opacity-50"
+                            style={{ border: '1px solid var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
+                            <UserCheck className="h-3 w-3" /> finalizar por ela
+                          </button>
+                        </span>
+                      </>
+                    ) : (
+                      /* ⭐ AGUARDANDO também é um dos 5 estados — ganha o chip, em tom neutro:
+                         ele informa, não pede ação, e âmbar aqui competiria com "em andamento". */
+                      // ⚠️ a frase "quem pegar com o PIN" já vive nos chips acima — repetir aqui
+                      // seria a mesma informação em dois lugares da MESMA linha.
+                      e.participantes.length > 0 ? (
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold"
+                          style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
+                        >
+                          <Clock className="h-3.5 w-3.5" /> aguardando
+                        </span>
+                      ) : null
+                    )}
                   </>
-                ) : (
-                  /* ⭐ AGUARDANDO também é um dos 5 estados — ganha o chip, em tom neutro:
-                     ele informa, não pede ação, e âmbar aqui competiria com "em andamento". */
-                  // ⚠️ a frase "quem pegar com o PIN" já vive nos chips acima — repetir aqui
-                  // seria a mesma informação em dois lugares da MESMA linha.
-                  e.participantes.length > 0 ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[12px] font-semibold text-slate-600">
-                      <Clock className="h-3.5 w-3.5" /> aguardando
-                    </span>
-                  ) : null
                 )}
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
+              </div>
+            </li>
+          )
+        })}
+      </ol>
     </div>
   )
 }

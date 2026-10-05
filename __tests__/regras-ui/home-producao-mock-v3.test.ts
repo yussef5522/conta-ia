@@ -73,16 +73,18 @@ describe('⭐⭐ o topo: título, linha editorial e UM primário', () => {
      * ⚠️ REAPONTADO em 05/10 — ele **mudou de casa** (fim da linha → canto do logo) e o guard
      * seguiu a casa nova. A régua não mudou: sinal é sinal, e sinal não vira controle.
      */
-    const iSinal = tela.indexOf('{alerta && (')
-    const sinal = tela.slice(iSinal)
+    /**
+     * ⚠️ REAPONTADO em 05/10: o logo (e o pontinho dentro dele) **mudaram de casa** pro
+     * componente único. A régua desta tela não mudou — o que ela conta é cor forte preenchida
+     * **na TELA**, e o sinal agora nem mora aqui.
+     */
+    const logo = semComentario(ler('components/estoque/logo-da-receita.tsx'))
+    const sinal = logo.slice(logo.indexOf('{alerta && ('))
     const tagDoSinal = sinal.slice(0, sinal.indexOf('/>') + 2)
-    expect(tagDoSinal, 'o pontinho é um círculo de 9px no canto').toMatch(/h-\[9px\] w-\[9px\][^"]*rounded-full/)
+    expect(tagDoSinal, 'o pontinho é um círculo no canto').toMatch(/rounded-full/)
     expect(tagDoSinal, 'sinal sem nome é enfeite').toMatch(/aria-label=/)
     expect(/px-\d|py-\d|text-\[/.test(tagDoSinal), 'pontinho com padding/texto é um botão disfarçado').toBe(false)
-    /** ⚠️ por POSIÇÃO, nunca por texto: filtrar pelo literal apagaria um coral legítimo
-     *  de outro lugar da tela, e aí o guard deixaria de contar o que ele existe pra contar. */
-    const fimDoSinal = iSinal + tagDoSinal.length
-    const familia = todos.filter((u) => u.index! < iSinal || u.index! >= fimDoSinal)
+    const familia = todos
 
     expect(
       familia.length + acao.length,

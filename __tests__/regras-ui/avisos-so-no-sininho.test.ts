@@ -213,10 +213,15 @@ describe('⛔⛔ 3. o fiscal no lugar certo — ordem · sininho · pontinho', (
     expect(l, 'a lista passa o alerta pro logo').toMatch(/alerta=\{c\.fiscalImpossivel \?/)
     expect(/c\.fiscalImpossivel && \(/.test(semComentario(l)), 'o pontinho solto no fim da linha saiu').toBe(false)
 
-    const logo = h.slice(h.indexOf('function IconeDaFicha'), h.indexOf('function CardMetrica'))
+    /** ⚠️ REAPONTADO em 05/10: o logo (e o pontinho) viraram componente ÚNICO, porque a página
+     *  da ordem pede o mesmo quadradinho. A régua é a mesma; o dono do desenho mudou de casa. */
+    const logo = ler('components/estoque/logo-da-receita.tsx')
     const ponto = logo.slice(logo.indexOf('{alerta && ('))
     expect(ponto, 'é um círculo').toMatch(/rounded-full/)
-    expect(ponto, 'no CANTO do logo').toMatch(/absolute -right-\[3px\] -top-\[3px\]/)
+    expect(ponto, 'posicionado em cima do logo').toMatch(/absolute rounded-full \$\{m\.ponto\}/)
+    /** ⭐ e o canto vem da MEDIDA — os TRÊS tamanhos (32/38/48) põem o ponto no canto */
+    const medida = logo.slice(logo.indexOf('const MEDIDA'), logo.indexOf('} as const'))
+    expect((medida.match(/-right-\[3px\] -top-\[3px\]/g) ?? []).length, 'nos 3 tamanhos').toBe(3)
     expect(ponto, 'coral — a cor do alarme da casa').toMatch(/var\(--fam-coral-mid\)/)
     expect(ponto, 'com anel da superfície pra não virar mancha sobre o logo colorido').toMatch(/boxShadow: '0 0 0 2px var\(--prod-surface\)'/)
     expect(ponto, 'e com nome pra leitor de tela').toMatch(/aria-label=/)

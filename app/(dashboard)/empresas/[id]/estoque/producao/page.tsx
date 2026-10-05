@@ -21,7 +21,7 @@ import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, Trending
 import { formatBRL } from '@/lib/format/money'
 import { formatarDuracao } from '@/lib/format/duracao'
 import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
-import { caraDaReceita, type IconeDaReceita } from '@/lib/stock/producao/cara-da-receita'
+import { LogoDaReceita } from '@/components/estoque/logo-da-receita'
 /**
  * ⭐⭐ O PEDIDO NA TELA e a pílula "% do pedido" têm DONO ÚNICO (05/10) — a tela não arredonda
  * nem divide por conta própria. Quatro telas mostram pedido; quatro `Math.round` divergiriam.
@@ -114,55 +114,13 @@ const fam = (f: string) => ({
   ink: `var(--fam-${f}-ink)`,
 })
 
-/** ⚠️ nome → componente: a lib `cara-da-receita` é PURA e devolve o NOME do ícone, não JSX */
-const ICONES: Record<IconeDaReceita, typeof Beef> = {
-  queijo: Milk, carne: Beef, bacon: Slice, calabresa: Ham, frango: Drumstick, frito: Flame,
-  massa: Pizza, molho: Droplet, ovo: Egg, legume: Carrot, preparo: Scissors,
-  porcao: UtensilsCrossed, generico: Factory,
-}
-
 /**
- * ⭐⭐ O LOGO DA RECEITA — quadradinho colorido, estável por nome (tipo ou hash).
- *
- * ⭐ **38px/raio 11 na lista de concluídas (visual v4, 05/10)** e 32/9 nos lugares onde ele é
- * só um marcador ao lado de texto. ⚠️ O tamanho é PARÂMETRO, não um segundo componente: duas
- * versões do logo divergiriam no 1º ajuste de raio, e o reconhecimento (que é a razão dele
- * existir) mora justamente em ele ser sempre igual.
- *
- * ⭐⭐ **E O PONTINHO DO FISCAL MORA NO CANTO DELE** (`alerta`), por ordem do dono. O anel da
- * cor da SUPERFÍCIE é o que o separa do fundo colorido do logo — sem ele, coral sobre rosa
- * vira mancha, e o sinal que existe pra ser visto some.
+ * ⭐⭐ O LOGO DA RECEITA mudou de casa em 05/10 (`components/estoque/logo-da-receita.tsx`): a
+ * página da ORDEM pede *"o quadradinho 48px do mapa v4, **mesma família/ícone da lista**"* —
+ * e duas traduções de `nome → (ícone, cor)` divergiriam no 1º grupo novo, fazendo a MESMA
+ * receita ter caras diferentes em duas telas. Aqui fica só o apelido local.
  */
-function IconeDaFicha({ nome, forcar, tamanho = 32, alerta }: {
-  nome: string; forcar?: { familia: string; Icone: typeof Beef }
-  tamanho?: 32 | 38
-  /** ⭐ o pontinho vermelho do fiscal, no canto — com o nome pra leitor de tela */
-  alerta?: { titulo: string } | null
-}) {
-  const c = caraDaReceita(nome)
-  const familia = forcar?.familia ?? c.familia
-  const Icone = forcar?.Icone ?? ICONES[c.icone]
-  const t = fam(familia)
-  const grande = tamanho === 38
-  return (
-    <span className="relative inline-flex shrink-0">
-      <span
-        className={`inline-flex items-center justify-center ${grande ? 'h-[38px] w-[38px] rounded-[11px]' : 'h-8 w-8 rounded-[9px]'}`}
-        style={{ background: t.bg }}
-      >
-        <Icone className={grande ? 'h-[18px] w-[18px]' : 'h-4 w-4'} style={{ color: t.mid }} />
-      </span>
-      {alerta && (
-        <span
-          aria-label={alerta.titulo}
-          title={alerta.titulo}
-          className="absolute -right-[3px] -top-[3px] h-[9px] w-[9px] rounded-full"
-          style={{ background: 'var(--fam-coral-mid)', boxShadow: '0 0 0 2px var(--prod-surface)' }}
-        />
-      )}
-    </span>
-  )
-}
+const IconeDaFicha = LogoDaReceita
 
 /**
  * ⭐⭐ O CARTÃO DE MÉTRICA — colorido com disciplina.

@@ -12,11 +12,31 @@ import { DuplaError } from '@/lib/stock/producao/dupla-na-etapa'
 
 interface Params { params: Promise<{ id: string; ordemId: string }> }
 
+/**
+ * ⭐⭐ A RESPOSTA CARREGA O INSTANTE DO SERVIDOR (05/10) — e isso NÃO é enfeite.
+ *
+ * A etapa ATIVA tem cronômetro vivo na tela, e **relógio de aparelho pode estar torto**: foi
+ * exatamente assim que o tablet ficou dois dias mostrando `00:00` (08/09 — `Math.max(0, …)`
+ * sobre um aparelho atrasado **para** o relógio em zero em vez de acusar). A cura da casa é
+ * medir o desvio contra o servidor a cada resposta (`desvioDoAparelho`), e pra isso o servidor
+ * precisa DIZER que hora é lá.
+ *
+ * ⚠️ Os três caminhos (GET, PATCH, POST) passam por aqui — um deles esquecer o campo faria o
+ * cronômetro voltar a confiar no aparelho depois de um gesto, e **só depois do gesto**.
+ */
+async function responder(companyId: string, ordemId: string) {
+  const agora = new Date()
+  return NextResponse.json({
+    etapas: await etapasDaOrdem(companyId, ordemId, agora, prisma),
+    agoraServidor: agora.toISOString(),
+  })
+}
+
 export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId, ordemId } = await params
   const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
-  return NextResponse.json({ etapas: await etapasDaOrdem(companyId, ordemId, new Date(), prisma) })
+  return responder(companyId, ordemId)
 }
 
 const schema = z.object({
@@ -62,7 +82,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (e instanceof DuplaError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e
   }
-  return NextResponse.json({ etapas: await etapasDaOrdem(companyId, ordemId, new Date(), prisma) })
+  return responder(companyId, ordemId)
 }
 
 // ⭐⭐ OS DOIS GESTOS DO GERENTE PRA ETAPA ABERTA (07/09/2026).
@@ -113,5 +133,5 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (e instanceof GestoError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e
   }
-  return NextResponse.json({ etapas: await etapasDaOrdem(companyId, ordemId, new Date(), prisma) })
+  return responder(companyId, ordemId)
 }
