@@ -68,13 +68,17 @@ describe('⭐⭐ o topo: título, linha editorial e UM primário', () => {
     const todos = [...tela.matchAll(/background: 'var\(--fam-[a-z]+-mid\)'/g)]
     const acao = [...tela.matchAll(/background: 'var\(--prod-acao-bg\)'/g)]
 
-    // ⭐ o SINAL do fiscal: círculo de tamanho fixo, sem texto, com nome pra leitor de tela
-    const iSinal = tela.indexOf('{c.fiscalImpossivel && (')
+    /**
+     * ⭐ o SINAL do fiscal: círculo pequeno, sem texto, com nome pra leitor de tela.
+     * ⚠️ REAPONTADO em 05/10 — ele **mudou de casa** (fim da linha → canto do logo) e o guard
+     * seguiu a casa nova. A régua não mudou: sinal é sinal, e sinal não vira controle.
+     */
+    const iSinal = tela.indexOf('{alerta && (')
     const sinal = tela.slice(iSinal)
     const tagDoSinal = sinal.slice(0, sinal.indexOf('/>') + 2)
-    expect(tagDoSinal, 'o pontinho é um círculo de 7px').toMatch(/h-\[7px\] w-\[7px\][^"]*rounded-full/)
+    expect(tagDoSinal, 'o pontinho é um círculo de 9px no canto').toMatch(/h-\[9px\] w-\[9px\][^"]*rounded-full/)
     expect(tagDoSinal, 'sinal sem nome é enfeite').toMatch(/aria-label=/)
-    expect(/px-|py-|text-\[/.test(tagDoSinal), 'pontinho com padding/texto é um botão disfarçado').toBe(false)
+    expect(/px-\d|py-\d|text-\[/.test(tagDoSinal), 'pontinho com padding/texto é um botão disfarçado').toBe(false)
     /** ⚠️ por POSIÇÃO, nunca por texto: filtrar pelo literal apagaria um coral legítimo
      *  de outro lugar da tela, e aí o guard deixaria de contar o que ele existe pra contar. */
     const fimDoSinal = iSinal + tagDoSinal.length
@@ -84,6 +88,15 @@ describe('⭐⭐ o topo: título, linha editorial e UM primário', () => {
       familia.length + acao.length,
       'cor forte preenchida fora dos primários = dois primários competindo',
     ).toBe(2)
+    /**
+     * ⭐⭐ E A PÍLULA "% do pedido" (05/10) usa o degrau **`-bg`** (fundo suave + tinta `-ink`),
+     * nunca o `-mid` preenchido — é isso que a mantém **fora da disputa de primário** mesmo
+     * sendo colorida em toda linha da lista.
+     */
+    const pilula = tela.slice(tela.indexOf('{pil && ('), tela.indexOf('{pil && (') + 600)
+    expect(pilula, 'a pílula pinta com o fundo suave da família').toMatch(/fam\(TOM_DO_PEDIDO\[pil\.tom\]\)\.bg/)
+    expect(pilula, 'e a tinta é o `ink` da MESMA família (nunca preto em fundo colorido)').toMatch(/\.ink/)
+    expect(/-mid\)'/.test(pilula), 'pílula preenchida de cor forte competiria com o "Nova ordem"').toBe(false)
     // ⭐ a ação principal é UMA, e ela usa o par de tokens (fundo + tinta)
     expect(acao.length, 'o "Nova ordem" é o primário da TELA').toBe(1)
     expect(tela, 'e a TINTA dele também é token — senão o escuro fica ilegível').toMatch(

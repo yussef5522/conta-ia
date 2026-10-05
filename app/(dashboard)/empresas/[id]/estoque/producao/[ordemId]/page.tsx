@@ -9,6 +9,7 @@ import { escalaDoConsumo, preverSaida, eficienciaMedia, avaliarVariacao } from '
 import { insumoDoPedido } from '@/lib/stock/producao/escala-da-ordem'
 import { eficienciaDaOrdem, fraseDoFiscal } from '@/lib/stock/producao/eficiencia-da-ordem'
 import { fraseDoCiclo } from '@/lib/stock/producao/pedido-da-ordem'
+import { fmtPedido } from '@/lib/stock/producao/pedido-na-tela'
 import { formatarQtd } from '@/lib/stock/quantidade'
 import { Card, CardContent } from '@/components/ui/card'
 import { EtapasDaOrdem } from '@/components/estoque/etapas-da-ordem'
@@ -178,7 +179,8 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
             */}
           {pedido?.unidades != null && (
             <p className="text-[15px] font-medium text-slate-900">
-              pedido: <span className="tabular-nums">{num(pedido.unidades)} {ordem.unidadeProduzido}</span>
+              {/* ⭐ redondo em UN pelo dono único — a home e esta tela dizem o mesmo número */}
+              pedido: <span className="tabular-nums">{fmtPedido(pedido.unidades, ordem.unidadeProduzido)} {ordem.unidadeProduzido}</span>
               <span className="ml-1.5 text-[13px] font-normal text-slate-500">
                 — {PASSO_LABEL[ordem.estado]?.toLowerCase() ?? ordem.estado.toLowerCase()}
               </span>

@@ -28,6 +28,7 @@
  */
 
 import { saidaEsperadaDaFicha } from './escala-da-ordem'
+import { fmtPedido, pilulaDoPedido } from './pedido-na-tela'
 
 export type OrigemDoPedido = 'DECLARADO' | 'DERIVADO'
 
@@ -98,15 +99,27 @@ export function fraseDoCiclo(p: {
 }): string {
   const n = (x: number) => x.toLocaleString('pt-BR', { maximumFractionDigits: 4 })
   const partes: string[] = []
-  partes.push(p.pedido != null ? `pedido ${n(p.pedido)} ${p.unidadeProduto}` : 'pedido: a apurar')
+  /**
+   * ⭐⭐ O PEDIDO VAI **REDONDO** em unidade de contagem (05/10, v4) — e pelo **dono único**
+   * (`fmtPedido`), nunca por um `toFixed` daqui: a home, a tela "Por dia", a página da ordem e
+   * esta frase mostram o MESMO pedido. Quatro arredondamentos divergiriam, e aí o dono leria
+   * "85" num lugar e "84,8608" no outro **pro mesmo lote**.
+   */
+  const pedidoTxt = fmtPedido(p.pedido, p.unidadeProduto)
+  partes.push(pedidoTxt != null ? `pedido ${pedidoTxt} ${p.unidadeProduto}` : 'pedido: a apurar')
   if (p.separadoReais != null) {
     partes.push(`separado ${p.separadoReais.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`)
   }
   if (p.produzido != null) {
     partes.push(`produziu ${n(p.produzido)}`)
-    if (p.pedido != null && p.pedido > 0) {
-      partes.push(`${Math.round((p.produzido / p.pedido) * 100)}%`)
-    }
+    /**
+     * ⭐⭐ **E O PERCENTUAL É O MESMO DA PÍLULA** (`pilulaDoPedido`) — é a MESMA pergunta
+     * (*"saiu o que eu pedi?"*) nas duas telas. ⛔ Recalcular aqui daria dois percentuais pro
+     * mesmo lote no dia em que o denominador mudasse (foi o que aconteceu com o pedido redondo:
+     * 92 ÷ 67,8 = 136%, 92 ÷ 68 = 135%).
+     */
+    const pil = pilulaDoPedido(p.produzido, p.pedido, p.unidadeProduto)
+    if (pil) partes.push(`${pil.pct}%`)
   }
   return partes.join(' · ')
 }

@@ -31,6 +31,7 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { lotesDaJanela, type JanelaDeLotes } from './lotes'
 import { foiMedido, ehRelampago, somarQuantidades, rendimentoDoLote, type Quantidade } from './desempenho'
+import { fmtPedido } from './pedido-na-tela'
 
 type Db = PrismaClient
 
@@ -157,7 +158,15 @@ export interface RelatorioPorDia {
  */
 export function textoDoPedido(q: Quantidade, semPedido: number, lotes: number): string {
   if (semPedido >= lotes) return 'sem pedido registrado'
-  return q.texto
+  /**
+   * ⭐⭐ **E O NÚMERO VAI REDONDO em unidade de contagem (05/10, v4):** *"vale em toda tela que
+   * mostra pedido em UN"*. ⛔ Quem arredonda é o **dono único** (`fmtPedido`), não um
+   * `toFixed` aqui — a home e esta tela mostram o MESMO pedido, e duas réguas fariam o dono ver
+   * "85" num lugar e "84,86" no outro. ⚠️ A soma continua **por unidade** (`porUnidade`): UN e
+   * KG nunca viram um número só, e em KG a fração fica.
+   */
+  if (!q.porUnidade.length) return q.texto
+  return q.porUnidade.map((x) => `${fmtPedido(x.qtd, x.unidade)} ${x.unidade}`).join(' · ')
 }
 
 /** média honesta: `null` quando não há amostra (nunca 0, que leria como "deu zero") */

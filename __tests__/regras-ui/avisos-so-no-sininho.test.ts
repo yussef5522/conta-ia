@@ -102,23 +102,41 @@ describe('⛔⛔ 2. "pedido N · fez M" — as PALAVRAS sempre visíveis', () =>
   })
 
   /** ⚠️ ordem antiga sem pedido mostra SÓ o "fez" — inventar pedido seria o "pedido 0" de 04/10 */
+  /**
+   * ⚠️ REAPONTADO em 05/10 (visual v4): o gate deixou de ser `pf?.pedido != null` e passou a ser
+   * o **`pedidoTxt` do `fmtPedido`** — que é `null` quando não há pedido. A régua é a mesma
+   * (*"o pedido é condicional, o fez é sempre"*); o que mudou é que a decisão de **como o
+   * pedido aparece** saiu do JSX e ganhou dono na lib.
+   */
   it('⭐ o "pedido" é condicional; o "fez" é sempre', () => {
     const l = lista()
-    const bloco = l.slice(l.indexOf('pf?.pedido != null'), l.indexOf('fiscalImpossivel'))
-    expect(bloco, 'o "pedido" vive dentro do gate de existência').toMatch(/pf\?\.pedido != null && \([\s\S]*?>pedido </)
+    const bloco = l.slice(l.indexOf('{pedidoTxt && ('), l.indexOf('{pil &&'))
+    expect(bloco, 'o "pedido" vive dentro do gate de existência').toMatch(/\{pedidoTxt && \([\s\S]*?>pedido </)
     // ⭐ e o "fez" está FORA do gate
     const depoisDoGate = bloco.slice(bloco.lastIndexOf('</>'))
     expect(depoisDoGate).toMatch(/>fez </)
+    /** ⛔⛔ e o número do pedido vem da LIB, nunca de um `Math.round` na tela */
+    expect(l, 'o arredondamento tem dono').toMatch(/fmtPedido\(pf\?\.pedido, un\)/)
+    expect(/Math\.round\(pf\?\.pedido|Math\.round\(pedido/.test(l), 'round na tela é a 2ª régua').toBe(false)
   })
 
   /**
-   * ⛔⛔ A PÍLULA FOI **APAGADA**, não escondida: *função sem chamador é função que alguém
-   * religa por descuido* (a régua da faxina de 15/09).
+   * ⚠️⚠️ **INVERTIDO em 05/10 com o motivo escrito — e a distinção é o ponto.** A pílula
+   * VOLTOU por ordem do dono, **com SOBRENOME**: *"N% do pedido"*. ⛔ O que continua morto é a
+   * `PilulaEf`, que mostrava a **eficiência congelada contra a FICHA** (a régua do P8) sem
+   * dizer de que percentual se tratava — e era essa ambiguidade que confundia (*"parecia
+   * fez÷pedido e não é"*). A pílula nova responde outra pergunta, com régua própria na lib.
    */
-  it('⛔⛔ a pílula de % não existe mais na home', () => {
+  it('⛔⛔ a pílula da FICHA (P8) continua fora da home; a do PEDIDO volta com sobrenome', () => {
     const h = semComentario(ler(HOME))
-    expect(h, 'a pílula voltou pra lista').not.toMatch(/PilulaEf/)
-    expect(h, 'nem o import da régua que só ela usava').not.toMatch(/faixaDoSelo/)
+    expect(h, 'a pílula de eficiência da ficha não volta pra lista').not.toMatch(/PilulaEf/)
+    expect(h, 'nem a régua dela — a home não julga rendimento contra a ficha').not.toMatch(/faixaDoSelo/)
+    /** ⭐ e a nova DIZ o que mede, dentro dela mesma */
+    expect(h, 'a pílula vem da lib, com o sobrenome por extenso').toMatch(/pilulaDoPedido\(c\.qtdGerada, pf\?\.pedido, un\)/)
+    expect(semComentario(ler('lib/stock/producao/pedido-na-tela.ts'))).toMatch(/\$\{pct\}% do pedido/)
+    /** ⛔⛔ e os degraus NÃO são digitados na tela (número de faixa em JSX é a 2ª régua) */
+    const l = h.slice(h.indexOf('function ListaConcluidas'))
+    expect(/>= 90|<= 110|< 70|> 130/.test(l), 'a régua mora na lib').toBe(false)
   })
 
   /**
@@ -181,17 +199,28 @@ describe('⛔⛔ 3. o fiscal no lugar certo — ordem · sininho · pontinho', (
   })
 
   /**
-   * ⛔⛔ (c) O PONTINHO É **SINAL, NÃO VEREDITO**: sem número e sem pílula. Pôr o número aqui
-   * recriaria exatamente o que a pílula fazia de errado — um percentual sem a régua ao lado.
+   * ⛔⛔ (c) O PONTINHO É **SINAL, NÃO VEREDITO: sem número.** Pôr o número aqui recriaria o que
+   * a pílula antiga fazia de errado — um percentual sem a régua ao lado.
+   *
+   * ⚠️ REAPONTADO em 05/10: ele **mudou de casa** — saiu do fim da linha e foi pro **canto do
+   * logo da receita**, por ordem do dono. Ficou mais forte: o sinal passou a ficar colado no
+   * que ele acusa, e o guard agora exige também o **anel da superfície** (sem ele, coral sobre
+   * o fundo rosa do logo vira mancha e o sinal que existe pra ser visto some).
    */
-  it('⛔⛔ (c) na LISTA é só um pontinho — sem número, sem pílula', () => {
+  it('⛔⛔ (c) o pontinho do fiscal mora no CANTO DO LOGO — e sem número', () => {
     const h = ler(HOME)
     const l = h.slice(h.indexOf('function ListaConcluidas'))
-    expect(l).toMatch(/c\.fiscalImpossivel &&/)
-    const ponto = l.slice(l.indexOf('c.fiscalImpossivel &&'), l.indexOf('ChevronRight', l.indexOf('c.fiscalImpossivel')))
+    expect(l, 'a lista passa o alerta pro logo').toMatch(/alerta=\{c\.fiscalImpossivel \?/)
+    expect(/c\.fiscalImpossivel && \(/.test(semComentario(l)), 'o pontinho solto no fim da linha saiu').toBe(false)
+
+    const logo = h.slice(h.indexOf('function IconeDaFicha'), h.indexOf('function CardMetrica'))
+    const ponto = logo.slice(logo.indexOf('{alerta && ('))
+    expect(ponto, 'é um círculo').toMatch(/rounded-full/)
+    expect(ponto, 'no CANTO do logo').toMatch(/absolute -right-\[3px\] -top-\[3px\]/)
+    expect(ponto, 'coral — a cor do alarme da casa').toMatch(/var\(--fam-coral-mid\)/)
+    expect(ponto, 'com anel da superfície pra não virar mancha sobre o logo colorido').toMatch(/boxShadow: '0 0 0 2px var\(--prod-surface\)'/)
+    expect(ponto, 'e com nome pra leitor de tela').toMatch(/aria-label=/)
     expect(ponto, 'o pontinho não imprime número nenhum').not.toMatch(/\{Math\.round|fmtQtd|%/)
-    expect(ponto, 'é um círculo de 7px').toMatch(/rounded-full/)
-    expect(ponto, 'e tem nome pra quem passa o mouse / usa leitor de tela').toMatch(/aria-label=/)
   })
 
   /**

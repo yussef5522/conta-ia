@@ -17,11 +17,16 @@ import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
-import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio, BarChart3, ArrowRight, CalendarDays, Beef, Wheat, Scissors, ChefHat, Flame, Gauge, Clock } from 'lucide-react'
+import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio, BarChart3, ArrowRight, CalendarDays, Beef, Wheat, Scissors, ChefHat, Flame, Gauge, Clock, Milk, Pizza, Drumstick, Ham, Slice, Droplet, Egg, Carrot, AlertTriangle } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
 import { formatarDuracao } from '@/lib/format/duracao'
 import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
 import { caraDaReceita, type IconeDaReceita } from '@/lib/stock/producao/cara-da-receita'
+/**
+ * ⭐⭐ O PEDIDO NA TELA e a pílula "% do pedido" têm DONO ÚNICO (05/10) — a tela não arredonda
+ * nem divide por conta própria. Quatro telas mostram pedido; quatro `Math.round` divergiriam.
+ */
+import { fmtPedido, pilulaDoPedido } from '@/lib/stock/producao/pedido-na-tela'
 import type { Quantidade } from '@/lib/stock/producao/desempenho'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
@@ -83,6 +88,16 @@ const ESTADO: Record<string, { label: string; cls: string }> = {
   CONCLUIDA: { label: 'Concluída', cls: 'bg-emerald-50 text-emerald-700' },
   CANCELADA: { label: 'Cancelada', cls: 'bg-rose-50 text-rose-600' },
 }
+/**
+ * ⭐ o TOM da pílula "% do pedido" → família de token. ⛔ O **vermelho usa `coral`**, que é a
+ * cor do alarme desta casa (ordem atrasada, saldo negativo) — e é justamente por isso que
+ * nenhuma RECEITA pode ser coral: o alarme precisa do contraste. A régua que decide o tom mora
+ * na lib (`pilulaDoPedido`), nunca aqui: número de faixa digitado na tela é a 2ª régua.
+ */
+const TOM_DO_PEDIDO: Record<'verde' | 'ambar' | 'vermelho', string> = {
+  verde: 'verde', ambar: 'ambar', vermelho: 'coral',
+}
+
 const PAGINA = 25
 const fmtQtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 const fmtDia = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
@@ -101,18 +116,50 @@ const fam = (f: string) => ({
 
 /** ⚠️ nome → componente: a lib `cara-da-receita` é PURA e devolve o NOME do ícone, não JSX */
 const ICONES: Record<IconeDaReceita, typeof Beef> = {
-  carne: Beef, porcao: UtensilsCrossed, massa: Wheat, preparo: Scissors, generico: Factory,
+  queijo: Milk, carne: Beef, bacon: Slice, calabresa: Ham, frango: Drumstick, frito: Flame,
+  massa: Pizza, molho: Droplet, ovo: Egg, legume: Carrot, preparo: Scissors,
+  porcao: UtensilsCrossed, generico: Factory,
 }
 
-/** o quadradinho arredondado colorido da receita — estável por nome (hash/tipo) */
-function IconeDaFicha({ nome, forcar }: { nome: string; forcar?: { familia: string; Icone: typeof Beef } }) {
+/**
+ * ⭐⭐ O LOGO DA RECEITA — quadradinho colorido, estável por nome (tipo ou hash).
+ *
+ * ⭐ **38px/raio 11 na lista de concluídas (visual v4, 05/10)** e 32/9 nos lugares onde ele é
+ * só um marcador ao lado de texto. ⚠️ O tamanho é PARÂMETRO, não um segundo componente: duas
+ * versões do logo divergiriam no 1º ajuste de raio, e o reconhecimento (que é a razão dele
+ * existir) mora justamente em ele ser sempre igual.
+ *
+ * ⭐⭐ **E O PONTINHO DO FISCAL MORA NO CANTO DELE** (`alerta`), por ordem do dono. O anel da
+ * cor da SUPERFÍCIE é o que o separa do fundo colorido do logo — sem ele, coral sobre rosa
+ * vira mancha, e o sinal que existe pra ser visto some.
+ */
+function IconeDaFicha({ nome, forcar, tamanho = 32, alerta }: {
+  nome: string; forcar?: { familia: string; Icone: typeof Beef }
+  tamanho?: 32 | 38
+  /** ⭐ o pontinho vermelho do fiscal, no canto — com o nome pra leitor de tela */
+  alerta?: { titulo: string } | null
+}) {
   const c = caraDaReceita(nome)
   const familia = forcar?.familia ?? c.familia
   const Icone = forcar?.Icone ?? ICONES[c.icone]
   const t = fam(familia)
+  const grande = tamanho === 38
   return (
-    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px]" style={{ background: t.bg }}>
-      <Icone className="h-4 w-4" style={{ color: t.mid }} />
+    <span className="relative inline-flex shrink-0">
+      <span
+        className={`inline-flex items-center justify-center ${grande ? 'h-[38px] w-[38px] rounded-[11px]' : 'h-8 w-8 rounded-[9px]'}`}
+        style={{ background: t.bg }}
+      >
+        <Icone className={grande ? 'h-[18px] w-[18px]' : 'h-4 w-4'} style={{ color: t.mid }} />
+      </span>
+      {alerta && (
+        <span
+          aria-label={alerta.titulo}
+          title={alerta.titulo}
+          className="absolute -right-[3px] -top-[3px] h-[9px] w-[9px] rounded-full"
+          style={{ background: 'var(--fam-coral-mid)', boxShadow: '0 0 0 2px var(--prod-surface)' }}
+        />
+      )}
     </span>
   )
 }
@@ -859,7 +906,8 @@ function ListaAbertas({ id, ordens, ctx, deOntem, soDeOntem, onFiltrarOntem }: {
                   <span className="text-[13px]" style={{ color: 'var(--prod-muted)' }}>sem pedido</span>
                 ) : (
                   <span className="num text-[16px] font-medium" style={{ color: 'var(--prod-primary)' }}>
-                    {fmtQtd(c.pedido)} {o.unidadeProduzido}
+                    {/* ⭐ REDONDO aqui também (v4): "toda tela que mostra pedido em UN" */}
+                    {fmtPedido(c.pedido, o.unidadeProduzido)} {o.unidadeProduzido}
                     {/**
                       * ⚠️⚠️ **"pedidas" SÓ quando ele PEDIU.** O mock diz *"200 UN pedidas"* e
                       * assume que a meta existe — mas a prova em prod mostrou que **as 5 ordens
@@ -933,26 +981,55 @@ function ListaConcluidas({ id, itens, periodo, nomePorOrdem, unidadePorOrdem, pe
           Nada concluído {rotulo}. As ordens abertas continuam acima.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
+        /**
+          * ⭐⭐ **LINHAS MAIS FORTES (visual v4):** moldura de 1px na lista, divisória no
+          * `line-strong` e **zebrado suave** alternando `surface-1`.
+          *
+          * ⚠️⚠️ O zebrado vai por CLASSE, nunca por `style` inline — **estilo inline ganha de
+          * classe**, e o `hover:` deixaria de pintar justamente na linha alternada. Com as duas
+          * em classe, a variante `hover` do Tailwind vem depois no CSS e vence. E o hover sobe
+          * pro `surface-2`: se ele usasse o mesmo tom do zebrado, metade das linhas não
+          * responderia ao mouse.
+          */
+        <div className="overflow-hidden rounded-xl" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)', border: '1px solid var(--prod-line)' }}>
           {visiveis.map((c, i) => {
             const pf = pedidoFeito[c.ordemId]
             const un = unidadePorOrdem.get(c.ordemId) ?? ''
+            const pedidoTxt = fmtPedido(pf?.pedido, un)
+            const pil = pilulaDoPedido(c.qtdGerada, pf?.pedido, un)
             return (
               <a key={c.id} href={`/empresas/${id}/estoque/producao/${c.ordemId}`}
                 /* ⚠️ 2 andares no celular com UMA marcação — ver o bloco em `ListaAbertas` */
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-[14px] transition-colors hover:bg-[var(--prod-surface-1)]"
-                style={i > 0 ? { borderTop: '1px solid var(--prod-line)' } : undefined}>
-                {/* ⭐ avatar: cor estável por pessoa (o componente da tela "Por dia") */}
-                <AvatarPessoa nome={c.colaboradorNome} apenasAvatar tamanho={30} />
+                className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3.5 py-[13px] transition-colors hover:bg-[var(--prod-surface-2)] ${i % 2 === 1 ? 'bg-[var(--prod-surface-1)]' : ''}`}
+                style={i > 0 ? { borderTop: '1px solid var(--prod-line-strong)' } : undefined}>
+                {/**
+                  * ⭐⭐ O LOGO DA RECEITA abre a linha (38px, raio 11) — o olho acha a porção de
+                  * queijo pelo quadradinho antes de ler o nome. **E o pontinho do fiscal mora no
+                  * canto dele**, não solto no fim da linha: assim o sinal fica colado no que ele
+                  * acusa, e não disputa espaço com os números.
+                  */}
+                <IconeDaFicha
+                  nome={nomePorOrdem.get(c.ordemId) ?? ''}
+                  tamanho={38}
+                  alerta={c.fiscalImpossivel ? { titulo: 'o declarado não cabe no material separado — abra a ordem pra ver a conta' } : null}
+                />
 
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
                     {nomePorOrdem.get(c.ordemId) ?? '—'}
                   </span>
-                  <span className="block truncate text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
-                    {c.colaboradorNome ?? 'sem responsável'} · {hhmm(c.criadoEm)}
+                  {/**
+                    * ⭐ QUEM FEZ vira mini-avatar com iniciais (cor estável por pessoa) + nome,
+                    * na sublinha. ⛔ Sem responsável registrado NÃO inventa pessoa: o componente
+                    * desenha o bonequinho cinza e o texto vai em itálico discreto — *ninguém
+                    * assinou* é um FATO, não um nome a adivinhar (e o "?" morreu por ordem do dono).
+                    */}
+                  <span className="flex min-w-0 items-center gap-1.5 truncate text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+                    <AvatarPessoa nome={c.colaboradorNome} apenasAvatar tamanho={18} />
+                    {c.colaboradorNome ?? <i>sem responsável</i>}
+                    <span> · {hhmm(c.criadoEm)}</span>
                     {/* ⛔ moeda pelo formatador da casa — o "R$ 638,5" de hoje nasceu de formatar à mão */}
-                    {c.custoUnitarioReal != null && ` · ${formatBRL(c.custoUnitarioReal)}/un`}
+                    {c.custoUnitarioReal != null && <span> · {formatBRL(c.custoUnitarioReal)}/un</span>}
                     {c.motivo && <i> · {c.motivo}</i>}
                   </span>
                 </span>
@@ -969,11 +1046,17 @@ function ListaConcluidas({ id, itens, periodo, nomePorOrdem, unidadePorOrdem, pe
                   * completar o par seria o *"pedido 0"* que a tela Por dia já teve que consertar
                   * — e ali ele se lia como *"pedi zero"*.
                   */}
-                <span className="num ml-auto shrink-0 whitespace-nowrap pl-11 text-right lg:ml-0 lg:pl-0">
-                  {pf?.pedido != null && (
+                <span className="num ml-auto shrink-0 whitespace-nowrap pl-[50px] text-right lg:ml-0 lg:pl-0">
+                  {/**
+                    * ⭐⭐ O PEDIDO VAI **REDONDO** (ordem do dono, v4): `84,8608 → 85`. Ninguém
+                    * pede 84,8608 porções — aquele número é artefato de `escala × loteBase`.
+                    * ⛔ Só exibição: o gravado não muda, e em KG/LT a fração FICA (o
+                    * `fmtPedido` decide pela unidade, e a régua da unidade é a da casa).
+                    */}
+                  {pedidoTxt && (
                     <>
                       <span className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>pedido </span>
-                      <span className="text-[14.5px]" style={{ color: 'var(--prod-secondary)' }}>{fmtQtd(pf.pedido)}</span>
+                      <span className="text-[14.5px]" style={{ color: 'var(--prod-secondary)' }}>{pedidoTxt}</span>
                       <span className="mx-1.5 text-[12.5px]" style={{ color: 'var(--prod-line-strong)' }}>·</span>
                     </>
                   )}
@@ -985,23 +1068,30 @@ function ListaConcluidas({ id, itens, periodo, nomePorOrdem, unidadePorOrdem, pe
                 </span>
 
                 {/**
-                  * ⭐⭐⭐ O ÚNICO RESTO VISUAL DO FISCAL: um PONTINHO vermelho quando o declarado
-                  * **não cabe** no material separado (>120% físico). **Sem número, sem pílula** —
-                  * ordem do dono.
+                  * ⭐⭐⭐ A PÍLULA VOLTA **COM SOBRENOME**: *"N% do pedido"* — `fez ÷ pedido`, com a
+                  * régua escrita DENTRO dela. Foi a falta do sobrenome que aposentou a pílula
+                  * antiga em 04/10 (*"parecia fez÷pedido e não é"*): ela mostrava a eficiência
+                  * da FICHA ao lado do par, sem nada dizendo de que percentual se tratava.
                   *
-                  * ⛔ Ele é um SINAL, não um veredito: a conta mora na página da ordem (a linha
-                  * inteira já é o link pra lá). Pôr o número aqui recriaria exatamente o que a
-                  * pílula fazia de errado — um percentual sem a régua ao lado.
-                  * ⚠️ E o `title` existe porque pontinho sem nome é enfeite: no desktop ele diz
-                  * o que é antes do clique.
+                  * ⛔⛔ **ELA NÃO É O FISCAL NEM O P8.** A régua da receita (eficiência congelada)
+                  * continua no pontinho do logo, na página da ordem e no sininho — intocada.
+                  * Aqui é outra pergunta: *"saiu o que eu pedi?"*.
+                  * ⚠️ Sem pedido não há pílula: `pilulaDoPedido` devolve `null` e nada é
+                  * desenhado (inventar denominador seria o *"pedido 0"* de volta).
+                  *
+                  * ⭐ No celular ela desce pro 2º andar **junto do par** (o `flex-wrap` da linha
+                  * com o `pl-[50px]` alinhando os dois abaixo do logo) — é o mesmo mecanismo das
+                  * abertas, com UMA marcação, não duas composições (REGRA 12).
                   */}
-                {c.fiscalImpossivel && (
+                {pil && (
                   <span
-                    aria-label="o declarado não cabe no material separado — abra a ordem"
-                    title="o declarado não cabe no material separado — abra a ordem pra ver a conta"
-                    className="h-[7px] w-[7px] shrink-0 rounded-full"
-                    style={{ background: 'var(--fam-coral-mid)' }}
-                  />
+                    className="num inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-[3px] text-[12px] font-medium"
+                    style={{ background: fam(TOM_DO_PEDIDO[pil.tom]).bg, color: fam(TOM_DO_PEDIDO[pil.tom]).ink }}
+                    title={`fez ${fmtQtd(c.qtdGerada)} de um pedido de ${pedidoTxt} ${un}`.trim()}
+                  >
+                    {pil.alarme && <AlertTriangle className="h-3 w-3" aria-hidden />}
+                    {pil.texto}
+                  </span>
                 )}
 
                 <ChevronRight className="hidden h-4 w-4 shrink-0 lg:block" style={{ color: 'var(--prod-muted)' }} />

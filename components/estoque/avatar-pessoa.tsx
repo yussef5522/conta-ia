@@ -12,6 +12,8 @@
  * paleta do projeto — é o que fez o verde do cartão ≍ e o do card de 10/09 saírem diferentes.
  */
 
+import { User } from 'lucide-react'
+
 import { RADAR } from './radar-tokens'
 
 /**
@@ -71,17 +73,22 @@ export function AvatarPessoa({ nome, tamanho = 22, apenasAvatar = false }: {
    * colaborador registrado é um FATO (ninguém assinou), não um nome que a tela deve adivinhar.
    */
   if (!nome) {
+    /**
+     * ⭐ **O "?" MORREU (05/10, ordem do dono): bonequinho cinza + "sem responsável" em itálico
+     * discreto.** O `?` lia como *"faltou dado, procure"*; o bonequinho diz *"ninguém assinou"*,
+     * que é o fato. ⛔ E continua **não inventando pessoa**: nem iniciais, nem cor de identidade
+     * (o cinza é a família MUDA, fora da paleta de gente).
+     */
     return (
       <span className="inline-flex items-center gap-1.5" style={{ color: 'var(--prod-muted)' }}>
         <span
-          className="inline-flex shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+          className="inline-flex shrink-0 items-center justify-center rounded-full"
           style={{ width: tamanho, height: tamanho, background: 'var(--prod-mudo-bg)', color: 'var(--prod-mudo)' }}
-          aria-hidden
           title="sem responsável registrado"
         >
-          ?
+          <User style={{ width: tamanho * 0.58, height: tamanho * 0.58 }} aria-hidden />
         </span>
-        {!apenasAvatar && <span className="text-[13px]">—</span>}
+        {!apenasAvatar && <span className="text-[13px] italic">sem responsável</span>}
       </span>
     )
   }

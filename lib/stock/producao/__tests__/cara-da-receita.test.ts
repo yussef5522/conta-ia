@@ -42,22 +42,39 @@ describe('⭐ o tipo, quando o nome diz o tipo', () => {
   })
 
   /**
-   * ⚠️ `porcao coxao` casa PORCAO **e** COXAO — e a ordem da lista decide. Está certo que
-   * COXAO (carne) ganhe: a porção de coxão é carne. É a mesma disciplina de `FRANGO FRITO`
-   * antes de `FRITAS` na régua de seções do cardápio.
+   * ⚠️⚠️ **INVERTIDO em 05/10 (visual v4), com o motivo escrito.** Este caso afirmava o mundo de
+   * 5 grupos, onde `porçao queijo` e `porçao frango frito` caíam em **"porção"** — o FORMATO da
+   * embalagem ganhando do CONTEÚDO. O dono pediu famílias por comida (*"queijo, carne/beef,
+   * frango frito, massa/pizza, frango/iscas, calabresa, bacon, preparo…"*), e aí a porção
+   * genérica desce pro ÚLTIMO lugar: ela só manda quando nada mais diz o quê.
+   *
+   * ⭐ A METADE CERTA DELE CONTINUA SENDO O QUE ELE PROVA: **a ordem da lista decide**, e o
+   * específico ganha do genérico (`porcao coxao` é CARNE, não "porção").
    */
-  it('⭐ porção (quando não é carne)', () => {
-    expect(caraDaReceita('porçao queijo 135 grama').icone).toBe('porcao')
-    expect(caraDaReceita('porçao frango frito 200 grama').icone).toBe('porcao')
+  it('⭐⭐ o CONTEÚDO ganha do formato — "porção" é o último recurso', () => {
+    expect(caraDaReceita('porçao queijo 135 grama').icone, 'é queijo, não "porção"').toBe('queijo')
+    expect(caraDaReceita('porçao frango frito 200 grama').icone, 'fritura é família própria').toBe('frito')
     expect(caraDaReceita('porcao coxao 80 grama').icone, 'carne ganha — a porção de coxão é carne').toBe('carne')
+    expect(caraDaReceita('Porçao aneis de cebola').icone, 'é cebola, não "porção"').toBe('legume')
+    /** ⭐ e o genérico sobrevive onde ele é a única resposta: nada no nome diz a comida */
+    expect(caraDaReceita('PORÇAO DE CHOCOLATE PRETO 50G').icone).toBe('porcao')
   })
 
-  it('⭐ massa e preparo', () => {
+  /**
+   * ⚠️ **INVERTIDO junto, mesmo motivo:** `TOMATE PICADO`, `ABRIR MILHO` e `tomate em rodela`
+   * eram **"preparo"**; passaram a ser **LEGUME**, porque o que a receita É ganha de como ela
+   * foi cortada — e `QUEIJO CHEDDAR FATIADO` é QUEIJO, não "fatiado". **Preparo continua
+   * existindo** pro nome que só diz o gesto (`PICAR …` sem comida reconhecida, `ENCHER TUBO`).
+   */
+  it('⭐ massa, legume e preparo', () => {
     expect(caraDaReceita('metade de bolinha massa de pizza').icone).toBe('massa')
     expect(caraDaReceita('PAO DE XIS').icone).toBe('massa')
-    for (const n of ['TOMATE PICADO', 'ABRIR MILHO', 'PICAR BRÓCOLIS', 'tomate em rodela', 'QUEIJO CHEDDAR FATIADO']) {
-      expect(caraDaReceita(n).icone, n).toBe('preparo')
+    for (const n of ['TOMATE PICADO', 'ABRIR MILHO', 'PICAR BRÓCOLIS', 'tomate em rodela', 'CEBOLA FATIADO']) {
+      expect(caraDaReceita(n).icone, n).toBe('legume')
     }
+    expect(caraDaReceita('QUEIJO CHEDDAR FATIADO').icone, 'o queijo manda, não o corte').toBe('queijo')
+    expect(caraDaReceita('ENCHER TUBO MAIONESE').icone, 'maionese manda sobre o gesto').toBe('molho')
+    expect(caraDaReceita('MOER a sobra').icone, 'só o gesto sobrou: preparo').toBe('preparo')
   })
 
   it('⭐ acento e caixa não mudam nada — `porçao` e `PORCAO` são a mesma palavra', () => {
