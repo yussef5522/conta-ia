@@ -1759,6 +1759,66 @@ O golden da produção ficou vermelho e eu levei três medições pra ver que o 
 4. **M3 da FANTA UVA 2L** (7 UN no limbo): estornar o ajuste e contar na GARRAFA.
 5. Seguem abertas: a correção de dado da parcela #22 (saldo devedor R$ 9.729,34 a mais, DRE de setembro −R$ 505,01) · as 23 linhas de recontagem onde a variância gravada subestima · os 90 UN / R$ 768,59 do Combo (recomendação: registrar divergência) · os 6 nomes de bebida pendentes nos complementos.
 
+## ⭐⭐ LISTA DE CONCLUÍDAS v4 — LOGOS, PEDIDO REDONDO, A PÍLULA COM SOBRENOME (05/10/2026)
+
+**Mock aprovado no chat, 5 itens. E a prova em prod achou o defeito do dia depois de os 5 estarem verdes.**
+
+**⭐ 1. PEDIDO REDONDO NA EXIBIÇÃO** (`84,8608 → 85`), com **dono único** (`pedido-na-tela.ts`). Quatro telas mostram pedido (home/concluídas, home/abertas, "Por dia" e a frase do ciclo da ordem) — **quatro `Math.round` divergiriam na 1ª borda**, e o dono veria *"85"* num lugar e *"84,86"* no outro **pro mesmo lote**. ⛔⛔ **E o arredondamento é GATEADO PELA UNIDADE, nunca cego:** em UN o `84,8608` é artefato de `escala × loteBase` (**ninguém pede 84,8608 porções**); em **KG/LT a fração é o dado** (`2,858 KG` é o lote da maionese, `0,0003 KG` a dose do fermento). ⚠️ Quem responde *"esta unidade é de contagem?"* é o **`aceitaFracao` da casa** — uma 2ª lista aqui faria a tela e o campo de digitação discordarem sobre a mesma unidade. **Só exibição: o gravado não muda.**
+
+**⭐⭐ 2. LOGO COLORIDO POR RECEITA (38px, raio 11) — e o mapa foi de 5 pra 13 grupos.** ⭐ **CADA GRUPO NASCEU DO DADO:** as **44 receitas produzidas na Caçula em 90 dias**, medidas em prod **antes** de uma linha ser escrita, e travadas num golden que exige o grupo de cada nome. *É o que separa um mapa de comida de uma imaginação minha sobre o que uma cozinha produz.*
+```
+carne 10 · legume 9 · frango 6 · queijo 4 · calabresa 4 · molho 4 · massa 3
+frito 1 · bacon 1 · porcao 1 · ovo 1    ⛔ coral 0 · caindo no hash 0
+```
+**⚠️⚠️ E QUATRO DESEMPATES VIERAM DO DADO, não de teoria** — cada um é um nome real que casa duas palavras, e cada um justifica uma linha da ORDEM da lista: **MASSA é a 1ª** (`Pizza congelada de calabresa` e `PIZZA FRANGO CATUPIRY` são PIZZA, não o recheio) · **FRITO antes de FRANGO** (`porçao frango frito`, 20 lotes) · **FRANGO antes de CARNE** (`Hamburger de frango` é frango; `beef de hamburger`, que não tem a palavra, segue carne) · **LEGUME antes de CARNE** (`Aneis de cebola hamburguer` é CEBOLA — *o "hamburguer" ali diz pra que serve, não o que é*). ⭐ A **FAMÍLIA agrupa parentes** (carne, bacon e calabresa são as três rosa) e **o ÍCONE distingue** — são 13 grupos pra 7 famílias de token, e repetir família é melhor que inventar uma 8ª paleta. ⛔ **Coral segue PROIBIDO pra receita** (8 grupos novos = 8 chances de dar a cor do alarme pra uma comida). ⭐ **E o pontinho do fiscal MUDOU DE CASA: canto do logo**, com **anel da superfície** — sem ele, coral sobre o logo rosa vira mancha e o sinal que existe pra ser visto some.
+
+**⭐ 3. QUEM FEZ: mini-avatar de 18px com iniciais na sublinha — e o "?" MORREU.** Sem responsável virou **bonequinho cinza + "sem responsável" em itálico**: o `?` lia como *"faltou dado, procure"*; o bonequinho diz ***"ninguém assinou"***, que é o fato. ⛔ E continua **não inventando pessoa** — nem iniciais, nem cor de identidade (cinza é a família MUDA, fora da paleta de gente).
+
+**⭐⭐⭐ 4. A PÍLULA VOLTA COM SOBRENOME: "N% do pedido"** = `fez ÷ pedido`, **por extenso dentro dela** (verde 90–110 · âmbar fora · **vermelho ⚠ <70 ou >130**, régua na lib). ⭐ **O sobrenome é o que a faz existir:** a `PilulaEf` foi aposentada em 04/10 porque mostrava a eficiência **contra a FICHA** sem dizer de que percentual se tratava (*"parecia fez÷pedido e não é"*) — **o problema nunca foi a conta, era a tela pôr os dois lado a lado sem a régua**. ⛔⛔ **Ela NÃO é o fiscal nem o P8:** a régua da receita segue no pontinho, na página da ordem e no sininho, e a home **continua sem importar `faixaDoSelo`**.
+**⚠️⚠️ E O DENOMINADOR É O PEDIDO EXIBIDO, de propósito.** Com o cru, uma ordem de `pedido 2,4` que fez 2 mostraria *"pedido 2 · fez 2 · **83% do pedido**"* — três números na mesma linha contando histórias diferentes, e o dono leria como defeito. Em unidade de **contagem** o pedido de verdade **é** o inteiro. *Uma régua, um número* — e o **% da frase do ciclo passou a sair da MESMA função** (um lote, um percentual, nas duas telas).
+
+**⭐ 5. LINHAS FORTES:** moldura 1px, divisória no `line-strong`, zebrado alternado e hover no `surface-2`. ⛔⛔ **O zebrado vai por CLASSE, nunca por `style` inline** — e o motivo é de CSS, não de gosto: **estilo inline ganha de classe**, então o `hover:` deixaria de pintar justamente nas linhas alternadas e **metade da lista pararia de responder ao mouse, sem nada quebrar**.
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU O TETO: 200 DE 379 LINHAS SAÍAM SEM LOGO E SEM PÍLULA
+
+Com os 5 itens verdes, medindo a **rota real** no período de 30 dias:
+```
+concluídas 379 · ordens no payload 207
+⛔ conclusões cuja ORDEM não veio: 200 → nome "—", SEM logo, SEM pedido, SEM pílula
+```
+O `listOrdens` corta as encerradas em **200 de propósito** (são a massa e envelhecem), e a lista de concluídas montava nome/unidade/pedido **filtrando essa lista truncada**. ***Mais da METADE da lista perdia o visual v4 em silêncio***, justamente no período grande.
+
+⭐ **É o teto de leitura escondendo o item pela 4ª vez nesta casa** — o `take: 50` do fermento (16/09), o `take: 200` da ordem do ano 202 (19/09), o `take: 300` do recebimento (23/09). **A cura é sempre a mesma: quem precisa de uma linha ESPECÍFICA resolve POR ID.** `receitaDasOrdens` lê em **3 consultas pra N ordens** (nunca uma por ordem — a lição dos 4.909 ms de 28/09) e a tela **mescla as duas fontes**, com a resolvida por id vencendo. ⚠️ O teste **cria 201 encerradas de verdade**, prova que a mais antiga **sai** do `listOrdens` e **continua** resolvível, com o pedido de `84,8608` virando `"85"` e a pílula dizendo *"100% do pedido"*.
+
+**PROVADO EM PROD, nos DOIS viewports (REGRA 12) e nos DOIS temas — 14/14 em cada:**
+```
+A LISTA (30 dias, pela rota real): 380 linhas
+  ⭐ pílulas: verde 189 · âmbar 81 · vermelho 107 · sem pílula 3   (antes do fix: 203 sem pílula)
+  ⭐ pedidos NÃO-inteiros no dado: 283 de 320 — 17,2335→"17" · 45,9107→"46" · 67,9546→"68"
+  linhas com o pontinho do fiscal: 90 de 380
+
+  [frito/ambar] 🔴 porçao frango frito 200 grama | pedido 45 · fez 144 | ⚠ 320% do pedido | NATHALIA
+  [carne/rosa]     beef de hamburger            | pedido 100 · fez 100 | 100% do pedido    | nadine
+  [calabresa/rosa] porcao de calabresa 100 grama| pedido 153 · fez 145 | 95% do pedido     | sem responsável
+
+CELULAR 200 em 236ms · DESKTOP 200 em 232ms · JS 867 KB · CSS 173 KB
+  ✓ logo 38/11 · ✓ "pedido "/"fez " · ✓ a pílula COM SOBRENOME · ✓ o anel do pontinho
+  ✓ zebrado por CLASSE · ✓ hover no surface-2 · ✓ divisória forte · ✓ UMA composição (flex-wrap)
+  ✓ os 8 tokens do v4 nos DOIS temas (claro E escuro) · ✓ hex de cor cravado: 0
+  ⛔→✓ fora da home: PilulaEf e faixaDoSelo (a régua da FICHA não julga aqui)
+```
+**REGRA 11 — 10 defeitos repostos, 17 vermelhos:** pedido voltando a 6 casas · a lib com lista de unidades própria (**2**) · logo 32/9 · coral numa receita (**2**) · pontinho fora do canto · o `?` de volta · a pílula sem sobrenome (**3**) · zebrado por `style` inline (**2**) · divisória fraca · **o filtro sobre a lista truncada (3)**.
+
+⚠️⚠️ **E A REGRA 11 ME CORRIGIU NUM GUARD DO MAPA:** remover o `continue` da dose zero passava **VERDE** com o componente de dose zero **depois** — `0/0` dá `NaN` e `NaN < 20` é `false`, então o menor sobrevive por acidente. **Com ele PRIMEIRO**, o `NaN` entra como `permitido` e a tela imprimiria *"permite ~NaN"*. *Guard testado só na ordem conveniente é guard que não morde.*
+
+**⚠️ 4 GUARDS REAPONTADOS e 3 TESTES INVERTIDOS, todos com o motivo escrito:** o do *"um primário só"* (a pílula usa o degrau **`-bg`**, nunca o `-mid` preenchido — é isso que a mantém fora da disputa) · o do pontinho (mudou de casa) · o do gate do pedido (`pf?.pedido` → `pedidoTxt`) · e os do mapa de 5 grupos (`porçao queijo` era *"porção"*, agora é **queijo**: o CONTEÚDO ganha do formato, e a porção genérica desce pro último lugar).
+
+**902 arquivos · 11.663 verdes · TS 0 · migration NENHUMA · zero escrita em prod · deploys 4/4 (`0w4UXcC0nAs_0mcbREn-n`, `v-DxnCovRyhkuKSepIsxl`) · Δ bundle +8 KB.**
+
+⚠️ **SCREENSHOT INDISPONÍVEL** (extensão do Chrome não ligada nesta sessão): a prova dos 2 temas é **medida no que prod serve** — **zero hex de cor cravado** e os 8 tokens que o v4 pinta existem **nos dois mapas** do CSS. Falta o olho do dono.
+
+📋 **FICA PRO DONO (decisão, não defeito):** o **pontinho do fiscal aparece em 90 das 380 linhas (24%)** — e **73 das 90 são ficha com o lote na unidade errada** (a fila de conversão KG→UN). No sininho essas são suprimidas (*uma causa, um alarme*); **na lista, não** — ali o pontinho é o sinal cru por lote. Se incomodar, a mesma supressão entra numa linha; enquanto as 37 fichas não forem convertidas, o fiscal daquelas receitas não mede nada.
+
 ## ⭐⭐ A HOME DA PRODUÇÃO — OS 3 AJUSTES DO DONO, E O FISCAL ACHOU 90 AVISOS DE ENXURRADA (04/10/2026)
 
 **⭐ 1. AVISOS SAEM DO MEIO DA TELA.** *"O bloco inline MORRE — avisos só no sininho do topo. Home limpa: título → cartões → listas. **Nada de aviso inline em tela nenhuma sem o dono pedir.**"* O `<BlocoDeAvisos>` saiu da home **~2h depois de subir**, e o componente fica **GUARDADO com selo de dívida** (`CAPACIDADE GUARDADA — NÃO É LIXO`): o pedido original era *"estoque e financeiro ganham o bloco depois, mesmo componente"*, e apagá-lo faria alguém escrever um segundo que divergiria na 1ª frase ajustada. ⭐ **A FUNÇÃO NÃO SE PERDEU** — o sininho global mostra os MESMOS avisos, agrupados por setor; o que saiu foi a **2ª vitrine do mesmo dado** no meio da tela de trabalho. **O guard (`avisos-so-no-sininho.test.ts`) prova OS DOIS LADOS** (nenhuma tela monta o bloco **e** o sininho continua mostrando) e **varre `app/` + `components/` inteiros** — porque o jeito de isso voltar não é alguém reeditar a home, é alguém pôr o bloco numa tela NOVA *"porque já estava pronto"*.
