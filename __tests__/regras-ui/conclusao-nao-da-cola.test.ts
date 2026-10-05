@@ -92,6 +92,21 @@ describe('⛔⛔⛔ NENHUM número esperado na mão de quem declara', () => {
   })
 
   /**
+   * ⛔⛔⛔ **A TELA É A PÁGINA, NÃO SÓ A MODAL** — buraco achado na prova em prod, DEPOIS de
+   * limpar o formulário: o CABEÇALHO continuava imprimindo o pedido DERIVADO (*"61 UN
+   * esperadas"*) a dois centímetros do campo de declarar. ⚠️ Tirar da modal e deixar no
+   * cabeçalho é a correção pela metade.
+   *
+   * ⛔ E o gate é do BLOCO, não da palavra: esconder só o rótulo deixaria o NÚMERO — **a cola
+   * é o número**. ⭐ O DECLARADO fica (é a ordem que ele recebeu de boca); o derivado volta na
+   * ordem concluída, onde é relatório.
+   */
+  it('⛔⛔⛔ o cabeçalho esconde o pedido DERIVADO enquanto a ordem está EM PRODUÇÃO', () => {
+    const t = tela()
+    expect(t).toMatch(/pedido\?\.unidades != null && !\(emProducao && pedido\.origem === 'DERIVADO'\)/)
+  })
+
+  /**
    * ⛔⛔ **E A PREVISÃO DA SEPARAÇÃO NÃO PODE DIVIDIR A TELA COM A CONCLUSÃO.** O *"Com isso
    * deve sair ~N"* é o auxílio de PLANEJAMENTO (pedido em 01/09) e vive no estado PLANEJADA;
    * se ele deixasse de ser gateado, apareceria ao lado do campo de declarar — e a régua de

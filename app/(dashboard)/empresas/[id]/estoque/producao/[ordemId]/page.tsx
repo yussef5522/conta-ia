@@ -218,7 +218,25 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
           * pedido declarado, e chamar de "pedidas" um número que a ficha calculou afirmaria uma
           * decisão que ninguém tomou — é a mesma mentira do *"pedido 0"*.
           */}
-        {pedido?.unidades != null && (
+        {/**
+          * ⛔⛔⛔ **O PEDIDO DERIVADO SE CALA ENQUANTO A ORDEM ESTÁ EM PRODUÇÃO** — buraco achado
+          * na prova em prod de 05/10, DEPOIS de limpar a modal.
+          *
+          * A régua de segurança do dono é sobre a **TELA de conclusão**, e a tela é a PÁGINA:
+          * com a ordem em produção, o campo de declarar está logo abaixo, e este cabeçalho
+          * imprimia a dois centímetros dele o número que a régua acabou de expulsar. ⚠️ Tirar
+          * da modal e deixar no cabeçalho é a correção pela metade que esta casa já pagou
+          * várias vezes.
+          *
+          * ⛔ E o gate é do BLOCO, não da palavra: esconder só o *"esperadas"* deixaria o
+          * NÚMERO na tela — **a cola é o número**, o rótulo era só o sinal dele.
+          *
+          * ⭐ **DECLARADO continua em TODO estado**: é a ordem que ele recebeu de boca (*"faz
+          * 200 porções"*) — ele já sabe, então não ensina nada. O DERIVADO é
+          * `escala × loteBase` = o `esperadoDaFicha` que o P8 usa de régua, e **só ele** se
+          * cala durante a produção; volta na ordem concluída, onde é relatório.
+          */}
+        {pedido?.unidades != null && !(emProducao && pedido.origem === 'DERIVADO') && (
           <div className="text-right">
             <p className="text-[11.5px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
               pedido
