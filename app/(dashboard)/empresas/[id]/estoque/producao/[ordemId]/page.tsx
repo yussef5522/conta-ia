@@ -5,18 +5,25 @@
 // virtual em-produção). Sobra volta (devolver). Conclusão "quantos saíram?" é 2.2.
 
 import { useEffect, useMemo, useState, use } from 'react'
-import { escalaDoConsumo, preverSaida, eficienciaMedia, avaliarVariacao } from '@/lib/stock/producao/previsao-rendimento'
+/**
+ * ⚠️ `avaliarVariacao` SAIU DESTA TELA (05/10): era ele que imprimia *"93% do que a receita
+ * promete · sua média é 102%"* na modal de concluir — os dois números que a régua de segurança
+ * do dono proíbe ali. A função segue viva e usada pelo juiz/relatórios; o que morreu foi a
+ * cola de prova na mão de quem declara.
+ */
+import { escalaDoConsumo, preverSaida, eficienciaMedia } from '@/lib/stock/producao/previsao-rendimento'
 import { insumoDoPedido } from '@/lib/stock/producao/escala-da-ordem'
 import { eficienciaDaOrdem, fraseDoFiscal } from '@/lib/stock/producao/eficiencia-da-ordem'
 import { fraseDoCiclo } from '@/lib/stock/producao/pedido-da-ordem'
 import { fmtPedido, pilulaDoPedido } from '@/lib/stock/producao/pedido-na-tela'
 import { trilhoDaOrdem } from '@/lib/stock/producao/trilho-da-ordem'
+import { fraseDeQuemProduziu } from '@/lib/stock/producao/quem-produziu'
 import { LogoDaReceita } from '@/components/estoque/logo-da-receita'
 import { formatarQtd } from '@/lib/stock/quantidade'
 import { formatBRL } from '@/lib/format/money'
 import { Card, CardContent } from '@/components/ui/card'
 import { EtapasDaOrdem } from '@/components/estoque/etapas-da-ordem'
-import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, X, Tag, TrendingUp } from 'lucide-react'
+import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, X, Tag } from 'lucide-react'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 import { avisoDeEtapasAbertas } from '@/lib/stock/producao/aviso-etapas-abertas'
 
@@ -26,7 +33,6 @@ interface Conclusao { id: string; qtdGerada: number; colaboradorNome: string | n
 interface Colaborador { id: string; nome: string }
 interface EtapaAbertaNaTela { nome: string; executorNome: string | null }
 
-const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 // ⭐ dose pequena em KG/LT sai na unidade natural ("0,3 g", não "0,0003 KG") — o padeiro
 // lê grama. Dono único em lib/stock/quantidade: quatro formatações divergiriam.
@@ -54,7 +60,13 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   // ⭐ a ordem tem etapa ASSINADA (alguém carimbou com o PIN)? Então "quem produziu" já está
   // respondido — o dropdown vira fóssil e sai da tela (06/09).
-  const [etapasAssinadas, setEtapasAssinadas] = useState(false)
+  /**
+   * ⭐⭐ QUEM PRODUZIU vem DAS ETAPAS (05/10) — era um booleano (`etapasAssinadas`), e a modal
+   * sabia QUE alguém assinou sem saber QUEM. Os nomes chegam pelo MESMO payload que o
+   * componente de etapas já buscou; `assinadas` passa a ser **derivado** deles, em vez de um
+   * 2º campo que pode discordar.
+   */
+  const [quemProduziu, setQuemProduziu] = useState<string[]>([])
   /** ⭐ o aviso da ordem PARADA com as três portas (19/09) — vem do SERVIDOR, não da tela */
   const [parada, setParada] = useState<{ avisar: boolean; motivo: string | null; portas: { acao: string; rotulo: string; efeito: string; primaria?: boolean }[] } | null>(null)
   /**
@@ -433,7 +445,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                     * realocação é perda*; aqui o número continua, no tom de apoio.
                     */}
                   <span className="block truncate text-[12px]" style={{ color: 'var(--prod-muted)' }}>
-                    {l.custoMedio != null ? `${brl(l.custoMedio)}/${l.unidadeControle}` : 'sem custo (a definir)'}
+                    {l.custoMedio != null ? `${formatBRL(l.custoMedio)}/${l.unidadeControle}` : 'sem custo (a definir)'}
                     {' · estoque '}
                     <span className="num" style={{ color: l.saldoDisponivel < 0 ? 'var(--fam-coral-mid)' : 'var(--prod-muted)' }}>
                       {num(l.saldoDisponivel)}
@@ -557,11 +569,22 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
 
       {/* ⭐⭐ ETAPAS — quem faz cada parte (06/09). Fica ANTES da conclusão porque é o
           trabalho acontecendo; a conclusão é o fecho. */}
-      <EtapasDaOrdem id={id} ordemId={ordemId} colaboradores={colaboradores} aoSaberAssinadas={setEtapasAssinadas} aoSaberAbertas={setEtapasAbertas} />
+      <EtapasDaOrdem id={id} ordemId={ordemId} colaboradores={colaboradores} aoSaberQuemProduziu={setQuemProduziu} aoSaberAbertas={setEtapasAbertas} />
 
       {/* conclusão ("quantos saíram?") — ⭐ a âncora é o alvo da 1ª porta do aviso */}
       <div id="concluir" />
-      {emProducao && <ConclusaoForm id={id} ordemId={ordemId} linhas={linhas} etapasAbertas={etapasAbertas} colaboradores={etapasAssinadas ? [] : colaboradores} rendimentoMedio={rendimentoMedio} rendimentoLotes={rendimentoLotes} loteBase={ordem.loteBase} unidadeProduzido={ordem.unidadeProduzido} onConcluida={carregar} />}
+      {emProducao && (
+        <ConclusaoForm
+          id={id} ordemId={ordemId} linhas={linhas} etapasAbertas={etapasAbertas}
+          quemProduziu={quemProduziu}
+          /* ⚠️ o dropdown só existe quando NINGUÉM assinou — e "ninguém" é derivado dos nomes */
+          colaboradores={quemProduziu.length > 0 ? [] : colaboradores}
+          nomeProduzido={ordem.nomeProduzido} pedido={pedido}
+          /* ⭐ o MESMO número do rodapé do cartão de insumos — nunca uma 2ª conta */
+          custoLote={custoSeparado}
+          unidadeProduzido={ordem.unidadeProduzido} onConcluida={carregar}
+        />
+      )}
 
       {/* ⭐⭐ A EFICIÊNCIA DA ORDEM — item 1 do dono (03/10):
           *"pedi 10 · produziu 9 → 90%, com o consumo real do lado (plano × real por componente)"*
@@ -672,7 +695,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
               <Card key={c.id}><CardContent className="flex items-center justify-between gap-3 p-4">
                 <div>
                   <p className="text-sm font-medium text-[var(--prod-primary)]">{num(c.qtdGerada)} {ordem.unidadeProduzido} {c.parcial && <span className="text-[11px] font-normal text-[var(--fam-ambar-ink)]">(parcial)</span>}</p>
-                  <p className="text-xs text-[var(--prod-muted)]">rendimento {num(c.rendimento)}/receita · custo {brl(c.custoUnitarioReal)}/un{c.colaboradorNome ? ` · ${c.colaboradorNome}` : ''}{c.validadeAte ? ` · val ${fmtDia(c.validadeAte)}` : ''}</p>
+                  <p className="text-xs text-[var(--prod-muted)]">rendimento {num(c.rendimento)}/receita · custo {c.custoUnitarioReal == null ? '—' : formatBRL(c.custoUnitarioReal)}/un{c.colaboradorNome ? ` · ${c.colaboradorNome}` : ''}{c.validadeAte ? ` · val ${fmtDia(c.validadeAte)}` : ''}</p>
                 </div>
                 <a href={`/empresas/${id}/estoque/producao/conclusoes/${c.id}/etiqueta`} className="inline-flex items-center gap-1 rounded-lg border border-[var(--prod-line-strong)] px-3 py-1.5 text-xs text-[var(--prod-secondary)] hover:bg-[var(--prod-surface-1)]"><Tag className="h-3.5 w-3.5" /> etiqueta</a>
               </CardContent></Card>
@@ -684,46 +707,95 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   )
 }
 
-function ConclusaoForm({ id, ordemId, linhas, colaboradores, etapasAbertas, rendimentoMedio, rendimentoLotes, loteBase, unidadeProduzido, onConcluida }: { id: string; ordemId: string; linhas: Linha[]; colaboradores: Colaborador[]; etapasAbertas: EtapaAbertaNaTela[]; rendimentoMedio: number | null; rendimentoLotes: number; loteBase: number; unidadeProduzido: string; onConcluida: () => void }) {
+/**
+ * ⭐⭐⭐ A MODAL DE CONCLUIR — v4 (05/10/2026): **uma pergunta, dois custos, um botão.**
+ *
+ * **Ordem do dono:** *"Cabeçalho: logo + «Concluir produção» + sublinha «nome · pedido N UN».
+ * A PERGUNTA: «Quantas unidades saíram?» com campo GRANDE. CUSTO AO VIVO: «custo deste lote»
+ * (fixo) e «custo por unidade» RECALCULANDO enquanto digita. Quem produziu: linha discreta
+ * «produzido por X e Y (das etapas)». Botão primário índigo + «voltar» contorno."*
+ *
+ * ⛔⛔⛔ **A REGRA DE SEGURANÇA QUE GOVERNA ESTA TELA (ordem do dono, 05/10):** *"NENHUM número
+ * esperado/sugerido/médio aparece na tela de conclusão pra quem declara. É cola de prova —
+ * ensina qual número digitar pro fiscal não pegar."*
+ *
+ * Morreram daqui, por isso: *"a receita promete ~61 · a sua média daria ~72 (N lotes)"* (a
+ * previsão ANTES do digitado) **e** o bloco de veredito *"93% do que a receita promete · sua
+ * média é 102%"* (que nomeia os dois números proibidos). ⭐ A régua dos líderes (SAP/Oracle/
+ * Katana) é a mesma: **aviso vem DEPOIS do digitado, nunca sugestão antes** — e aqui "depois"
+ * é o fiscal, que segue conferindo **em silêncio** e acusando no pontinho da lista, no sininho
+ * e na página da ordem. ⚠️ O P8 e `fiscalDoDeclarado` seguem **intocados por baixo**.
+ *
+ * ⚠️⚠️ **E A APARIÇÃO CONDICIONAL DO CAMPO DE MOTIVO ERA, ELA PRÓPRIA, UM VAZAMENTO:** ele só
+ * nascia quando o desvio estourava a faixa, então *"o campo apareceu"* dizia **"seu número está
+ * fora"** sem escrever número nenhum — convite a corrigir o digitado. Agora ele é
+ * **incondicional e sem juízo**: a capacidade fica (a rota grava, a ordem exibe) e o
+ * canal lateral fecha. *Remoção sem realocação é perda; manter a faixa seria manter a cola.*
+ */
+function ConclusaoForm({ id, ordemId, linhas, colaboradores, etapasAbertas, quemProduziu, nomeProduzido, pedido, custoLote, unidadeProduzido, onConcluida }: {
+  id: string; ordemId: string; linhas: Linha[]; colaboradores: Colaborador[]
+  etapasAbertas: EtapaAbertaNaTela[]
+  /** ⭐ os nomes vêm DAS ETAPAS (o payload que o componente de etapas já buscou) */
+  quemProduziu: string[]
+  nomeProduzido: string
+  pedido: { unidades: number | null; origem: 'DECLARADO' | 'DERIVADO' | null } | null
+  /**
+   * ⭐⭐ O CUSTO DO LOTE VEM DE CIMA — é **o MESMO número** do rodapé do cartão de insumos
+   * (`custoSeparado`). Recalculá-lo aqui seria a 2ª conta do mesmo dinheiro, e as duas
+   * divergiriam no 1º insumo sem custo médio.
+   */
+  custoLote: number
+  unidadeProduzido: string; onConcluida: () => void
+}) {
   const emProd = linhas.filter((l) => l.qtdSeparada > 0)
-  const [consumo, setConsumo] = useState<Record<string, string>>(Object.fromEntries(emProd.map((l) => [l.itemId, String(l.qtdSeparada)])))
   const [qtdGerada, setQtdGerada] = useState('')
   const [colaboradorId, setColaboradorId] = useState('')
-  const [parcial, setParcial] = useState(false)
-  const [motivoDesvio, setMotivoDesvio] = useState('')
+  const [motivo, setMotivo] = useState('')
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const parseNum = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
-  const rend = { teorico: loteBase, medido: rendimentoMedio, lotes: rendimentoLotes }
 
   // ⭐ REGRA 4: a frase vem da MESMA função que o servidor usa pra descrever o encerramento —
   // duas redações divergiriam no dia em que uma delas mudasse.
   const avisoEtapas = avisoDeEtapasAbertas(etapasAbertas)
+  const frasePessoas = fraseDeQuemProduziu(quemProduziu)
 
-  const custoLote = useMemo(() => emProd.reduce((s, l) => s + parseNum(consumo[l.itemId]) * (l.custoMedio ?? 0), 0), [consumo, emProd])
   const qg = parseNum(qtdGerada)
+  /**
+   * ⭐⭐ O CUSTO POR UNIDADE RECALCULA ENQUANTO ELE DIGITA — e o guard é duplo de propósito:
+   * `qg > 0` mata a **divisão por zero** (campo vazio, "0", "abc") e `Number.isFinite` mata o
+   * **NaN** que escaparia de um `Infinity` entrando no `Intl`. ⛔ Campo vazio é **"—"**, nunca
+   * `R$ 0,00`: zero é uma afirmação, e dizer que a unidade custa zero é a pior delas numa tela
+   * que existe pra medir custo.
+   */
   const custoUnit = qg > 0 ? custoLote / qg : null
-
-  // ⭐ ESCALA do que está sendo consumido — a MESMA função que o `concluir()` usa pra gravar
-  // o rendimento. Antes a tela não sabia a escala ("a escala aparece após concluir") e por
-  // isso não tinha como prever nada.
-  const escala = useMemo(
-    () => escalaDoConsumo(emProd.map((l) => ({ qtd: parseNum(consumo[l.itemId]), porLote: l.porLote }))),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [consumo, emProd],
-  )
-  const previsao = useMemo(() => (escala == null ? null : preverSaida(escala, rend)), [escala, rendimentoMedio, rendimentoLotes, loteBase]) // eslint-disable-line react-hooks/exhaustive-deps
-  // ⚠️ SÓ julga depois que ele digitou — previsão antes, veredito depois.
-  const variacao = useMemo(() => (escala == null || !(qg > 0) ? null : avaliarVariacao(qg, escala, rend)), [escala, qg, rendimentoMedio, rendimentoLotes, loteBase]) // eslint-disable-line react-hooks/exhaustive-deps
+  const custoUnitTexto = custoUnit != null && Number.isFinite(custoUnit) ? formatBRL(custoUnit) : '—'
 
   const concluir = async () => {
     setErro(null)
-    if (!(qg > 0)) return setErro('Diga quantos saíram.')
+    // ⛔ vazio / 0 / negativo / lixo digitado: erro INLINE, e nada é gravado
+    if (!(qg > 0)) return setErro('Diga quantas unidades saíram — conte antes de concluir.')
     setBusy(true)
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/concluir`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ consumo: emProd.map((l) => ({ itemId: l.itemId, qtdConsumida: parseNum(consumo[l.itemId]) })).filter((c) => c.qtdConsumida > 0), qtdGerada: qg, colaboradorId: colaboradorId || null, motivoDesvio: motivoDesvio.trim() || null, parcial }),
+        /**
+         * ⭐⭐ O CONSUMO É O SEPARADO, sem perguntar de novo (decisão do dono: *"nunca
+         * devolvem"*). ⚠️ E isso **fortalece o invariante P1** (`Σ separado == Σ consumido +
+         * Σ devolvido`): com o campo editável, declarar consumo MENOR que o separado sem
+         * devolver deixava material preso no armazém virtual — exatamente o vazamento que o
+         * **P4** acusa. Agora o estado torto é inalcançável.
+         *
+         * ⚠️ `parcial` NÃO é mandado: o schema da rota o tem como **opcional**, então a
+         * CAPACIDADE segue viva por trás (produção em dois dias) — só a tela deixa de oferecer
+         * um checkbox que ninguém usava.
+         */
+        body: JSON.stringify({
+          consumo: emProd.map((l) => ({ itemId: l.itemId, qtdConsumida: l.qtdSeparada })).filter((c) => c.qtdConsumida > 0),
+          qtdGerada: qg,
+          colaboradorId: colaboradorId || null,
+          motivoDesvio: motivo.trim() || null,
+        }),
       })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui concluir.'); return }
@@ -734,107 +806,142 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, etapasAbertas, rend
   }
 
   return (
-    <Card className="border-[var(--fam-indigo-mid)]"><CardContent className="space-y-3 p-4">
-      <p className="flex items-center gap-2 text-sm font-semibold text-[var(--prod-primary)]"><Check className="h-4 w-4 text-[var(--fam-indigo-mid)]" /> Concluir — quantos saíram?</p>
-
-      {/* consumo real (pré = em-produção) */}
-      <div>
-        <p className="mb-1 text-xs text-[var(--prod-muted)]">Confirme o que foi consumido de verdade (sobra volta pro estoque):</p>
-        <div className="divide-y divide-[var(--prod-line)]">
-          {emProd.map((l) => (
-            <div key={l.itemId} className="flex items-center gap-2 py-1.5 text-sm">
-              <span className="flex-1 text-[var(--prod-secondary)]">{l.nome}</span>
-              <span className="text-[11px] text-[var(--prod-muted)]">em produção {num(l.qtdSeparada)}</span>
-              <input value={consumo[l.itemId] ?? ''} onChange={(e) => setConsumo((c) => ({ ...c, [l.itemId]: e.target.value }))} inputMode="decimal" className="w-20 rounded-lg border border-[var(--prod-line-strong)] py-1.5 px-2 text-right text-sm tabular-nums" />
-              <span className="w-6 text-xs text-[var(--prod-muted)]">{l.unidade}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* quantos saíram + colaborador */}
-      <div className="flex flex-wrap items-end gap-3">
-        {/* ⛔⛔ O CAMPO NASCE E CONTINUA VAZIO — regra dura do dono: *"a previsão SUGERE, nunca
-            preenche. Se preencher, todo mundo confirma o número sem contar. É o mesmo viés
-            da contagem."* O esperado vive AO LADO, nunca dentro. */}
-        <label className="text-xs text-[var(--prod-muted)]">Quantos saíram?
-          <div className="mt-1 flex items-center gap-1"><input value={qtdGerada} onChange={(e) => setQtdGerada(e.target.value)} inputMode="decimal" placeholder="conte e digite" className="w-28 rounded-lg border border-[var(--prod-line-strong)] py-2 px-3 text-sm tabular-nums" /><span className="text-xs text-[var(--prod-muted)]">{unidadeProduzido}</span></div>
-          {previsao && (
-            <p className="mt-1 text-[11px] text-[var(--prod-muted)]">
-              a receita promete ~{num(Math.round(previsao.esperadoDaFicha))}
-              {previsao.medido != null && rendimentoLotes >= 2
-                ? ` · a sua média daria ~${num(Math.round(previsao.medido))} (${rendimentoLotes} lotes)`
-                : rendimentoLotes === 1 ? ' · 1 lote ainda não é média' : ''}
-            </p>
-          )}
-        </label>
-        {/* ⭐⭐ "QUEM PRODUZIU" DERIVA DAS ETAPAS (06/09). Quando a ordem tem etapa assinada
-            pelo PIN, a pergunta já está respondida — e melhor: respondida POR ETAPA, com o
-            tempo de cada mão. Manter o dropdown aqui seria pedir de novo o que o tablet já
-            sabe, e abrir espaço pra as duas respostas divergirem.
-            ⚠️ Ele PERMANECE na ordem antiga (sem etapa assinada): lá ninguém carimbou nada,
-            e sem ele a conclusão ficaria sem dono. */}
-        {colaboradores.length > 0 ? (
-          <label className="text-xs text-[var(--prod-muted)]">Quem produziu
-            <select value={colaboradorId} onChange={(e) => setColaboradorId(e.target.value)} className="mt-1 block rounded-lg border border-[var(--prod-line-strong)] py-2 px-3 text-sm"><option value="">—</option>{colaboradores.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
-          </label>
-        ) : (
-          <p className="pb-2 text-[11px] text-[var(--prod-muted)]">quem produziu vem das etapas (o PIN de cada um)</p>
-        )}
-        <label className="flex items-center gap-1.5 pb-2 text-xs text-[var(--prod-muted)]"><input type="checkbox" checked={parcial} onChange={(e) => setParcial(e.target.checked)} /> produção parcial (concluo o resto depois)</label>
-      </div>
-
-      {/* prévia custo + rendimento */}
-      <div className="flex flex-wrap gap-4 rounded-lg bg-[var(--prod-surface-1)] p-3 text-xs">
-        <div><span className="text-[var(--prod-muted)]">Custo do lote</span><p className="font-semibold tabular-nums text-[var(--prod-primary)]">{brl(custoLote)}</p></div>
-        <div><span className="text-[var(--prod-muted)]">Custo por {unidadeProduzido}</span><p className="font-semibold tabular-nums text-[var(--prod-primary)]">{custoUnit != null ? brl(custoUnit) : '—'}</p></div>
-        <div><span className="flex items-center gap-1 text-[var(--prod-muted)]"><TrendingUp className="h-3 w-3" /> rendimento médio</span><p className="font-semibold tabular-nums text-[var(--prod-primary)]">{rendimentoMedio != null ? `${num(rendimentoMedio)}/receita` : 'a apurar'}</p>{rendimentoLotes > 0 && <p className="text-[10px] text-[var(--prod-muted)]">de {rendimentoLotes} {rendimentoLotes === 1 ? 'lote' : 'lotes'}</p>}</div>
-      </div>
-
-      {/* ⭐ AVISO DE EFICIÊNCIA — contra a RECEITA (03/10). Sugere, NUNCA bloqueia. */}
-      {variacao && variacao.pctFicha != null && (
-        <div className={`rounded-lg border p-3 text-xs ${
-          variacao.faixa === 'ABAIXO' ? 'border-[var(--fam-coral-mid)] bg-[var(--fam-coral-bg)] text-[var(--fam-coral-ink)]'
-            : variacao.faixa === 'ACIMA' ? 'border-[var(--fam-ambar-mid)] bg-[var(--fam-ambar-bg)] text-[var(--fam-ambar-ink)]'
-              : variacao.faixa === 'NORMAL' ? 'border-[var(--fam-verde-mid)] bg-[var(--fam-verde-bg)] text-[var(--fam-verde-ink)]'
-                : 'border-[var(--prod-line)] bg-[var(--prod-surface-1)] text-[var(--prod-muted)]'}`}>
-          <p className="font-medium">
-            {(variacao.pctFicha * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}% do que a receita promete
-            {variacao.pctMediaDaFicha != null && ` · sua média é ${(variacao.pctMediaDaFicha * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%`}
-            {variacao.faixa === 'ABAIXO' && ' · SAIU MENOS'}
-            {variacao.faixa === 'ACIMA' && ' · SAIU MAIS'}
-            {variacao.faixa === 'NORMAL' && ' · dentro do esperado'}
+    // ⚠️ SEM `id="concluir"` AQUI: a âncora já existe no pai, logo acima — dois ids iguais no
+    // documento fazem o navegador parar no primeiro, e o botão "Concluir produção" das ações
+    // pularia pro lugar errado. Um id, um alvo.
+    <Card style={{ borderColor: 'var(--fam-indigo-mid)' }}><CardContent className="space-y-4 p-4">
+      {/* ⭐ CABEÇALHO: o MESMO logo da lista e da ordem (componente único) */}
+      <div className="flex items-start gap-3">
+        <LogoDaReceita nome={nomeProduzido} tamanho={38} />
+        <div className="min-w-0 flex-1">
+          <p className="text-[17px] font-medium leading-tight" style={{ color: 'var(--prod-primary)' }}>Concluir produção</p>
+          {/**
+            * ⛔⛔⛔ **O PEDIDO SÓ APARECE QUANDO É DECLARADO — e isto é um CONFLITO ENTRE DOIS
+            * ITENS DO PEDIDO DO DONO, resolvido pela medição.**
+            *
+            * O item 1 pede a sublinha *"nome · pedido N UN"* com *"derivado = esperadas"*. O
+            * item 2(b) proíbe **qualquer número esperado** nesta tela. ⚠️ Medido no código: o
+            * pedido DERIVADO é `escalaReceitas × loteBase`, e `esperadoDaFicha` (o número que o
+            * item 2(b) nomeia, e que o P8 usa de régua) é **`escala × teorico` — o MESMO
+            * número**. Ou seja: *"pedido 61 UN esperadas"* É a cola de prova com outro rótulo,
+            * e a palavra "esperadas" era o próprio sinal disso.
+            *
+            * ⭐ **DECLARADO é outra coisa:** é a ORDEM que o dono deu de boca (*"faz 200
+            * porções"*) — informação que quem declara **já tem na cabeça**, então mostrá-la não
+            * ensina nada novo; ela identifica o tamanho do lote que ele está fechando.
+            *
+            * ⚠️ **Sem pedido declarado a sublinha fica só com o nome da receita** — a ordem
+            * continua identificada pelo logo e pelo nome, e nenhum número esperado entra.
+            */}
+          <p className="mt-0.5 truncate text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+            {nomeProduzido}
+            {pedido?.origem === 'DECLARADO' && pedido.unidades != null && (
+              <> · pedido {fmtPedido(pedido.unidades, unidadeProduzido)} {unidadeProduzido}</>
+            )}
           </p>
-          {/* ⛔ SEM_REGUA agora só existe com ficha de lote base zerado — sem ele não há o
-              que comparar, e inventar porcentagem ali seria pior que dizer "não sei". */}
-          {variacao.faixa === 'SEM_REGUA' && (
-            <p className="mt-0.5">A ficha não declara quanto 1 receita produz — sem isso não dá pra medir eficiência.</p>
-          )}
-          {variacao.alerta && (
-            <label className="mt-2 block">
-              <span className="text-[11px] opacity-80">Aconteceu alguma coisa? (opcional — fica gravado na ordem)</span>
-              <input value={motivoDesvio} onChange={(e) => setMotivoDesvio(e.target.value)} placeholder="ex: queijo veio com muita casca" className="mt-1 w-full rounded-lg border border-[var(--prod-line-strong)] bg-[var(--prod-surface)] py-1.5 px-2 text-xs text-[var(--prod-secondary)]" />
-            </label>
-          )}
         </div>
-      )}
+      </div>
 
+      {/**
+        * ⭐⭐⭐ A PERGUNTA — campo GRANDE, porque é a única coisa que esta tela pede.
+        *
+        * ⛔⛔ **O CAMPO NASCE E CONTINUA VAZIO** — regra dura do dono: *"a previsão SUGERE,
+        * nunca preenche. Se preencher, todo mundo confirma o número sem contar."* Agora nem
+        * sugere: o esperado saiu da tela inteira.
+        */}
+      <div>
+        <label className="block text-[13px] font-medium" style={{ color: 'var(--prod-secondary)' }} htmlFor="qtd-saiu">
+          Quantas unidades saíram?
+        </label>
+        <div className="mt-1.5 flex items-baseline gap-2">
+          <input
+            id="qtd-saiu" value={qtdGerada} onChange={(e) => setQtdGerada(e.target.value)}
+            inputMode="decimal" placeholder="conte e digite" autoComplete="off"
+            className="num w-40 rounded-xl px-3 py-2 text-[26px] font-medium"
+            style={{ border: '1px solid var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
+          />
+          <span className="text-[15px]" style={{ color: 'var(--prod-secondary)' }}>{unidadeProduzido}</span>
+        </div>
+      </div>
+
+      {/**
+        * ⭐⭐ OS DOIS CUSTOS — o do LOTE é fixo (o material já saiu da prateleira) e o POR
+        * UNIDADE anda com o que ele digita. ⚠️ Os dois pelo `formatBRL`, o dono único do R$.
+        */}
+      <div className="flex flex-wrap gap-2">
+        <div className="min-w-[9.5rem] flex-1 rounded-xl px-3 py-2" style={{ background: 'var(--prod-surface-1)' }}>
+          <p className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>custo deste lote</p>
+          <p className="num text-[17px] font-medium" style={{ color: 'var(--prod-primary)' }}>{formatBRL(custoLote)}</p>
+        </div>
+        <div className="min-w-[9.5rem] flex-1 rounded-xl px-3 py-2" style={{ background: 'var(--prod-surface-1)' }}>
+          <p className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>custo por {unidadeProduzido}</p>
+          <p className="num text-[17px] font-medium" style={{ color: 'var(--prod-primary)' }}>{custoUnitTexto}</p>
+        </div>
+      </div>
+
+      {/**
+        * ⭐⭐ QUEM PRODUZIU — a resposta JÁ EXISTE nas etapas (o PIN carimbou por etapa, com o
+        * tempo de cada mão). ⛔ A **explicação** do PIN saiu (ordem do dono): ensinar o
+        * mecanismo a quem acabou de usá-lo é ruído. ⚠️ O dropdown **permanece** na ordem antiga
+        * sem etapa assinada — lá ninguém carimbou nada, e sem ele a conclusão ficaria sem dono.
+        */}
+      {frasePessoas ? (
+        <p className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>{frasePessoas}</p>
+      ) : colaboradores.length > 0 ? (
+        <label className="block text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+          Quem produziu
+          <select value={colaboradorId} onChange={(e) => setColaboradorId(e.target.value)}
+            className="mt-1 block rounded-lg px-3 py-2 text-sm"
+            style={{ border: '1px solid var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}>
+            <option value="">—</option>{colaboradores.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select>
+        </label>
+      ) : null}
+
+      {/**
+        * ⭐ O MOTIVO — **incondicional e sem número**. Ver o bloco do topo: a aparição
+        * condicional dele era o vazamento que a régua de segurança existe pra fechar.
+        * ⚠️ Opcional de propósito: cobrar motivo em produção normal treina a pessoa a escrever
+        * qualquer coisa, e aí o campo deixa de valer quando o desvio for de verdade.
+        */}
+      <label className="block">
+        <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>Aconteceu alguma coisa? (opcional — fica gravado na ordem)</span>
+        <input value={motivo} onChange={(e) => setMotivo(e.target.value)}
+          placeholder="ex: queijo veio com muita casca"
+          className="mt-1 w-full rounded-lg px-2 py-1.5 text-xs"
+          style={{ border: '1px solid var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-secondary)' }} />
+      </label>
 
       {/* ⛔⛔ O AVISO DO CAMINHO DO ENCARREGADO (06/09) — a fresta entre os dois caminhos.
           Concluir por aqui ENCERRA a etapa aberta sem tempo medido; ele precisa saber ANTES
           de apertar. ⚠️ E a frase ENSINA A SAÍDA ("peça pra finalizar no tablet primeiro"),
           porque aviso que só comunica um estrago treina a pessoa a ignorar. NÃO BLOQUEIA:
-          quem decide é o encarregado — a mesma régua do aviso de rendimento logo acima. */}
+          quem decide é o encarregado.
+          ⚠️⚠️ E ele NÃO é "número esperado": fala de TEMPO DE ETAPA, não de quanto deve sair —
+          a régua de segurança proíbe a cola do rendimento, não o aviso de consequência. */}
       {avisoEtapas && (
-        <div className="flex items-start gap-2 rounded-lg border border-[var(--fam-ambar-mid)] bg-[var(--fam-ambar-bg)] p-3 text-xs text-[var(--fam-ambar-ink)]">
+        <div className="flex items-start gap-2 rounded-lg p-3 text-xs"
+          style={{ border: '1px solid var(--fam-ambar-mid)', background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
           <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
           <span>{avisoEtapas}</span>
         </div>
       )}
 
-      {erro && <p className="text-sm text-[var(--fam-coral-ink)]">{erro}</p>}
-      <button onClick={concluir} disabled={busy} className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60"
-        style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Concluir e gerar etiqueta</button>
+      {erro && <p className="text-sm" style={{ color: 'var(--fam-coral-ink)' }}>{erro}</p>}
+
+      {/* ⭐ UM primário índigo + "voltar" de contorno (a régua do "um primário só") */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={concluir} disabled={busy}
+          className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60"
+          style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Concluir e gerar etiqueta
+        </button>
+        <a href={`/empresas/${id}/estoque/producao`}
+          className="rounded-lg px-4 py-2 text-[13px]"
+          style={{ border: '1px solid var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
+          voltar
+        </a>
+      </div>
     </CardContent></Card>
   )
 }

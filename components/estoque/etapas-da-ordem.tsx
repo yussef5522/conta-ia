@@ -25,6 +25,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Loader2, Check, Clock, User, CircleSlash, BellRing, UserCheck, X } from 'lucide-react'
 import { formatarDuracao } from '@/lib/format/duracao'
 import { textoDoCronometro, desvioDoAparelho } from '@/lib/stock/producao/cronometro'
+import { quemProduziuNasEtapas } from '@/lib/stock/producao/quem-produziu'
 import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
 
 interface Etapa {
@@ -57,11 +58,17 @@ export function duracao(min: number | null): string {
   return formatarDuracao(min)
 }
 
-export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, aoSaberAbertas }: {
+export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberQuemProduziu, aoSaberAbertas }: {
   id: string; ordemId: string; colaboradores: Colaborador[]
-  /** ⭐ avisa a página quando alguma etapa já foi ASSINADA (executor carimbado pelo PIN) —
-      é o que faz o dropdown "quem produziu" sair da conclusão. */
-  aoSaberAssinadas?: (assinadas: boolean) => void
+  /**
+   * ⭐⭐ OS NOMES de quem pôs a mão — é o que faz o dropdown "quem produziu" sair da conclusão
+   * e virar a linha discreta *"produzido por X e Y (das etapas)"* (05/10).
+   *
+   * ⚠️ Era um BOOLEANO (`aoSaberAssinadas`): a modal sabia QUE alguém assinou e não QUEM. Pedir
+   * o nome num 2º fetch faria as duas telas discordarem sobre o mesmo lote — sai do MESMO
+   * payload que este componente já buscou, exatamente como o aviso de etapas abertas.
+   */
+  aoSaberQuemProduziu?: (nomes: string[]) => void
   /** ⛔ as etapas ABERTAS — a conclusão avisa que a ordem vai levá-las junto (06/09).
       ⚠️ Sai DAQUI, do payload que este componente já buscou: um segundo fetch faria o aviso
       e a lista discordarem sobre quais etapas estão abertas. */
@@ -92,7 +99,7 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
       if (typeof j.agoraServidor === 'string') desvioRef.current = desvioDoAparelho(j.agoraServidor)
       const es: Etapa[] = j.etapas ?? []
       setEtapas(es)
-      aoSaberAssinadas?.(es.some((e) => !!e.executorNome))
+      aoSaberQuemProduziu?.(quemProduziuNasEtapas(es))
       aoSaberAbertas?.(es.filter((e) => e.estado === 'EM_ANDAMENTO').map((e) => ({ nome: e.nome, executorNome: e.executorNome })))
     }).catch(() => setEtapas([]))
   useEffect(() => { carregar() }, [id, ordemId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -123,6 +130,9 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
     if (typeof j?.agoraServidor === 'string') desvioRef.current = desvioDoAparelho(j.agoraServidor)
     const es: Etapa[] = j.etapas ?? []
     setEtapas(es)
+    // ⚠️ o gesto do gerente MUDA quem assinou — reavisar é o que impede a modal de ficar com
+    // o nome de antes (o estado novo vem do que o SERVIDOR devolveu, nunca do clique)
+    aoSaberQuemProduziu?.(quemProduziuNasEtapas(es))
     aoSaberAbertas?.(es.filter((e) => e.estado === 'EM_ANDAMENTO').map((e) => ({ nome: e.nome, executorNome: e.executorNome })))
   }
 
@@ -163,6 +173,7 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
     if (typeof j?.agoraServidor === 'string') desvioRef.current = desvioDoAparelho(j.agoraServidor)
     const es: Etapa[] = j.etapas ?? []
     setEtapas(es)
+    aoSaberQuemProduziu?.(quemProduziuNasEtapas(es))
     // ⭐⭐ A CONFIRMAÇÃO VISÍVEL (08/09) — decisão do dono: *"eu escolho o nome e não sei se
     // salvou"*. O check verde nasce do que o SERVIDOR devolveu, não do que eu mandei: dizer
     // "designado" a partir do meu próprio clique afirmaria uma gravação que pode não ter
