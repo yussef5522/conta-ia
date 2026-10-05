@@ -64,7 +64,12 @@ const VERBOS_DE_ACAO = [
   /** ⚠️ `corrig` NÃO casa `corrija` — e "Corrija a ficha" é exatamente como o dono escreve.
    *  O teste pegou isto recusando um aviso LEGÍTIMO, que é o pior tipo de guard: o que barra
    *  o certo e ensina a afrouxar a régua. O imperativo em -ja/-je precisa de raiz própria. */
-  'corrig', 'corrij', 'conferi', 'confir', 'cont', 'lanç', 'lance', 'mand', 'envi', 'cri', 'cria',
+  /** ⚠️⚠️ 3ª lacuna da MESMA classe, e ela barrou um aviso legítimo em PROD: `conferi`/`confir`
+   *  NÃO casam **"Confere"** (confer + e), e *"Confere a receita de X"* é exatamente como o dono
+   *  escreve. O aviso de PADRÃO do fiscal foi RECUSADO por isso — enquanto o de lote isolado
+   *  passava **por acidente**, pela palavra "lançamento" no título. *Guard que barra o certo
+   *  ensina a afrouxar a régua.* ⭐ E não afrouxa nada: `conferi` já casava "conferência". */
+  'corrig', 'corrij', 'confer', 'conferi', 'confir', 'cont', 'lanç', 'lance', 'mand', 'envi', 'cri', 'cria',
   'arrum', 'ajust', 'reveja', 'rever', 'revis', 'olh', 'abr', 'fech', 'conclu', 'cancel',
   'separ', 'produz', 'compr', 'paga', 'pague', 'receb', 'escolh', 'aponta', 'aponte',
   /** ⚠️ 2ª lacuna da mesma classe que o teste pegou: `troc` NÃO casa `troque` (c × qu). O

@@ -74,6 +74,26 @@ describe('⛔⛔ aviso MUDO não pode existir', () => {
     )
   })
 
+  /**
+   * ⚠️⚠️ **A OUTRA METADE DA RÉGUA DO VERBO: ela não pode barrar o CERTO.** Foi medido em prod
+   * em 04/10 — o aviso de PADRÃO do fiscal (*"Confere a receita de PICAR BRÓCOLIS — 9 lotes
+   * declararam mais do que o material dava"*) foi **RECUSADO**, porque `conferi`/`confir` não
+   * casam "Confer**e**". ⛔ E o irmão dele (*"Confere o lançamento de…"*) passava **por
+   * acidente**, pela palavra "lançamento". *Guard que barra o certo ensina a afrouxar a régua* —
+   * e é a 3ª vez desta classe aqui (`corrig`×Corrija, `troc`×Troque).
+   */
+  it('⭐⭐ os imperativos que o dono escreve de verdade PASSAM', () => {
+    for (const titulo of [
+      'Confere a receita de PICAR BRÓCOLIS — 9 lotes declararam mais do que o material dava',
+      'Confere o lançamento de CUBA MAIONESE — declarou mais do que o material dava',
+      'Corrija a ficha do CHEDDAR',
+      'Troque a unidade do lote',
+      'Conferir o saldo do fermento',
+    ]) {
+      expect(() => exigirLinguaDoBalcao({ ...BOM, titulo }), titulo).not.toThrow()
+    }
+  })
+
   it('⛔ "o que fazer" sem verbo (um lamento, não uma ação)', () => {
     expect(() => exigirLinguaDoBalcao({ ...BOM, oQueFazer: 'o problema é da ficha' })).toThrow(
       /precisa começar por um verbo/,
