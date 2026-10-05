@@ -1759,6 +1759,70 @@ O golden da produção ficou vermelho e eu levei três medições pra ver que o 
 4. **M3 da FANTA UVA 2L** (7 UN no limbo): estornar o ajuste e contar na GARRAFA.
 5. Seguem abertas: a correção de dado da parcela #22 (saldo devedor R$ 9.729,34 a mais, DRE de setembro −R$ 505,01) · as 23 linhas de recontagem onde a variância gravada subestima · os 90 UN / R$ 768,59 do Combo (recomendação: registrar divergência) · os 6 nomes de bebida pendentes nos complementos.
 
+## ⭐⭐⭐ PÁGINA DA ORDEM v4 — UMA COLUNA DE INSUMO, BARRA DE PROGRESSO E A LINHA DO TEMPO (05/10/2026)
+
+**Mock aprovado no chat + a simplificação do dono.** Zero conta nova; o motor, o ledger e os invariantes P1-P8 **intocados**.
+
+**⭐ 1. CABEÇALHO** — *"← voltar pra produção"* + o **logo 48** + nome 19px + sublinha *"N× a receita (vX) · data · setor"* + o **PEDIDO em destaque** (24px tabular). ⭐⭐ **E o logo saiu da home pra virar componente único** (`components/estoque/logo-da-receita.tsx`): ele nasceu dentro de `producao/page.tsx` como `IconeDaFicha`, e **copiá-lo pra cá daria duas traduções de `nome → (ícone, cor)`** — elas divergiriam no 1º grupo novo do mapa e a MESMA receita apareceria com caras diferentes em duas telas, matando o reconhecimento, que é a razão de ele existir. ⚠️ **A palavra muda com a ORIGEM:** *"pedidas"* só quando o dono digitou; derivado diz **"esperadas"** — as 471 ordens que nasceram antes do `stock_ordem_meta` não têm pedido declarado (medido: **15 metas** gravadas na empresa), e chamar de "pedidas" um número que a ficha calculou afirmaria uma decisão que ninguém tomou (a mentira do *"pedido 0"*).
+
+**⭐⭐ 2. O TRILHO VIROU BARRA DE PROGRESSO** (`lib/stock/producao/trilho-da-ordem.ts`, PURA). 4 segmentos pintados de índigo até o atual, **✓ só nos passados** (no atual ele diria que acabou) e `role="progressbar"` com `aria-valuenow` — a barra tem que dizer o progresso pra quem usa leitor de tela, não só pra quem vê a cor.
+- ⛔⛔ **POR QUE É LIB E NÃO UM `map` NO JSX:** *"qual é o passo atual?"* é a MESMA pergunta que a página já respondia num `indexOf` solto, e o **CANCELADA é a borda que quebra qualquer versão ingênua** — ela não é "o 5º passo", ela é a ordem **saindo do trilho**. Pintar 1 de 4 nela diria *"está no começo"* numa ordem que acabou. Medido em prod: **74 canceladas → SEM BARRA**.
+- ⚠️ E **estado desconhecido** (um estado novo no banco que a tela ainda não conhece) também não inventa posição: devolve o trilho apagado em vez de chutar o 1º passo.
+
+**⭐⭐⭐ 3. INSUMOS — UMA COLUNA SÓ** (decisão do dono: *"nunca devolvem"*). Cartão *"O que saiu da prateleira"* + imprimir; por insumo, **UM número à direita**. ⛔ **As colunas PLANEJADO × EM PRODUÇÃO morreram porque eram o MESMO número** (`qtdSeparada` e "em produção" só divergem quando há devolução) — duas colunas iguais fazem o olho procurar a diferença que não existe. **CONCLUÍDA: o rótulo vira "consumido"**, porque o insumo já virou produto.
+- ⭐⭐ **O "DEVOLVER" SAI DA TELA E A CAPACIDADE FICA.** *"Botão morto = clique errado esperando"* — mas apagar o caminho de devolução **quebraria o invariante P1** (`Σ separado == Σ consumido + Σ devolvido`), que é o que prova que nada evapora entre a câmara e a panela. O guard é de **dois lados**: fora da tela **E** vivo na rota (`case 'devolver'`). Guard que só afirmasse a remoção aprovaria o dia em que a devolução sumisse de todo lugar.
+
+**⭐ 4. AÇÕES** — um primário índigo **por estado** (planejada → confirmar separação; separada → iniciar; **em produção → a âncora do `#concluir`**, não um 2º caminho de gravação) e *"Cancelar ordem"* de **contorno**. ⛔ Dois botões fortes competindo fazem a ação principal deixar de ser óbvia (a régua do *"um primário só"* da home), e por isso o guard fatia o bloco do próprio botão e exige que o cancelar **não** carregue `--prod-acao-bg`.
+
+**⭐⭐⭐ 5. AS ETAPAS VIRARAM LINHA DO TEMPO.** Feita = ✓ + pílula **"feita · 9min"** + mini-avatar (do componente único, hash estável) + horários; a **ATIVA acende** em índigo com relógio índigo e o cronômetro **AO VIVO**; a futura **apaga**. ⛔⛔ **O que a linha do tempo resolve e a lista não resolvia:** numa lista achatada passado, agora e futuro têm o MESMO peso, e a pergunta da tela é *"onde o lote está agora?"*. ⚠️ **Nada de comportamento mudou** — designar a dupla, o plano da etapa (dia + liberar pra equipe) e os dois gestos do gerente são os MESMOS.
+- ⛔⛔ **O TEXTO DO RELÓGIO TEM UM DONO SÓ:** `textoDoCronometro` (`mm:ss` abaixo de 1h, `h:mm` acima), a MESMA régua do *"HOJE ao vivo"*. Formatar aqui faria o mesmo lote mostrar dois tempos em duas telas.
+- ⛔⛔ **E O DESVIO DO APARELHO É MEDIDO, NUNCA SUPOSTO.** A rota passou a devolver `agoraServidor` **nos TRÊS caminhos** (GET, PATCH, POST) e a tela remede o desvio a cada resposta. Sem isso, um tablet atrasado faz a conta dar negativo e o `Math.max(0, …)` **para o cronômetro em 00:00 em vez de acusar** — o defeito exato de 08/09, que levou dois dias pra ser notado porque *mentir zero parece "ainda não começou"*. ⚠️ Um dos três caminhos esquecer o campo faria o cronômetro voltar a confiar no aparelho **só depois de um gesto**, e o guard exige os três.
+- ⚠️ **O intervalo de 1s só existe com etapa ATIVA** — ordem concluída não gasta um timer por segundo pra sempre (a régua do auto-refresh do HOJE: *recarregar o passado é gastar requisição num dia que não muda*).
+
+**⭐⭐ 6. CONCLUÍDA:** o par *"pedido 305 · fez X"* + a pílula **"N% do pedido"** da MESMA lib da lista (`pilulaDoPedido`), somando as **PARCIAIS** (uma ordem pode fechar em dois dias). ⛔ Ela **não é o fiscal nem o P8** — o bloco de eficiência/fiscal segue embaixo, intocado.
+
+**⭐ 2 TEMAS — A TELA INTEIRA PASSOU A LER TOKENS: 47 classes de paleta + 2 hex convertidos, ZERO cor cravada.** ⚠️ **E a conversão achou uma armadilha de CSS:** `bg-[var(--x)]/70` — opacidade sobre valor arbitrário — **não gera cor no Tailwind 3**: sai **transparente**. O aviso de eficiência ficaria sem fundo nenhum. O guard proíbe o sufixo.
+
+**GUARD NOVO** (`__tests__/regras-ui/pagina-da-ordem-v4.test.ts`, 28 asserções, **estrutural e assumido como tal** — sem jsdom). ⚠️ **Ele LÊ a tela SEM COMENTÁRIO, e isso não é detalhe:** o arquivo documenta no próprio texto os defeitos que ele matou (*"as colunas PLANEJADO × EM PRODUÇÃO morrem"*, *"a rota devolver segue viva"*) — lendo o texto cru, **o arquivo que documenta o defeito seria o que o absolve** (a 5ª "menção, não uso" desta casa).
+
+**REGRA 11 — 14 defeitos repostos, 14 vermelhos** (logo voltando pro 32 · ✓ no passo atual · rótulo de passo digitado na tela · devolver de volta · "separado" na concluída · cancelar com fundo de ação · cor cravada · opacidade sobre token · duas composições por viewport · relógio formatado na mão · desvio deixando de ser medido · a rota esquecendo o instante num dos 3 caminhos · a pílula perdendo a duração · o timer ligando sempre).
+
+**⚠️⚠️ E A REGRA 11 ME CORRIGIU NUMA ASSERÇÃO INGÊNUA:** eu contava `linhas.map(` pra provar *"uma composição"* — e a tela mapeia as linhas pra **CINCO perguntas diferentes** (a lista, o desencontro de separação, a previsão, a conclusão, o payload do consumo). O guard reprovava a tela CERTA. O que prova a composição única é a **lista ter um `<ul>` só dentro do cartão de insumos**; o resto não é vitrine. ⚠️ E o mesmo guard pegou um `color: '#fff'` meu no pontinho da etapa ativa — virou `--prod-acao-ink`, que é a tinta sobre fundo forte e **inverte no escuro**.
+
+**PROVADO EM PROD, nos DOIS viewports (REGRA 12) e nos DOIS temas — 20/20 em cada:**
+```
+CELULAR PAGE 200 em 226ms · JS 880 KB · CSS 175 KB      DESKTOP 200 em 151ms
+  ✓ "O que saiu da prateleira" · ✓ "voltar pra produção" · ✓ progressbar
+  ✓ "pedidas"/"esperadas" · ✓ a pílula "% do pedido" · ✓ "feita ·" · ✓ "no relógio"
+  ✓ "pedir pra finalizar" · ✓ "Cancelar ordem" · ✓ var(--prod-acao-bg)
+  ✓ var(--fam-indigo-bg) · ✓ "consumido " · ✓ "liberar pra equipe"
+  ⛔→✓ FORA: a coluna PLANEJADO · a coluna EM PRODUÇÃO · o gesto "devolver"
+  ✓ os 10 tokens da ordem nos DOIS temas (claro E escuro) · ✓ hex cravado: 0
+  ✓ UMA composição (nenhum bloco só-celular)
+
+A BARRA, por estado real:   PLANEJADA   0 ● · · ·    SEPARADA    1 ✓ ● · ·
+                            EM_PRODUCAO 2 ✓ ✓ ● ·    CONCLUIDA 412 ✓ ✓ ✓ ●
+                            CANCELADA  74 — SEM BARRA — (pintados 0/4) ⭐
+
+A LINHA DO TEMPO pela ROTA REAL (200) · ⭐ agoraServidor 2026-10-05T19:18:29Z
+  passado ✓  rala queijo   FEITA           9min   gerente
+  AGORA ●    porcao        EM_ANDAMENTO  131min   lucas
+  ⭐ o cronômetro vivo: "no relógio · 12:57" (a régua da casa, a mesma do HOJE)
+
+O CABEÇALHO da concluída: [calabresa/rosa] porcao de calabresa 100 grama
+  pedido 61 UN esperadas (DERIVADO) · fez 57 · 93% do pedido [verde]
+REGRESSÃO: a HOME da produção (com o logo extraído pro dono único) → 200 ✓
+```
+**904 arquivos · 11.698 verdes · TS 0 · migration NENHUMA · zero escrita em prod · deploy 4/4 (`NE9wq4CLb8AOd9aOtyvcZ`) · Δ bundle +20 KB.**
+
+⚠️ **UMA DIVERGÊNCIA DO PEDIDO, REGISTRADA E NÃO "CONSERTADA" EM SILÊNCIO:** o dono escreveu *"no relógio · **1h26**"*, e a régua da casa imprime **`1:26`** acima de uma hora (e `mm:ss` abaixo). ⛔ Mudar o glifo mudaria **o cronômetro grande do "HOJE ao vivo"**, que é tela aprovada e usa a MESMA função — e duas funções de relógio fariam o mesmo lote mostrar dois tempos em duas telas. **Fica como está até ele decidir:** ou os dois passam a dizer `1h26`, ou os dois continuam em `1:26`.
+
+⚠️ **E A PÍLULA TORNOU VISÍVEL UM DADO PODRE QUE JÁ ERA CONHECIDO:** as duas ordens de **22.864** (MAIONESE e CUBA, o erro de grandeza de 19/09) agora mostram **"⚠ 100000% do pedido"** em vermelho no cabeçalho. É honesto — o dado ESTÁ errado — e é o par de conclusões outlier que segue **registrado como decisão do dono** (estornar ou registrar divergência).
+
+⚠️ **SCREENSHOT INDISPONÍVEL** (a extensão do Chrome não está ligada nesta sessão): a prova dos 2 temas é **medida no que prod serve** — **zero hex de cor cravado** no bundle da tela e os 10 tokens que ela pinta existem **nos dois mapas** do CSS. Falta o olho do dono.
+
+📋 **FICA PRO DONO:** navegar a ordem em produção (a do `lucas`, com o cronômetro andando) no celular e no computador, nos dois temas — e decidir o glifo do relógio (`1h26` × `1:26`).
+
 ## ⭐⭐ LISTA DE CONCLUÍDAS v4 — LOGOS, PEDIDO REDONDO, A PÍLULA COM SOBRENOME (05/10/2026)
 
 **Mock aprovado no chat, 5 itens. E a prova em prod achou o defeito do dia depois de os 5 estarem verdes.**
