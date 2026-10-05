@@ -54,10 +54,32 @@ describe('⭐⭐ o topo: título, linha editorial e UM primário', () => {
    * único botão forte da tela ficaria branco sobre lilás claro. Então o guard passou a exigir
    * também o TOKEN DE TINTA, que a versão anterior nem olhava.
    */
+  /**
+   * ⚠️⚠️ REAPONTADO em 04/10 (os 3 ajustes do dono) — **e ficou mais forte, não mais frouxo.**
+   * A régua é *"dois primários não competem"*, e um **PONTINHO de 7px sem texto não disputa o
+   * papel de ação principal** — ele é SINAL (o fiscal acusou impossível naquela linha). O que
+   * continua proibido é cor forte em CONTROLE: botão, chip, linha inteira. Então o guard passou
+   * a separar os dois papéis **e a travar o sinal no tamanho de sinal**: no dia em que alguém
+   * der `px-2 py-1` e um rótulo ao pontinho, ele vira um botão coral competindo com o
+   * "Nova ordem" — e aí o teste morde.
+   */
   it('⭐⭐ cor forte preenchida aparece em DOIS lugares, e os dois são primários', () => {
     const tela = semComentario(ler(TELA))
-    const familia = [...tela.matchAll(/background: 'var\(--fam-[a-z]+-mid\)'/g)]
+    const todos = [...tela.matchAll(/background: 'var\(--fam-[a-z]+-mid\)'/g)]
     const acao = [...tela.matchAll(/background: 'var\(--prod-acao-bg\)'/g)]
+
+    // ⭐ o SINAL do fiscal: círculo de tamanho fixo, sem texto, com nome pra leitor de tela
+    const iSinal = tela.indexOf('{c.fiscalImpossivel && (')
+    const sinal = tela.slice(iSinal)
+    const tagDoSinal = sinal.slice(0, sinal.indexOf('/>') + 2)
+    expect(tagDoSinal, 'o pontinho é um círculo de 7px').toMatch(/h-\[7px\] w-\[7px\][^"]*rounded-full/)
+    expect(tagDoSinal, 'sinal sem nome é enfeite').toMatch(/aria-label=/)
+    expect(/px-|py-|text-\[/.test(tagDoSinal), 'pontinho com padding/texto é um botão disfarçado').toBe(false)
+    /** ⚠️ por POSIÇÃO, nunca por texto: filtrar pelo literal apagaria um coral legítimo
+     *  de outro lugar da tela, e aí o guard deixaria de contar o que ele existe pra contar. */
+    const fimDoSinal = iSinal + tagDoSinal.length
+    const familia = todos.filter((u) => u.index! < iSinal || u.index! >= fimDoSinal)
+
     expect(
       familia.length + acao.length,
       'cor forte preenchida fora dos primários = dois primários competindo',
@@ -80,7 +102,10 @@ describe('⭐⭐ o topo: título, linha editorial e UM primário', () => {
     const chips = [...tela.matchAll(/<ChipNav href=/g)]
     expect(chips.length, 'os 6 atalhos do mock').toBe(6)
 
-    const comp = tela.slice(tela.indexOf('function ChipNav'), tela.indexOf('function PilulaEf'))
+    /** ⚠️ a fatia terminava em `function PilulaEf`, que o dono APOSENTOU em 04/10 — com
+     *  `indexOf` devolvendo −1 o slice passou a varrer a tela inteira e mordeu o `ativo` do
+     *  `CardMetrica` (que é filtro legítimo). Reapontado pro vizinho que existe. */
+    const comp = tela.slice(tela.indexOf('function ChipNav'), tela.indexOf('function dataPorExtenso'))
     expect(comp, 'o ChipNav não pode ter prop de ativo/aceso').not.toMatch(/\bativo\b|\baceso\b|\batual\b/)
     expect(comp, 'nem estilo condicional (um ternário de cor é um chip aceso disfarçado)').not.toMatch(/\?.*background|background.*\?/)
   })
@@ -154,21 +179,43 @@ describe('⭐ as listas: avatar, par tipográfico e pílula', () => {
    * a eficiência congelada contra a FICHA, a que o juiz P8 lê). Quem "simplificar" isso numa
    * divisão faz a tela e o e-mail do P8 discordarem sobre o mesmo lote.
    */
-  it('⛔⛔ a tela NÃO divide nada pra achar a eficiência', () => {
+  /**
+   * ⚠️⚠️ **INVERTIDO em 04/10 com o motivo escrito.** A metade CERTA deste caso — *"a tela NÃO
+   * divide nada"* — continua sendo o que ele prova, e ficou mais apertada. O que caiu foi a
+   * PÍLULA: ordem do dono, *"a pílula de % SAI DA LISTA da home — ela confundia, parecia
+   * fez÷pedido e não é"*. ⭐ É a confissão do defeito que o comentário antigo deste arquivo já
+   * descrevia (*"o par e a pílula têm denominadores diferentes"*): o problema não era a conta,
+   * era **a tela pôr os dois lado a lado sem a régua**. Agora a lista mostra só o par de
+   * números COM AS PALAVRAS, e o percentual vive onde tem a coluna do pedido ao lado (a tela
+   * "Por dia") e no bloco de eficiência da ordem.
+   */
+  it('⛔⛔ a tela NÃO divide nada — e a pílula SAIU da lista', () => {
     const tela = semComentario(ler(TELA))
     const lista = tela.slice(tela.indexOf('function ListaConcluidas'))
-    expect(lista, 'a pílula lê o pct CONGELADO').toMatch(/<PilulaEf pct=\{c\.pct\}/)
+    expect(lista, 'a pílula de % voltou pra lista e o par volta a parecer fez÷pedido').not.toMatch(/PilulaEf/)
     expect(
       /qtdGerada\s*\/|\/\s*pf\?\.pedido|\/\s*pedido\b/.test(lista),
-      'nenhuma divisão: o pct vem congelado do servidor',
+      'nenhuma divisão: percentual nenhum nasce aqui',
     ).toBe(false)
+    // ⭐ o que ficou: os DOIS números com as PALAVRAS escritas (nunca dois números soltos)
+    expect(lista, 'a palavra "pedido" ao lado do número').toMatch(/>pedido </)
+    expect(lista, 'a palavra "fez" ao lado do número').toMatch(/>fez </)
   })
 
-  it('⭐ a pílula usa a régua da casa (faixaDoSelo), não degraus próprios', () => {
+  /**
+   * ⚠️ REAPONTADO, não apagado: a régua da casa (`faixaDoSelo`) **não morreu com a pílula** —
+   * ela continua servindo a tela "Por dia" e o juiz P8. Guard que só afirmasse a remoção
+   * aprovaria o dia em que o percentual sumisse de todo lugar.
+   */
+  it('⭐ a régua da casa (faixaDoSelo) continua viva onde o % tem coluna ao lado', () => {
     const tela = semComentario(ler(TELA))
-    const p = tela.slice(tela.indexOf('function PilulaEf'), tela.indexOf('function dataPorExtenso'))
-    expect(p).toContain('faixaDoSelo(')
-    expect(/0\.9|0\.85|1\.1|1\.15|>= 90|< 70/.test(p), 'número de faixa digitado na tela é a 2ª régua').toBe(false)
+    expect(tela, 'a home não importa mais a régua — ela não desenha percentual').not.toContain('faixaDoSelo')
+    const porDia = semComentario(ler('app/(dashboard)/empresas/[id]/estoque/producao/por-dia/page.tsx'))
+    expect(porDia, 'na "Por dia" o percentual fica ao lado do pedido').toContain('faixaDoSelo(')
+    expect(
+      /0\.9|0\.85|1\.1|1\.15|>= 90|< 70/.test(porDia),
+      'número de faixa digitado na tela é a 2ª régua',
+    ).toBe(false)
   })
 
   /**

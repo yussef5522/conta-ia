@@ -20,10 +20,8 @@ import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
 import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio, BarChart3, ArrowRight, CalendarDays, Beef, Wheat, Scissors, ChefHat, Flame, Gauge, Clock } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
 import { formatarDuracao } from '@/lib/format/duracao'
-import { BlocoDeAvisos } from '@/components/avisos/bloco-do-setor'
 import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
 import { caraDaReceita, type IconeDaReceita } from '@/lib/stock/producao/cara-da-receita'
-import { faixaDoSelo } from '@/lib/stock/producao/eficiencia-da-ordem'
 import type { Quantidade } from '@/lib/stock/producao/desempenho'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
@@ -36,7 +34,13 @@ type Aberta = Ordem & { deOntem?: boolean }
 /** ⭐ o que a rota passou a mandar pro mock v3 (quem/começou/pedido) */
 interface Contexto { pedido: number | null; pedidoOrigem: 'DECLARADO' | 'DERIVADO' | null; quem: string[]; comecouEm: string | null }
 interface PedidoFeito { pedido: number | null; origem: 'DECLARADO' | 'DERIVADO' | null }
-interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string; pct: number | null; faixa: string; motivo: string | null; selo: 'FICHA' | 'SEM_DADO' }
+interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string; pct: number | null; faixa: string; motivo: string | null; selo: 'FICHA' | 'SEM_DADO'
+  /**
+   * ⭐⭐ O FISCAL: `true` quando o declarado NÃO cabe no material separado (>120% físico).
+   * ⚠️ Vem do SERVIDOR calculado — a tela não divide nada. Se ela derivasse, seria a 2ª régua
+   * do fiscal, e ela discordaria do sininho e da página da ordem no 1º ajuste de teto.
+   */
+  fiscalImpossivel: boolean }
 
 // ⭐ PALETA APROVADA NO MOCKUP (01/09/2026). Cor SÓ com significado — status, desvio,
 // dinheiro parado. Texto sobre fundo colorido usa o tom escuro da MESMA família, nunca
@@ -165,21 +169,19 @@ function ChipNav({ href, Icone, children }: { href: string; Icone: typeof Beef; 
 }
 
 /**
- * ⭐⭐ A PÍLULA DE EFICIÊNCIA — a tela só PINTA; o degrau sai do `faixaDoSelo`, que lê as duas
- * constantes da casa (`DESVIO_ALERTA` do P8/P3 e o `DESVIO_GRAVE` do P3). Mesma régua da tela
- * "Por dia" — duas pílulas com réguas próprias divergiriam no primeiro ajuste de faixa.
+ * ⛔⛔ **A PÍLULA DE EFICIÊNCIA FOI APAGADA DAQUI (decisão do dono, 04/10).**
+ *
+ * *"A pílula de % SAI DA LISTA da home — ela confundia: parecia fez÷pedido e não é."*
+ *
+ * ⛔ **Apagada, não comentada:** *função sem chamador é função que alguém religa por descuido*
+ * (a régua da faxina de 15/09). Enquanto o componente existisse aqui, a próxima volta desta
+ * tela o recolocaria na linha "porque já estava pronto".
+ *
+ * ⭐ **A régua não morreu e nem virou cópia:** quem pinta o degrau é `faixaDoSelo`, e ele
+ * continua servindo a tela **"Por dia"** (que é relatório, onde a coluna do pedido está ao
+ * lado e o percentual tem régua visível) e o **juiz P8**. O que saiu foi o percentual na tela
+ * de TRABALHO, ao lado de dois números que não são o denominador dele.
  */
-function PilulaEf({ pct }: { pct: number | null }) {
-  const faixa = faixaDoSelo(pct == null ? null : pct * 100)
-  if (faixa === 'SEM_PEDIDO') return null
-  const t = fam(faixa === 'DENTRO' ? 'verde' : faixa === 'FORA' ? 'ambar' : 'coral')
-  return (
-    <span className="num shrink-0 rounded-full px-2 py-[3px] text-[12px] font-medium"
-      style={{ background: t.bg, color: t.ink }}>
-      {faixa === 'EXTREMO' ? '⚠ ' : ''}{Math.round(pct! * 100)}%
-    </span>
-  )
-}
 
 /** ⭐ a data por extenso da linha editorial — `null` nunca vira data de hoje chutada */
 function dataPorExtenso(iso: string): string {
@@ -338,13 +340,19 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
       )}
 
       {/**
-        * ⭐⭐⭐ O BLOCO DE AVISOS DE **PRODUÇÃO** — entre os cartões e as listas, como o dono
-        * pediu. ⛔⛔ E ele recebe `setor="producao"` CRAVADO: *"financeiro NUNCA aparece na
-        * produção"* é LEI, e a lei é aplicada no WHERE da rota (`avisosDoSetor`), não numa
-        * escolha desta tela — se a tela decidisse, a próxima tela decidiria de novo.
-        * ⭐ Some sozinho quando não há aviso: móvel zerado treina o dono a não olhar.
+        * ⛔⛔ **O BLOCO DE AVISOS INLINE MORREU (decisão do dono, 04/10).** Ele ficou ~2 horas na
+        * tela e saiu: *"avisos SÓ no sininho do topo (contador + painel). Home limpa: título →
+        * cartões → listas."*
+        *
+        * ⭐ **A FUNÇÃO NÃO MORREU — ela já tinha casa:** o sininho global mostra os mesmos
+        * avisos, agrupados por setor, com contador e "marcar lido". *Remoção sem realocação é
+        * perda* (a régua de 10/09); aqui a realocação já existia, e o que saiu foi a SEGUNDA
+        * vitrine do mesmo dado no meio da tela de trabalho.
+        *
+        * ⚠️ `components/avisos/bloco-do-setor.tsx` fica GUARDADO com selo de dívida — e o guard
+        * `avisos-so-no-sininho.test.ts` proíbe qualquer tela de voltar a montá-lo **sem o dono
+        * pedir**. Não é lixo: é uma capacidade que espera a palavra dele.
         */}
-      <BlocoDeAvisos empresaId={id} setor="producao" />
 
       {/**
         * ⛔⛔ **O BANNER ÂMBAR MORREU (decisão de design do dono, 04/10):** *"NADA de fundo bege
@@ -885,13 +893,19 @@ function ListaAbertas({ id, ordens, ctx, deOntem, soDeOntem, onFiltrarOntem }: {
 }
 
 /**
- * ⭐⭐⭐ CONCLUÍDAS (mock v3) — avatar colorido + nome + sublinha + o par *"pedido → fez"* + pílula.
+ * ⭐⭐⭐ CONCLUÍDAS — avatar colorido + nome + sublinha + **"pedido N · fez M"**, com as PALAVRAS.
  *
- * ⚠️⚠️ **O PAR E A PÍLULA TÊM DENOMINADORES DIFERENTES, e é de propósito.** O par diz *"o que eu
- * pedi → o que saiu"* (o `stockOrdemMeta`); a pílula diz *"o que saiu ÷ o que a FICHA promete"*
- * — a eficiência CONGELADA que o juiz P8 lê. **`fez ÷ pedido` NÃO é a pílula.** Quem
- * "simplificar" isso numa divisão vai fazer a tela e o e-mail do P8 discordarem sobre o mesmo
- * lote, que é a doença que este módulo mais paga.
+ * ⛔⛔ **A PÍLULA DE % SAIU DAQUI (decisão do dono, 04/10) — e o motivo é o que ele viu na tela:**
+ * *"ela confundia: parecia fez÷pedido e não é"*. O doc antigo deste bloco até explicava que os
+ * denominadores eram diferentes (a pílula é *"saiu ÷ o que a FICHA promete"*, congelada pro
+ * juiz P8) — **mas explicação em comentário não chega na tela**. Dois números e um percentual
+ * lado a lado, o percentual **não** sendo a razão dos dois, é uma conta que o olho faz errado
+ * e ninguém desmente. *A régua: número em tela de dinheiro/produção sem régua visível é pior
+ * que ausência.* ⭐ **A eficiência não morreu — ela está na PÁGINA DA ORDEM**, com a conta
+ * aberta componente a componente, e no SININHO quando vira padrão.
+ *
+ * ⭐⭐ **E AS PALAVRAS SÃO OBRIGATÓRIAS:** *"nunca dois números soltos pra adivinhar"*. `120 →
+ * 148` exige que o leitor saiba qual é qual; `pedido 120 · fez 148` não exige nada.
  *
  * ⭐ O avatar é o MESMO componente da tela "Por dia" (`AvatarPessoa`): cor estável por hash do
  * nome, iniciais 1º+último. Dois avatares com hashes próprios dariam cores diferentes pra mesma
@@ -949,13 +963,21 @@ function ListaConcluidas({ id, itens, periodo, nomePorOrdem, unidadePorOrdem, pe
                   * ⚠️ Ordem antiga sem pedido mostra SÓ o "fez" — inventar um pedido pra completar
                   * o par seria o "pedido 0" que a tela Por dia já teve que consertar.
                   */}
+                {/**
+                  * ⭐⭐ SÓ DOIS NÚMEROS, COM AS PALAVRAS AO LADO — *"pedido 120 · fez 148"*.
+                  * ⚠️ Ordem antiga sem pedido mostra **só o "fez"**: inventar um pedido pra
+                  * completar o par seria o *"pedido 0"* que a tela Por dia já teve que consertar
+                  * — e ali ele se lia como *"pedi zero"*.
+                  */}
                 <span className="num ml-auto shrink-0 whitespace-nowrap pl-11 text-right lg:ml-0 lg:pl-0">
                   {pf?.pedido != null && (
                     <>
-                      <span className="text-[14.5px]" style={{ color: 'var(--prod-muted)' }}>{fmtQtd(pf.pedido)}</span>
-                      <ArrowRight className="mx-1 inline h-3.5 w-3.5 align-[-2px]" style={{ color: 'var(--prod-muted)' }} />
+                      <span className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>pedido </span>
+                      <span className="text-[14.5px]" style={{ color: 'var(--prod-secondary)' }}>{fmtQtd(pf.pedido)}</span>
+                      <span className="mx-1.5 text-[12.5px]" style={{ color: 'var(--prod-line-strong)' }}>·</span>
                     </>
                   )}
+                  <span className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>fez </span>
                   <span className="text-[16px] font-medium" style={{ color: 'var(--prod-primary)' }}>
                     {fmtQtd(c.qtdGerada)}
                   </span>
@@ -963,11 +985,24 @@ function ListaConcluidas({ id, itens, periodo, nomePorOrdem, unidadePorOrdem, pe
                 </span>
 
                 {/**
-                  * ⭐ A PÍLULA — `selo === 'FICHA'` é o que separa lote JULGADO de FÓSSIL: lote
-                  * anterior ao sprint não tem régua congelada, e recalcular daria ficção (o
-                  * fóssil de 21/08 daria 2500% por causa da ficha da época).
+                  * ⭐⭐⭐ O ÚNICO RESTO VISUAL DO FISCAL: um PONTINHO vermelho quando o declarado
+                  * **não cabe** no material separado (>120% físico). **Sem número, sem pílula** —
+                  * ordem do dono.
+                  *
+                  * ⛔ Ele é um SINAL, não um veredito: a conta mora na página da ordem (a linha
+                  * inteira já é o link pra lá). Pôr o número aqui recriaria exatamente o que a
+                  * pílula fazia de errado — um percentual sem a régua ao lado.
+                  * ⚠️ E o `title` existe porque pontinho sem nome é enfeite: no desktop ele diz
+                  * o que é antes do clique.
                   */}
-                {c.selo === 'FICHA' && <PilulaEf pct={c.pct} />}
+                {c.fiscalImpossivel && (
+                  <span
+                    aria-label="o declarado não cabe no material separado — abra a ordem"
+                    title="o declarado não cabe no material separado — abra a ordem pra ver a conta"
+                    className="h-[7px] w-[7px] shrink-0 rounded-full"
+                    style={{ background: 'var(--fam-coral-mid)' }}
+                  />
+                )}
 
                 <ChevronRight className="hidden h-4 w-4 shrink-0 lg:block" style={{ color: 'var(--prod-muted)' }} />
               </a>

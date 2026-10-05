@@ -9,6 +9,7 @@ import { listOrdens, criarOrdem, OrdemError } from '@/lib/stock/producao/ordens'
 import { sugestoesDeProducao } from '@/lib/stock/producao/sugestao-cardapio'
 import { cardsDoPainel, lotesDoPeriodo, ESTADOS_ABERTOS, ehDeOntem } from '@/lib/stock/producao/painel-producao'
 import { conclusoesNoPeriodo } from '@/lib/stock/producao/conclusao'
+import { fiscalDeOrdens } from '@/lib/stock/producao/fiscal-dos-lotes'
 import { contextoDasAbertas, pedidoPorOrdem } from '@/lib/stock/producao/contexto-das-abertas'
 import { somarQuantidades } from '@/lib/stock/producao/desempenho'
 import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
@@ -46,6 +47,14 @@ export async function GET(request: NextRequest, { params }: Params) {
   // ⭐ o selo de % por linha — MESMA fonte do card "Rendimento"
   const lotes = await lotesDoPeriodo(companyId, { de, ate }, prisma)
   const seloPorConclusao = new Map(lotes.map((l) => [l.conclusaoId, l]))
+  /**
+   * ⭐⭐ O FISCAL — *"o declarado cabe no material separado?"*. Em LOTE (4 consultas pra N
+   * ordens), nunca uma por ordem: esta é a tela que o dono abre todo dia.
+   * ⛔ A tela recebe só o BOOLEANO: o pontinho é SINAL, e a conta mora na página da ordem.
+   * Mandar o número pra cá abriria a porta pra alguém o desenhar e recriar a pílula que o dono
+   * acabou de mandar embora.
+   */
+  const fiscal = await fiscalDeOrdens(companyId, [...new Set(concluidas.map((c) => c.ordemId))], prisma)
   const abertas = ordens
     .filter((o) => (ESTADOS_ABERTOS as readonly string[]).includes(o.estado))
     .map((o) => ({ ...o, deOntem: ehDeOntem(new Date(o.dataProducao), agora) }))
@@ -92,7 +101,12 @@ export async function GET(request: NextRequest, { params }: Params) {
     hoje: { dia: hoje, produzido: produzidoHoje, lotes: doDia.length },
     concluidas: concluidas.map((c) => {
       const s = seloPorConclusao.get(c.id)
-      return { ...c, pct: s?.pct ?? null, faixa: s?.faixa ?? 'SEM_REGUA', motivo: s?.motivo ?? null, selo: s?.selo ?? 'SEM_DADO' }
+      return {
+        ...c,
+        pct: s?.pct ?? null, faixa: s?.faixa ?? 'SEM_REGUA', motivo: s?.motivo ?? null,
+        selo: s?.selo ?? 'SEM_DADO',
+        fiscalImpossivel: fiscal.get(c.ordemId)?.impossivel ?? false,
+      }
     }),
     // ⚠️ o período ECOA os DIAS pedidos (calendário de SP), nunca o recorte UTC — senão a
     // tela imprimiria 'de 04/09' pra uma janela que começa no dia 05.

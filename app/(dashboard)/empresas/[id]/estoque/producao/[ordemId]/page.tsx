@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState, use } from 'react'
 import { escalaDoConsumo, preverSaida, eficienciaMedia, avaliarVariacao } from '@/lib/stock/producao/previsao-rendimento'
 import { insumoDoPedido } from '@/lib/stock/producao/escala-da-ordem'
-import { eficienciaDaOrdem } from '@/lib/stock/producao/eficiencia-da-ordem'
+import { eficienciaDaOrdem, fraseDoFiscal } from '@/lib/stock/producao/eficiencia-da-ordem'
 import { fraseDoCiclo } from '@/lib/stock/producao/pedido-da-ordem'
 import { formatarQtd } from '@/lib/stock/quantidade'
 import { Card, CardContent } from '@/components/ui/card'
@@ -463,6 +463,26 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
               })}
             </span>
           </div>
+          {/**
+            * ⭐⭐⭐ O FISCAL — *"o declarado cabe no material separado?"* (04/10).
+            *
+            * **Ordem do dono:** a conta da régua do P8, **pela FICHA inteira**, aparece AQUI com
+            * a frase de balcão: *"pelo material separado, a receita permite ~N; foram declaradas
+            * M"*. ⭐ É a casa certa porque é aqui que a conta está ABERTA, componente a
+            * componente, logo abaixo — o dono vê o número E de onde ele veio.
+            *
+            * ⛔ A frase sai da LIB (`fraseDoFiscal`); montá-la aqui faria a mesma sentença
+            * existir nesta tela e no aviso do sininho, e divergir no 1º ajuste de rótulo.
+            * ⚠️ O destaque CORAL é só no impossível (>120%): marcar os 110% normais de coral
+            * treinaria o dono a ignorar o bloco, que é como o alarme de 26/08 morreu.
+            */}
+          {eficiencia.fiscal.permitido != null && (
+            <p
+              className={`mt-1 text-xs ${eficiencia.fiscal.impossivel ? 'font-medium text-rose-700' : 'text-slate-500'}`}
+            >
+              {fraseDoFiscal(eficiencia.fiscal, eficiencia.produzido, ordem.unidadeProduzido)}
+            </p>
+          )}
           {/* ⚠️ A FRASE SÓ NO LADO DE BAIXO: render acima do prometido não é prejuízo (é ficha
               generosa), e cobrar explicação ali treinaria o dono a ignorar o bloco. */}
           {eficiencia.alerta && (

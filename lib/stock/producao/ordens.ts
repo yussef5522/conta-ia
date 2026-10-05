@@ -210,6 +210,37 @@ export async function consumoDaOrdem(companyId: string, ordemId: string, db: Db)
   return m
 }
 
+/**
+ * ⭐⭐ O CONSUMO DE **N ORDENS** NUMA CONSULTA (04/10/2026) — pro fiscal da lista da home.
+ *
+ * ⛔⛔ **EM LOTE, nunca uma por ordem.** A home mostra até 30 conclusões por vez; chamar
+ * `consumoDaOrdem` numa `.map` seria **30 round-trips** numa tela que o dono abre todo dia —
+ * é literalmente o defeito medido de 28/09 (`listFichas` com `for … await` custou **4.909 ms e
+ * 1.786 consultas**). Uma consulta, agrupada em memória.
+ *
+ * ⚠️ Lê o MESMO filtro de `consumoDaOrdem` (`receiptId` + `TIPO_CONSUMO`) — se um dia a
+ * identidade do consumo mudar, as duas mudam juntas ou o teste do fiscal quebra.
+ */
+export async function consumidoPorOrdem(
+  companyId: string,
+  ordemIds: string[],
+  db: Db,
+): Promise<Map<string, Map<string, number>>> {
+  const out = new Map<string, Map<string, number>>()
+  if (!ordemIds.length) return out
+  const movs = await db.stockMovement.findMany({
+    where: { companyId, receiptId: { in: ordemIds }, tipo: TIPO_CONSUMO },
+    select: { receiptId: true, itemId: true, quantidade: true },
+  })
+  for (const mv of movs) {
+    if (!mv.receiptId) continue
+    const porItem = out.get(mv.receiptId) ?? new Map<string, number>()
+    porItem.set(mv.itemId, round6((porItem.get(mv.itemId) ?? 0) + Math.abs(mv.quantidade)))
+    out.set(mv.receiptId, porItem)
+  }
+  return out
+}
+
 export async function explodirSeparacao(companyId: string, ordemId: string, db: Db = defaultPrisma): Promise<{ ordem: OrdemView; linhas: SeparacaoLinha[] }> {
   const ordem = await getOrdem(companyId, ordemId, db)
   if (!ordem) throw new OrdemError('Ordem não encontrada.')

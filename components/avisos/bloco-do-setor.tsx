@@ -7,7 +7,26 @@ import { FAMILIA_DA_SEVERIDADE, ROTULO_DO_SETOR, type Setor } from '@/lib/avisos
 import type { AvisoNaTela } from '@/lib/avisos/central'
 
 /**
- * ⭐⭐⭐ O BLOCO FINO DE AVISOS POR SETOR (04/10/2026).
+ * ⛔⛔⛔ **CAPACIDADE GUARDADA — NÃO É LIXO, É DÍVIDA REGISTRADA.**
+ *
+ * **Decisão do dono (04/10, ~2h depois de este bloco subir):** *"o bloco inline MORRE — avisos
+ * só no sininho do topo (contador + painel). Home limpa: título → cartões → listas. Componente
+ * guardado; **nada de aviso inline em tela nenhuma sem o dono pedir**."*
+ *
+ * ⭐ **A FUNÇÃO NÃO SE PERDEU:** o sininho global mostra os MESMOS avisos (mesma rota, mesma
+ * leitura, agrupados por setor, com contador e "marcar lido"). O que saiu foi a **segunda
+ * vitrine do mesmo dado** no meio da tela de trabalho — e duas vitrines do mesmo fato é a
+ * doença que este projeto mais paga.
+ *
+ * ⚠️ **Por que o arquivo FICA:** o pedido original era *"estoque e financeiro ganham o bloco
+ * depois, mesmo componente"*. Se ele for apagado, no dia em que o dono pedir alguém escreve um
+ * segundo — e o segundo divergiria na primeira frase ajustada. O guard
+ * `__tests__/regras-ui/avisos-so-no-sininho.test.ts` exige que este selo continue aqui (senão a
+ * próxima faxina trata como código morto) **e** proíbe qualquer tela de montá-lo sem o dono
+ * pedir. É o mesmo tratamento das 4 capacidades guardadas da faxina do Pendentes (15/09).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O BLOCO FINO DE AVISOS POR SETOR (04/10/2026).
  *
  * **Pedido do dono:** *"E POR SETOR dentro das telas: bloco fino entre os cartões e as listas
  * (1 linha por aviso + link; máx 2-3 + 'ver todos'; some quando zero). Na home de PRODUÇÃO só

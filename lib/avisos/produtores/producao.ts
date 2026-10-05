@@ -22,6 +22,7 @@ import { avaliarLinguaDoBalcao } from '../lingua-do-balcao'
 import { acharPadrao, fraseDoPadrao, type LoteMedido } from '../padrao-de-rendimento'
 import { faixaDoSelo, DESVIO_GRAVE } from '@/lib/stock/producao/eficiencia-da-ordem'
 import { fichasParaConverter } from '@/lib/stock/producao/fichas-para-converter'
+import { fiscalDeOrdens } from '@/lib/stock/producao/fiscal-dos-lotes'
 import type { NovoAviso } from '../tipos'
 
 /**
@@ -365,7 +366,76 @@ async function loteDeGrandezaImpossivel(companyId: string, r: ResumoDaCarga, db:
 }
 
 /**
- * ⭐⭐⭐ A PORTA: roda os 4 produtores de produção pra uma empresa.
+ * ⭐⭐⭐ (5) O FISCAL NO SININHO — *"o declarado cabe no material separado?"* (04/10/2026).
+ *
+ * **Ordem do dono:** *"no SININHO quando vira padrão ou caso impossível (>120% físico):
+ * 'NATHALIA declarou 144 com material pra ~51 — confere o lançamento', com link pra ordem"*.
+ *
+ * ⛔⛔ **CASO IMPOSSÍVEL É A EXCEÇÃO DECLARADA À REGRA DO PADRÃO — e o dono a nomeou.** A régua
+ * geral é *"nunca por lote isolado, variação de carne é natural"*; mas **declarar 144 unidades
+ * com material pra 51 não é variação, é lançamento errado**, e ele já envenenou o custo médio
+ * do item no instante em que foi gravado (a família do `22864` que eram 22,864 kg). Esperar três
+ * repetições aqui seria esperar o erro virar norma.
+ *
+ * ⭐ **E o aviso NOMEIA QUEM DECLAROU**, como ele pediu — a frase é pra o dono conversar com a
+ * pessoa, não pra ele adivinhar quem foi.
+ *
+ * ⚠️ **ZERO CONTA NOVA:** a decisão é do `fiscalDoDeclarado` (que deriva de `insumoDoPedido`);
+ * este produtor só traduz em frase e grava.
+ */
+async function fiscalDoDeclaradoNoSininho(companyId: string, r: ResumoDaCarga, db: Db): Promise<void> {
+  const desde = new Date(Date.now() - JANELA_DIAS * 86400000)
+  const conclusoes = await db.stockProducaoConclusao.findMany({
+    where: { companyId, criadoEm: { gte: desde } },
+    select: { ordemId: true, colaboradorId: true, criadoEm: true },
+    orderBy: { criadoEm: 'asc' },
+  })
+  if (!conclusoes.length) {
+    r.resolvidos += await reconciliarOrigem(companyId, 'FISCAL_DECLARADO', [], db)
+    return
+  }
+
+  const fiscais = await fiscalDeOrdens(companyId, conclusoes.map((c) => c.ordemId), db)
+  const colabs = await db.stockColaborador.findMany({ where: { companyId }, select: { id: true, nome: true } })
+  const nomeDoColab = new Map(colabs.map((c) => [c.id, c.nome]))
+  /** ⭐ quem declarou: a ÚLTIMA conclusão da ordem é quem fechou o número */
+  const quemDaOrdem = new Map<string, string | null>()
+  for (const c of conclusoes) {
+    quemDaOrdem.set(c.ordemId, c.colaboradorId ? (nomeDoColab.get(c.colaboradorId) ?? null) : null)
+  }
+
+  const vivos: string[] = []
+  for (const [ordemId, f] of fiscais) {
+    if (!f.impossivel || f.permitido == null) continue
+    vivos.push(ordemId)
+    const quem = quemDaOrdem.get(ordemId)
+    /** ⚠️ sem nome a frase NÃO inventa pessoa — ela fala do lote (a lição de hoje) */
+    const sujeito = quem ? `${quem} declarou` : 'Foram declaradas'
+    const gargalo = f.gargalo ? ` (o limite é ${f.gargalo})` : ''
+    await gravar(
+      {
+        companyId,
+        setor: 'producao',
+        severidade: 'vermelho',
+        titulo: `Confere o lançamento de ${f.produto} — declarou mais do que o material dava`,
+        corpo:
+          `${sujeito} ${f.declarado} ${f.unidade} com material pra ~${f.permitido} ${f.unidade}${gargalo}. ` +
+          `Isso não é rendimento bom: ou saiu unidade que ninguém contou, ou o consumo não foi lançado inteiro.`,
+        oQueFazer: `Abra a ordem e confira quantas ${f.unidade} saíram de verdade — e se todo o material usado foi lançado.`,
+        acaoRotulo: 'abrir a ordem',
+        acaoHref: `/empresas/${companyId}/estoque/producao/${ordemId}`,
+        origem: 'FISCAL_DECLARADO',
+        alvo: ordemId,
+      },
+      r,
+      db,
+    )
+  }
+  r.resolvidos += await reconciliarOrigem(companyId, 'FISCAL_DECLARADO', vivos, db)
+}
+
+/**
+ * ⭐⭐⭐ A PORTA: roda os 5 produtores de produção pra uma empresa.
  *
  * ⚠️ Chamada pelo cron das 3h **e** pela primeira carga — é a mesma função, e é por isso que a
  * central nasce útil sem um script com texto duplicado.
@@ -379,5 +449,6 @@ export async function produzirAvisosDeProducao(
   await fichaNaoComparavel(companyId, r, db)
   await ordemParada(companyId, r, db)
   await loteDeGrandezaImpossivel(companyId, r, db)
+  await fiscalDoDeclaradoNoSininho(companyId, r, db)
   return r
 }

@@ -65,9 +65,22 @@ describe('⭐⭐ o sininho é GLOBAL — e nos DOIS viewports (REGRA 12)', () =>
 })
 
 describe('⛔⛔⛔ A LEI na tela: a home de produção pede PRODUÇÃO, e só', () => {
-  it('⛔⛔ o bloco na home vem com `setor="producao"` CRAVADO', () => {
+  /**
+   * ⚠️⚠️ **INVERTIDO em 04/10 com o motivo escrito, não apagado** — e o que mudou foi a CASA,
+   * nunca a lei. Ordem do dono, ~2h depois de o bloco subir: *"o bloco inline MORRE — avisos só
+   * no sininho do topo. **Nada de aviso inline em tela nenhuma sem o dono pedir.**"*
+   *
+   * ⭐ A LEI (*"financeiro NUNCA aparece na produção"*) continua de pé e continua sendo aplicada
+   * no MESMO lugar de antes: o `where` da rota (os dois testes abaixo). O que este caso
+   * afirmava — *"a home monta o bloco com `setor` cravado"* — descrevia a 2ª vitrine do mesmo
+   * dado, que é justamente o que saiu. Quem guarda a ausência em detalhe é
+   * `avisos-so-no-sininho.test.ts`.
+   */
+  it('⛔⛔ a home NÃO monta bloco inline — e a lei segue no servidor', () => {
     const s = semComentario(ler(HOME))
-    expect(s).toMatch(/<BlocoDeAvisos\s+empresaId=\{id\}\s+setor="producao"\s*\/>/)
+    expect(s, 'aviso inline na tela de trabalho morreu por decisão do dono').not.toMatch(/<BlocoDeAvisos/)
+    // ⭐ e a capacidade continua TIPADA por setor (o componente guardado não virou genérico)
+    expect(semComentario(ler(BLOCO))).toMatch(/setor \}: \{ empresaId: string; setor: Setor \}/)
   })
 
   /**

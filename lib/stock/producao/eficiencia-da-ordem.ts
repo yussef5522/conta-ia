@@ -83,6 +83,47 @@ export interface ComponenteDaEficiencia {
   gap: number
 }
 
+/**
+ * ⭐⭐⭐ O FISCAL: **"o declarado cabe no material separado?"** (04/10/2026).
+ *
+ * **Ordem do dono:** *"a conta 'o declarado cabe no material separado?' (régua do P8, pela FICHA
+ * inteira) segue rodando por baixo"*, com a frase de balcão *"pelo material separado, a receita
+ * permite ~N; foram declaradas M"*.
+ *
+ * ⭐⭐ **ZERO CONTA NOVA: ele deriva do que a PORTA já devolveu.** `permitido_i = pedido × real ÷
+ * plano`, e o `plano` é exatamente `insumoDoPedido(...)` — ou seja, a dose **não é multiplicada
+ * de novo** em lugar nenhum. Escrever `real ÷ dose × loteBase` aqui seria a segunda
+ * multiplicação que o guard da porta única proíbe, e ela divergiria da separação no primeiro
+ * caso de borda.
+ *
+ * ⛔⛔ **E O LIMITE É A FICHA INTEIRA, ou seja o COMPONENTE MAIS ESCASSO.** Receita não se faz
+ * com o ingrediente que sobrou: se saiu carne pra 51 porções e pão pra 300, a receita permite
+ * **51**. Usar a média (ou o maior) diria que cabe o que não cabe — e é justamente esse número
+ * que o fiscal existe pra desmentir.
+ */
+export interface FiscalDoDeclarado {
+  /** quantas unidades o material REALMENTE consumido permite, pela ficha inteira. `null` quando
+   *  não há componente com dose declarada (nada a fiscalizar). */
+  permitido: number | null
+  /** o componente que limita — é ele que o dono vai conferir */
+  gargalo: string | null
+  /** declarado ÷ permitido. `null` sem permitido. */
+  pctFisico: number | null
+  /** ⛔ `true` quando o declarado passa de 120% do que o material permite */
+  impossivel: boolean
+}
+
+/**
+ * ⭐ 120% — o degrau que o dono ditou (*">120% físico"*).
+ *
+ * ⚠️ Ele é mais FOLGADO que a faixa de rendimento (±15%) de propósito: o consumo vem do ledger
+ * com 3 casas e a dose da ficha com até 6, então um resíduo de arredondamento sempre sobra; e
+ * aparas/sobra de pacote fazem o material render um pouco mais que a conta. **20% de folga é
+ * ruído de cozinha; acima disso é lançamento errado** — e é o que separa "rendeu bem" de
+ * "declarou unidade que não saiu".
+ */
+export const TETO_FISICO = 1.2
+
 export interface EficienciaDaOrdem {
   /** quantas unidades a ordem pediu, **pela ficha** (escala × loteBase) */
   pedido: number | null
@@ -98,6 +139,8 @@ export interface EficienciaDaOrdem {
    */
   alerta: boolean
   componentes: ComponenteDaEficiencia[]
+  /** ⭐ o FISCAL — "o declarado cabe no material separado?" */
+  fiscal: FiscalDoDeclarado
 }
 
 export interface EntradaDaEficiencia {
@@ -128,11 +171,67 @@ export function eficienciaDaOrdem(e: EntradaDaEficiencia): EficienciaDaOrdem {
     return { nome: c.nome, unidade: c.unidade, plano, real: round4(c.consumido), gap: round4(c.consumido - plano) }
   })
 
-  if (pct == null) return { pedido, produzido: e.qtdGerada, pct: null, faixa: 'SEM_PEDIDO', alerta: false, componentes }
+  const fiscal = fiscalDoDeclarado(pedido, e.qtdGerada, componentes)
+
+  if (pct == null) return { pedido, produzido: e.qtdGerada, pct: null, faixa: 'SEM_PEDIDO', alerta: false, componentes, fiscal }
 
   const faixa: FaixaEficiencia =
     pct < EFICIENCIA_MINIMA ? 'ABAIXO' : pct > 1 + DESVIO_ALERTA ? 'ACIMA' : 'NORMAL'
-  return { pedido, produzido: e.qtdGerada, pct, faixa, alerta: faixa === 'ABAIXO', componentes }
+  return { pedido, produzido: e.qtdGerada, pct, faixa, alerta: faixa === 'ABAIXO', componentes, fiscal }
+}
+
+/**
+ * PURA. O fiscal, a partir do que a porta já calculou.
+ *
+ * ⚠️ Componente com `plano` ZERO **não limita nada** e sai da conta: ou a dose é zero (ele não
+ * entra na receita) ou não há pedido declarável. Tratá-lo como limite daria `permitido = 0` e o
+ * fiscal acusaria **toda** ordem — alarme em tudo é alarme em nada.
+ */
+export function fiscalDoDeclarado(
+  pedido: number | null,
+  declarado: number,
+  componentes: ComponenteDaEficiencia[],
+): FiscalDoDeclarado {
+  const vazio: FiscalDoDeclarado = { permitido: null, gargalo: null, pctFisico: null, impossivel: false }
+  if (pedido == null || pedido <= 0) return vazio
+
+  let permitido: number | null = null
+  let gargalo: string | null = null
+  for (const c of componentes) {
+    if (c.plano <= 0) continue
+    /** ⭐ `pedido × real ÷ plano` — o `plano` É a saída da porta, então a dose não se multiplica
+     *  de novo aqui. É isso que mantém o fiscal e a separação na MESMA régua. */
+    const permiteEste = round4((pedido * c.real) / c.plano)
+    if (permitido == null || permiteEste < permitido) {
+      permitido = permiteEste
+      gargalo = c.nome
+    }
+  }
+  if (permitido == null) return vazio
+
+  const pctFisico = permitido > 0 ? round4(declarado / permitido) : null
+  return {
+    permitido,
+    gargalo,
+    pctFisico,
+    /** ⚠️ permitido ZERO com declarado > 0 é impossível por definição: saiu produto sem material */
+    impossivel: permitido === 0 ? declarado > 0 : (pctFisico ?? 0) > TETO_FISICO,
+  }
+}
+
+/**
+ * ⭐⭐ A FRASE DO FISCAL, na língua do balcão — o pedido literal do dono.
+ *
+ * ⚠️ O `~` no permitido é honesto: ele vem de consumo com 3 casas contra dose com até 6, então
+ * é uma ESTIMATIVA do que o material dava. Escrever o número seco faria o dono tratar um
+ * arredondamento como fato.
+ */
+export function fraseDoFiscal(f: FiscalDoDeclarado, declarado: number, unidade: string): string | null {
+  if (f.permitido == null) return null
+  const un = unidade ? ` ${unidade}` : ''
+  const onde = f.gargalo ? ` (limitado por ${f.gargalo})` : ''
+  const base = `pelo material separado, a receita permite ~${f.permitido}${un}${onde}; foram declaradas ${declarado}${un}`
+  return f.impossivel ? `${base} — confere o lançamento` : base
 }
 
 /**
