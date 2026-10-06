@@ -1837,6 +1837,86 @@ CONTRAFACTUAL do gate, em ordem DERIVADA real (beef de xis, 200 × 1 = 200):
 
 📋 **FICA PRO DONO:** abrir uma ordem EM PRODUÇÃO nova e concluir pela tela nova, no celular e no computador — e dizer se o *"voltar"* deve mesmo levar pra lista de produção (hoje leva) ou fechar/rolar pro topo da ordem.
 
+## ⭐⭐⭐ PÁGINA DO ITEM v4 — A BUSCA REVERSA, A COBERTURA E O HISTÓRICO COM PERÍCIA (06/10/2026)
+
+**Ordem do dono:** *"tudo que existe FICA, entram as peças novas (mock aprovado + pesquisa dos líderes). Zero conta nova fora das nomeadas; leituras pelas portas existentes."* O guard é de **dois lados**: metade dele prova que **nada morreu**, a outra que as peças novas estão na tela.
+
+**⭐⭐⭐ 3. A BUSCA REVERSA É O CORAÇÃO — e ela achou defeito no PRIMEIRO uso.** O caminho só existia num sentido (da ficha pros componentes); **do item não dava pra ver quem o usa** — que é a pergunta que o dono faz quando o custo de um insumo sobe (*"que receitas isso estraga?"*) e quando um saldo fica torto (*"quem está baixando isso?"*). Medido em prod, na empresa inteira:
+```
+⛔ «ERVILHA» em «XIS CHEDDAR»:      300 g · as outras 15 receitas usam ~30 g   (10×)
+⛔ «TOMATE»  em «PRATO COXAO MOLE»: 750 g · as outras 27 receitas usam ~45 g   (16×)
+→ 2 doses suspeitas em 106 itens que são componente de alguma ficha
+```
+⭐ **Os dois têm a assinatura de GRANDEZA** (10× e 16×), a mesma família do lote de 22.864 e do fermento de 59 g — e **2 em 106 é o que prova que a régua não é ruidosa**: *alarme falso repetido é como um alarme morre*.
+
+**A RÉGUA É A DO M2 (02/10), e as três travas são o que a tornam utilizável:**
+- **MEDIANA das irmãs, nunca média** — com média o desviante **puxa a própria referência** e se esconde;
+- **3+ no grupo** — ⛔ com DUAS a mediana fica **no meio do desvio** e nenhuma estoura o teto, então o guard calaria justo no caso que existe pra achar; e com duas divergindo **não há como saber qual está errada** (a trava do PAO DE MEL);
+- ⛔⛔ **agrupa por (tipo da ficha, UNIDADE da dose)** — comparar dose em KG com dose em UN é o pecado de 13/09 (*"1.415,84 un"* que era porção somada com massa). Grupo misturado não vira alarme: vira dois grupos, e cada um só fala do que entende.
+
+⭐ **E a porta leva à DOSE, não à ficha:** `[corrigir agora]` abre o editor com `?foco=<itemId>` e a **linha do componente nasce acesa**, com o olho levado até ela. Sem isso, numa receita de 8 ingredientes o dono caçaria de novo o que a tela anterior acabou de apontar — o defeito do Bamberg (13/09). ⛔ Só a **versão ATUAL** de cada ficha entra (versão antiga mostraria a mesma receita duas vezes com doses diferentes, e ele leria isso como "dose suspeita" onde só há histórico) e **ficha inativa fica fora** (ela não baixa mais nada). ⚠️ Item que nenhuma ficha usa **DIZ isso** — ausência é informação (é o caso da revenda pura).
+
+### ⭐ 1. CABEÇALHO + PÍLULA · 2. CLASSIFICAÇÃO · 4. MÍNIMO SUGERIDO
+
+**A pílula CONSOME o `statusEstoque`** (`pilula-do-item.ts`): quem responde *"está abaixo do mínimo?"* continua sendo a função única que a Posição, o CSV e o juiz leem; aqui só se acrescenta o que ela **não tem como saber** — negativo, zerado, **parado >30d**. Precedência pela **AÇÃO**: negativo → zerado → abaixo do mínimo → parado → em estoque (⚠️ *zerado ganha de parado*: "não tem" é mais acionável, e item zerado está parado quase por construção).
+
+⚠️⚠️ **E HÁ UMA DIVERGÊNCIA DE TOM, DELIBERADA E TRAVADA EM TESTE:** o `statusEstoque` pinta *abaixo do mínimo* de **VERMELHO** (é o alarme da barra da Posição); aqui ele sai **ÂMBAR**, porque **nesta tela o vermelho é do NEGATIVO** — dois vermelhos competindo na mesma dobra fazem o dono deixar de distinguir *"preciso comprar"* de *"o dado está impossível"*. ⛔ **O status é o mesmo nos dois lugares; só a tinta muda.** ⚠️ `ACIMA do máximo` **não** ganha pílula (o dono nomeou 5 estados) e não se perde nada: a faixa mín/máx logo abaixo já pinta isso.
+
+**⭐ COBERTURA — "dá pra ~N dias"**, com o consumo saindo dos **baldes do `TIPOS`** de `real-vs-teorico` (venda + perda/uso interno + separação − devolução). ⛔ `PRODUCAO_CONSUMO` fica FORA, pela MESMA razão do `saldo.ts` (transferência interna — contá-lo dobraria a baixa). ⭐ **E o estorno conta pelo tipo que ele DESFEZ**, com sinal invertido: sem isso uma venda estornada **pela metade** contaria como consumo inteiro, e o item pareceria girar mais do que gira (cobertura menor e mínimo sugerido maior que o real). ⛔ Saldo negativo/zerado ou sem consumo medido → **"—" com o motivo**: *"dá pra 0 dias"* num item negativo é previsão sobre um dado impossível.
+
+**⭐ CUSTO MÉDIO "—" NÃO É AUSÊNCIA DE INFORMAÇÃO:** o cartão passa a mostrar a **última compra** embaixo, marcada **como compra** — nunca como custo médio, senão o dono compararia fornecedor contra a média do próprio estoque.
+
+**⭐ 4. O MÍNIMO SUGERIDO** = `consumo/dia × prazo típico × (1 + 30%)`, com **Z = MEDIANA dos intervalos entre compras** do próprio item. ⛔⛔ Mediana pelo mesmo motivo de sempre: uma parada de 90 dias no meio de compras semanais **não pode virar "o prazo normal"** (o contrafactual está no teste: a média diria 28 dias onde a mediana diz 7). ⚠️ Duas notas no MESMO dia contam como UMA compra (duas notas do mesmo caminhão não são dois intervalos) e **compra estornada não gerou intervalo**. ⛔⛔ **SUGERE, NUNCA GRAVA** — *"o campo é meu"*: o botão só **preenche**; salvar segue sendo o clique dele, e há teste provando que o bloco da sugestão **não chama `salvar()`**. Sem consumo OU sem 2 compras, **nenhuma sugestão** — número de reposição chutado viraria mínimo gravado, e mínimo errado é alarme falso todo dia.
+
+**⚠️ 2. A CLASSIFICAÇÃO JÁ ERA EDITÁVEL NA PÁGINA desde 12/09** (o caso do vinagre marcado "uso interno") — medido antes de construir. O que faltava era o **RASTRO**: a tabela `stock_item_categoria_trocada` guardava *de/para/quem/quando* e **ninguém mostrava**. Agora a linha aparece no cabeçalho. ⛔ **E não nasceu um bloco "Classificação" à parte:** o gesto já mora na sublinha do nome, onde ele se lê naturalmente, e **dois lugares pra editar a mesma coisa seriam duas portas pra uma decisão** — a régua da casa desde o menu de categoria de 20/09.
+
+### ⭐⭐ 5. O HISTÓRICO — o esforço extra
+
+**(a) RESUMO DO RECORTE** no topo (*entrou · saiu · Δ · N movimentos*), recalculando com os filtros ativos, pela MESMA régua do rodapé (`movePrateleira`). ⚠️ E ele **DIZ quantas linhas ficaram fora da conta** (consumo de produção, par anulado): *exclusão escondida é tão ruim quanto exclusão nenhuma*. **(b) PERÍODO LIVRE + BUSCA** pela **`casaBusca` da casa** (palavra em qualquer ordem, sem caixa e sem acento — a cicatriz do `contains` case-sensitive de 08/09), varrendo o que a LINHA MOSTRA (tipo, origem, quem). **(c) A LINHA DO ZERO**: divisória vermelha fina com *"ficou negativo aqui (DD/MM)"*. ⛔ Ela sai da lista **INTEIRA**, não do recorte — o cruzamento pro negativo é fato do ledger e não muda porque o dono filtrou; e ela acha o cruzamento **MAIS RECENTE** (um item pode ter ido e voltado do negativo; o que se investiga é o buraco de agora), devolvendo **`null`** quando o item **já começou negativo** (apontar o dedo pro lançamento errado é pior que não apontar). **(d) "R$ 0,00 MÉDIO" DE ITEM NEGATIVO** sai apagado com o porquê (*"custo indisponível — o item estava negativo quando esta linha saiu"*): impresso como valor normal ele **parece preço real**, e entra na leitura do dono como se a mercadoria tivesse saído de graça. **(e) ROUPA v4** por token. **(f) CSV do que está FILTRADO**, pelo `baixarCsv` da casa.
+
+**⭐ 6. SALDO NO TEMPO** — toggle ao lado do preço (é a MESMA pergunta em dois eixos, não duas telas), com a **zona negativa pintada** só quando o item realmente esteve negativo. ⛔ A série é **projeção do `saldoApos`**, nunca um acumulado novo: o gráfico e a coluna da tabela mostram o mesmo número **por construção** — com uma soma própria, o gráfico poderia desenhar um buraco que a tabela não tem. ⚠️ Um ponto por DIA (o último do dia), senão o eixo repete a data e o desenho vira serrote.
+
+**⛔⛔ E O GUARD QUE O DONO MANDOU PRESERVAR SEGUE DE PÉ, provado contra banco no PIOR CASO:** `Σ(linhas) == saldo` na ERVILHA (negativa, dinheiro positivo, custo médio **nulo**) e no item são, com a 1ª linha do histórico valendo o saldo de hoje.
+
+### ⚠️⚠️ REGRA 11 — 13 DEFEITOS REPOSTOS, E O DA COBERTURA VEIO VERDE
+
+Morderam: o Σ do rodapé voltando a aparecer **com** recorte (conferência que não foi feita) · a pílula sumindo · a sugestão **gravando** sozinha · a linha do zero saindo do recorte · o custo zero voltando a parecer dinheiro · a busca reversa saindo da tela · o CSV exportando tudo em vez do filtrado · o `foco` removido do editor · uma cor cravada · a **opacidade sobre token** (`bg-[var(--x)]/70`, que no Tailwind 3 sai **transparente** — a armadilha de 05/10) · uma 2ª composição só-celular · a contagem saindo das portas do negativo.
+
+⛔⛔ **O da cobertura passou VERDE:** eu procurava `ficha.cobertura.dias != null` na tela inteira, e **a mesma frase existe na linha de baixo do próprio cartão** (a que escolhe o subtítulo). ***"Menção, não uso"* pela 7ª vez nesta casa.** Apertado pra fatiar o CARTÃO e exigir o fallback `'—'` **dentro do valor**, ele morde.
+
+**⚠️ 1 GUARD DE 24/09 REAPONTADO, e ele ficou MAIS FORTE:** ele quebrou **com a tela CERTA** — ancorava no literal `ficha.saldo < 0 &&`, que no v4 virou a const `negativo`. *Grep não distingue "refatorei" de "quebrei"* (a razão de existir da REGRA 3). A pergunta não mudou (*o item negativo tem porta?*); o que mudou é que ela passou a exigir **AS DUAS portas** da lei de 05/10 — a compra que faltou **OU** a contagem, que é a âncora.
+
+### PROVADO EM PROD, NAVEGANDO, NOS DOIS VIEWPORTS E NOS DOIS TEMAS
+
+```
+«ERVILHA» (o pior caso) · Matéria-prima · KG
+  PÍLULA [vermelho] negativo — saiu mais do que entrou, contar resolve
+  saldo −79,86 · custo médio — · valor R$ 469,96
+  COBERTURA — (SALDO_NAO_POSITIVO) · consumo 130,031 em 30d · 4,334/dia
+  MÍNIMO SUGERIDO ~11,27 KG · "4,334 KG/dia × prazo 2 dia(s) + 30% de folga"
+  USADO EM 17 fichas · 1 suspeita → XIS CHEDDAR 300 g vs ~30 g das outras 15
+  Σ DO RODAPÉ −79,86 × saldo −79,86 · R$ 469,96 × R$ 469,96 → ⭐ BATE
+  68 linhas · 9 anuladas · 7 pontos de preço
+
+«porçao queijo 135 grama» (maior giro) · Intermediário · UN
+  PÍLULA [verde] em estoque · saldo 996 · custo R$ 4,08 · valor R$ 4.058,71
+  COBERTURA ~4 dias (199,9/dia) · USADO EM 16 fichas · 0 suspeitas
+  Σ DO RODAPÉ 996 × 996 · R$ 4.058,71 × R$ 4.058,71 → ⭐ BATE
+
+CELULAR 200 em 720ms · DESKTOP 200 em 233ms · JS 1.261 KB · CSS 174 KB
+  ✓ 13/13 peças no bundle · ✓ zero hex no chunk DESTA tela · ✓ os 7 tokens nos DOIS temas
+movimentos 6253 → 6253 · ⭐ ZERO ESCRITA (só GET)
+```
+
+**⚠️⚠️ E A MINHA SONDA ACUSOU UM FALSO ACHADO ANTES DE EU MEDIR CERTO:** ela somava os **81 chunks** da página — que incluem o SHELL e o resto do dashboard, onde o `#185FA5` ainda vive em **49 arquivos** — e dizia *"hex cravado voltou"* sobre código que **não é desta tela**. ***Achado não atribuível não é achado.*** Refeita pra medir só o chunk que carrega uma frase exclusiva da página. ⭐ No caminho, **`NomeEditavel` e `CategoriaEditavel` foram pra token de verdade** — eles ficam no cabeçalho do item, então o tema escuro deles é parte desta tela.
+
+**912 arquivos · 11.826 verdes · TS 0 · migration NENHUMA · deploys 4/4 (`o0P66r67vtvJxQdINBmwL`, `-1LVsVUfqFjtrg2lKe0FO`) · Δ bundle +24 KB.**
+
+📋 **FICA PRO DONO (receita é decisão dele desde 17/08 — eu não toco):** as **2 doses suspeitas**. O `[corrigir agora]` de cada uma abre o editor já na linha da dose. ⚠️ E uma consequência medida, que **não é defeito**: item **PRODUZIDO** (como a porção de queijo) **não ganha mínimo sugerido** — o prazo sai dos intervalos entre COMPRAS, e ele não se compra. O equivalente seria o tempo de produção, que é número dele, não meu.
+
+📋 **SCREENSHOT INDISPONÍVEL** (extensão do Chrome desligada): a prova dos 2 temas é medida no que prod serve — zero hex no chunk da tela e os 7 tokens nos dois mapas do CSS. Falta o olho do dono.
+
+
 ## ⛔⛔⛔ A CONTAGEM É A ÂNCORA — ELA SEMPRE ENTRA, PRA QUALQUER ITEM (05-06/10/2026)
 
 **Lei geral do dono, e ela SUBSTITUI a recusa de 22/09:** *"Toda contagem lançada ENTRA, sem exceção de estado do item: saldo positivo, zero ou NEGATIVO (qtd e/ou R$). (…) **Nenhum caminho termina em recusa.**"* É a régua dos líderes (SAP/Oracle/NetSuite): **a contagem física é a âncora dos registros** — o sistema cria o ajuste de CORREÇÃO, o saldo vira o contado, e negativo vira **investigação**, nunca bloqueio.
