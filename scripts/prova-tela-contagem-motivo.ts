@@ -39,8 +39,14 @@ async function main() {
     ['o 409 da pergunta', 'MOTIVO_DO_NEGATIVO'],
     ['os botões vêm do SERVIDOR', 'motivos'],
     ['o escape explícito', 'deixar pra depois'],
-    /** ⭐ a tela DESENHA a frase do servidor (`j.erro`), nunca uma cópia dela */
-    ['a tela desenha a frase do servidor', 'motivo.msg'],
+    /**
+     * ⭐ a tela DESENHA a frase do servidor (`j.erro`) e os botões dele.
+     * ⚠️⚠️ ANCORADO NA PROPRIEDADE, não na variável: o minificador RENOMEIA `motivo` (a
+     * cicatriz de 27/09, quando procurei `t.selo` num bundle minificado). Nome de propriedade
+     * sobrevive; nome de variável local, não.
+     */
+    ['a frase do servidor é desenhada', '.msg'],
+    ['os botões do servidor são desenhados', '.motivos.map('],
   ]
 
   /**
