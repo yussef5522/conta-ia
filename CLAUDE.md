@@ -1837,6 +1837,96 @@ CONTRAFACTUAL do gate, em ordem DERIVADA real (beef de xis, 200 × 1 = 200):
 
 📋 **FICA PRO DONO:** abrir uma ordem EM PRODUÇÃO nova e concluir pela tela nova, no celular e no computador — e dizer se o *"voltar"* deve mesmo levar pra lista de produção (hoje leva) ou fechar/rolar pro topo da ordem.
 
+## ⛔⛔⛔ A CONTAGEM É A ÂNCORA — ELA SEMPRE ENTRA, PRA QUALQUER ITEM (05-06/10/2026)
+
+**Lei geral do dono, e ela SUBSTITUI a recusa de 22/09:** *"Toda contagem lançada ENTRA, sem exceção de estado do item: saldo positivo, zero ou NEGATIVO (qtd e/ou R$). (…) **Nenhum caminho termina em recusa.**"* É a régua dos líderes (SAP/Oracle/NetSuite): **a contagem física é a âncora dos registros** — o sistema cria o ajuste de CORREÇÃO, o saldo vira o contado, e negativo vira **investigação**, nunca bloqueio.
+
+**⛔⛔ O QUE ISTO INVERTE, COM O MOTIVO ESCRITO:** a "porta do negativo" de 22/09 RECUSAVA a contagem sobre item negativo com o argumento *"contar por cima ENTERRA o lote que ninguém lançou"*. **O argumento era bom e estava MEIO certo** — enterrar calado é mesmo o risco. O que faltava era a outra metade, **o aviso de investigação**; sem ela a cura virou doença: o dono ficava com 6 kg de fermento na prateleira, o sistema dizia −3,56, e **não havia gesto nenhum** que fechasse a diferença (a compra não existia pra lançar). ***Recusa sem porta é beco, e beco é o que esta casa mais paga.***
+
+**⚠️⚠️ E A MEDIÇÃO EM PROD MUDOU O DESENHO ANTES DE EU ESCREVER UMA LINHA:** nos 8 itens negativos da Caçula o **`custoMedio` vem `null`** (o `saldo.ts` se recusa, com razão, a dividir valor negativo por saldo negativo e devolver um positivo plausível). Com ele em zero, o `AJUSTE_CONTAGEM` entraria por **R$ 0,00**: a quantidade consertava e **o dinheiro continuava quebrado**. Por isso a **valoração pelo último custo CONHECIDO** não é detalhe — é metade da lei. E é por isso que o **FREIO lê a MESMA saída** da valoração: duas leituras fariam ele avaliar a correção grande por R$ 0,00 e **deixar de perguntar justamente nela** — a doença do B1 em forma de alarme que cala.
+
+**⭐⭐ A VALORAÇÃO TEM DONO ÚNICO** (`lib/stock/contagem-ancora.ts`, pura): o freio e o ledger leem a mesma função. **O caminho de TODO DIA não muda em nada** (item com custo médio e dinheiro em pé segue usando o custo médio, resíduo zero, como desde 23/08).
+
+**⛔⛔ E O ESTADO NEGATIVO É ANCORADO EM DUAS LINHAS, nunca em uma:**
+1. **`AJUSTE_CONTAGEM`** leva a quantidade, valorada no **último custo CONHECIDO** — um custo que alguém pagou de verdade;
+2. **`AJUSTE_RESIDUO`** leva o que sobra, pra o item terminar valendo `contado × custo`.
+
+⚠️ **O atalho óbvio (enfiar o resíduo no `custoUnitario` da linha 1) daria o total certo e um custo por unidade INVENTADO** — no fermento, R$ 24,63/kg num item que custa R$ 34,00. O custo médio alimenta ficha, cardápio e CMV: ***"nunca por dentro do custo"*** é a parte da ordem que protege todo o resto. ⚠️ O idioma do resíduo é o do `encerrar-item` (REGRA 4): `quantidade = 0,001` e unitário **DERIVADO do total**, nunca montado na mão — lá isso errou o sinal e o banco recusou por 14 centavos.
+
+**⭐ SEM NENHUM CUSTO CONHECIDO O CUSTO É "A DEFINIR"** — honesto, como a casa já faz. Chutar poria preço inventado na ficha e no CMV; a 1ª compra ensina o custo.
+
+**⭐⭐ O MOTIVO É PERGUNTA, NÃO RECUSA.** Item negativo sem motivo volta **409 `MOTIVO_DO_NEGATIVO`** com **a conta na tela** e as **4 opções descendo do SERVIDOR** (`FICHA_ERRADA · PERDA · FALTA_LANCAMENTO · NAO_SEI`), e **nada grava antes da resposta**. ⚠️ A frase **promete o desfecho** (*"a tua contagem vai entrar e virar o saldo"*): pedir o motivo sem dizer que entra se leria como mais uma recusa, e foi a recusa que criou o beco. ⭐ E *"não sei"* é botão de **primeira classe** — obrigar a escolher uma causa que a pessoa não conhece é **fabricar diagnóstico**, e diagnóstico inventado encerra a investigação que o aviso existe pra abrir. ⛔ A lista fechada mora no **TypeScript**, nunca num CHECK (a cicatriz de 21/09, em que o vocabulário no banco virou parede em um dia) — e **a rota NÃO repete o `z.enum`** (a cicatriz de 25/09, que deixou 2 gestos mortos por dias).
+
+**⭐⭐ O AVISO DE INVESTIGAÇÃO É A METADE QUE FAZ A LEI PODER EXISTIR** (`lib/avisos/produtores/estoque.ts`): setor **estoque**, **ÂMBAR e não vermelho** — o dado **não está** errado agora, a contagem o ancorou; o que pede olho é a **CAUSA**, e pintar de vermelho um item que acabou de ser consertado é como o dono aprende a ignorar o vermelho. Com a régua **"uma causa, um alarme"**: se o item já tem aviso aberto que explica o negativo (ficha na fila de conversão, fiscal do declarado, grandeza do lote, padrão de rendimento), este **não nasce** — e entra em `calados` **com o porquê**, porque supressão silenciosa viraria *"o aviso não funciona"* na próxima vez que alguém procurasse. ⚠️ **E o fato tem UMA fonte:** `stock_contagem_negativo`, gravado na MESMA transação da contagem; derivar *"este item estava negativo"* de novo aqui (relendo o ledger) seria a 2ª resposta pra mesma pergunta.
+
+**⭐ `ancoraValorada` — A LEI VALE PRO GESTO, NÃO PRA ESCRITA CRUA.** O guard de 11/09 (a FANTA UVA) continua recusando quem grava `AJUSTE_CONTAGEM` por fora da valoração; o que passa sempre é **o gesto da contagem**, que já passou pela régua. ⚠️ **Ele só é necessário num estado**: quando a contagem **TIRA** dinheiro (saldo em pé com valor negativo) — nos outros três a contagem SOMA valor e o guard nem olha. É por isso que a prova dele é tão específica (ver a REGRA 11 abaixo).
+
+**⭐ AS TELAS FICARAM HONESTAS:** a frase *"dinheiro negativo com saldo positivo… falta registrar a COMPRA"* ganhou a verdade completa — *"…falta a COMPRA — **OU**, se tudo já foi lançado, a tua contagem corrige e o sistema registra o ajuste"*. O link continua oferecendo lançar a compra **ANTES** (melhor quando ela existe), mas **nunca mais como porta única**.
+
+### ⚠️⚠️ REGRA 11 — 6 DEFEITOS REPOSTOS, E O 6º VEIO VERDE POR CULPA DO MEU TESTE
+
+| defeito reposto | vermelhos |
+|---|---|
+| a RECUSA de 22/09 de volta (contagem recusada por saldo negativo) | **12** |
+| a valoração caindo pro `custoMedio` (o R$ 0,00 do fermento) | **10** |
+| o resíduo POR DENTRO do custo (custo por unidade inventado) | **9** |
+| o motivo virando OPCIONAL (a pergunta morre) | **3** |
+| a supressão do aviso caindo (uma causa, DOIS alarmes) | **1** |
+| o `ancoraValorada` removido (a lei deixa de valer pro gesto) | **1** |
+
+⛔⛔ **O último veio VERDE na 1ª medição, e a culpa era da minha cena:** o teste do estado *"dinheiro negativo com saldo EM PÉ"* contava **8 contra um saldo de 8** — **divergência ZERO**, nenhuma linha de quantidade, e ele passava **sem exercer a lei naquele estado**. Nos outros três a contagem SOMA valor (`custoTotal > 0`) e o guard de 11/09 retorna antes de olhar. Contando **3**, a divergência é −5, o ajuste leva −R$ 10 e o item fica, no instante dele, com **saldo 3 e valor −15** — exatamente o estado que o guard chama de impossível. Aí o `ancoraValorada` passa a ser necessário, e a reposição morde. ***Reposição que não reproduz o defeito é um verde de graça*** — pela 4ª vez nesta casa.
+
+### ⛔⛔⛔ REGRA 13 — O CHECK NASCEU MAIS ESTREITO QUE A RÉGUA, E SÓ MORDERIA EM PROD
+
+O `chk_contagem_negativo_era_negativo` era `saldoAntes < 0 OR valorAntes < 0`. Mas `eraNegativo` também é verdadeira quando o **custo médio é ≤ 0**, e `custoMedio = saldo > 0 ? valor/saldo : null` — isto é **saldo em pé com valor ZERADO**. **Medido em prod: 2 itens exatamente nesse estado — `FANTA UVA 2L` (7 UN · R$ 0,00, o limbo que o M3 acusa desde 02/10) e `acucar` (5 · R$ 0,00).** Contar um deles criaria a linha com `valorAntes = 0`, **o banco recusaria, e a transação da contagem inteira voltaria atrás**: *"nenhum caminho termina em recusa"* quebrado **só em produção** — e **invisível no dev**, porque `db push` não cria CHECK. Corrigido pra `valorAntes <= 0` (com saldo > 0 e valor > 0 o custo médio é positivo, então não afrouxa nada), **antes de a migration ser aplicada** (conferido: ela não estava em prod).
+
+**`scripts/prova-check-contagem-negativo.ts` (REGRA 13), rodado em Postgres:** **4 de 4 INSERTs tortos recusados pelo CHECK certo** (motivo vazio · base vazia · contado negativo · item SÃO), **a linha legítima de valor zero ENTROU**, e o **contrafactual medido no próprio banco**: `CHECK antigo aceita? false · CHECK novo aceita? true`. **Zero escrita** (contagem antes == depois).
+
+### ⭐⭐ O RED-THEN-GREEN NAVEGANDO, NO DADO REAL — E A LEI É GERAL
+
+`scripts/prova-contagem-ancora.ts`, com **rollback forçado** (o `contarLinha` abre a própria transação, então o `tx` entra por um **Proxy** cujo `$transaction` devolve o MESMO `tx`):
+
+```
+«fermento» ANTES → saldo -3,56 KG · valor -R$ 31,46 · custo médio NULL
+  ⛔ SEM MOTIVO → MOTIVO_DO_NEGATIVO (não é recusa, é PERGUNTA)
+     "…está em -3.56 KG e R$ 31,46 de custo pendurado — a tua contagem vai entrar e virar o saldo…"
+     opções que descem do servidor: FICHA_ERRADA · PERDA · FALTA_LANCAMENTO · NAO_SEI
+     ledger intocado? ✓ sim
+  ⭐ COM O MOTIVO → ENTROU · divergência 9,56 · base ULTIMO_CONHECIDO · custo R$ 34,00
+     ajuste R$ 325,04 · resíduo em LINHA PRÓPRIA -R$ 89,58 (gravado)
+     DEPOIS → saldo 6 KG · valor R$ 204,00 · custo médio R$ 34,00  ⭐ renasceu LIMPO
+
+«porcao chuleta» (o 2º negativo — a lei é GERAL) ANTES → -22 UN · -R$ 24,98 · custo NULL
+  ⭐ ENTROU · divergência 31 · custo R$ 12,50 · resíduo -R$ 249,97 em linha própria
+     DEPOIS → saldo 9 UN · valor R$ 112,48 · custo médio R$ 12,50
+
+O SININHO: 2 avisos [estoque · ambar], 0 recusados pela língua do balcão
+  "Confere por que «fermento» ficou negativo — … com R$ 89,58 escritos fora do custo.
+   Quem contou achou que foi: ficha com dose errada — consumo virtual."
+   → ver o histórico do item: /empresas/…/estoque/itens/…
+
+AS FICHAS: 6 componentes apontam pro fermento · 0,059 KG × R$ 34,00 = R$ 2,01
+   ⭐ a ficha deixou de dizer "a definir"
+
+movimentos 6169 → 6169 · rastro 0 → 0 · sessões 55 → 55
+⭐ ZERO ESCRITA — o ledger do dono intacto
+```
+
+⚠️ **A SESSÃO ABERTA ERA DA MARCYELLE** (05/10 23:30, 0 linhas) — o índice único *"1 sessão ABERTA por empresa"* (23/08) recusou a minha, e a prova passou a **reusar a dela** (desfeita no rollback). Escrever ali de verdade seria mexer no trabalho dela.
+
+**REGRA 12 — a pergunta no bundle que prod serve, nos DOIS viewports:** celular 200 em 202ms · desktop 200 em 143ms · 857 KB · `MOTIVO_DO_NEGATIVO` ✓ · os botões vindos do servidor (`.motivos.map(`) ✓ · a frase do servidor desenhada (`.msg`) ✓ · *"deixar pra depois"* ✓ · **nenhuma cópia da frase do servidor** ✓.
+
+**INVARIANTES ANTES × DEPOIS (o juiz REAL, não fórmula minha):** `FALHA · 236 issue(s)` nos dois, com o **mesmo quadro por código** — V1 119 · P6 109 · E7 89 · P3 47 · P8 45 · M5 37 · M1 32 · F2 26 · E15 10 · P5 3 · **P1 2** · M3 1. **Nada que eu fiz moveu invariante nenhum**, e o **P1 já estava em 2 antes** (o achado de 19/09). CHECK do ledger violado: **0**. ⚠️ **E o Σ do ledger mudou entre as duas medições (6164 → 6169 linhas) porque a COZINHA estava separando material ao vivo** (10 `SEPARACAO_SAIDA` reais entre 02:53 e 03:09) — o meu probe fechou 6169 → 6169.
+
+**⚠️⚠️ E UMA SONDA MINHA MENTIU DUAS VEZES, as duas da mesma classe:** (a) `psql … 2>/dev/null` numa query que pedia uma **coluna que não existe** (`criadoEm` em `stock_contagem`, que se chama `iniciadaEm`) devolveu **vazio**, e eu li *"não há sessão de contagem aberta"* — ***zero silencioso é indistinguível de "não tem"***, agora pela minha própria supressão de stderr; (b) procurei **`motivo.msg`** no bundle minificado, onde o **minificador RENOMEIA a variável local** (a cicatriz de 27/09 com o `t.selo`) — nome de **propriedade** sobrevive, nome de variável não. E uma terceira, menor: supus os campos do componente de ficha (`fichaVersaoId`/`quantidade`) em vez de ler o schema (`versaoId`/`qtdPlanejada`) — o `tsc` cobrou.
+
+**908 arquivos · 11.759 verdes · TS 0 · `pg_dump pre-contagem-ancora-20261005-235951.dump` (8.248.066 bytes, tamanho conferido) · migration CREATE-only com 4 CHECKs · deploy 4/4 (`SMPsokPwacwbXDlsMYtap`) · Δ bundle +0 KB.**
+
+📋 **O RETRATO DAS RECUSAS PASSADAS — e a resposta honesta é QUE NÃO HÁ RASTRO.** A recusa de 22/09 voltava **422** (resposta de domínio, não exceção), então **ela não aparece em log nenhum**: nenhuma contagem recusada por saldo negativo é recuperável. E **não existe tabela de auditoria que registre recusa** (conferido: `gerenciador_audit_log`, `ai_usage_log`, `stock_sefaz_log` e `vendor_discovery_logs` são de outra coisa) — o `throw` precede qualquer escrita, por desenho. O que o log do pm2 guarda é o **guard irmão** (`assertSaldoNaoFicaImpossivel`): **22 ocorrências** de *"dinheiro negativo com saldo positivo"* e **28 `MovementInvalidError`** no total, todas com a redação **anterior a 16/09**, todas no mesmo item/valor (22 un · −R$ 21,60) e com o stack **minificado** — não dá pra atribuir ao caminho da contagem. ***Se alguma contagem precisar ser re-lançada, é decisão do dono*** — o que o sistema pode dizer hoje é "nenhuma está registrada".
+
+📋 **FICA PRO DONO (o clique é dele, REGRA 2):** contar o **fermento (6 KG)** e a **porcao chuleta** pela tela — o freio vai perguntar, a pergunta tem as 4 opções, e os números provados acima são os que vão entrar. ⚠️ **A sessão aberta é da marcyelle**: ou ele conta nela, ou ela finaliza a dela primeiro (1 sessão ABERTA por empresa). E os **outros 6 negativos** seguem esperando o número da prateleira — *saldo não se chuta*.
+
+
 ## ⭐⭐⭐ PÁGINA DA ORDEM v4 — UMA COLUNA DE INSUMO, BARRA DE PROGRESSO E A LINHA DO TEMPO (05/10/2026)
 
 **Mock aprovado no chat + a simplificação do dono.** Zero conta nova; o motor, o ledger e os invariantes P1-P8 **intocados**.
