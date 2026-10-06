@@ -2018,6 +2018,62 @@ marcações 0 → 0 · planos 0 → 0 · avisos 19 → 19 · ⭐ ZERO ESCRITA
 4. ⚠️ **R$ 112.253,53 de SAÍDA SEM CATEGORIA em setembro** (19% do SAIU): o que estiver ali não entra em linha nenhuma de custo fixo. É a fila de categorização cobrando.
 5. 📋 **A margem é por CMV de COMPRA** — o número honesto por consumo depende da **FASE 4 do estoque (CMV por competência)**, que segue não construída.
 
+### ⭐⭐ OS 2 AJUSTES DO USO REAL (06/10) — semear o plano e o seletor com ✓
+
+**⚠️ E ELES CHEGARAM NA HORA EXATA: o dono marcou as 26 categorias dele enquanto eu construía** (rastro: *Yussef*, 19:13:40 → 19:15:05) e ficou com **26 marcadas e 0 planejadas** — 26 campos pra digitar à mão.
+
+**⭐ 1. SEMEAR, em duas escalas, com UM número só.**
+- **na LINHA sem plano:** *"usar o realizado de setembro"* — e ele **SÓ PREENCHE O CAMPO**. ⛔⛔ Nunca chama a gravação: é a disciplina do mínimo sugerido do estoque (*"o campo é meu"*) — gravar sozinho poria no plano um número que o dono não escolheu, e o plano é justamente a **afirmação dele**. Salvar continua sendo o blur/Enter.
+- **no TOPO:** *"preencher todos com o realizado de setembro"* → **PRÉVIA** (nada gravado) → confirmar.
+- ⛔⛔ **A GRAVAÇÃO EXECUTA A LISTA DA PRÉVIA, literalmente:** `semear` chama `previaDaSemente` e grava **o que ela devolveu**. Não existe um 2º cálculo do *"o que vai entrar"* — é a cicatriz mais caras desta casa (o preview do import dizia *"N novas"* e o confirm fazia outra coisa, 17/08), e a cura é a mesma: uma função, as duas pontas.
+- ⛔ **E ELE NÃO PASSA POR CIMA DE PLANO DECLARADO.** A linha que já tem plano fica de fora **com o porquê escrito**, e o toggle que inclui elas **nasce desmarcado nos DOIS lados** (tela e `default(false)` do zod — chamada sem o campo não apaga decisão nenhuma).
+- ⚠️ **UM número semeia, não dois:** a linha e o lote leem o MESMO `realizadoReferencia`. Se a linha usasse o realizado do mês VISTO e o lote outro, haveria duas respostas pra *"com que número começa o plano?"* — e elas divergiriam justo no dia 1º.
+- ⚠️ **A REFERÊNCIA PADRÃO É O MÊS ANTERIOR**, e isso é medido: no dia 6 de outubro o realizado de outubro é quase zero — semear com ele poria um plano de **R$ 900 onde a folha é R$ 46.518,81**. O anterior é o único **completo** que ele tem na mão. Mês escolhível, e **referência que ainda está correndo é marcada PARCIAL** nas duas pontas (barra e prévia).
+- ⚠️ **"já tem plano" GANHA de "não houve realizado"** na ordem dos motivos: dizer *"não houve realizado"* sobre uma linha cujo problema é o plano mandaria o dono caçar um lançamento que não é o caso (a lição de 16/09).
+
+**⭐ 2. O SELETOR VIROU A VISÃO COMPLETA.** O universo inteiro de despesa, **✓ em quem já é fixa**, e **o mesmo chip desmarca**. ⛔ Continua **uma porta só**: `MARCAR`/`TIRAR` no MESMO `POST` que o X da linha usa — o ✓ é outra maçaneta pro mesmo gesto, nunca uma 2ª régua.
+**⚠️⚠️ E A BUSCA PASSOU A SER A `casaBusca` DA CASA, o que não é preciosismo — é o bug de 08/09:** medido em prod, com `includes` cru **`"agua"` acha ZERO** e a régua da casa acha **"Água e Esgoto"**. Palavra em qualquer ordem, sem caixa e sem acento, sobre a MESMA lista que a tela desenha. ⭐ E ela busca **pelo qualificador também**: `"frete"` devolve os dois Fretes, cada um com o grupo que o distingue.
+
+### ⚠️⚠️ REGRA 11 — 6 DEFEITOS REPOSTOS, E UM VEIO VERDE (a 9ª "menção, não uso")
+
+Morderam: o botão da linha **salvando** em vez de só preencher · o lote gravando no 1º clique · a busca voltando pro `includes` cru · o painel montando a lista a partir da tela · o `default` do servidor substituindo plano.
+⛔ **O do toggle veio VERDE:** eu afirmava `toContain('useState(false)')` e o arquivo tem **outros três** (`todas`, `abrindoSeletor`, `erro`) — repor `useState(true)` no toggle **passava**, porque o guard achava o do vizinho. Apertado pra a **variável** (`const [incluirComPlano, setIncluirComPlano] = useState(false)`), ele morde.
+
+⚠️ **1 TESTE INVERTIDO COM O MOTIVO ESCRITO:** ele afirmava *"o seletor não oferece o que já está na lista"* — esconder as marcadas tornava o desmarcar impossível por lá. ⭐ **A metade certa continua mordendo** (categoria de RECEITA nunca é oferecida) e ganhou o `jaFixa`, que é o que separa o ✓ do +.
+
+⚠️ **E O CNPJ DO TESTE NOVO COLIDIU COM O DO VIZINHO** — FK violada em paralelo, a classe que o guard `cnpj-de-teste-nao-colide` existe pra fechar, cometida por mim antes de eu lembrar dele.
+
+### PROVADO EM PROD, COM ROLLBACK (zero escrita)
+
+```
+O SELETOR: 53 categorias · 26 já fixas (as do dono)
+  "agua" → Água e Esgoto · "ÁGUA" → idem · "eletrica" → Energia Elétrica
+  "frete" → 2 (Frete [DESPESAS_COMERCIAIS] · Frete [OUTRAS_DESPESAS])
+  ⛔ com `includes` cru, "agua" acha 0 — a régua da casa acha 1
+
+O BOTÃO DA LINHA preencheria:  Salários R$ 46.518,81 · Aluguel R$ 8.456,88
+  Contabilidade R$ 1.621,00 · Software R$ 1.787,91 · internet R$ 159,90
+
+A PRÉVIA: 21 entram · R$ 109.139,50 · 0 já tinham plano · 8 sem realizado
+  ⛔ planos gravados depois da PRÉVIA: 0
+  fora: Marketing Digital · COLETA DE LIXO · INSS s/ Pró-labore · PONTO ELETRONICO ·
+        Pró-labore Sócios · Provisão Férias · Tributos Federais · Seguro Predial
+        (todas com "nada saiu nesta categoria no mês de referência")
+
+CONFIRMADO: 21 gravados (a prévia prometia 21)
+  ⭐ A CASA CUSTA R$ 109.139,50/mês · POR DIA R$ 3.520,63 · EQUILÍBRIO R$ 7.070,00/dia
+  ⛔ Σ(linhas) 109.139,50 × cartão 109.139,50 → ⭐ BATE
+  ⭐ 2ª rodada: aplicou 0 · total 21 (idempotente)
+
+CELULAR 200/494ms · DESKTOP 200/127ms · 10/10 peças · zero hex no chunk da tela
+ROTA  POST SEMEAR confirmar:false → 200 · prévia 19 · aplicados 0
+marcações 26 → 26 · planos 0 → 0 · ⭐ ZERO ESCRITA
+```
+
+**917 arquivos · 11.915 verdes · TS 0 · deploy 4/4 (`qZ8s7SDbv3SetJUT5i8Cg`) · Δ bundle +8 KB · migration NENHUMA.**
+
+📋 **FICA PRO DONO:** as **26 marcadas** estão esperando plano. Um clique em *"preencher todos com o realizado de setembro"* resolve **21** delas (R$ 109.139,50); as **8 que não tiveram gasto em setembro** (pró-labore, provisão de férias, seguro predial, tributos federais, marketing, coleta de lixo, ponto eletrônico, INSS) **precisam do número dele** — e a prévia as nomeia uma por uma, em vez de semear zero.
+
 ## ⛔⛔⛔ A CONTAGEM É A ÂNCORA — ELA SEMPRE ENTRA, PRA QUALQUER ITEM (05-06/10/2026)
 
 **Lei geral do dono, e ela SUBSTITUI a recusa de 22/09:** *"Toda contagem lançada ENTRA, sem exceção de estado do item: saldo positivo, zero ou NEGATIVO (qtd e/ou R$). (…) **Nenhum caminho termina em recusa.**"* É a régua dos líderes (SAP/Oracle/NetSuite): **a contagem física é a âncora dos registros** — o sistema cria o ajuste de CORREÇÃO, o saldo vira o contado, e negativo vira **investigação**, nunca bloqueio.
