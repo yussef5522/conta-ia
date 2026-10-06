@@ -67,35 +67,79 @@ describe('⛔ a cena de prod: o item está num estado que a contagem não conseg
   })
 
   /**
-   * ⛔⛔ A FALHA, REPRODUZIDA. Contar 10 kg (a quantidade CERTA) cruza o zero com o valor
-   * ainda negativo → o guard de 11/09 recusa. **Isso está correto** — o que estava errado
-   * era a mensagem morrer no caminho.
+   * ⛔⛔⛔ **TESTE INVERTIDO EM 05/10, COM O MOTIVO ESCRITO (não apagado).**
+   *
+   * Ele afirmava *"contar 10 FALHA"* e chamava isso de correto: *"o que estava errado era a
+   * mensagem morrer no caminho"*. ⭐ **A lei do dono de 05/10 derrubou a premissa:** *"toda
+   * contagem lançada ENTRA, sem exceção de estado do item (…) negativo vira investigação,
+   * nunca bloqueio"* — a régua dos líderes, em que a contagem física é a ÂNCORA dos registros.
+   *
+   * ⚠️ E o caso do fermento é a prova de que a recusa era BECO: o dono tem o fermento na
+   * prateleira, a compra que faltava **não existe pra lançar** (o negativo veio de dose de
+   * ficha errada), e **nenhum gesto fechava a diferença**.
+   *
+   * ⭐⭐ **A METADE CERTA DO TESTE ANTIGO FICA INTEIRA e virou o assunto deste:** a resposta
+   * **TEM motivo** e chega na tela — era exatamente isso que se perdia no `throw e`. O que
+   * mudou é o desfecho: de recusa (422, beco) pra **pergunta (409) que a contagem responde**.
    */
-  it('⭐⭐ contar 10 FALHA — e o erro TEM motivo, não é genérico', async () => {
+  it('⛔⛔ contar 10 PERGUNTA o motivo — 409, com a conta na tela e as opções', async () => {
     let capturado: unknown = null
     try {
       await contarLinha({ companyId, contagemId, itemId, qtdContada: 10, confirmarFreio: true, viuSistema: true, observacao: null }, prisma)
     } catch (e) { capturado = e }
 
-    expect(capturado, 'a contagem passou — o guard do estado impossível sumiu').toBeTruthy()
-    expect(capturado).toBeInstanceOf(MovementInvalidError)
-
-    // ⭐ E O MOTIVO CHEGA NA TELA — era exatamente isto que se perdia no `throw e`
-    const r = respostaDeErroDoEstoque(capturado, { companyId: undefined, empresaId: companyId, itemId } as never)
+    expect(capturado, 'item negativo tem que pedir a causa antes de entrar').toBeTruthy()
+    const r = respostaDeErroDoEstoque(capturado, { empresaId: companyId, itemId })
     expect(r, 'o tradutor não reconheceu — viraria 500 mudo').toBeTruthy()
-    expect(r!.status).toBe(422)
-    expect(r!.erro, 'a mensagem chegou vazia').toMatch(/valor/i)
-    expect(r!.erro, 'o número que explica sumiu').toMatch(/-?\d+[.,]\d\d/)
-    expect(r!.saida, 'recusa sem saída é beco').toBeTruthy()
-    expect(r!.saida!.href).toContain(itemId)
+    // ⛔ 409 e não 422: é PERGUNTA, igual ao FREIO — a contagem entra na resposta
+    expect(r!.status, 'recusa final seria o beco de volta').toBe(409)
+    expect(r!.code).toBe('MOTIVO_DO_NEGATIVO')
+    // ⭐ a conta na tela é o que torna a pergunta respondível
+    expect(r!.erro).toMatch(/-?\d+[.,]\d/)
+    expect(r!.erro, 'a frase PROMETE o desfecho').toContain('vai entrar')
+    // ⭐ e as OPÇÕES descem do servidor — sem isso a tela teria uma 2ª cópia do vocabulário
+    expect((capturado as { motivos?: unknown[] }).motivos, 'pergunta sem respostas é beco').toHaveLength(4)
+    // ⛔ e NADA foi gravado enquanto a pergunta está em pé
+    const linhas = await prisma.stockContagemItem.count({ where: { contagemId, itemId } })
+    expect(linhas, 'o ledger não se move antes da resposta').toBe(0)
+  })
 
-    /**
-     * ⛔⛔ E A MENSAGEM APONTA O CAMPO CERTO. A versão antiga dizia *"confira a
-     * quantidade"* — mas a quantidade do dono está CERTA (10 kg é o que está na
-     * prateleira). O sintoma é o VALOR: falta a compra que nunca foi lançada.
-     */
-    expect(r!.erro, 'a mensagem manda conferir a quantidade, que está certa').toMatch(/falta registrar a COMPRA/i)
-    expect(r!.erro, 'não disse que a contagem dele está ok').toMatch(/não é a sua contagem que está errada/i)
+  /**
+   * ⭐⭐⭐ **E COM O MOTIVO, A CONTAGEM ENTRA — o saldo vira o CONTADO.**
+   *
+   * ⛔ As duas linhas: `AJUSTE_CONTAGEM` leva a quantidade **valorada no último custo
+   * conhecido** (R$ 62,28 da nota — um custo que alguém pagou), e `AJUSTE_RESIDUO` leva o
+   * dinheiro que sobra pendurado. ⚠️ Enfiar o resíduo no custo da 1ª linha daria o total certo
+   * e **um custo por unidade inventado** — *"nunca por dentro do custo"*.
+   */
+  it('⭐⭐⭐ com o motivo, ENTRA: saldo 10 KG e o custo renasce LIMPO', async () => {
+    const r = await contarLinha({
+      companyId, contagemId, itemId, qtdContada: 10, confirmarFreio: true,
+      motivoDoNegativo: 'FICHA_ERRADA', viuSistema: true, observacao: null,
+    }, prisma)
+
+    expect(r.ok).toBe(true)
+    expect(r.saldoDepois, 'o saldo VIRA o contado').toBe(10)
+    expect(r.valoracao.eraNegativo).toBe(true)
+    expect(r.valoracao.base, 'valorado no último custo CONHECIDO').toBe('ULTIMO_CONHECIDO')
+    expect(r.valoracao.custoUnitario, 'R$ 62,28 da nota real').toBeCloseTo(62.28, 2)
+    expect(r.residuoMovementId, 'o dinheiro pendurado virou LINHA PRÓPRIA').toBeTruthy()
+
+    // ⭐ o estado final, lido do LEDGER (não do retorno): saldo e valor coerentes
+    const a = await prisma.stockMovement.aggregate({
+      where: { companyId, itemId, tipo: { notIn: ['PRODUCAO_CONSUMO'] } },
+      _sum: { quantidade: true, custoTotal: true },
+    })
+    expect(Number((a._sum.quantidade ?? 0).toFixed(2)), 'saldo = o contado').toBeCloseTo(10, 1)
+    expect(a._sum.custoTotal ?? 0, 'e o dinheiro deixou de ser negativo').toBeGreaterThan(0)
+    expect((a._sum.custoTotal ?? 0) / 10, 'o custo médio renasce no custo da nota').toBeCloseTo(62.28, 1)
+
+    // ⭐⭐ e o RASTRO do negativo ficou, com a causa que a pessoa nomeou
+    const rastro = await prisma.stockContagemNegativo.findFirst({ where: { contagemId, itemId } })
+    expect(rastro, 'o negativo não pode morrer calado').toBeTruthy()
+    expect(rastro!.motivo).toBe('FICHA_ERRADA')
+    expect(rastro!.saldoAntes, 'o estado de ANTES, congelado').toBeLessThan(0)
+    expect(rastro!.baseDoCusto).toBe('ULTIMO_CONHECIDO')
   })
 
   /**

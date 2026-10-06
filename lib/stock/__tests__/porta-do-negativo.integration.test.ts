@@ -85,14 +85,31 @@ describe('⛔⛔ o item PRODUZIDO negativo pede PRODUÇÃO, nunca nota de compra
     // ⛔ e a frase do fermento NÃO pode vazar pra cá: ninguém compra porção de calabresa
     expect(e!.message, 'voltou a mandar o dono caçar uma nota que não existe')
       .not.toContain('falta registrar a COMPRA')
-    // ⭐ o motivo de a recusa existir, dito na cara: contar por cima enterra o lote
-    expect(e!.message).toContain('ENTERRA o lote')
+    /**
+     * ⛔⛔ **ASSERÇÃO INVERTIDA EM 05/10, COM O MOTIVO ESCRITO (não apagada).**
+     *
+     * Aqui se exigia *"contar por cima ENTERRA o lote que ninguém lançou"* — o argumento que
+     * justificava RECUSAR a contagem. ⭐ A lei do dono de 05/10 o derrubou: *"a contagem é a
+     * ÂNCORA — ela SEMPRE entra; negativo vira investigação, nunca bloqueio"*. O medo era
+     * legítimo (enterrar calado é mesmo o risco) e o que faltava era a outra metade — **o
+     * aviso de investigação no sininho**; sem ela, a cura virou beco.
+     *
+     * ⭐ **A METADE CERTA CONTINUA MORDENDO:** a frase segue nomeando a causa da FAMÍLIA do
+     * item (produção, não nota) e segue oferecendo a porta — é o que ela sempre existiu pra
+     * fazer, e as duas asserções acima o provam.
+     */
+    expect(e!.message, 'agora a frase oferece as DUAS portas, não só a produção')
+      .toContain('conte o que está na prateleira')
   })
 
   it('⭐ e o MATERIA_PRIMA continua pedindo a COMPRA (o caso do fermento, 16/09)', async () => {
     const e = await contar(fermentoId, 11.92)
     expect(e).not.toBeNull()
-    expect(e!.message).toContain('falta registrar a COMPRA')
+    // ⚠️ a frase mudou de *"falta registrar a COMPRA"* (porta ÚNICA) pra as duas portas —
+    //    ver o motivo escrito na asserção invertida acima. A metade certa é a COMPRA vir
+    //    PRIMEIRO: quando ela existe, lançá-la conserta a quantidade E o custo.
+    expect(e!.message).toContain('falta a COMPRA')
+    expect(e!.message, 'e a 2ª porta existe').toContain('a tua contagem corrige')
     expect(e!.message, 'a frase de produção vazou pro item comprado')
       .not.toContain('vendeu sem ter produção registrada')
   })

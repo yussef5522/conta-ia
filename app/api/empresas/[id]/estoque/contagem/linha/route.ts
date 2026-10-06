@@ -21,6 +21,13 @@ const schema = z.object({
   // ⭐ observação de QUEM VIU ("estava molhado") — não é decisão, é o que faz o dono
   // investigar certo depois. Por isso a operadora pode escrever (é `stock.operate`).
   observacao: z.string().max(300).nullish(),
+  /**
+   * ⛔⛔ O MOTIVO do negativo (05/10) — **a lista fechada é validada na LIB**, não aqui.
+   * ⚠️ Repetir o `z.enum` aqui seria a 2ª lista do mesmo vocabulário, e foi exatamente isso
+   * que deixou 2 gestos MORTOS por dias em 25/09 (o enum da rota digitado à mão). O schema
+   * garante a FORMA; quem conhece os motivos é `MOTIVOS_DO_NEGATIVO`.
+   */
+  motivoDoNegativo: z.string().max(40).nullish(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -42,7 +49,17 @@ export async function POST(request: NextRequest, { params }: Params) {
      * desconhecido esconde o bug.
      */
     const r = respostaDeErroDoEstoque(e, { empresaId: companyId, itemId: parsed.data.itemId })
-    if (r) return NextResponse.json({ erro: r.erro, code: r.code, saida: r.saida }, { status: r.status })
+    if (r) {
+      /**
+       * ⭐⭐ A PERGUNTA LEVA AS RESPOSTAS. Pedir o motivo sem mandar a lista obrigaria a tela a
+       * ter uma cópia dela — a 2ª régua do mesmo vocabulário (a cicatriz de 25/09). Aqui ela
+       * desce do servidor e a tela só desenha os botões.
+       */
+      const extra = e instanceof ContagemError && (e as ContagemError & { motivos?: unknown }).motivos
+        ? { motivos: (e as ContagemError & { motivos?: unknown }).motivos }
+        : {}
+      return NextResponse.json({ erro: r.erro, code: r.code, saida: r.saida, ...extra }, { status: r.status })
+    }
     throw e
   }
 }

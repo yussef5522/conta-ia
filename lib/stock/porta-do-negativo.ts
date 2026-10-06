@@ -60,14 +60,28 @@ export interface PortaDaRecusa {
  * ⭐⭐ O PORQUÊ, na língua da casa. É a metade que o dono pediu primeiro: *"a recusa diz
  * só 'estoque negativo, não aceita' — sem explicar POR QUE nem O QUE FAZER"*.
  */
+/**
+ * ⛔⛔⛔ **A FRASE GANHOU A VERDADE COMPLETA (05/10) — e a metade que faltava era o DESFECHO.**
+ *
+ * Ela dizia *"falta registrar a COMPRA"* e **parava ali**, como se a compra fosse a única
+ * porta. Era a porta MELHOR (quando a compra existe, lançá-la conserta a quantidade **e** o
+ * custo), mas nunca a ÚNICA — e no fermento ela não existia pra lançar: o negativo veio de
+ * dose de ficha errada, não de nota esquecida. ***Porta única que não serve é beco.***
+ *
+ * ⭐ Agora ela diz as duas: lança a compra se ela existe, **ou** conta e o sistema registra o
+ * ajuste. ⚠️ E a ORDEM importa — a compra vem primeiro porque ela traz o custo de verdade; a
+ * contagem ancora a quantidade e valora pelo último custo conhecido, que é bom e é segundo.
+ */
 export function porQueEstaNegativo(f: FatosDoNegativo): string {
   const qtd = `${f.saldoAntes} ${f.unidade}`.trim()
   if (f.familia === 'PRODUZIDO') {
-    return `«${f.nome}» está negativo (${qtd}) porque vendeu sem ter produção registrada. `
-      + 'Contar por cima ENTERRA o lote que ninguém lançou — por isso a contagem espera.'
+    return `«${f.nome}» está negativo (${qtd}) porque vendeu sem ter produção registrada — `
+      + 'lance a produção que faltou OU, se tudo já foi lançado, conte o que está na prateleira: '
+      + 'a tua contagem corrige e o sistema registra o ajuste.'
   }
-  return `«${f.nome}» está negativo (${qtd}) porque saiu mais do que entrou — falta registrar `
-    + 'a COMPRA que não foi lançada. Não é a sua contagem que está errada.'
+  return `«${f.nome}» está negativo (${qtd}) porque saiu mais do que entrou — falta a COMPRA `
+    + 'que não foi lançada OU, se tudo já foi lançado, a tua contagem corrige e o sistema '
+    + 'registra o ajuste. Não é a sua contagem que está errada.'
 }
 
 /**

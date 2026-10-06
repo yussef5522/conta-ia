@@ -102,6 +102,16 @@ export function respostaDeErroDoEstoque(e: unknown, ctx?: { empresaId?: string; 
 
   const code = (e as { code?: string }).code
 
+  /**
+   * ⛔⛔ O MOTIVO DO NEGATIVO é **409, igual ao FREIO** — e pelo mesmo motivo: **é PERGUNTA, não
+   * erro final**. A contagem ENTRA assim que a pessoa toca num dos 4 motivos.
+   *
+   * ⚠️ Ele NÃO ganha `saida` (o link pra lançar a compra): a saída daqui é responder a
+   * pergunta, aqui mesmo. Mandar o contador pra outra tela no meio da contagem é o beco de
+   * 22/09 com outra roupa.
+   */
+  if (e instanceof ContagemError && code === 'MOTIVO_DO_NEGATIVO') return { erro: e.message, code, status: 409 }
+
   // ⛔ o FREIO é 409 de propósito: a tela PERGUNTA de novo, não é erro final (23/08)
   if (e instanceof ContagemError && code === 'FREIO') return { erro: e.message, code, status: 409 }
   /**

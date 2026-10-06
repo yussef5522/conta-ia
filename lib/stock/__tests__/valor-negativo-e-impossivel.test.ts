@@ -79,7 +79,7 @@ describe('⛔⛔ o estado impossível é barrado na escrita', () => {
 
     await expect(criarMovimento(prisma, {
       companyId, itemId, tipo: 'AJUSTE_CONTAGEM', quantidade: 1496, custoUnitario: 0, origem: 'CONTAGEM',
-    })).rejects.toThrow(/falta registrar a COMPRA/)
+    })).rejects.toThrow(/falta a COMPRA/)
   })
 
   it('⭐ e a contagem com o CUSTO CERTO passa — o guard não trava trabalho honesto', async () => {

@@ -83,6 +83,19 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
     opts: { viuSistema: boolean; observacao: string | null }
     sugestao?: { qtdProvavel: number | null; fator: number | null } | null
   } | null>(null)
+  /**
+   * ⛔⛔ O MOTIVO DO NEGATIVO (05/10) — 1 toque, e as OPÇÕES descem do SERVIDOR.
+   *
+   * ⚠️ A lista não é digitada aqui: ela vem no 409 (`j.motivos`). Uma 2ª cópia do vocabulário
+   * na tela é o que deixou 2 gestos MORTOS por dias em 25/09 — o `z.enum` da rota repetido à
+   * mão. Aqui a tela só desenha os botões que o servidor mandou.
+   */
+  const [motivo, setMotivo] = useState<{
+    itemId: string; qtd: number; msg: string
+    opts: { viuSistema: boolean; observacao: string | null }
+    confirmarFreio: boolean
+    motivos: { codigo: string; rotulo: string }[]
+  } | null>(null)
   const [historico, setHistorico] = useState<Record<string, VersaoLinha[]>>({})
   const [decisoes, setDecisoes] = useState<Record<string, { decisao: string; motivo: string | null; decididoPorNome: string | null }>>({})
 
@@ -120,13 +133,16 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
     } catch { setErro({ msg: 'A rede falhou ao iniciar a contagem — tente de novo.' }) } finally { setIniciando(false) }
   }
 
-  async function contar(itemId: string, qtd: number, opts: { viuSistema: boolean; observacao: string | null }, confirmarFreio = false) {
+  async function contar(
+    itemId: string, qtd: number, opts: { viuSistema: boolean; observacao: string | null },
+    confirmarFreio = false, motivoDoNegativo: string | null = null,
+  ) {
     if (!q?.contagem) return
     setSalvando(true); setErro(null)
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/contagem/linha`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contagemId: q.contagem.id, itemId, qtdContada: qtd, confirmarFreio, ...opts }),
+        body: JSON.stringify({ contagemId: q.contagem.id, itemId, qtdContada: qtd, confirmarFreio, motivoDoNegativo, ...opts }),
       })
       const j = await r.json().catch(() => ({}))
       // ⛔ o FREIO é do SERVIDOR: divergência grande sem 2ª confirmação = 409 e o ledger
@@ -140,8 +156,17 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
         setFreio({ itemId, qtd, msg: j.erro, opts, sugestao: j.grandeza ?? null })
         return
       }
+      /**
+       * ⛔⛔ ITEM NEGATIVO PEDE A CAUSA — **409, igual ao freio: é PERGUNTA, não erro.**
+       * ⚠️ A contagem ENTRA no toque seguinte; por isso a tela não mostra isto como falha.
+       */
+      if (r.status === 409 && j.code === 'MOTIVO_DO_NEGATIVO') {
+        setFreio(null)
+        setMotivo({ itemId, qtd, msg: j.erro, opts, confirmarFreio, motivos: j.motivos ?? [] })
+        return
+      }
       if (!r.ok) { setErro(comoErro(j, 'gravar a contagem')); return }
-      setFreio(null)
+      setFreio(null); setMotivo(null)
       await carregar()
       irProximo()
     } catch { setErro({ msg: 'A rede falhou ao gravar a contagem — o que você digitou continua aí; tente de novo.' }) } finally { setSalvando(false) }
@@ -329,6 +354,49 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
           onDecidir={decidir}
           onRecontar={(itemId) => { setAtualId(itemId); setModo('contar') }}
         />
+      )}
+
+      {/**
+        * ⛔⛔⛔ A CAUSA DO NEGATIVO — 1 toque, e a contagem ENTRA (05/10).
+        *
+        * ⚠️⚠️ **ISTO NÃO É A RECUSA DE 22/09 DE VOLTA.** Ali o desfecho era *"a contagem
+        * espera"* e não havia gesto que fechasse a diferença — o dono ficava com 6 kg de
+        * fermento na prateleira e o sistema dizendo −3,56. Aqui a frase **promete o desfecho**
+        * e cada botão GRAVA. ⛔ Por isso não existe "voltar e conferir" como saída principal:
+        * a saída é responder.
+        *
+        * ⭐ E *"não sei"* é um botão de primeira classe: obrigar a escolher uma causa que a
+        * pessoa não conhece é **fabricar diagnóstico**, e diagnóstico inventado encerra a
+        * investigação que o aviso do sininho existe pra abrir.
+        */}
+      {motivo && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={() => setMotivo(null)}>
+          <div className="w-full rounded-t-2xl p-4 sm:max-w-md sm:rounded-xl"
+            style={{ background: 'var(--prod-surface)' }} onClick={(e) => e.stopPropagation()}>
+            <p className="flex items-start gap-2 text-sm" style={{ color: 'var(--prod-primary)' }}>
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--fam-ambar-mid)' }} />
+              {motivo.msg}
+            </p>
+            <div className="mt-3 space-y-2">
+              {motivo.motivos.map((m) => (
+                <button
+                  key={m.codigo}
+                  onClick={() => contar(motivo.itemId, motivo.qtd, motivo.opts, motivo.confirmarFreio, m.codigo)}
+                  disabled={salvando}
+                  className="h-11 w-full rounded-lg px-3 text-left text-sm font-medium disabled:opacity-50"
+                  style={{ border: '1px solid var(--prod-line-strong)', color: 'var(--prod-primary)' }}
+                >
+                  {m.rotulo}
+                </button>
+              ))}
+            </div>
+            {/* ⚠️ o escape existe, mas é SECUNDÁRIO: a saída daqui é responder, não fugir */}
+            <button onClick={() => setMotivo(null)}
+              className="mt-3 h-9 w-full rounded-lg text-xs" style={{ color: 'var(--prod-muted)' }}>
+              deixar pra depois
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ⛔ O FREIO — a 2ª confirmação que o SERVIDOR exigiu */}

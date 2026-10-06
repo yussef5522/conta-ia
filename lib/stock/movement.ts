@@ -4,6 +4,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { avaliarEntrada, ehEntradaQueConserta, frasePergunta, TIPO_AJUSTE_RESIDUO } from './entrada-cruza-o-zero'
+import { ehAncoraDeContagem } from './contagem-ancora'
 import { TIPOS_FORA_DA_PRATELEIRA } from './saldo'
 import { familiaDoItem, porQueEstaNegativo, type FatosDoNegativo } from './porta-do-negativo'
 
@@ -68,6 +69,21 @@ export interface NovoMovimento {
    * nunca recusa cega — a régua do `confirmouSanidade`).
    */
   confirmouResiduo?: boolean
+  /**
+   * ⛔⛔⛔ **A CONTAGEM VALORADA — a lei "a contagem é a âncora" (05/10) vale pro GESTO, não
+   * pra escrita crua no ledger.**
+   *
+   * Só `contarLinha` liga esta flag, e ela significa: *"este `AJUSTE_CONTAGEM` passou por
+   * `valorarContagem` e o estado final da transação é válido — a linha de resíduo vem logo
+   * atrás"*. Com ela, o guard do estado impossível não dispara no **estado do meio**.
+   *
+   * ⚠️⚠️ **SEM ELA O GUARD DE 11/09 CONTINUA DE PÉ, e isso não é zelo: é o caso FANTA UVA.**
+   * Lá a contagem de **+1.496 a R$ 0,00** deixou *"4 un · −R$ 10.160,52"*, o custo médio virou
+   * **−R$ 2.540,13** e contaminou a Posição, o cardápio (margem 5218%) e o CMV. Script ou
+   * caminho novo que grave contagem **sem passar pela valoração** recria exatamente aquilo —
+   * e por isso continua barrado.
+   */
+  ancoraValorada?: boolean
 }
 
 /** Valida a MESMA regra do CHECK do banco (quantidade≠0; custoTotal==qtd×custo ±0,01/linha).
@@ -236,7 +252,22 @@ export async function criarMovimento(db: Db, m: NovoMovimento) {
    * válido, e é ele que importa. Sem resíduo, o guard roda normal (inclusive pra dar a
    * frase certa no caso do FERMENTO, que é RECUSA por não cruzar o zero).
    */
-  if (residuo == null) await assertSaldoNaoFicaImpossivel(db, m, custoTotal)
+  /**
+   * ⛔⛔⛔ **A CONTAGEM É A ÂNCORA — ELA NUNCA É RECUSADA (05/10, lei do dono).**
+   *
+   * *"Toda contagem lançada ENTRA, sem exceção de estado do item (…) Nenhum caminho termina em
+   * recusa."* A régua dos líderes: **a contagem física é a âncora dos registros**; negativo
+   * vira **investigação**, nunca bloqueio.
+   *
+   * ⚠️ E a trava mora AQUI, no choke-point do ledger, e não na tela: qualquer caminho que
+   * grave `AJUSTE_CONTAGEM` (a tela, o script de arrumação, o reprocesso) herda a lei de graça
+   * — é a REGRA 5 em vez de um combinado que a próxima porta esquece.
+   *
+   * ⛔ Quem garante que o estado final é VÁLIDO é `valorarContagem` (dono único da valoração),
+   * que devolve o resíduo pra uma **linha própria**. Sem isso, barrar aqui seria barrar
+   * justamente o movimento que existe pra consertar.
+   */
+  if (residuo == null && !(ehAncoraDeContagem(m.tipo) && m.ancoraValorada)) await assertSaldoNaoFicaImpossivel(db, m, custoTotal)
   if (residuo != null) {
     /**
      * ⛔⛔ O AJUSTE É UMA LINHA PRÓPRIA, nunca um `custoTotal` inflado na entrada.

@@ -14,6 +14,11 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { CATEGORIAS_SEM_PRATELEIRA } from '@/lib/stock/tipos-ficha'
 import { criarMovimento } from './movement'
+import {
+  valorarContagem, ehMotivoDoNegativo, fraseDoMotivo, MOTIVOS_DO_NEGATIVO,
+  TIPOS_COM_CUSTO_CONHECIDO, TIPO_CONTAGEM, type ValoracaoDaContagem,
+} from './contagem-ancora'
+import { TIPO_AJUSTE_RESIDUO } from './entrada-cruza-o-zero'
 import { recomputeSaldoCache, saldosDaEmpresa } from './saldo'
 import { partirNome } from './contagem/nome-produto'
 import { avisoUnidadeSuspeita } from './contagem/unidade-suspeita'
@@ -325,6 +330,13 @@ export interface ContarLinhaInput {
   viuSistema?: boolean
   /** ⭐ observação de quem VIU ("estava molhado", "achei em dois lugares") */
   observacao?: string | null
+  /**
+   * ⛔⛔ OBRIGATÓRIO quando o item estava NEGATIVO (05/10) — 1 toque numa lista fechada.
+   *
+   * ⚠️ E isto **não é a recusa de volta**: a contagem ENTRA depois da resposta. O motivo é o
+   * que faz o negativo não morrer calado — ele vira o rastro e o aviso de investigação.
+   */
+  motivoDoNegativo?: string | null
   userId?: string
   userName?: string
 }
@@ -337,6 +349,10 @@ export interface ContarLinhaResult {
   saldoDepois: number
   movementId: string | null
   freio: FreioResult
+  /** ⭐ a valoração que a âncora aplicou — a tela DIZ em que custo ela se apoiou */
+  valoracao: ValoracaoDaContagem
+  /** ⭐ o id do movimento de resíduo, quando houve dinheiro pendurado a escrever fora */
+  residuoMovementId: string | null
 }
 
 export async function contarLinha(input: ContarLinhaInput, db: PrismaClient = defaultPrisma): Promise<ContarLinhaResult> {
@@ -352,7 +368,33 @@ export async function contarLinha(input: ContarLinhaInput, db: PrismaClient = de
   const saldos = await saldosDaEmpresa(db, input.companyId)
   const s = saldos.find((x) => x.itemId === input.itemId)
   const saldoSistema = s?.saldo ?? 0
-  const custoUnitario = s?.custoMedio ?? 0
+
+  /**
+   * ⭐⭐⭐ A VALORAÇÃO DA ÂNCORA (05/10) — **dono único**, e o FREIO lê a MESMA saída.
+   *
+   * ⚠️⚠️ Medido em prod: nos 8 itens negativos da Caçula o `custoMedio` vem **null** (o
+   * `saldo.ts` se recusa, com razão, a dividir valor negativo por saldo negativo). Com ele em
+   * zero, o freio avaliaria a correção por **R$ 0,00** e deixaria de perguntar justamente na
+   * correção grande — e o ledger gravaria o ajuste sem dinheiro. **Duas leituras do mesmo
+   * número divergem onde dói**; aqui há uma só.
+   */
+  const ultimo = await db.stockMovement.findFirst({
+    where: {
+      companyId: input.companyId, itemId: input.itemId,
+      tipo: { in: [...TIPOS_COM_CUSTO_CONHECIDO] },
+      custoUnitario: { gt: 0 },
+    },
+    orderBy: [{ dataMovimento: 'desc' }, { criadoEm: 'desc' }],
+    select: { custoUnitario: true },
+  })
+  const valoracao = valorarContagem({
+    saldoSistema,
+    valorAtual: s?.valor ?? 0,
+    contado: input.qtdContada,
+    custoMedio: s?.custoMedio ?? null,
+    ultimoCustoConhecido: ultimo?.custoUnitario ?? null,
+  })
+  const custoUnitario = valoracao.custoUnitario
 
   const freio = avaliarFreio(saldoSistema, input.qtdContada, custoUnitario, item)
   if (freio.grande && !input.confirmarFreio) {
@@ -373,21 +415,84 @@ export async function contarLinha(input: ContarLinhaInput, db: PrismaClient = de
     throw err
   }
 
-  const divergencia = round3(input.qtdContada - saldoSistema)
-  const valorDivergencia = round2(divergencia * custoUnitario)
+  /**
+   * ⛔⛔ ITEM NEGATIVO PEDE MOTIVO — **1 toque, lista fechada, e a contagem ENTRA depois.**
+   *
+   * ⚠️ Isto NÃO é a recusa de 22/09 de volta: ali o desfecho era *"a contagem espera"* e não
+   * havia gesto nenhum que fechasse a diferença. Aqui a frase **promete o desfecho** e o
+   * motivo é o que faz o negativo não morrer calado — ele vira o rastro e o aviso de
+   * investigação. ⛔ E a trava é do SERVIDOR: esconder o seletor na tela não impede a chamada
+   * (a régua do FREIO, 23/08).
+   */
+  if (valoracao.eraNegativo && !ehMotivoDoNegativo(input.motivoDoNegativo)) {
+    const err = new ContagemError(
+      fraseDoMotivo(item.nome, saldoSistema, s?.valor ?? 0, item.unidadeControle),
+      'MOTIVO_DO_NEGATIVO',
+    ) as ContagemError & { motivos?: typeof MOTIVOS_DO_NEGATIVO }
+    err.motivos = MOTIVOS_DO_NEGATIVO
+    throw err
+  }
+
+  const divergencia = valoracao.divergencia
+  const valorDivergencia = valoracao.custoTotal
   const temAjuste = Math.abs(divergencia) > EPS
 
   const r = await db.$transaction(async (tx) => {
     let movementId: string | null = null
+    let residuoMovementId: string | null = null
     if (temAjuste) {
       // AJUSTE_CONTAGEM entra no ledger AGORA — o saldo bate enquanto o dono anda.
       // receiptId = id da sessão (mesmo padrão de conferência/ordem; o tipo desambigua).
       const mov = await criarMovimento(tx, {
-        companyId: input.companyId, itemId: input.itemId, tipo: 'AJUSTE_CONTAGEM',
+        companyId: input.companyId, itemId: input.itemId, tipo: TIPO_CONTAGEM,
         quantidade: divergencia, custoUnitario, custoTotal: valorDivergencia,
         receiptId: input.contagemId, origem: 'MANUAL', criadoPorId: input.userId ?? null,
+        // ⭐ passou por `valorarContagem`: o estado final da transação é válido
+        ancoraValorada: true,
       })
       movementId = mov.id
+    }
+    /**
+     * ⛔⛔⛔ **O RESÍDUO É LINHA PRÓPRIA — "nunca por dentro do custo"** (ordem do dono).
+     *
+     * Enfiá-lo no `custoUnitario` da linha acima daria o total certo e **um custo por unidade
+     * inventado**: no fermento, R$ 24,63/kg num item que custa R$ 34,00. O custo médio
+     * alimenta ficha, cardápio e CMV — é a parte da ordem que protege todo o resto.
+     *
+     * ⚠️ O idioma é o do `encerrar-item` (REGRA 4): quantidade **0,001** (o CHECK do ledger
+     * recusa zero, e o `round2` do saldo absorve) e o unitário **DERIVADO do total**, nunca
+     * montado na mão — lá isso errou o sinal e o banco recusou por 14 centavos.
+     */
+    if (valoracao.residuo !== 0) {
+      const q = 0.001
+      const total = round2(valoracao.residuo)
+      const mov = await criarMovimento(tx, {
+        companyId: input.companyId, itemId: input.itemId, tipo: TIPO_AJUSTE_RESIDUO,
+        quantidade: q, custoUnitario: total / q, custoTotal: total,
+        receiptId: input.contagemId, origem: 'MANUAL', criadoPorId: input.userId ?? null,
+        ancoraValorada: true,
+      })
+      residuoMovementId = mov.id
+    }
+    /**
+     * ⭐⭐ O RASTRO DO NEGATIVO, na MESMA transação: o estado de antes congelado + a causa que
+     * a pessoa nomeou + em que custo a valoração se apoiou. É daqui que o aviso de
+     * investigação do sininho nasce — **um fato, uma fonte**.
+     */
+    if (valoracao.eraNegativo) {
+      const dados = {
+        companyId: input.companyId, contagemId: input.contagemId, itemId: input.itemId,
+        saldoAntes: saldoSistema, valorAntes: s?.valor ?? 0, contado: input.qtdContada,
+        motivo: input.motivoDoNegativo as string,
+        baseDoCusto: valoracao.base, custoUsado: valoracao.custoUnitario, residuo: valoracao.residuo,
+        registradoPorId: input.userId ?? null, registradoPorNome: input.userName ?? null,
+      }
+      // ⚠️ recontar o mesmo item na mesma sessão é UPDATE, nunca uma 2ª linha (o unique)
+      await tx.stockContagemNegativo.upsert({
+        where: { contagemId_itemId: { contagemId: input.contagemId, itemId: input.itemId } },
+        create: dados,
+        update: { ...dados, criadoEm: new Date() },
+      })
     }
     // recontar o mesmo item na mesma sessão = UPDATE da linha (o UNIQUE impede 2ª linha).
     // O movimento anterior NÃO some (é imutável); o novo ajuste parte do saldo já corrigido,
@@ -416,13 +521,34 @@ export async function contarLinha(input: ContarLinhaInput, db: PrismaClient = de
       viuSistema: !!input.viuSistema, observacao: input.observacao ?? null,
       userId: input.userId, userName: input.userName,
     })
-    return { movementId }
+    return { movementId, residuoMovementId }
   })
 
   await recomputeSaldoCache(db, input.companyId)
+  /**
+   * ⛔⛔ O AVISO DE INVESTIGAÇÃO SAI AGORA, não às 3h — **o negativo não morre calado**.
+   *
+   * ⭐ E é o **MESMO produtor** que o cron chama (`produzirAvisosDeEstoque`), nunca uma
+   * segunda redação do alarme: um gravador "na hora" e outro "na madrugada" divergiriam na
+   * primeira frase ajustada (o padrão do `garantirCiencia`, 05/09).
+   *
+   * ⚠️⚠️ **FAIL-SOFT e FORA da transação, de propósito.** A contagem do dono **já gravou**;
+   * uma falha da central (texto recusado, tabela lenta) não pode desfazer o ajuste que ele
+   * acabou de fazer na câmara. Se falhar, o cron das 3h pega — e é pra isso que ele existe.
+   */
+  if (valoracao.eraNegativo) {
+    try {
+      const { produzirAvisosDeEstoque } = await import('@/lib/avisos/produtores/estoque')
+      await produzirAvisosDeEstoque(input.companyId, new Date(), db)
+    } catch (e) {
+      console.error('[contagem] aviso de investigação falhou (o cron das 3h pega):', e)
+    }
+  }
+
   return {
     ok: true, divergencia, valorDivergencia, saldoSistema,
     saldoDepois: round3(input.qtdContada), movementId: r.movementId, freio,
+    valoracao, residuoMovementId: r.residuoMovementId,
   }
 }
 

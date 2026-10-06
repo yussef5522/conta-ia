@@ -4361,6 +4361,7 @@ model StockContagemItem {
 // aqui mora o histórico. Cabeça + histórico é o mesmo desenho do ledger.
 // ⚠️ O rastro diz QUEM CONTOU, não quem é culpado — quem descobre a falta não é quem
 // causou. Na tela o nome vive DENTRO do histórico, nunca colado no número da divergência.
+
 model StockContagemVersao {
   id             String   @id @default(cuid())
   companyId      String
@@ -4381,6 +4382,37 @@ model StockContagemVersao {
   @@index([companyId, contagemId])
   @@index([companyId, itemId])
   @@map("stock_contagem_versao")
+}
+
+// ⛔⛔ O RASTRO DA CONTAGEM SOBRE ITEM NEGATIVO (05/10/2026) — "a contagem é a âncora".
+//
+// ⚠️ Os CHECKs vivem no SQL da migration (o schema Prisma não os tem), e por isso só existem
+// em Postgres: a prova é `scripts/prova-check-contagem-negativo.ts` (REGRA 13).
+model StockContagemNegativo {
+  id         String @id @default(cuid())
+  companyId  String
+  contagemId String
+  itemId     String
+
+  /// o estado ANTES da contagem, congelado — é o que abre a investigação
+  saldoAntes Float
+  valorAntes Float
+  contado    Float
+
+  /// lista FECHADA em TypeScript (`MOTIVOS_DO_NEGATIVO`), nunca num CHECK
+  motivo      String
+  baseDoCusto String
+  custoUsado  Float
+  residuo     Float
+
+  registradoPorId   String?
+  registradoPorNome String?
+  criadoEm          DateTime @default(now())
+
+  @@unique([contagemId, itemId])
+  @@index([companyId, criadoEm])
+  @@index([companyId, itemId])
+  @@map("stock_contagem_negativo")
 }
 
 // ⚠️ "CONFERIDO" não aplica nada: o ajuste já foi na hora da contagem. O nome diz a

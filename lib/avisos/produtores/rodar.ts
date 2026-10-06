@@ -12,6 +12,7 @@
  */
 import { prisma } from '@/lib/db'
 import { produzirAvisosDeProducao, type ResumoDaCarga } from './producao'
+import { produzirAvisosDeEstoque } from './estoque'
 import { montarSemanaVerde } from '../semana-verde'
 import { registrarAviso, avisosAbertos } from '../central'
 
@@ -80,6 +81,19 @@ export async function rodarProdutoresDeAviso(agora: Date = new Date()): Promise<
       r.reabertos += p.reabertos
       r.resolvidos += p.resolvidos
       for (const x of p.recusados) r.recusados.push({ empresa: e.name, ...x })
+      /**
+       * ⛔⛔ O ESTOQUE ENTRA **DEPOIS** DA PRODUÇÃO, e a ordem é a régua anti-spam.
+       *
+       * O aviso de investigação do negativo CALA quando a causa já tem aviso aberto (ficha na
+       * fila de conversão, fiscal, grandeza) — e esses nascem na rodada da produção. Rodando
+       * antes, ele veria a lista de ontem e **gritaria sobre uma causa que acabou de ganhar o
+       * próprio alarme**. *Uma causa, um alarme* depende de quem fala primeiro.
+       */
+      const q = await produzirAvisosDeEstoque(e.id, agora)
+      r.gravados += q.gravados
+      r.reabertos += q.reabertos
+      r.resolvidos += q.resolvidos
+      for (const x of q.recusados) r.recusados.push({ empresa: e.name, ...x })
       if (await verdeDaSemana(e.id, agora)) r.verdesSemanais++
     } catch (err) {
       // ⛔ uma empresa com problema não derruba a rodada das outras nem o juiz
