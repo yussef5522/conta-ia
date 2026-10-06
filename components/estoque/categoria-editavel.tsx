@@ -57,12 +57,12 @@ export function CategoriaEditavel({ companyId, itemId, categoria, onSalvo }: {
   }
 
   if (daFicha) {
-    return <span className="text-sm text-slate-500">{categoria} · definida pela ficha que produz este item</span>
+    return <span className="text-sm" style={{ color: 'var(--prod-muted)' }}>{categoria} · definida pela ficha que produz este item</span>
   }
 
   return (
     <span className="inline-flex items-center gap-1.5">
-      <Tag className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+      <Tag className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--prod-muted)' }} />
       {/* ⚠️ rótulo FIXO em cima do controle seria redundante aqui: o próprio valor
           selecionado é o rótulo, e ele não some quando se digita (não há digitação). */}
       <select
@@ -70,11 +70,12 @@ export function CategoriaEditavel({ companyId, itemId, categoria, onSalvo }: {
         onChange={(e) => trocar(e.target.value)}
         disabled={salvando}
         aria-label="Categoria do item"
-        className="h-7 rounded-lg border border-slate-200 bg-white px-1.5 text-[13px] text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+        className="h-7 rounded-lg px-1.5 text-[13px] disabled:opacity-60"
+        style={{ border: '1px solid var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-secondary)' }}
       >
         {CATEGORIAS.map((c) => <option key={c.valor} value={c.valor}>{c.rotulo}</option>)}
       </select>
-      {salvando && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+      {salvando && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: 'var(--prod-muted)' }} />}
       {ok && <Check className="h-3.5 w-3.5 text-emerald-600" />}
     </span>
   )

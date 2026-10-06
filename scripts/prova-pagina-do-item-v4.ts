@@ -105,8 +105,19 @@ async function main() {
       else console.log(`   ⛔ ${rot} ("${frase}")`)
     }
     console.log(`   ✓ ${ok}/${exigidas.length} peças no bundle`)
-    // ⛔ cor cravada no chunk da tela não inverte no tema escuro
-    console.log(`   ${js.includes('#185FA5') ? '⛔ hex cravado (#185FA5) voltou' : '✓ zero hex da paleta antiga'}`)
+    /**
+     * ⛔⛔ O HEX SÓ CONTA NO CHUNK **DESTA** TELA.
+     *
+     * ⚠️⚠️ A 1ª versão desta sonda somava os 81 chunks da página — que incluem o SHELL e os
+     * outros componentes do dashboard, onde o `#185FA5` ainda vive em 49 arquivos. Ela
+     * acusava "hex cravado voltou" medindo código que não é desta tela: **achado não
+     * atribuível não é achado**. Agora ela acha o chunk que carrega uma frase EXCLUSIVA da
+     * página e mede só ele.
+     */
+    const meuChunk = (await Promise.all(chunks.map(async (c) => ({ c, t: await (await fetch(`${BASE}${c}`)).text() }))))
+      .filter((x) => presente(x.t, 'ficou negativo aqui'))
+    const hexAqui = meuChunk.filter((x) => x.t.includes('#185FA5'))
+    console.log(`   ${meuChunk.length === 0 ? '⚠️ não achei o chunk da tela' : hexAqui.length ? `⛔ hex cravado no chunk da tela (${hexAqui.length})` : `✓ zero hex no chunk da tela (${meuChunk.length} chunk)`}`)
     // ⭐ os tokens existem nos DOIS mapas do CSS (claro e escuro)
     const faltando = tokens.filter((t) => (folhas.match(new RegExp(t.replace(/-/g, '\\-'), 'g')) ?? []).length < 2)
     console.log(`   ${faltando.length === 0 ? '✓ os 7 tokens nos DOIS temas' : `⛔ só num tema: ${faltando.join(', ')}`}`)
