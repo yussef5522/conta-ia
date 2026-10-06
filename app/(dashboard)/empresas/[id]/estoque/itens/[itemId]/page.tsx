@@ -1,21 +1,39 @@
 'use client'
 
-// ESTOQUE — HISTÓRICO DO ITEM. Cabeçalho + gráfico de preço + **tudo** que aconteceu com o
-// item: entradas E saídas, cada linha com o TIPO real, QUEM fez e link pra ORIGEM.
+// ESTOQUE — A PÁGINA DO ITEM. Cabeçalho + o que o item É hoje + quem o usa + tudo que
+// aconteceu com ele: entradas E saídas, cada linha com o TIPO real, QUEM fez e link pra ORIGEM.
 //
 // ⛔ Era "Histórico de compras" e mostrava o ledger inteiro sob esse nome (08/09/2026).
+//
+// ⭐⭐ v4 (06/10/2026) — **tudo que existia FICA**: converter a unidade, faixa mín/máx com
+// salvar, gráfico de preço, histórico com chips + forense + clique-na-origem + o Σ do rodapé
+// que bate com o saldo, e o aviso de negativo com as duas portas. O que entra é o que
+// faltava: a pílula de estado, a cobertura, a BUSCA REVERSA (quem usa este item), o mínimo
+// sugerido, o resumo/período/busca/CSV do histórico, a LINHA DO ZERO e o saldo no tempo.
+//
+// ⚠️ A roupa passou a ser por TOKEN (`var(--prod-*)`/`var(--fam-*)`): os dois temas saem de
+// graça, e é o que o guard de "zero hex cravado" cobra nas telas v4.
 
 import { useEffect, useState, use, useMemo, Fragment } from 'react'
 import type { FichaItem } from '@/lib/stock/ficha-item'
 import { formatarQtd } from '@/lib/stock/quantidade'
 import { Card, CardContent } from '@/components/ui/card'
-import { Package, Loader2, ArrowLeft, TrendingUp, ChevronDown, Ruler, ExternalLink, History, AlertTriangle, PackagePlus } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import {
+  Loader2, ArrowLeft, TrendingUp, ChevronDown, Ruler, ExternalLink, History, AlertTriangle,
+  PackagePlus, Download, Search, Activity,
+} from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
 import { MinMaxEditor } from '@/components/estoque/min-max-editor'
 import { CategoriaEditavel } from '@/components/estoque/categoria-editavel'
-import { statusEstoque, type StatusEstoqueResult } from '@/lib/stock/status-estoque'
+import { LogoDaReceita } from '@/components/estoque/logo-da-receita'
+import { UsadoEmFichasCard } from '@/components/estoque/usado-em-fichas-card'
+import { statusEstoque } from '@/lib/stock/status-estoque'
 import type { LinhaDoHistorico, FamiliaMovimento } from '@/lib/stock/movimento-explicado'
+import { resumoDoPeriodo, linhaDoZero, saldoNoTempo, aplicarRecorte, temRecorte } from '@/lib/stock/item/leitura-do-historico'
+import type { TomDaPilula } from '@/lib/stock/item/pilula-do-item'
+import { casaBusca } from '@/lib/busca-texto'
+import { baixarCsv } from '@/lib/format/csv-cliente'
 
 /**
  * ⭐ O TIPO VEM DA LIB (19/09) — a mesma dívida do tablet, resolvida do mesmo jeito.
@@ -26,7 +44,6 @@ import type { LinhaDoHistorico, FamiliaMovimento } from '@/lib/stock/movimento-e
  */
 type Ficha = FichaItem
 
-
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 const fmtDia = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—')
@@ -34,15 +51,23 @@ const fmtDia = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').revers
 /**
  * ⭐ A COR DO CHIP É A DA FAMÍLIA — o dono reconhece o tipo de longe, sem ler.
  * ⚠️ Máx 2 pesos escuros por linha (régua da casa): o chip é claro, o peso fica no número.
+ * ⭐ v4: pelos tokens de FAMÍLIA, então ele inverte no tema escuro em vez de sumir.
  */
-const COR_DA_FAMILIA: Record<FamiliaMovimento, string> = {
-  COMPRA:   'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-  CONTAGEM: 'bg-violet-50 text-violet-700 ring-violet-600/20',
-  PRODUCAO: 'bg-sky-50 text-sky-700 ring-sky-600/20',
-  VENDA:    'bg-amber-50 text-amber-800 ring-amber-600/20',
-  SAIDA:    'bg-rose-50 text-rose-700 ring-rose-600/20',
-  ESTORNO:  'bg-slate-100 text-slate-600 ring-slate-500/20',
-  OUTRO:    'bg-slate-100 text-slate-600 ring-slate-500/20',
+const FAM_DO_MOVIMENTO: Record<FamiliaMovimento, string> = {
+  COMPRA: 'verde', CONTAGEM: 'indigo', PRODUCAO: 'azul',
+  VENDA: 'ambar', SAIDA: 'coral', ESTORNO: 'cinza', OUTRO: 'cinza',
+}
+const chipDaFamilia = (f: FamiliaMovimento) => ({
+  background: `var(--fam-${FAM_DO_MOVIMENTO[f]}-bg)`,
+  color: `var(--fam-${FAM_DO_MOVIMENTO[f]}-ink)`,
+})
+
+/** ⭐ o tom da pílula → tokens (a decisão de QUAL tom é do servidor, nunca daqui) */
+const TOM: Record<TomDaPilula, { bg: string; ink: string }> = {
+  verde: { bg: 'var(--fam-verde-bg)', ink: 'var(--fam-verde-ink)' },
+  ambar: { bg: 'var(--fam-ambar-bg)', ink: 'var(--fam-ambar-ink)' },
+  vermelho: { bg: 'var(--fam-coral-bg)', ink: 'var(--fam-coral-ink)' },
+  cinza: { bg: 'var(--fam-cinza-bg)', ink: 'var(--fam-cinza-ink)' },
 }
 
 export default function FichaItemPage({ params }: { params: Promise<{ id: string; itemId: string }> }) {
@@ -58,6 +83,12 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
   const [forense, setForense] = useState(false)
   /** qual linha anulada o dono abriu (o par inteiro, dentro da própria tabela) */
   const [parAberto, setParAberto] = useState<string | null>(null)
+  /** ⭐ o recorte novo do histórico: período livre + busca por texto */
+  const [de, setDe] = useState('')
+  const [ate, setAte] = useState('')
+  const [busca, setBusca] = useState('')
+  /** ⭐ qual gráfico está na frente — preço pago × saldo no tempo */
+  const [grafico, setGrafico] = useState<'PRECO' | 'SALDO'>('PRECO')
 
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/itens/${itemId}${forense ? '?forense=1' : ''}`).then((r) => r.json()).then((j) => setFicha(j.ficha ?? null)).catch(() => setFicha(null))
@@ -65,21 +96,46 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
 
   // ⚠️ REGRA 9: os hooks ficam ANTES do early return, com `?? []` — a ordem deles não pode
   // depender de dado carregado.
-  const linhas = useMemo(() => {
-    const todas = ficha?.historico ?? []
-    if (filtro === 'TUDO') return todas
-    if (filtro === 'COMPRAS') return todas.filter((l) => l.ehCompra)
-    return todas.filter((l) => l.tipo === filtro)
-  }, [ficha, filtro])
+  const recorte = useMemo(() => ({ filtro, de: de || null, ate: ate || null, busca }), [filtro, de, ate, busca])
+  /** ⛔ o recorte vem da LIB (pura e testada), nunca de um `filter` escrito no JSX */
+  const linhas = useMemo(() => aplicarRecorte(ficha?.historico ?? [], recorte, casaBusca), [ficha, recorte])
+  /** ⭐ o resumo recalcula com o recorte ativo — é o que o dono está vendo */
+  const resumo = useMemo(() => resumoDoPeriodo(linhas), [linhas])
+  /**
+   * ⭐⭐ A LINHA DO ZERO sai da lista INTEIRA, não do recorte: o cruzamento pro negativo é um
+   * fato do ledger, e não muda porque o dono filtrou a tela.
+   */
+  const zero = useMemo(() => linhaDoZero(ficha?.historico ?? []), [ficha])
+  const serieSaldo = useMemo(() => saldoNoTempo(ficha?.historico ?? []), [ficha])
+  /** ⭐ a última compra — é o que a tela mostra quando o custo médio não existe */
+  const ultimaCompra = useMemo(
+    () => (ficha?.historico ?? []).find((l) => l.ehCompra && l.precoEhDeCompra && l.custoUnitario > 0) ?? null,
+    [ficha],
+  )
 
-  if (ficha === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
-  if (!ficha) return <div className="p-6 text-sm text-slate-500">Item não encontrado.</div>
+  if (ficha === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--prod-muted)' }} /></div>
+  if (!ficha) return <div className="p-6 text-sm" style={{ color: 'var(--prod-secondary)' }}>Item não encontrado.</div>
 
+  const un = ficha.item.unidadeControle
   const nCompras = ficha.historico.filter((l) => l.ehCompra).length
+  const recorteAtivo = temRecorte(recorte)
+  const tom = TOM[ficha.pilula.tom]
+  const negativo = ficha.saldo < 0
+
+  const baixar = () => {
+    baixarCsv(
+      `item-${ficha.item.nome.replace(/\W+/g, '-').toLowerCase()}`,
+      ['Data', 'O que foi', 'De onde veio', 'Quem', `Qtd (${un})`, 'Custo un.', 'Total', `Saldo (${un})`],
+      linhas.map((l) => [
+        l.data.slice(0, 10), l.chip, l.detalhe, l.quem ?? '',
+        l.quantidade, l.custoUnitario, l.movePrateleira ? l.custoTotal : '', l.saldoApos ?? '',
+      ]),
+    )
+  }
 
   return (
-    <div className="space-y-6">
-      <a href={`/empresas/${id}/estoque/posicao`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> voltar pra posição</a>
+    <div className="space-y-5" style={{ background: 'var(--prod-bg)', minHeight: '100%' }}>
+      <a href={`/empresas/${id}/estoque/posicao`} className="flex items-center gap-1 text-xs" style={{ color: 'var(--prod-muted)' }}><ArrowLeft className="h-3.5 w-3.5" /> voltar pra posição</a>
 
       {/*
         ⛔⛔⛔ A PORTA QUE FALTAVA (24/09) — a **maçaneta**, não a placa.
@@ -91,52 +147,127 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
         ⚠️ Botão de VERDADE (borda + ícone + verbo), nunca texto cinza com hover: *"ação
         escondida sem afordância não existe, principalmente no celular"* (30/08) — e é no
         celular que o dono opera.
+
+        ⭐⭐ E DESDE 05/10 SÃO **DUAS PORTAS**: a compra que faltou **OU** a contagem, porque
+        *"a contagem é a âncora"* — ela sempre entra, mesmo sobre saldo negativo. Oferecer só
+        a nota era mandar o dono esperar um documento que pode não existir.
       */}
-      {ficha.saldo < 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-          <p className="min-w-0 flex-1 text-[12px] leading-snug text-amber-900">
-            <b>{num(ficha.saldo)} {ficha.item.unidadeControle}</b> — saiu mais do que entrou.
+      {negativo && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl px-3.5 py-3"
+          style={{ background: 'var(--fam-ambar-bg)', boxShadow: 'inset 0 0 0 1px var(--fam-ambar-mid)' }}>
+          <AlertTriangle className="h-4 w-4 shrink-0" style={{ color: 'var(--fam-ambar-mid)' }} />
+          <p className="min-w-0 flex-1 text-[12px] leading-snug" style={{ color: 'var(--fam-ambar-ink)' }}>
+            <b>{num(ficha.saldo)} {un}</b> — saiu mais do que entrou.
             Se foi compra que não chegou por nota, lance a entrada com a <b>quantidade e o valor
-            verdadeiros</b> da compra que faltou; o saldo volta ao positivo e o custo médio se refaz.
+            verdadeiros</b>; se tudo já foi lançado, <b>conte o que está na prateleira</b> — a
+            contagem corrige o saldo e o sistema registra o ajuste.
           </p>
           <a href={`/empresas/${id}/estoque/entrada-manual?item=${itemId}`}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-500 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100">
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
+            style={{ background: 'var(--prod-surface)', color: 'var(--fam-ambar-ink)', boxShadow: 'inset 0 0 0 1px var(--fam-ambar-mid)' }}>
             <PackagePlus className="h-3.5 w-3.5" /> lançar a entrada que faltou
+          </a>
+          <a href={`/empresas/${id}/estoque/contagem`}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
+            style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
+            contar este item
           </a>
         </div>
       )}
 
-      {/* cabeçalho */}
+      {/* ══════ 1. CABEÇALHO v4 + STATUS ══════ */}
       <div>
-        <div className="flex items-center gap-3">
-          <Package className="h-5 w-5 shrink-0 text-[#185FA5]" />
-          <div className="min-w-0">
-            <div className="text-xl"><NomeEditavel companyId={id} itemId={itemId} nome={ficha.item.nome} className="text-xl font-semibold" onSalvo={(n) => setFicha({ ...ficha, item: { ...ficha.item, nome: n } })} /></div>
-            {/* ⭐ a CATEGORIA virou editável (12/09) — o caso do vinagre marcado "uso interno" */}
-            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-slate-500">
+        <div className="flex items-start gap-3">
+          {/* ⭐ o logo sai do MAPA ÚNICO (o mesmo da receita) — e o pontinho é o do negativo */}
+          <LogoDaReceita nome={ficha.item.nome} tamanho={48} alerta={negativo ? { titulo: 'saldo negativo' } : null} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-[19px]">
+                <NomeEditavel companyId={id} itemId={itemId} nome={ficha.item.nome} className="text-[19px] font-semibold"
+                  onSalvo={(n) => setFicha({ ...ficha, item: { ...ficha.item, nome: n } })} />
+              </div>
+              {/* ⭐⭐ A PÍLULA DE ESTADO — a decisão vem do servidor; aqui só a tinta */}
+              <span className="rounded-full px-2 py-0.5 text-[11.5px] font-semibold" style={{ background: tom.bg, color: tom.ink }}>
+                {ficha.pilula.label}
+              </span>
+            </div>
+            {/* ⭐ a CATEGORIA é editável AQUI desde 12/09 (o caso do vinagre "uso interno") */}
+            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px]" style={{ color: 'var(--prod-secondary)' }}>
               <CategoriaEditavel
                 companyId={id} itemId={itemId} categoria={ficha.item.categoria}
                 onSalvo={(nova) => setFicha({ ...ficha, item: { ...ficha.item, categoria: nova } })}
               />
-              · controle em {ficha.item.unidadeControle}
+              · controle em {un}
             </p>
+            {ficha.pilula.porque && (
+              <p className="mt-0.5 text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>{ficha.pilula.porque}</p>
+            )}
+            {/* ⭐ o rastro da troca de categoria — a tabela guardava e ninguém mostrava */}
+            {ficha.categoriaRastro && (
+              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+                classificação trocada de <b>{ficha.categoriaRastro.de}</b> pra <b>{ficha.categoriaRastro.para}</b>
+                {ficha.categoriaRastro.quem ? ` por ${ficha.categoriaRastro.quem}` : ''} em {fmtDia(ficha.categoriaRastro.quando)}
+              </p>
+            )}
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-3">
-          <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Saldo atual</p><p className="text-lg font-semibold tabular-nums text-slate-900">{num(ficha.saldo)} {ficha.item.unidadeControle}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Custo médio</p><p className="text-lg font-semibold tabular-nums text-slate-900">{ficha.custoMedio != null ? brl(ficha.custoMedio) : '—'}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Valor em estoque</p><p className="text-lg font-semibold tabular-nums text-slate-900">{brl(ficha.valor)}</p></CardContent></Card>
+
+        {/* ⭐ 4 cartões: saldo · custo médio · valor · COBERTURA (o novo) */}
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Cartao titulo="Saldo atual">
+            <p className="text-[19px] font-semibold tabular-nums" style={{ color: negativo ? 'var(--prod-coral)' : 'var(--prod-primary)' }}>
+              {num(ficha.saldo)} <span className="text-[12px] font-normal" style={{ color: 'var(--prod-muted)' }}>{un}</span>
+            </p>
+            {negativo && <p className="mt-0.5 text-[11px]" style={{ color: 'var(--prod-coral)' }}>contar resolve — a contagem é a âncora</p>}
+          </Cartao>
+
+          <Cartao titulo="Custo médio">
+            <p className="text-[19px] font-semibold tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+              {ficha.custoMedio != null ? brl(ficha.custoMedio) : '—'}
+            </p>
+            {/*
+              ⭐ CUSTO MÉDIO "—" NÃO É AUSÊNCIA DE INFORMAÇÃO: a última compra existe e é o
+              número que o dono usa pra decidir. ⚠️ E ela vem marcada como última COMPRA, nunca
+              como custo médio — são coisas diferentes, e misturá-las faria o dono comparar
+              fornecedor contra a média do próprio estoque.
+            */}
+            {ficha.custoMedio == null && ultimaCompra && (
+              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+                última compra {brl(ultimaCompra.custoUnitario)} · {fmtDia(ultimaCompra.data)}
+              </p>
+            )}
+          </Cartao>
+
+          <Cartao titulo="Valor em estoque">
+            <p className="text-[19px] font-semibold tabular-nums" style={{ color: 'var(--prod-primary)' }}>{brl(ficha.valor)}</p>
+          </Cartao>
+
+          {/*
+            ⭐⭐ COBERTURA — "dá pra ~N dias".
+            ⛔ Saldo negativo/zerado ou sem consumo medido mostra **"—" com o motivo**: dizer
+            "dá pra 0 dias" seria uma previsão sobre um dado impossível.
+          */}
+          <Cartao titulo="Cobertura">
+            <p className="text-[19px] font-semibold tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+              {ficha.cobertura.dias != null ? `~${ficha.cobertura.dias} dias` : '—'}
+            </p>
+            <p className="mt-0.5 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+              {ficha.cobertura.dias != null
+                ? `no ritmo de ${num(ficha.consumo.porDia ?? 0)} ${un}/dia (últimos ${ficha.consumo.diasDaJanela}d)`
+                : ficha.cobertura.porque === 'SEM_CONSUMO'
+                  ? `nada saiu nos últimos ${ficha.consumo.diasDaJanela} dias`
+                  : 'sem saldo positivo pra projetar'}
+            </p>
+          </Cartao>
         </div>
       </div>
 
-      {/* trocar a régua do item (unidade de compra → unidade de consumo) */}
       {/* ⭐⭐ ITEM ENCERRADO (19/09) — a faixa vem ANTES dos gestos: quem abre a ficha
           precisa saber que este item não volta pra operação antes de tentar mexer nele. */}
       {ficha.encerrado && (
-        <div className="rounded-xl border-[1.5px] border-slate-300 bg-slate-50 px-3.5 py-2.5">
-          <p className="text-[13px] font-semibold text-slate-700">⊘ {ficha.encerrado}</p>
-          <p className="mt-0.5 text-[11.5px] leading-snug text-slate-500">
+        <div className="rounded-xl px-3.5 py-2.5" style={{ background: 'var(--prod-surface-1)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }}>
+          <p className="text-[13px] font-semibold" style={{ color: 'var(--prod-primary)' }}>⊘ {ficha.encerrado}</p>
+          <p className="mt-0.5 text-[11.5px] leading-snug" style={{ color: 'var(--prod-muted)' }}>
             Ele não aparece em nenhuma lista de trabalho — posição, contagem, receitas, produção.
             O histórico abaixo continua inteiro: as produções antigas usaram este item, e apagá-las
             reescreveria o custo do que já foi vendido.
@@ -144,38 +275,86 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
         </div>
       )}
 
-      <ReunitizarBloco companyId={id} itemId={itemId} nome={ficha.item.nome} unidade={ficha.item.unidadeControle} saldo={ficha.saldo} custoMedio={ficha.custoMedio} />
+      {/* ══════ 3. USADO EM N FICHAS — a busca reversa ══════ */}
+      <UsadoEmFichasCard uso={ficha.usoEmFichas} nomeDoItem={ficha.item.nome} />
 
-      {/* faixa de estoque (mín/máx) + status */}
+      {/* trocar a régua do item (unidade de compra → unidade de consumo) */}
+      <ReunitizarBloco companyId={id} itemId={itemId} nome={ficha.item.nome} unidade={un} saldo={ficha.saldo} custoMedio={ficha.custoMedio} />
+
+      {/* ══════ 4. faixa de estoque (mín/máx) + status + a SUGESTÃO ══════ */}
       <MinMaxEditor
-        companyId={id} itemId={itemId} unidade={ficha.item.unidadeControle}
+        companyId={id} itemId={itemId} unidade={un}
         estoqueMin={ficha.item.estoqueMin} estoqueMax={ficha.item.estoqueMax} status={ficha.status}
+        sugestao={ficha.sugestaoMinimo}
         onSalvo={(min, max) => setFicha({ ...ficha, item: { ...ficha.item, estoqueMin: min, estoqueMax: max }, status: statusEstoque(ficha.saldo, min, max) })}
       />
 
-      {/* gráfico de preço no tempo (2+ compras) */}
-      {ficha.precoTempo.length >= 2 && (
-        <Card><CardContent className="p-4">
-          <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900"><TrendingUp className="h-4 w-4" /> Preço unitário no tempo</p>
-          <div className="h-40">
+      {/* ══════ 6. GRÁFICOS: preço pago × saldo no tempo ══════ */}
+      {(ficha.precoTempo.length >= 2 || serieSaldo.length >= 2) && (
+        <Card style={{ background: 'var(--prod-surface)', borderColor: 'var(--prod-line)' }}><CardContent className="p-4">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {grafico === 'PRECO'
+              ? <TrendingUp className="h-4 w-4" style={{ color: 'var(--prod-accent)' }} />
+              : <Activity className="h-4 w-4" style={{ color: 'var(--prod-accent)' }} />}
+            <p className="text-sm font-semibold" style={{ color: 'var(--prod-primary)' }}>
+              {grafico === 'PRECO' ? 'Preço unitário no tempo' : 'Saldo no tempo'}
+            </p>
+            {/* ⭐ toggle, não duas telas: é a MESMA pergunta ("como este item andou") em dois eixos */}
+            <div className="ml-auto flex gap-1">
+              {([['PRECO', 'preço'], ['SALDO', 'saldo']] as const).map(([k, rot]) => (
+                <button key={k} onClick={() => setGrafico(k)}
+                  disabled={k === 'PRECO' ? ficha.precoTempo.length < 2 : serieSaldo.length < 2}
+                  className="h-7 rounded-lg px-2.5 text-[12px] font-medium disabled:opacity-40"
+                  style={grafico === k
+                    ? { background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }
+                    : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}>
+                  {rot}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="h-44">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={ficha.precoTempo} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                <XAxis dataKey="data" tickFormatter={fmtDia} tick={{ fontSize: 11 }} stroke="#94a3b8" />
-                <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" width={50} tickFormatter={(v) => brl(v)} />
-                <Tooltip formatter={(v) => brl(Number(v))} labelFormatter={(l) => fmtDia(String(l))} />
-                <Line type="monotone" dataKey="preco" stroke="#185FA5" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
+              {grafico === 'PRECO' ? (
+                <LineChart data={ficha.precoTempo} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="data" tickFormatter={fmtDia} tick={{ fontSize: 11 }} stroke="var(--prod-muted)" />
+                  <YAxis tick={{ fontSize: 11 }} stroke="var(--prod-muted)" width={56} tickFormatter={(v) => brl(v)} />
+                  <Tooltip formatter={(v) => brl(Number(v))} labelFormatter={(l) => fmtDia(String(l))} />
+                  <Line type="monotone" dataKey="preco" stroke="var(--prod-accent)" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              ) : (
+                <LineChart data={serieSaldo} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="data" tickFormatter={fmtDia} tick={{ fontSize: 11 }} stroke="var(--prod-muted)" />
+                  <YAxis tick={{ fontSize: 11 }} stroke="var(--prod-muted)" width={56} tickFormatter={(v) => num(Number(v))} />
+                  <Tooltip formatter={(v) => `${num(Number(v))} ${un}`} labelFormatter={(l) => fmtDia(String(l))} />
+                  {/*
+                    ⭐⭐ A ZONA NEGATIVA PINTADA — *"o desenho do buraco da ervilha vira visível
+                    num olhar"* (ordem do dono). ⚠️ Só aparece quando o item REALMENTE esteve
+                    negativo: pintar uma faixa que ninguém alcançou seria decoração.
+                  */}
+                  {serieSaldo.some((p) => p.saldo < 0) && (
+                    <ReferenceArea y1={Math.min(...serieSaldo.map((p) => p.saldo))} y2={0}
+                      fill="var(--fam-coral-mid)" fillOpacity={0.12} />
+                  )}
+                  <Line type="monotone" dataKey="saldo" stroke="var(--prod-accent)" strokeWidth={2} dot={{ r: 2 }} />
+                </LineChart>
+              )}
             </ResponsiveContainer>
           </div>
         </CardContent></Card>
       )}
 
-      {/* ⭐⭐ HISTÓRICO DO ITEM — entradas E saídas, cada linha com tipo/quem/origem */}
+      {/* ══════ 5. HISTÓRICO DO ITEM — entradas E saídas, cada linha com tipo/quem/origem ══════ */}
       <div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <History className="h-4 w-4 shrink-0 text-[#185FA5]" />
-          <h2 className="text-sm font-semibold text-slate-900">Histórico do item</h2>
-          <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">tudo que entrou e saiu — clique na origem pra chegar na fonte</p>
+          <History className="h-4 w-4 shrink-0" style={{ color: 'var(--prod-accent)' }} />
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--prod-primary)' }}>Histórico do item</h2>
+          <p className="hidden flex-1 truncate text-xs lg:block" style={{ color: 'var(--prod-muted)' }}>tudo que entrou e saiu — clique na origem pra chegar na fonte</p>
+          {/* ⭐ CSV do que está FILTRADO (botão discreto, como o dono pediu) */}
+          <button onClick={baixar} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs"
+            style={{ boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
+            <Download className="h-3.5 w-3.5" /> CSV
+          </button>
         </div>
 
         {/* ⭐ o filtro só oferece o que EXISTE neste item — opção vazia é convite a beco sem saída */}
@@ -188,9 +367,10 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
             <button
               key={o.k}
               onClick={() => setFiltro(o.k)}
-              className={`h-7 rounded-lg px-2.5 text-[12px] font-medium transition ${
-                filtro === o.k ? 'bg-[#185FA5] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+              className="h-7 rounded-lg px-2.5 text-[12px] font-medium transition"
+              style={filtro === o.k
+                ? { background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }
+                : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
             >
               {o.label}
             </button>
@@ -201,7 +381,10 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
           {(ficha.anulados > 0 || forense) && (
             <button
               onClick={() => { setForense((v) => !v); setParAberto(null) }}
-              className={`ml-auto h-7 rounded-lg px-2.5 text-[12px] font-medium transition ${forense ? 'bg-slate-700 text-white' : 'bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50'}`}
+              className="ml-auto h-7 rounded-lg px-2.5 text-[12px] font-medium transition"
+              style={forense
+                ? { background: 'var(--prod-mudo)', color: 'var(--prod-acao-ink)' }
+                : { background: 'var(--prod-surface)', color: 'var(--prod-muted)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }}
               title="abre os pares lançamento+estorno que se anulam"
             >
               {forense ? 'voltar ao modo limpo' : 'mostrar tudo (forense)'}
@@ -209,16 +392,64 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
           )}
         </div>
 
+        {/* ⭐ PERÍODO LIVRE + BUSCA (o padrão do Real×Teórico) */}
+        <div className="mb-2 flex flex-wrap items-end gap-2">
+          <label className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>de
+            <input type="date" value={de} onChange={(e) => setDe(e.target.value)}
+              className="mt-0.5 block h-8 rounded-lg px-2 text-[12px]"
+              style={{ boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }} />
+          </label>
+          <label className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>até
+            <input type="date" value={ate} onChange={(e) => setAte(e.target.value)}
+              className="mt-0.5 block h-8 rounded-lg px-2 text-[12px]"
+              style={{ boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }} />
+          </label>
+          <label className="min-w-[180px] flex-1 text-[11px]" style={{ color: 'var(--prod-muted)' }}>buscar na origem, no tipo ou em quem fez
+            <span className="mt-0.5 flex h-8 items-center gap-1.5 rounded-lg px-2"
+              style={{ boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)', background: 'var(--prod-surface)' }}>
+              <Search className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--prod-muted)' }} />
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="ex: 1234, frigorífico, marcyelle"
+                className="w-full bg-transparent text-[12px] outline-none" style={{ color: 'var(--prod-primary)' }} />
+            </span>
+          </label>
+          {recorteAtivo && (
+            <button onClick={() => { setDe(''); setAte(''); setBusca(''); setFiltro('TUDO') }}
+              className="h-8 rounded-lg px-2.5 text-[12px]" style={{ color: 'var(--prod-accent)' }}>
+              limpar o recorte
+            </button>
+          )}
+        </div>
+
+        {/*
+          ⭐⭐ O RESUMO DO RECORTE, no topo da tabela — *"entrou X · saiu Y · Δ Z · N
+          movimentos"*, recalculando com os filtros ativos.
+          ⚠️ E ele DIZ quantas linhas ficaram fora da conta (consumo de produção, par anulado):
+          exclusão escondida é tão ruim quanto exclusão nenhuma.
+        */}
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg px-3 py-2 text-[12px]"
+          style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}>
+          <span>entrou <b className="tabular-nums" style={{ color: 'var(--prod-verde)' }}>{num(resumo.entrou)} {un}</b></span>
+          <span>saiu <b className="tabular-nums" style={{ color: 'var(--prod-coral)' }}>{num(resumo.saiu)} {un}</b></span>
+          <span>Δ <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{resumo.delta > 0 ? '+' : ''}{num(resumo.delta)} {un}</b></span>
+          <span className="tabular-nums">{brl(resumo.deltaValor)}</span>
+          <span style={{ color: 'var(--prod-muted)' }}>{resumo.movimentos} movimento(s)</span>
+          {resumo.foraDaConta > 0 && (
+            <span style={{ color: 'var(--prod-muted)' }} title="consumo de produção e pares anulados não movem a prateleira">
+              · {resumo.foraDaConta} fora da conta
+            </span>
+          )}
+        </div>
+
         {linhas.length === 0 ? (
-          <Card><CardContent className="p-6 text-center text-sm text-slate-500">
+          <Card style={{ background: 'var(--prod-surface)', borderColor: 'var(--prod-line)' }}><CardContent className="p-6 text-center text-sm" style={{ color: 'var(--prod-secondary)' }}>
             {ficha.historico.length === 0
               ? 'Nada aconteceu com este item ainda. Cada recebimento, contagem, produção ou venda aparece aqui.'
-              : 'Nenhuma linha neste filtro.'}
+              : 'Nenhuma linha neste recorte.'}
           </CardContent></Card>
         ) : (
-          <Card><CardContent className="p-0 overflow-x-auto">
+          <Card style={{ background: 'var(--prod-surface)', borderColor: 'var(--prod-line)' }}><CardContent className="p-0 overflow-x-auto">
             <table className="density-normal w-full min-w-[720px]">
-              <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <thead><tr className="text-left text-[11px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)', borderBottom: '1px solid var(--prod-line-strong)' }}>
                 <th className="px-3 py-2 font-medium">Data</th>
                 <th className="px-3 py-2 font-medium">O que foi</th>
                 <th className="px-3 py-2 font-medium">De onde veio</th>
@@ -227,51 +458,74 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                 {/* ⚠️ o rótulo é GENÉRICO na coluna porque a natureza muda por linha; cada
                     célula diz qual é a sua (preço de compra × custo médio da baixa). */}
                 {/* ⚠️ CUSTO UN. muda raro — é segundo olhar. Some no celular pra o SALDO caber. */}
-                <th className="hidden px-3 py-2 text-right font-normal text-slate-300 sm:table-cell">Custo un.</th>
+                <th className="hidden px-3 py-2 text-right font-normal sm:table-cell" style={{ color: 'var(--prod-muted)' }}>Custo un.</th>
                 <th className="px-3 py-2 text-right font-medium">Total</th>
                 {/* ⭐⭐ O EXTRATO BANCÁRIO DO ITEM: quanto ele tinha DEPOIS de cada linha */}
-                <th className="px-3 py-2 text-right font-medium text-slate-500">Saldo</th>
+                <th className="px-3 py-2 text-right font-medium">Saldo</th>
               </tr></thead>
               <tbody>
-                {linhas.map((l) => (
-                  l.anulado ? (
+                {linhas.map((l, i) => (
+                  <Fragment key={l.movimentoId}>
+                    {/*
+                      ⭐⭐ A LINHA DO ZERO (06/10) — *"o momento em que o saldo cruzou pro
+                      negativo"*. ⛔ Ela aparece ACIMA da linha que cruzou, porque a tabela desce
+                      do recente pro antigo: tudo que está acima desta divisória já estava no
+                      buraco. É o que acha a origem do negativo de bate-olho.
+                    */}
+                    {zero?.movimentoId === l.movimentoId && (
+                      <tr>
+                        <td colSpan={8} className="px-3 py-1">
+                          <span className="flex items-center gap-2 text-[11px] font-semibold" style={{ color: 'var(--prod-coral)' }}>
+                            <span className="h-px flex-1" style={{ background: 'var(--fam-coral-mid)' }} />
+                            ficou negativo aqui ({fmtDia(l.data)})
+                            <span className="h-px flex-1" style={{ background: 'var(--fam-coral-mid)' }} />
+                          </span>
+                        </td>
+                      </tr>
+                    )}
+                    {l.anulado ? (
                     /* ⭐⭐ O PAR QUE SE ANULA: UMA linha fina, apagada, SEM valor somando —
                        líquido zero. ⛔ Expansível: o par inteiro está aqui dentro, nada
                        foi apagado. */
-                    <Fragment key={l.movimentoId}>
-                      <tr className="border-b border-slate-50 last:border-0">
+                    <>
+                      <tr style={{ borderBottom: '1px solid var(--prod-line)' }}>
                         <td colSpan={8} className="px-3 py-1">
-                          <button onClick={() => setParAberto((v) => (v === l.movimentoId ? null : l.movimentoId))} className="flex w-full items-center gap-1.5 text-left text-[11.5px] text-slate-400 hover:text-slate-600">
+                          <button onClick={() => setParAberto((v) => (v === l.movimentoId ? null : l.movimentoId))} className="flex w-full items-center gap-1.5 text-left text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
                             <span className="shrink-0">⊘</span>
                             <span className="truncate">{l.anulado.frase}</span>
-                            <span className="ml-auto shrink-0 text-[#185FA5]">{parAberto === l.movimentoId ? 'ocultar' : 'ver detalhe'}</span>
+                            <span className="ml-auto shrink-0" style={{ color: 'var(--prod-accent)' }}>{parAberto === l.movimentoId ? 'ocultar' : 'ver detalhe'}</span>
                           </button>
                         </td>
                       </tr>
                       {parAberto === l.movimentoId && [l.anulado.original, ...l.anulado.estornos].map((d) => (
-                        <tr key={d.movimentoId} className="border-b border-slate-50 bg-slate-50/60 last:border-0">
-                          <td className="px-3 py-1 pl-6 text-[12px] tabular-nums text-slate-500">{fmtDia(d.data)}</td>
-                          <td className="px-3 py-1 text-[12px] text-slate-500">{d.chip}</td>
-                          <td className="px-3 py-1 text-[12px] text-slate-500">{d.detalhe}</td>
-                          <td className="px-3 py-1 text-[12px] text-slate-500">{d.quem ?? '—'}</td>
-                          <td className="px-3 py-1 text-right text-[12px] tabular-nums text-slate-500">{d.quantidade > 0 ? '+' : ''}{formatarQtd(d.quantidade, ficha.item.unidadeControle)}</td>
-                          <td className="hidden px-3 py-1 text-right text-[12px] tabular-nums text-slate-400 sm:table-cell">{brl(d.custoUnitario)}</td>
-                          <td className="px-3 py-1 text-right text-[12px] tabular-nums text-slate-500">{brl(d.custoTotal)}</td>
+                        <tr key={d.movimentoId} style={{ borderBottom: '1px solid var(--prod-line)', background: 'var(--prod-surface-1)' }}>
+                          <td className="px-3 py-1 pl-6 text-[12px] tabular-nums" style={{ color: 'var(--prod-muted)' }}>{fmtDia(d.data)}</td>
+                          <td className="px-3 py-1 text-[12px]" style={{ color: 'var(--prod-muted)' }}>{d.chip}</td>
+                          <td className="px-3 py-1 text-[12px]" style={{ color: 'var(--prod-muted)' }}>{d.detalhe}</td>
+                          <td className="px-3 py-1 text-[12px]" style={{ color: 'var(--prod-muted)' }}>{d.quem ?? '—'}</td>
+                          <td className="px-3 py-1 text-right text-[12px] tabular-nums" style={{ color: 'var(--prod-muted)' }}>{d.quantidade > 0 ? '+' : ''}{formatarQtd(d.quantidade, un)}</td>
+                          <td className="hidden px-3 py-1 text-right text-[12px] tabular-nums sm:table-cell" style={{ color: 'var(--prod-muted)' }}>{brl(d.custoUnitario)}</td>
+                          <td className="px-3 py-1 text-right text-[12px] tabular-nums" style={{ color: 'var(--prod-muted)' }}>{brl(d.custoTotal)}</td>
                           {/* ⛔ o par não mexeu no saldo — a célula fica vazia de propósito */}
                           <td className="px-3 py-1" />
                         </tr>
                       ))}
-                    </Fragment>
+                    </>
                   ) : (
-                  <tr key={l.movimentoId} className={`border-b border-slate-50 last:border-0 ${l.familia === 'ESTORNO' ? 'bg-slate-50/60' : ''}`}>
-                    <td className="px-3 py-0 text-[13px] tabular-nums text-slate-700">{fmtDia(l.data)}</td>
+                  <tr style={{
+                    borderBottom: '1px solid var(--prod-line)',
+                    // ⭐ zebrado v4 por CLASSE de linha (nunca `style` que vença o hover —
+                    //   a lição de 05/10 na lista de concluídas)
+                    background: l.familia === 'ESTORNO' ? 'var(--prod-surface-1)' : i % 2 ? 'var(--prod-surface-1)' : undefined,
+                  }}>
+                    <td className="px-3 py-0 text-[13px] tabular-nums" style={{ color: 'var(--prod-secondary)' }}>{fmtDia(l.data)}</td>
                     <td className="px-3 py-0">
-                      <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[11.5px] font-medium ring-1 ring-inset ${COR_DA_FAMILIA[l.familia]}`}>
+                      <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11.5px] font-medium" style={chipDaFamilia(l.familia)}>
                         {l.chip}
                       </span>
                       {/* ⭐ o estorno DIZ o que estornou — antes era só uma linha vermelha */}
                       {l.estornoDe && (
-                        <span className="ml-1.5 text-[11.5px] text-slate-500">
+                        <span className="ml-1.5 text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
                           do {l.estornoDe.chip.toLowerCase()} de {fmtDia(l.estornoDe.data)}
                         </span>
                       )}
@@ -280,72 +534,91 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                           insumo já saiu aqui), e mostrá-lo como 2ª linha foi o que fez o dono
                           suspeitar de baixa dupla. */}
                       {l.dentroDaProducao && (
-                        <div className="mt-0.5 text-[11px] leading-tight text-slate-400">
+                        <div className="mt-0.5 text-[11px] leading-tight" style={{ color: 'var(--prod-muted)' }}>
                           separado {num(l.dentroDaProducao.separado)} · consumido {num(l.dentroDaProducao.consumido)}
                           {l.dentroDaProducao.devolvido > 0 && <> · devolvido {num(l.dentroDaProducao.devolvido)}</>}
-                          {l.dentroDaProducao.emProducao > 0 && <> · <span className="text-sky-600">em produção {num(l.dentroDaProducao.emProducao)}</span></>}
+                          {l.dentroDaProducao.emProducao > 0 && <> · <span style={{ color: 'var(--fam-azul-mid)' }}>em produção {num(l.dentroDaProducao.emProducao)}</span></>}
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-0 text-[13px] text-slate-600">
+                    <td className="px-3 py-0 text-[13px]" style={{ color: 'var(--prod-secondary)' }}>
                       {l.href ? (
-                        <a href={l.href} className="inline-flex items-center gap-1 text-[#185FA5] hover:underline">
+                        <a href={l.href} className="inline-flex items-center gap-1 hover:underline" style={{ color: 'var(--prod-accent)' }}>
                           {l.detalhe}<ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
                         </a>
                       ) : l.detalhe}
                     </td>
-                    <td className="px-3 py-0 text-[13px] text-slate-600">{l.quem ?? <span className="text-slate-300">—</span>}</td>
-                    <td className={`px-3 py-0 text-right text-[13px] tabular-nums ${l.quantidade < 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-                      {l.quantidade > 0 ? '+' : ''}{formatarQtd(l.quantidade, ficha.item.unidadeControle)}
+                    <td className="px-3 py-0 text-[13px]" style={{ color: 'var(--prod-secondary)' }}>{l.quem ?? <span style={{ color: 'var(--prod-muted)' }}>—</span>}</td>
+                    <td className="px-3 py-0 text-right text-[13px] tabular-nums" style={{ color: l.quantidade < 0 ? 'var(--prod-coral)' : 'var(--prod-secondary)' }}>
+                      {l.quantidade > 0 ? '+' : ''}{formatarQtd(l.quantidade, un)}
                     </td>
-                    <td className="hidden px-3 py-0 text-right text-[12px] tabular-nums text-slate-400 sm:table-cell">
-                      {brl(l.custoUnitario)}
-                      {/* ⛔ SAÍDA NÃO É PREÇO DE COMPRA: dizer "preço un." num consumo faria o
-                          dono comparar fornecedor contra a média interna do próprio estoque. */}
-                      {!l.precoEhDeCompra && <span className="ml-1 text-[10.5px] font-normal text-slate-400">médio</span>}
+                    <td className="hidden px-3 py-0 text-right text-[12px] tabular-nums sm:table-cell" style={{ color: 'var(--prod-muted)' }}>
+                      {/*
+                        ⛔⛔ "R$ 0,00 MÉDIO" NÃO É DINHEIRO (06/10) — é **custo indisponível**: a
+                        baixa saiu num instante em que o item estava negativo, e aí não existe
+                        custo médio (o `saldo.ts` se recusa a dividir negativo por negativo).
+                        ⚠️ Impresso como valor normal, ele parece preço real e entra na leitura
+                        do dono como se a mercadoria tivesse saído de graça.
+                      */}
+                      {!l.precoEhDeCompra && l.custoUnitario === 0 ? (
+                        <span className="opacity-50" title="custo indisponível — o item estava negativo quando esta linha saiu">
+                          {brl(0)} <span className="text-[10.5px] font-normal">médio</span>
+                        </span>
+                      ) : (
+                        <>
+                          {brl(l.custoUnitario)}
+                          {/* ⛔ SAÍDA NÃO É PREÇO DE COMPRA: dizer "preço un." num consumo faria o
+                              dono comparar fornecedor contra a média interna do próprio estoque. */}
+                          {!l.precoEhDeCompra && <span className="ml-1 text-[10.5px] font-normal">médio</span>}
+                        </>
+                      )}
                     </td>
                     {/* ⛔ linha que não move o saldo NÃO exibe valor no total: ou entra na
                         conta, ou não aparece somando (regra do dono, 09/09). */}
-                    <td className={`px-3 py-0 text-right text-[13px] font-medium tabular-nums ${!l.movePrateleira ? 'text-slate-300' : l.custoTotal < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+                    <td className="px-3 py-0 text-right text-[13px] font-medium tabular-nums"
+                      style={{ color: !l.movePrateleira ? 'var(--prod-muted)' : l.custoTotal < 0 ? 'var(--prod-coral)' : 'var(--prod-primary)' }}>
                       {l.movePrateleira ? brl(l.custoTotal) : <span title="não mexe no saldo">—</span>}
                     </td>
                     {/* ⭐⭐ SALDO DEPOIS DESTA LINHA — derivado do ledger na ordem, nunca gravado.
                         ⛔ "—" quando não dá pra AFIRMAR (recorte parcial): número de estoque
                         plausível e errado é a mentira mais cara que esta tela poderia contar. */}
-                    <td className="px-3 py-0 text-right text-[13px] font-semibold tabular-nums text-slate-700">
+                    <td className="px-3 py-0 text-right text-[13px] font-semibold tabular-nums"
+                      style={{ color: l.saldoApos != null && l.saldoApos < 0 ? 'var(--prod-coral)' : 'var(--prod-secondary)' }}>
                       {l.saldoApos == null
-                        ? <span className="font-normal text-slate-300" title="o recorte não permite afirmar o saldo deste instante">—</span>
-                        : <>{num(l.saldoApos)} <span className="text-[10.5px] font-normal text-slate-400">{ficha.item.unidadeControle}</span></>}
+                        ? <span className="font-normal" style={{ color: 'var(--prod-muted)' }} title="o recorte não permite afirmar o saldo deste instante">—</span>
+                        : <>{num(l.saldoApos)} <span className="text-[10.5px] font-normal" style={{ color: 'var(--prod-muted)' }}>{un}</span></>}
                     </td>
                   </tr>
-                  )
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
               {/* ⭐⭐ O TESTE DA TELA, à vista: a soma da coluna TOTAL É o saldo. Sem isto o
                   dono não tem como saber se a tabela fecha — e foi a dúvida dele que abriu
-                  esta frente. ⚠️ só aparece sem filtro: filtrado, a soma é do recorte. */}
-              {filtro === 'TUDO' && (
+                  esta frente. ⚠️ só aparece SEM RECORTE: filtrado, a soma é do recorte (e o
+                  resumo do topo é quem fala dele). */}
+              {!recorteAtivo && (
                 <tfoot>
-                  <tr className="border-t border-slate-200 bg-slate-50/60">
-                    <td className="px-3 py-2 text-[11.5px] font-medium uppercase tracking-wide text-slate-500" colSpan={4}>
+                  <tr style={{ borderTop: '1px solid var(--prod-line-strong)', background: 'var(--prod-surface-1)' }}>
+                    <td className="px-3 py-2 text-[11.5px] font-medium uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }} colSpan={4}>
                       soma das linhas
                     </td>
-                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums text-slate-900">
-                      {num(ficha.conferencia.somaQuantidade)} {ficha.item.unidadeControle}
+                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+                      {num(ficha.conferencia.somaQuantidade)} {un}
                     </td>
                     <td className="hidden px-3 py-2 sm:table-cell" />
-                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums text-slate-900">{brl(ficha.conferencia.somaValor)}</td>
+                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums" style={{ color: 'var(--prod-primary)' }}>{brl(ficha.conferencia.somaValor)}</td>
                     {/* ⭐⭐ O FECHO DA PROVA: o rodapé repete o saldo que a coluna vem descendo
                         linha a linha — e é o MESMO número da Posição. Três leitores, uma régua. */}
-                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums text-slate-900">
-                      {num(ficha.conferencia.saldo)} <span className="text-[10.5px] font-normal text-slate-400">{ficha.item.unidadeControle}</span>
+                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+                      {num(ficha.conferencia.saldo)} <span className="text-[10.5px] font-normal" style={{ color: 'var(--prod-muted)' }}>{un}</span>
                     </td>
                   </tr>
-                  <tr className="bg-slate-50/60">
-                    <td className={`px-3 pb-2 text-[11.5px] ${ficha.conferencia.confere ? 'text-emerald-700' : 'text-rose-600'}`} colSpan={8}>
+                  <tr style={{ background: 'var(--prod-surface-1)' }}>
+                    <td className="px-3 pb-2 text-[11.5px]" style={{ color: ficha.conferencia.confere ? 'var(--prod-verde)' : 'var(--prod-coral)' }} colSpan={8}>
                       {ficha.conferencia.confere
-                        ? `✓ bate com o saldo em estoque (${num(ficha.conferencia.saldo)} ${ficha.item.unidadeControle} · ${brl(ficha.conferencia.valor)})`
-                        : `⚠ NÃO bate com o saldo (${num(ficha.conferencia.saldo)} ${ficha.item.unidadeControle} · ${brl(ficha.conferencia.valor)}) — a tabela está somando algo que o saldo não conta`}
+                        ? `✓ bate com o saldo em estoque (${num(ficha.conferencia.saldo)} ${un} · ${brl(ficha.conferencia.valor)})`
+                        : `⚠ NÃO bate com o saldo (${num(ficha.conferencia.saldo)} ${un} · ${brl(ficha.conferencia.valor)}) — a tabela está somando algo que o saldo não conta`}
                     </td>
                   </tr>
                 </tfoot>
@@ -355,6 +628,18 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
         )}
       </div>
     </div>
+  )
+}
+
+/** ⭐ o cartão do cabeçalho — um componente, 4 usos (nunca 4 blocos iguais escritos à mão) */
+function Cartao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <Card style={{ background: 'var(--prod-surface)', borderColor: 'var(--prod-line)' }}>
+      <CardContent className="p-3.5">
+        <p className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>{titulo}</p>
+        <div className="mt-1">{children}</div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -386,6 +671,9 @@ function ReunitizarBloco({ companyId, itemId, nome, unidade, saldo, custoMedio }
    */
   const trocaUnidade = unidadeNova !== unidade
   const valido = Number.isFinite(f) && f > 0 && (f !== 1 || trocaUnidade)
+
+  const campo = 'mt-1 block rounded-lg py-2 px-3 text-sm'
+  const estiloCampo = { border: '1px solid var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }
 
   const verPrevia = async () => {
     setBusy(true); setErro(null); setPrev(null)
@@ -428,81 +716,83 @@ function ReunitizarBloco({ companyId, itemId, nome, unidade, saldo, custoMedio }
       <button
         onClick={() => setAberto(true)}
         aria-expanded={false}
-        className="flex w-full items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-left text-xs text-slate-600 hover:border-slate-400 hover:bg-slate-50"
+        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs"
+        style={{ border: '1px dashed var(--prod-line-strong)', color: 'var(--prod-secondary)' }}
       >
-        <Ruler className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+        <Ruler className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--prod-muted)' }} />
         <span className="flex-1">
           <b className="font-medium">Converter a unidade</b>
-          <span className="block text-[11px] text-slate-400">
+          <span className="block text-[11px]" style={{ color: 'var(--prod-muted)' }}>
             está em {unidade} de compra e você usa por unidade menor? (ex: 1 cartela = 30 ovos)
           </span>
         </span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+        <ChevronDown className="h-4 w-4 shrink-0" style={{ color: 'var(--prod-muted)' }} />
       </button>
     )
   }
 
   return (
-    <Card className="border-amber-200"><CardContent className="space-y-3 p-4">
+    <Card style={{ background: 'var(--prod-surface)', borderColor: 'var(--fam-ambar-mid)' }}><CardContent className="space-y-3 p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-slate-900">Trocar a unidade de controle</p>
-          <p className="text-xs text-slate-500">
+          <p className="text-sm font-semibold" style={{ color: 'var(--prod-primary)' }}>Trocar a unidade de controle</p>
+          <p className="text-xs" style={{ color: 'var(--prod-muted)' }}>
             Hoje: <b>{num(saldo)} {unidade}</b> a {custoMedio != null ? brl(custoMedio) : '—'} cada.
             Se 1 {unidade} na verdade contém várias unidades de uso, informe quantas.
           </p>
         </div>
-        <button onClick={() => { setAberto(false); setPrev(null); setErro(null) }} className="text-xs text-slate-400 hover:text-slate-600">fechar</button>
+        <button onClick={() => { setAberto(false); setPrev(null); setErro(null) }} className="text-xs" style={{ color: 'var(--prod-muted)' }}>fechar</button>
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
         {/* ⭐ A UNIDADE NOVA (11/09/2026): sem ela o gesto só sabia "quantas cabem em 1",
             e o caso do óleo (UN → LT com fator 1) era recusado como "não muda nada". */}
-        <label className="text-xs text-slate-500">controlar em
+        <label className="text-xs" style={{ color: 'var(--prod-muted)' }}>controlar em
           <select value={unidadeNova} onChange={(e) => { setUnidadeNova(e.target.value); setPrev(null) }}
-            className="mt-1 block w-24 rounded-lg border border-slate-300 py-2 px-3 text-sm">
+            className={`${campo} w-24`} style={estiloCampo}>
             <option value="UN">UN</option>
             <option value="KG">KG</option>
             <option value="LT">LT</option>
           </select>
         </label>
-        <label className="text-xs text-slate-500">1 {unidade} contém
+        <label className="text-xs" style={{ color: 'var(--prod-muted)' }}>1 {unidade} contém
           <input value={fator} onChange={(e) => { setFator(e.target.value); setPrev(null) }} inputMode="decimal" placeholder="ex: 12"
-            className="mt-1 block w-24 rounded-lg border border-slate-300 py-2 px-3 text-sm tabular-nums" />
+            className={`${campo} w-24 tabular-nums`} style={estiloCampo} />
         </label>
-        <label className="min-w-[220px] flex-1 text-xs text-slate-500">Novo nome (o antigo passa a mentir)
-          <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 py-2 px-3 text-sm" />
+        <label className="min-w-[220px] flex-1 text-xs" style={{ color: 'var(--prod-muted)' }}>Novo nome (o antigo passa a mentir)
+          <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className={`${campo} w-full`} style={estiloCampo} />
         </label>
         <button onClick={verPrevia} disabled={!valido || busy}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs disabled:opacity-40"
+          style={{ boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
           {busy && !prev ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} ver a prévia
         </button>
       </div>
 
       {prev && (
-        <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+        <div className="space-y-2 rounded-lg p-3" style={{ background: 'var(--prod-surface-1)' }}>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <p className="text-slate-400">Hoje</p>
-              <p className="tabular-nums text-slate-700">{num(prev.antes.saldo)} {unidade} × {prev.antes.custoMedio != null ? brl(prev.antes.custoMedio) : '—'}</p>
+              <p style={{ color: 'var(--prod-muted)' }}>Hoje</p>
+              <p className="tabular-nums" style={{ color: 'var(--prod-secondary)' }}>{num(prev.antes.saldo)} {unidade} × {prev.antes.custoMedio != null ? brl(prev.antes.custoMedio) : '—'}</p>
             </div>
             <div>
-              <p className="text-slate-400">Depois</p>
-              <p className="font-medium tabular-nums text-slate-900">{num(prev.depois.saldo)} × {prev.depois.custoMedio != null ? brl(prev.depois.custoMedio) : '—'}</p>
+              <p style={{ color: 'var(--prod-muted)' }}>Depois</p>
+              <p className="font-medium tabular-nums" style={{ color: 'var(--prod-primary)' }}>{num(prev.depois.saldo)} × {prev.depois.custoMedio != null ? brl(prev.depois.custoMedio) : '—'}</p>
             </div>
           </div>
           {/* a âncora que prova que a conta só mudou de régua */}
-          <p className="text-[11px] text-emerald-700">
+          <p className="text-[11px]" style={{ color: 'var(--prod-verde)' }}>
             ✓ O valor em estoque não muda: <b>{brl(prev.antes.valor)}</b> antes e depois.
           </p>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
             {prev.movimentos} movimento(s) do histórico são reescritos na régua nova (estorno + linha nova — o ledger não se apaga).
           </p>
           {/* ⭐⭐ AS FICHAS AFETADAS, À VISTA ANTES (11/09/2026, pedido do dono). Antes o
               gesto RECUSAVA item usado em ficha; agora converte junto — e converter em
               silêncio seria pior que recusar, então a lista vem primeiro. */}
           {(prev.fichas ?? []).length > 0 && (
-            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-900">
+            <div className="mt-2 rounded-lg px-3 py-2 text-[11.5px]" style={{ background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
               <b>{(prev.fichas ?? []).length} receita(s) usam este item — as quantidades convertem junto:</b>
               {(prev.fichas ?? []).map((fi: { fichaNome: string; qtdAntes: number; qtdDepois: number; unidadeAntes: string }, i: number) => (
                 <p key={i} className="tabular-nums">
@@ -513,23 +803,24 @@ function ReunitizarBloco({ companyId, itemId, nome, unidade, saldo, custoMedio }
           )}
           {/* ⛔ o que IMPEDE a troca aparece ANTES do botão, não como erro depois do clique */}
           {(prev.bloqueios ?? []).length > 0 && (
-            <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11.5px] text-rose-900">
+            <div className="mt-2 rounded-lg px-3 py-2 text-[11.5px]" style={{ background: 'var(--fam-coral-bg)', color: 'var(--fam-coral-ink)' }}>
               {(prev.bloqueios ?? []).map((b: string, i: number) => <p key={i}>⛔ {b}</p>)}
             </div>
           )}
           {prev.mapas.map((m) => (
-            <p key={m.cProd} className="text-[11px] text-slate-500">
+            <p key={m.cProd} className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
               Fator da nota “{m.xProd ?? m.cProd}” ({m.unidadeNota}): <b>{m.fatorAntes} → {m.fatorDepois}</b> — a próxima nota já entra convertida.
             </p>
           ))}
           <button onClick={aplicar} disabled={busy}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold disabled:opacity-50"
+            style={{ background: 'var(--fam-ambar-mid)', color: 'var(--prod-acao-ink)' }}>
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} confirmar a troca
           </button>
         </div>
       )}
 
-      {erro && <p className="text-xs text-rose-600">{erro}</p>}
+      {erro && <p className="text-xs" style={{ color: 'var(--prod-coral)' }}>{erro}</p>}
     </CardContent></Card>
   )
 }

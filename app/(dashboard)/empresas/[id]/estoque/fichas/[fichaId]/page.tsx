@@ -17,7 +17,8 @@ export default function EditarFichaPage({ params }: { params: Promise<{ id: stri
     <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
       <a href={voltar} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> voltar</a>
       <h1 className="text-xl font-semibold text-slate-900">Editar ficha técnica</h1>
-      <FichaEditor companyId={id} fichaId={fichaId} voltarPara={voltar} />
+      {/* ⭐ `?foco=<itemId>` vem da página do item ([corrigir agora]) — a linha da dose acende */}
+      <FichaEditor companyId={id} fichaId={fichaId} voltarPara={voltar} foco={qp?.get('foco')} />
     </div>
   )
 }

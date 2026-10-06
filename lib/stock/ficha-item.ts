@@ -16,6 +16,9 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { saldoItem } from './saldo'
 import { statusEstoque, type StatusEstoqueResult } from './status-estoque'
 import { explicarMovimentos, tiposPresentes, dobrarProducao, colapsarAnulados, anotarSaldo, somaDasLinhas, type LinhaDoHistorico } from './movimento-explicado'
+import { pilulaDoItem, type PilulaDoItem } from './item/pilula-do-item'
+import { consumoDoItem, coberturaDoItem, prazoDeReposicao, minimoSugerido, type ConsumoDoItem, type CoberturaDoItem, type MinimoSugerido } from './item/consumo-e-cobertura'
+import { usadoEmFichas, type UsadoEmFichas } from './item/usado-em-fichas'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -48,9 +51,26 @@ export interface FichaItem {
   /** ⭐ quantos pares foram colapsados — o toggle "mostrar tudo (forense)" só aparece se > 0 */
   anulados: number
   precoTempo: { data: string; preco: number }[] // só ENTRADA_NF (pra o gráfico)
+  /**
+   * ⭐⭐ A PÍLULA DE ESTADO (06/10) — decidida no SERVIDOR, pela régua única.
+   * ⛔ Se a tela derivasse, seriam duas respostas pra *"em que estado este item está?"*, e
+   * elas divergiriam do `statusEstoque` que a Posição desenha no primeiro ajuste.
+   */
+  pilula: PilulaDoItem
+  /** dias desde o último movimento; `null` = o item nunca se moveu */
+  diasSemMovimento: number | null
+  /** ⭐ o giro e a cobertura — "dá pra ~N dias" */
+  consumo: ConsumoDoItem
+  cobertura: CoberturaDoItem
+  /** ⭐ a sugestão de mínimo: SUGERE, nunca grava (o campo é do dono) */
+  sugestaoMinimo: MinimoSugerido
+  /** ⭐⭐ a BUSCA REVERSA: toda ficha ativa que usa este item, com a dose e o alerta */
+  usoEmFichas: UsadoEmFichas
+  /** ⭐ o rastro da última troca de categoria (quem/quando) — a tabela guardava e ninguém mostrava */
+  categoriaRastro: { de: string; para: string; quando: string; quem: string | null } | null
 }
 
-export async function buildFichaItem(companyId: string, itemId: string, db: Db = defaultPrisma, opts: { forense?: boolean } = {}): Promise<FichaItem | null> {
+export async function buildFichaItem(companyId: string, itemId: string, db: Db = defaultPrisma, opts: { forense?: boolean; agora?: Date } = {}): Promise<FichaItem | null> {
   const item = await db.stockItem.findFirst({ where: { id: itemId, companyId }, select: { id: true, nome: true, unidadeControle: true, categoria: true, ativo: true, estoqueMin: true, estoqueMax: true } })
   if (!item) return null
 
@@ -99,6 +119,41 @@ export async function buildFichaItem(companyId: string, itemId: string, db: Db =
   // ⭐ o selo do encerrado — a ficha é onde o histórico dele é consultado
   const selo = (await selosDeEncerrado(companyId, [itemId], db)).get(itemId)
 
+  /**
+   * ⭐⭐ AS LEITURAS NOVAS DO v4 (06/10) — todas sobre a lista JÁ EXPLICADA, nunca sobre o cru.
+   *
+   * ⛔ `limpo` e não `completo`: par 100% anulado não é consumo (ele não aconteceu), e usar o
+   * cru faria uma compra desfeita entrar no prazo de reposição — o mesmo defeito que o gráfico
+   * de preço tinha em 11/09.
+   * ⛔ E só o que MOVE A PRATELEIRA: é a régua do `saldo.ts`, a mesma do rodapé e da coluna
+   * SALDO. O `PRODUCAO_CONSUMO` cai por aqui sem precisar de uma 2ª lista de exclusão.
+   */
+  const agora = opts.agora ?? new Date()
+  const paraConsumo = limpo
+    .filter((l) => l.movePrateleira)
+    .map((l) => ({ tipo: l.tipo, data: l.data, quantidade: l.quantidade, estornoDeTipo: l.estornoDe?.tipo ?? null }))
+  const consumo = consumoDoItem(paraConsumo, agora)
+  const prazo = prazoDeReposicao(paraConsumo)
+  /**
+   * ⚠️ "parado" conta do ÚLTIMO movimento que mexeu na prateleira — e a lista é desc, então é
+   * a 1ª. ⛔ Movimento que não move o saldo (consumo de produção) não "desparalisa" o item:
+   * dizer que ele girou seria contar transferência interna como vida.
+   */
+  const ultimoMov = limpo.find((l) => l.movePrateleira)?.data ?? null
+  const diasSemMovimento = ultimoMov
+    ? Math.floor((Date.parse(agora.toISOString().slice(0, 10)) - Date.parse(ultimoMov.slice(0, 10))) / 86_400_000)
+    : null
+
+  /** ⭐ o rastro da troca de categoria — mais recente primeiro */
+  const troca = await db.stockItemCategoriaTrocada.findFirst({
+    where: { companyId, itemId },
+    orderBy: { criadoEm: 'desc' },
+    select: { de: true, para: true, criadoEm: true, trocadoPorId: true },
+  })
+  const quemTrocou = troca?.trocadoPorId
+    ? (await db.user.findUnique({ where: { id: troca.trocadoPorId }, select: { name: true } }))?.name ?? null
+    : null
+
   return {
     encerrado: selo ? fraseDoSelo(selo) : null,
     item: { ...item, categoriaLabel: CAT_LABEL[item.categoria] ?? item.categoria },
@@ -115,5 +170,14 @@ export async function buildFichaItem(companyId: string, itemId: string, db: Db =
       confere: soma.quantidade === saldo.saldo && soma.valor === saldo.valor,
     },
     precoTempo,
+    pilula: pilulaDoItem({ saldo: saldo.saldo, estoqueMin: item.estoqueMin, estoqueMax: item.estoqueMax, diasSemMovimento }),
+    diasSemMovimento,
+    consumo,
+    cobertura: coberturaDoItem(saldo.saldo, consumo),
+    sugestaoMinimo: minimoSugerido(consumo, prazo, item.unidadeControle),
+    usoEmFichas: await usadoEmFichas(companyId, itemId, db),
+    categoriaRastro: troca
+      ? { de: CAT_LABEL[troca.de] ?? troca.de, para: CAT_LABEL[troca.para] ?? troca.para, quando: troca.criadoEm.toISOString(), quem: quemTrocou }
+      : null,
   }
 }

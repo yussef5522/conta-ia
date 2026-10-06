@@ -96,14 +96,30 @@ describe('⛔⛔ a PORTA do negativo tem MAÇANETA do outro lado', () => {
    * ⚠️ A recusa manda o dono pra ficha do item dizendo *"corrigir a entrada que faltou"* —
    * e a ficha **não oferecia gesto nenhum**. Porta sem maçaneta, a 10ª volta da família.
    */
-  it('⭐⭐ a ficha do item OFERECE a entrada quando o saldo é negativo', () => {
+  /**
+   * ⚠️⚠️ REAPONTADO EM 06/10, E FICOU MAIS FORTE — ele quebrou **com a tela CERTA**.
+   *
+   * A régua antiga exigia o literal `ficha.saldo < 0 &&` no JSX; no v4 a condição virou a
+   * const `negativo` (lida duas vezes na tela). *Grep não distingue "refatorei" de "quebrei"*
+   * — é a razão de existir da REGRA 3. ⭐ A pergunta não mudou (*o item negativo tem porta?*);
+   * o que mudou é que agora ela exige **AS DUAS portas** da lei de 05/10: a compra que faltou
+   * **OU** a contagem, que é a âncora. Oferecer só a nota era mandar o dono esperar um
+   * documento que pode não existir.
+   */
+  it('⭐⭐ a ficha do item OFERECE as DUAS portas quando o saldo é negativo', () => {
     const tela = semComentario(ler('app/(dashboard)/empresas/[id]/estoque/itens/[itemId]/page.tsx'))
     expect(tela, 'a ficha do item não oferece a entrada — a porta do negativo leva ao nada')
       .toContain('lançar a entrada que faltou')
-    expect(tela).toMatch(/ficha\.saldo < 0 &&/)
+    // ⭐ a 2ª porta (a lei "a contagem é a âncora", 05/10)
+    expect(tela, 'sem a contagem, item sem nota por vir fica preso').toContain('contar este item')
+    expect(tela).toMatch(/estoque\/contagem/)
+    // ⛔ o GATE existe e deriva do saldo — resolvido pela indireção, não pelo literal
+    expect(tela).toMatch(/const negativo = ficha\.saldo < 0/)
+    expect(tela).toMatch(/\{negativo && \(/)
     // ⛔ e é BOTÃO, não texto com hover: no celular hover não existe (30/08)
     expect(tela).toMatch(/entrada-manual\?item=\$\{itemId\}/)
-    expect(tela).toContain('border-amber-500')
+    // ⭐ o destaque agora é por TOKEN (os dois temas), não por classe de paleta cravada
+    expect(tela).toContain('var(--fam-ambar-mid)')
   })
 
   it('⭐ e a entrada manual ABRE com o item escolhido — sem procurar de novo entre 159', () => {

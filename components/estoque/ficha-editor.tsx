@@ -41,9 +41,19 @@ const parseNum = (s: string) => { const t = (s ?? '').trim().replace(',', '.'); 
 
 const CORES_MARGEM = { ruim: 'text-rose-600', atencao: 'text-amber-600', boa: 'text-emerald-600', indefinida: 'text-slate-400' } as const
 
-export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha, aoSalvar, mapearNomeSuitable, mapearComplemento, duplicarDe}: {
+export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha, aoSalvar, mapearNomeSuitable, mapearComplemento, duplicarDe, foco }: {
   companyId: string
   fichaId?: string
+  /**
+   * ⭐⭐ O ITEM QUE A PORTA VEIO CORRIGIR (06/10) — o `[corrigir agora]` da página do item
+   * chega com `?foco=<itemId>`, e a linha daquele componente nasce **acesa e à vista**.
+   *
+   * ⛔ Sem isto a porta levaria à FICHA e não à DOSE: numa receita de 8 ingredientes o dono
+   * teria que caçar de novo o que a tela anterior acabou de apontar — e perder no caminho a
+   * informação que o sistema já tinha na mão é obrigar a pessoa a repetir trabalho (a lição
+   * do Bamberg, 13/09).
+   */
+  foco?: string | null
   /** o mundo de origem trava o tipo: cardápio = PRODUTO_FINAL, produção = INTERMEDIARIO */
   tipoTravado?: TipoFicha
   /** pra onde voltar ao salvar/cancelar (default: a lista de fichas) */
@@ -164,6 +174,16 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
       }).finally(() => setCarregando(false))
     }
   }, [companyId, fichaId, duplicarDaUrl])
+
+  /**
+   * ⭐ LEVA O OLHO ATÉ A DOSE — depois que os componentes chegam.
+   * ⚠️ REGRA 9: o hook mora aqui em cima, junto dos outros, nunca perto de onde é usado.
+   * ⚠️ E ele não rola quando não há foco: rolagem sem motivo tira o dono do topo do formulário.
+   */
+  useEffect(() => {
+    if (!foco || carregando) return
+    document.getElementById(`comp-${foco}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [foco, carregando, comps.length])
 
   // ⭐ CUSTO AO VIVO. Produto final MONTA na venda → custo por unidade = Σ componentes ÷ lote
   // (que é 1). Intermediário rende em lote e o rendimento é MEDIDO → por-unidade "a apurar".
@@ -343,7 +363,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
                 o custo de caixa por produto. ⚠️ É separação VISUAL — na baixa e no custo
                 total, embalagem é componente como qualquer outro. */}
             <SecaoComps titulo={compsEmbalagem.length ? 'Ingredientes' : null} lista={compsComida}
-              companyId={companyId} setQtd={setQtd} rmComp={rmComp} />
+              companyId={companyId} setQtd={setQtd} rmComp={rmComp} foco={foco} />
             {compsEmbalagem.length > 0 && (
               <SecaoComps
                 titulo="Embalagem"
@@ -488,13 +508,15 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
  * do mesmo campo de quantidade seria onde as duas seções começariam a divergir — e o campo
  * de quantidade é justamente o que já teve o bug do `value={numero}` (28/08).
  */
-function SecaoComps({ titulo, subtitulo, lista, companyId, setQtd, rmComp }: {
+function SecaoComps({ titulo, subtitulo, lista, companyId, setQtd, rmComp, foco }: {
   titulo: string | null
   subtitulo?: string | null
   lista: Comp[]
   companyId: string
   setQtd: (itemId: string, texto: string) => void
   rmComp: (itemId: string) => void
+  /** ⭐ o componente que a porta veio corrigir — ele nasce aceso */
+  foco?: string | null
 }) {
   if (lista.length === 0) return null
   return (
@@ -510,7 +532,12 @@ function SecaoComps({ titulo, subtitulo, lista, companyId, setQtd, rmComp }: {
           const qtd = valorQtd(c.qtdTexto)
           const emGramas = descreverQtd(qtd, c.unidadeControle)
           return (
-            <div key={c.itemId} className="flex items-center gap-2 py-1.5">
+            <div key={c.itemId} id={`comp-${c.itemId}`}
+              className="flex items-center gap-2 rounded-lg py-1.5"
+              /* ⭐ o realce é da LINHA inteira: o dono chegou aqui pra olhar ESTA dose */
+              style={foco === c.itemId
+                ? { background: 'var(--fam-ambar-bg)', boxShadow: 'inset 0 0 0 1px var(--fam-ambar-mid)', padding: '6px 8px' }
+                : undefined}>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] text-slate-800">
                   {c.nome}
