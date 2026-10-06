@@ -1759,6 +1759,84 @@ O golden da produção ficou vermelho e eu levei três medições pra ver que o 
 4. **M3 da FANTA UVA 2L** (7 UN no limbo): estornar o ajuste e contar na GARRAFA.
 5. Seguem abertas: a correção de dado da parcela #22 (saldo devedor R$ 9.729,34 a mais, DRE de setembro −R$ 505,01) · as 23 linhas de recontagem onde a variância gravada subestima · os 90 UN / R$ 768,59 do Combo (recomendação: registrar divergência) · os 6 nomes de bebida pendentes nos complementos.
 
+## ⛔⛔⛔ A TELA DE CONCLUSÃO NÃO DÁ COLA DE PROVA — REGRA DE SEGURANÇA DO DONO (05/10/2026)
+
+**Mock aprovado + a regra que fica pra sempre:** *"NENHUM número esperado/sugerido/médio aparece na tela de conclusão pra quem declara. É cola de prova — ensina qual número digitar pro fiscal não pegar. A régua dos líderes (SAP/Oracle/Katana): aviso vem DEPOIS do digitado, nunca sugestão antes. O fiscal continua conferindo em silêncio e acusando no pontinho/sininho/página da ordem."*
+
+**⭐⭐ POR QUE ISTO É GUARD E NÃO COMENTÁRIO:** o número esperado **é útil** — foi pedido em 01/09 e entrou de boa-fé. Ele não volta por maldade: volta porque **alguém vai achar que ajuda**. A régua só sobrevive escrita num teste que fica vermelho (`__tests__/regras-ui/conclusao-nao-da-cola.test.ts`, nomeado pela REGRA e não pela tela, pra ser achado por quem procura a regra).
+
+**⛔ E O GUARD É DE DOIS LADOS:** a cola sai da tela de quem DECLARA **e** o juízo continua existindo onde vale — `fraseDoFiscal`, `eficienciaDaOrdem` e o bloco de eficiência da ordem **CONCLUÍDA** (depois do fato). *Guard que só afirma a remoção aprovaria o dia em que a conferência sumisse de todo lugar.*
+
+### ⭐⭐ A TELA: UMA PERGUNTA, DOIS CUSTOS, UM BOTÃO
+
+Cabeçalho com o **logo do dono único** + *"Concluir produção"*; **A PERGUNTA** em campo de **26px tabular** que **nasce e continua vazio** (*"a previsão SUGERE, nunca preenche — se preencher, todo mundo confirma o número sem contar"*); **dois cartões de custo** — o do LOTE **fixo** e o POR UNIDADE **recalculando enquanto digita**; *"produzido por X e Y (das etapas)"*; primário índigo + *"voltar"* de contorno; validação **inline**.
+- ⭐⭐ **O CUSTO DO LOTE VEM DE CIMA** (`custoLote={custoSeparado}`): é **o MESMO número** do rodapé do cartão de insumos. Recalculá-lo aqui seria a 2ª conta do mesmo dinheiro, e as duas divergiriam no 1º insumo sem custo médio.
+- ⛔⛔ **O GUARD DO CUSTO POR UNIDADE É DUPLO:** `qg > 0` mata a **divisão por zero** (vazio, `0`, `abc`) e `Number.isFinite` mata o **NaN/Infinity** que escaparia pro `Intl`. **Vazio é `—`, nunca `R$ 0,00`** — zero é uma afirmação, e dizer que a unidade custa zero é a pior delas numa tela que existe pra medir custo. Provado em prod nos 6 casos (`""`, `0`, `-5`, `abc`, `57`, `100`).
+- ⭐⭐ **"QUEM PRODUZIU" VIROU LIB PURA** (`lib/stock/producao/quem-produziu.ts`, 9 testes): a frase vivia dentro do `return` e **só dava pra conferir por grep**. ⛔ E a régua é **"quem INICIOU", não "quem foi designado"** — designar é plano, iniciar é fato; o designado que não apareceu **não produziu nada**, e pô-lo na etiqueta escreveria o trabalho de uma pessoa na conta de outra. ⚠️ Dedupe por caixa/espaço (a cicatriz da conta `'sicredi '`). ⚠️ E os nomes descem pelo **MESMO payload** que o componente de etapas já buscou — `aoSaberAssinadas` (booleano: sabia QUE, não QUEM) virou `aoSaberQuemProduziu(nomes)`; um 2º fetch faria as duas telas discordarem sobre o mesmo lote.
+
+### ⛔ O QUE MORREU, E POR QUÊ
+
+| # | morreu | motivo |
+|---|---|---|
+| **(a)** | *"Confirme o que foi consumido de verdade (sobra volta pro estoque)"* + os campos editáveis | **a cozinha NUNCA devolve** (decisão de 05/10) — frase mentirosa sai |
+| **(b)** | *"a receita promete ~61 · a sua média daria ~72"* **e** o veredito *"93% do que a receita promete · sua média é 102%"* | **cola de prova** (a regra acima) |
+| **(c)** | *"quem produziu vem das etapas (o PIN de cada um)"* | a informação fica, **a aula sai** |
+| **(d)** | checkbox *"produção parcial"* | não usam — e a **capacidade fica na rota** (`parcial` é `optional` no schema) |
+| **(e)** | cartão *"rendimento médio 1,1864/receita de 5 lotes"* | jargão sem decisão; vive nos relatórios e no juiz |
+
+**⭐⭐ E TIRAR O CAMPO DE CONSUMO FORTALECEU O P1:** o consumo enviado passou a ser o `qtdSeparada`. Com o campo editável, declarar consumo **MENOR** que o separado **sem devolver** deixava material preso no armazém virtual — exatamente o vazamento que o **P4** acusa. Agora o estado torto é **inalcançável** (REGRA 5).
+
+**⚠️⚠️ E A APARIÇÃO CONDICIONAL DO CAMPO DE MOTIVO ERA, ELA PRÓPRIA, UM VAZAMENTO:** ele só nascia quando o desvio estourava a faixa, então ***"o campo apareceu"* dizia "seu número está fora"*** sem escrever número nenhum — convite a corrigir o digitado. Agora é **incondicional e sem juízo**: a capacidade fica (a rota grava, a ordem exibe) e o canal lateral fecha. *Remoção sem realocação é perda; manter a faixa seria manter a cola.*
+
+### ⛔⛔⛔ UM CONFLITO ENTRE DOIS ITENS DO PEDIDO, RESOLVIDO MEDINDO
+
+O **item 1** pedia a sublinha *"nome · pedido N UN"* com *"derivado = esperadas"*. O **item 2(b)** proíbe **qualquer número esperado** nesta tela. **Medido no código:** o pedido **DERIVADO** é `escalaReceitas × loteBase`, e `esperadoDaFicha` — o número que o item 2(b) nomeia e que o **P8 usa de régua** — é `escala × teorico`: **o MESMO número**. Ou seja, *"pedido 61 UN **esperadas**"* **é a cola de prova com outro rótulo**, e a palavra *"esperadas"* era o próprio sinal disso. ⭐ **DECLARADO é outra coisa:** é a ORDEM que o dono deu de boca (*"faz 200 porções"*) — quem declara **já tem aquilo na cabeça**, então mostrar não ensina nada novo. **Fica o declarado, sai o derivado.**
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU O BURACO QUE SOBROU: A TELA É A PÁGINA, NÃO SÓ A MODAL
+
+Com o formulário já limpo, **o CABEÇALHO da página continuava imprimindo `pedido 61 UN esperadas` a dois centímetros do campo de declarar**. ⚠️ Tirar da modal e deixar no cabeçalho é **a correção pela metade** que esta casa já pagou várias vezes. ⛔ **E o gate é do BLOCO, não da palavra** — a minha 1ª versão escondeu só o rótulo *"esperadas"* e **deixou o número na tela**: *a cola é o número, o rótulo era só o sinal dele*. O derivado agora **se cala enquanto a ordem está EM PRODUÇÃO** e **volta na CONCLUÍDA**, onde é relatório. **Tamanho medido: 400 das 418 ordens são DERIVADAS** — o buraco atingia quase todas.
+
+**PROVADO EM PROD, nos DOIS viewports e nos DOIS temas:**
+```
+A MODAL, pelo payload que a TELA recebe (ordem EM_PRODUCAO real):
+  [calabresa/rosa] Concluir produção
+  sublinha: porçao calabresa ralada 50 grama · pedido 61 UN   (DECLARADO → aparece)
+  custo deste lote: R$ 59,69
+     digito ""/"0"/"-5"/"abc" → custo por UN: —      ⭐ nunca R$ 0,00
+     digito "57" → R$ 1,05        digito "100" → R$ 0,60
+  produzido por eliane (das etapas)
+
+PONTA A PONTA com ROLLBACK FORÇADO (o `concluir` abre a própria transação, então o rollback
+mora no `$transaction` que ELE chama) — digitei 57:
+  conclusão gerada SIM · rendimento 0,9344 · lote R$ 59,69 · R$ 1,05/un
+  ⛔ NADA GRAVADO: conclusões 413→413 · movimentos 6137→6137 · estado EM_PRODUCAO→EM_PRODUCAO
+A VALIDAÇÃO pela rota real: vazio/0 → 400 · negativo → 400   (zero escrita)
+A ETIQUETA (mesmo caminho da Zebra) → 200 ⭐ continua saindo igual
+
+CELULAR 200 em 387ms · DESKTOP 200 em 152ms · JS 878 KB
+  ✓ fora — a devolução que não existe · a aula do PIN · o checkbox · o rendimento médio
+  ✓ A PERGUNTA · o campo 26px · os dois custos · "produzido por" · o motivo incondicional
+  ✓ os 6 tokens da modal nos DOIS temas · ✓ hex de cor cravado: 0
+
+CONTEXTO das 3 palavras que SOBRAM no chunk (a modal é uma fatia da página):
+  "promete"   2× → só em "Saiu menos do que a receita promete" (eficiência da CONCLUÍDA) ⭐
+  "sua média" 1× → só em "pela sua média de N lotes" (a separação, gateada por `planejada`) ⭐
+  "esperadas" 2× → só no ternário do CABEÇALHO, agora gateado por `!emProducao` ⭐
+
+CONTRAFACTUAL do gate, em ordem DERIVADA real (beef de xis, 200 × 1 = 200):
+  EM_PRODUCAO (campo de declarar na tela) → ⭐ SE CALA
+  CONCLUIDA   (relatório, pós-fato)       → ⭐ MOSTRA
+```
+**906 arquivos · 11.731 verdes · TS 0 · migration NENHUMA · zero escrita em prod · deploys 4/4 (`Fgitr9M6Ax6iSM1PDfU_M`, `iF9DcUAopukNKOmgwD_wX`) · Δ bundle +4 KB.**
+
+**REGRA 11 — 18 defeitos repostos, 18 vermelhos.** ⚠️⚠️ **E TRÊS VIERAM VERDES NA 1ª VOLTA POR CULPA DA MINHA REPOSIÇÃO, não do guard:** eu ancorei as frases em textos que **também vivem no comentário que cita a ordem do dono** (*"A PERGUNTA: «Quantas unidades saíram?»"*, *"«custo deste lote R$ X» (fixo)"*), e o guard lê **sem comentário** — de propósito. **O defeito foi reposto onde ele não existe.** Refeitos com âncora de JSX real, os três morderam (1 · 1 · 2 vermelhos). ⭐ *Reposição que não reproduz o defeito é um verde de graça* — e esta foi a 2ª vez no dia que o comentário que documenta o defeito atrapalhou uma asserção minha (a 1ª foi no script de edição do `aoSaberAssinadas`).
+
+⚠️ **E O DONO USOU A TELA ENQUANTO EU PROVAVA:** as 2 ordens EM_PRODUCAO foram concluídas no meio da prova (**413 → 418 conclusões**), com custo real por unidade — `PIZZA FRANGO CATUPIRY` 17 UN a R$ 8,40/un, `Pizza congelada de calabresa` 14 UN a R$ 5,38/un, `PORÇAO CALABRESA 85g` 14 UN a R$ 1,64/un. ⚠️ **Não dá pra cravar por qual caminho** (modal ou tablet) — não há marcador gravado que distinga os dois; o que dá pra afirmar é que entraram depois do deploy.
+
+⚠️ **SCREENSHOT INDISPONÍVEL** (extensão do Chrome desligada): a prova dos 2 temas é medida no que prod serve — zero hex cravado e os tokens nos dois mapas do CSS. Falta o olho do dono.
+
+📋 **FICA PRO DONO:** abrir uma ordem EM PRODUÇÃO nova e concluir pela tela nova, no celular e no computador — e dizer se o *"voltar"* deve mesmo levar pra lista de produção (hoje leva) ou fechar/rolar pro topo da ordem.
+
 ## ⭐⭐⭐ PÁGINA DA ORDEM v4 — UMA COLUNA DE INSUMO, BARRA DE PROGRESSO E A LINHA DO TEMPO (05/10/2026)
 
 **Mock aprovado no chat + a simplificação do dono.** Zero conta nova; o motor, o ledger e os invariantes P1-P8 **intocados**.
