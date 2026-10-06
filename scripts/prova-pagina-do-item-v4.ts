@@ -13,6 +13,7 @@
 import { prisma } from '../lib/db'
 import { exigirEmpresaNesteBanco } from '../lib/scripts/prova-banco'
 import { signToken } from '../lib/auth'
+import { usadoEmFichas } from '../lib/stock/item/usado-em-fichas'
 
 const CO = 'cmq17yapb00gnrndlh33sctbo'
 const BASE = 'http://127.0.0.1:3001'
@@ -122,6 +123,24 @@ async function main() {
     const faltando = tokens.filter((t) => (folhas.match(new RegExp(t.replace(/-/g, '\\-'), 'g')) ?? []).length < 2)
     console.log(`   ${faltando.length === 0 ? '✓ os 7 tokens nos DOIS temas' : `⛔ só num tema: ${faltando.join(', ')}`}`)
   }
+
+  /**
+   * ⭐⭐ O MAPA DA CLASSE — quantas doses suspeitas a régua acha na empresa inteira.
+   * ⚠️ Só LEITURA: a régua marca e a tela mostra; **corrigir receita é gesto do dono** (17/08).
+   */
+  console.log('\n══════ O MAPA DAS DOSES SUSPEITAS (empresa inteira) ══════')
+  const comFicha = await prisma.stockFichaComponente.groupBy({ by: ['itemId'], where: { companyId: CO }, _count: { itemId: true } })
+  let achados = 0
+  for (const g of comFicha) {
+    const u = await usadoEmFichas(CO, g.itemId, prisma)
+    if (!u.suspeitas) continue
+    const it = await prisma.stockItem.findUnique({ where: { id: g.itemId }, select: { nome: true } })
+    for (const f of u.fichas.filter((x) => x.suspeita)) {
+      achados++
+      console.log(`  ⛔ «${it?.nome}» em «${f.nome}»: ${f.doseTexto} · ${f.suspeita!.frase}`)
+    }
+  }
+  console.log(`  → ${achados} dose(s) suspeita(s) em ${comFicha.length} itens que são componente de alguma ficha`)
 
   const movsDepois = await prisma.stockMovement.count({ where: { companyId: CO } })
   console.log(`\nmovimentos ${movsAntes} → ${movsDepois} · ${movsAntes === movsDepois ? '⭐ ZERO ESCRITA (só GET)' : '⛔ algo gravou'}`)
