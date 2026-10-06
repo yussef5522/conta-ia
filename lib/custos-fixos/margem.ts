@@ -25,6 +25,9 @@
  */
 import { prisma } from '@/lib/db'
 import { whereFluxoCaixa } from '@/lib/fluxo-caixa/motor'
+// ⚠️ UM formatador de moeda no projeto (ordem do dono: `formatBRL` em toda moeda). As frases
+// desta lib (`conta`, `porque`) vão PRONTAS pra tela, então elas também passam por ele.
+import { formatBRL } from '@/lib/format/money'
 
 /** ⭐ a janela da ordem do dono */
 export const JANELA_DA_MARGEM_DIAS = 30
@@ -95,7 +98,7 @@ export function avaliarMargem(e: EntradaDaMargem): MargemMedida {
   }
 
   const pct = (e.receita - e.cmv) / e.receita
-  const conta = `(receita ${brl(e.receita)} − CMV ${brl(e.cmv)}) ÷ receita = ${(pct * 100).toFixed(1)}%`
+  const conta = `(receita ${formatBRL(e.receita)} − CMV ${formatBRL(e.cmv)}) ÷ receita = ${(pct * 100).toFixed(1)}%`
 
   /**
    * ⛔ Margem ZERO ou NEGATIVA não vira ponto de equilíbrio: a divisão explodiria (ou daria
@@ -114,7 +117,6 @@ export function avaliarMargem(e: EntradaDaMargem): MargemMedida {
   return { ...base, pct, porque: null, conta }
 }
 
-const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 /**
  * ⭐ MEDE a margem no banco, pelas portas existentes.
@@ -187,6 +189,6 @@ export function pontoDeEquilibrio(
   return {
     porDia,
     porque: null,
-    conta: `${brl(custoFixoDiario)} por dia ÷ margem de ${(margem.pct * 100).toFixed(1)}%`,
+    conta: `${formatBRL(custoFixoDiario)} por dia ÷ margem de ${(margem.pct * 100).toFixed(1)}%`,
   }
 }

@@ -26,6 +26,7 @@ import type { NovoAviso } from '../tipos'
 import { lerCustosFixos, hrefDasTransacoes } from '@/lib/custos-fixos/leitura'
 import { estourouOQueAvisa } from '@/lib/custos-fixos/situacao'
 import { mesCorrente, mesVizinho, rotuloDoMes } from '@/lib/periodo/mes-corrente'
+import { formatBRL } from '@/lib/format/money'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -38,7 +39,12 @@ export interface ResumoDoFinanceiro {
   recusados: { motivo: string; titulo: string }[]
 }
 
-const brl = (n: number) => `R$ ${Math.abs(n).toFixed(2).replace('.', ',')}`
+/**
+ * ⚠️ **O FORMATADOR DA CASA, não um `toFixed` local.** A 1ª versão escrevia `R$ 1751,36` (sem o
+ * separador de milhar) e o dono leu isso na prova — num aviso de dinheiro, *"1751"* e *"1.751"*
+ * não se leem igual na pressa. Ordem dele: **`formatBRL` em toda moeda.**
+ */
+const brl = (n: number) => formatBRL(Math.abs(n))
 
 async function gravar(r: ResumoDoFinanceiro, novo: NovoAviso, db: Db) {
   const v = avaliarLinguaDoBalcao(novo)
@@ -82,9 +88,9 @@ export async function produzirAvisosDeFinanceiro(
          * Vermelho aqui competiria com "dinheiro errado agora", que é outra categoria de susto.
          */
         severidade: 'ambar',
-        titulo: `Confere ${l.nome.toLowerCase()}: veio ${brl(diferenca)} acima do plano`,
+        titulo: `Confere ${l.nome}: veio ${brl(diferenca)} acima do plano`,
         corpo:
-          `Em ${rotuloDoMes(mes, agora)} saiu ${brl(l.realizado)} de ${l.nome.toLowerCase()}`
+          `Em ${rotuloDoMes(mes, agora)} saiu ${brl(l.realizado)} de ${l.nome}`
           + ` contra ${brl(l.planejado)} que você planejou — ${Math.round(excesso * 100)}% acima.`,
         oQueFazer:
           'Abra as contas do mês nessa categoria pra ver o que entrou a mais. '

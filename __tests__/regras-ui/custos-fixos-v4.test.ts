@@ -137,6 +137,25 @@ describe('⭐ o realizado tem uma PORTA só', () => {
   })
 })
 
+describe('⛔ formatBRL em TODA moeda — ordem do dono', () => {
+  it('⭐ a tela formata com o formatador da casa, nunca com toFixed local', () => {
+    const src = semComentarios(ler(TELA))
+    expect(usosDe(src, 'formatBRL')).toBeGreaterThan(5)
+    expect(src, 'toFixed num valor de dinheiro vira "1751,36" sem o ponto de milhar').not.toMatch(/toFixed\(2\)/)
+  })
+
+  it('⭐⭐ e o AVISO também — ele foi pego com `R$ 1751,36` na prova em prod', () => {
+    const prod = semComentarios(ler('lib/avisos/produtores/financeiro.ts'))
+    expect(usosDe(prod, 'formatBRL')).toBeGreaterThan(0)
+    expect(prod).not.toMatch(/toFixed\(2\)/)
+  })
+
+  it('⚠️ e a lib de leitura não formata nada — formatar é da TELA', () => {
+    const leitura = semComentarios(ler(LEITURA))
+    expect(leitura).not.toContain('formatBRL')
+  })
+})
+
 describe('⭐ a roupa é v4: token, dois temas, zero hex', () => {
   const src = ler(TELA)
 
