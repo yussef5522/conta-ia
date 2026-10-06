@@ -39,7 +39,19 @@ async function main() {
     ['o 409 da pergunta', 'MOTIVO_DO_NEGATIVO'],
     ['os botões vêm do SERVIDOR', 'motivos'],
     ['o escape explícito', 'deixar pra depois'],
-    ['a promessa do desfecho', 'vai entrar'],
+    /** ⭐ a tela DESENHA a frase do servidor (`j.erro`), nunca uma cópia dela */
+    ['a tela desenha a frase do servidor', 'motivo.msg'],
+  ]
+
+  /**
+   * ⚠️⚠️ ERRO DA MINHA 1ª SONDA, REGISTRADO: eu procurei **"vai entrar"** no bundle e deu
+   * vermelho. A frase está CERTA e **não mora na tela** — ela é montada no SERVIDOR
+   * (`fraseDoMotivo`) e desce no corpo do 409. Procurá-la aqui é medir no lugar errado, a mesma
+   * armadilha de 05/10 na modal de conclusão. ⭐ O que a tela NÃO pode ter é uma CÓPIA dela:
+   * duas redações da mesma pergunta divergiriam na 1ª ajustada.
+   */
+  const proibidas: [string, string][] = [
+    ['nenhuma cópia da frase do servidor', 'vai entrar e virar o saldo'],
   ]
 
   for (const [nome, ua] of [['celular', CELULAR], ['desktop', DESKTOP]] as const) {
@@ -51,6 +63,9 @@ async function main() {
     console.log(`\n── ${nome.toUpperCase()} · PAGE ${r.status} em ${Date.now() - t0}ms · ${chunks.length} chunks · ${(js.length / 1024).toFixed(0)} KB`)
     for (const [rotulo, frase] of exigidas) {
       console.log(`   ${presente(js, frase) ? '✓' : '⛔'} ${rotulo} ("${frase}")`)
+    }
+    for (const [rotulo, frase] of proibidas) {
+      console.log(`   ${presente(js, frase) ? '⛔' : '✓'} ${rotulo} ("${frase}")`)
     }
   }
 }
