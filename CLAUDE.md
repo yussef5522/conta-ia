@@ -1917,6 +1917,107 @@ movimentos 6253 → 6253 · ⭐ ZERO ESCRITA (só GET)
 📋 **SCREENSHOT INDISPONÍVEL** (extensão do Chrome desligada): a prova dos 2 temas é medida no que prod serve — zero hex no chunk da tela e os 7 tokens nos dois mapas do CSS. Falta o olho do dono.
 
 
+## ⭐⭐⭐ TELA CUSTOS FIXOS — A CASA NUM OLHAR (06/10/2026)
+
+**Ordem do dono:** *"os 3 números de dono · a lista PLANEJADO × REALIZADO por categoria · INVESTIGAR ANTES DE CONSTRUIR: o que a tela/motor Recorrentes já tem vivo? Retrato primeiro; aproveita o que presta, aposenta o que não — sem quebrar nada que outra tela leia."*
+
+### ⭐⭐ O RETRATO VEIO PRIMEIRO, E ELE MUDOU TRÊS DECISÕES ANTES DA PRIMEIRA LINHA
+
+| pergunta | o que o dado disse |
+|---|---|
+| **Recorrentes tem o quê vivo?** | **0 recorrências em TODAS as empresas · 0 transações geradas · `max(lastGeneratedAt)` vazio.** A tela nunca foi usada por ninguém; o scheduler roda todo dia **fazendo nada** |
+| **realizado por categoria fecha?** | ⭐ `Σ(por categoria) + sem categoria == SAIU` **ao centavo nos 4 meses** (jul→out) — a porta do Fluxo é a régua |
+| **existe calendário da empresa?** | **não** — e *"dias com receita"* == **dias corridos** nos 4 meses completos (31/31 · 30/30) |
+| **dá pra medir margem?** | **sim, com ressalva**: receita − CMV por `dreGroup` dá **54,5% (jul) · 58,1% (ago) · 49,2% (set)** |
+| **o selo "vence dia X" tem fonte?** | ⭐ **24 contas a pagar em aberto COM categoria** — energia (venc 21/10), aluguel (05/10), contador (05/10), internet (10/10) |
+
+**⚠️⚠️ E O RETRATO ACHOU A ARMADILHA QUE TERIA MATADO O SELO: conta a pagar nasce SEM `bankAccountId`** (a ponte do estoque desde 24/08). Medido: **115 PAYABLE em aberto, ZERO com conta bancária**. Resolver a empresa por `bankAccount.companyId` — o reflexo natural — devolveria **0** e o *"vence dia X"* nunca apareceria. O multi-tenant vem da **CATEGORIA**.
+
+### ⛔⛔ DECISÃO SE GRAVA, FATO SE DERIVA — e isso define o schema inteiro
+
+**2 tabelas CREATE-only, e NENHUMA tem coluna de realizado:** `custo_fixo_categoria` (a marcação do dono, com rastro, **reversível com história** — desmarcar carimba `removidoEm`, não apaga) e `custo_fixo_planejado` (o plano **por MÊS**, porque o aluguel reajusta e o contador muda de preço). ⛔ Gravar realizado seria a 2ª fonte do mesmo fato — a doença do `CreditCardInvoice.status` (eternamente OPEN depois de vencer) e do `balance` que driftou R$ 2.112,00 em 30/09.
+
+**⭐ O REALIZADO VEM DO `whereFluxoCaixa`, a porta única.** Todas as regras de honestidade moram lá (transferência própria fora, conta em aberto não é caixa, conciliada não conta 2×, compra no cartão fora, pagamento de fatura dentro). Provado por contrafactual no teste: `TRANSFER`, `PAYABLE` e `isInternalTransfer` na MESMA categoria ficam fora, e **a conta em aberto não desaparece — ela vira o selo**.
+
+### ⭐⭐ OS TRÊS CARTÕES, E O "A APURAR" QUE NÃO PODE VIRAR R$ 0,00
+
+- **(a) A CASA CUSTA** = **Σ do PLANEJADO das linhas, por construção** (o guard que o dono pediu). ⛔ E ele **NÃO cai no realizado** quando falta plano: dizer *"a casa custa X"* sobre um número que o dono nunca declarou é inventar a declaração dele. Sem plano nenhum → **a apurar**, com a tela dizendo quantas linhas faltam e quanto elas realizaram.
+- **(b) POR DIA ABERTO** = (a) ÷ **dias corridos do mês**, com o **rótulo honesto** (*"a empresa não tem calendário de funcionamento cadastrado"*). ⚠️ **Dias CORRIDOS, nunca "dias já decorridos"**: no dia 6 de outubro dividir por 6 infla o custo diário 5×.
+- **(c) PONTO DE EQUILÍBRIO** = (b) ÷ margem. ⛔ **Herda o "a apurar" das DUAS pontas**, e a razão é a pior mentira possível neste cartão: sem plano, `0 ÷ margem` daria **R$ 0,00/dia**, que se lê como *"a casa se paga sozinha"*.
+
+**⚠️⚠️ A MARGEM VAI COM A RESSALVA DENTRO DO NÚMERO, não num rodapé: este CMV é por COMPRA.** O CMV por consumo é a **FASE 4 do estoque e não existe** — por isso o percentual oscila 9 pontos entre meses. ⛔ **E o que fica de fora, fica NOMEADO:** `ENTREGADOR DELIVERY` (R$ 21.893,10 em setembro, em `OUTRAS_DESPESAS`) **não entra** — escolher por conta própria quais despesas são "variáveis" seria inventar a régua do dono. **Quem decide o que é CMV é o `dreGroup` que ele já definiu.** ⛔ E margem ≤ 0 **não vira ∞ disfarçado**: a tela diz que não dá pra calcular.
+
+### ⭐ O SELO REUSA O DONO DE "VENCIDA" (REGRA 4)
+
+`pago ✓` · `vence dia X · em Nd` · `atrasado Nd` · `+18% do plano` · **`nada lançado neste mês`**. ⛔ Quem responde *"esta conta está vencida?"* é o **`statusDaConta` do Contas a Pagar** — dono único desde 13/09, com a fronteira do **dia do BRASIL**. Uma comparação de data própria aqui faria a tela dizer *"atrasado"* às 23h de São Paulo sobre uma conta que o dono ainda tem o dia inteiro pra pagar (o fuso que já mentiu 3h/dia no card do cartão e nos 25 vermelhos do Contas a Pagar).
+⛔⛔ **`SEM_LANCAMENTO` é estado PRÓPRIO:** categoria fixa em que nada saiu **não está paga**, e chamar de paga seria afirmar um pagamento que não houve (a régua do *"sem contagem"* do estoque). ⚠️ E a precedência é pela **AÇÃO** (atrasado > estouro > vence > pago > nada), com o **excesso viajando junto** — a linha pode ser duas coisas, e a segunda notícia não se perde.
+
+### ⛔⛔ O AVISO MORA NO SININHO, E O DEGRAU DELE É MAIS ALTO QUE O DO SELO
+
+Selo âmbar acima de **15%**; aviso (setor **financeiro**, ordem do dono) só acima de **20%**. *Avisar no mesmo degrau faria o sininho repetir o que já está na cara do dono* — e alarme que repete a tela é alarme que se aprende a ignorar (os 111 falsos do juiz de vendas). ⚠️ **Anti-spam é o UPSERT** (`origem + alvo` = `categoria:<id>:<mes>`): 3 rodadas = 2 avisos, provado no dado real. ⚠️ E a **janela é mês corrente + anterior**: reconciliar olhando só o corrente **resolveria sozinho**, no dia 1º, o aviso de que a energia estourou no mês que acabou. ⛔ **NADA inline** (lei de 04/10) — o guard afirma a ausência do bloco **e** a existência do produtor.
+
+### ⛔ O QUE FOI MEDIDO E **NÃO** CONSTRUÍDO
+
+- **O motor Recorrentes FICA VIVO INTEIRO** — scheduler (`instrumentation.ts`), tabela, rotas e os 5 leitores (confirm do import de contas a pagar, `delete-user-cascade`, admin clientes, 3 scripts de merge de fornecedor). **Só o lugar no MENU mudou**, e a porta dele está no pé da tela nova (*"remoção sem realocação é perda"*, 10/09).
+- **Nenhuma coluna nova em tabela existente** — as duas tabelas são CREATE-only, migration **aditiva pura**.
+
+### ⚠️ REGRA 13 — A PROVA DOS CHECKS CONTRA POSTGRES
+
+`scripts/prova-check-custos-fixos.ts`: **5 de 5 INSERTs tortos recusados pela constraint certa** (meia-remoção · valor negativo · mês *"outubro"* · mês 13 · `2026-9` sem zero à esquerda), **2 de 2 legítimos aceitos** (plano ZERO e marcação sem remoção), **zero escrita líquida**. ⭐ E o **contrafactual medido no próprio banco**: a forma ingênua do CHECK (com `length(trim(...))`) devolve **NULL → o CHECK PASSARIA**; a nossa (com `IS NOT NULL` explícito) devolve `false` **→ RECUSA**. É a cicatriz do `chk_aviso_acao_completa` de 04/10 virando procedimento.
+
+### ⚠️⚠️ REGRA 11 — 11 DEFEITOS REPOSTOS, 13 VERMELHOS
+
+o cartão (a) caindo no realizado (**2**) · o realizado sem a porta do fluxo (**1**) · o payable resolvido por `bankAccount.companyId` (**1**) · o aviso no mesmo degrau do selo (**2**) · `ACIMA_DO_PLANO` ganhando de `ATRASADO` (**1**) · tirar da lista apagando o plano (**1**) · o rodapé recalculando com `reduce` local (**1**) · *"a apurar"* virando 0% (**1**) · hex cravado + opacidade sobre token (**2**) · o produtor recalculando por conta própria (**1**) · o menu voltando pra Recorrentes (**1**).
+
+### ⚠️ E A PROVA EM PROD PEGOU UM DEFEITO MEU DE FORMATAÇÃO
+
+O aviso saía **`R$ 1751,36`** — `toFixed(2).replace('.', ',')` local, **sem o ponto de milhar**. Num aviso de dinheiro, *"1751"* e *"1.751"* não se leem igual na pressa, e a ordem do dono era explícita (*"formatBRL em toda moeda"*). ⭐ Agora o formatador da casa vale no aviso, na tela e nas frases da lib de margem — e o **guard trava os três** (com `toFixed` de volta, vermelho). ⚠️ Também caiu o `toLowerCase()` do nome da categoria: *"Confere fgts"* virou *"Confere FGTS"*, porque o nome é como o dono escreveu.
+
+### PROVADO EM PROD, NAVEGANDO, COM ROLLBACK FORÇADO (zero escrita)
+
+```
+O ESTADO DE HOJE (nada marcado)
+  a casa custa: a apurar ⭐ · por dia aberto: a apurar ⭐
+  ponto de equilíbrio: a apurar — "declare o que cada custo fixo deve custar"
+  MARGEM 49,8% · (receita R$ 515.402,75 − CMV R$ 258.749,17) ÷ receita · 29/30 dias com receita
+  53 categorias de despesa oferecidas no seletor
+
+O CAMINHO INTEIRO (marcar → planejar → a casa num olhar)
+  ⭐ A CASA CUSTA R$ 75.181,00/mês · POR DIA ABERTO R$ 2.425,19 (31 dias)
+  ⭐ PONTO DE EQUILÍBRIO R$ 4.870,19/dia  (R$ 2.425,19 ÷ margem de 49,8%)
+  Salários       46.000,00 ·    900,00  [coral] atrasado 1d
+  Aluguel         8.500,00 ·      0,00  [coral] atrasado 1d
+  Energia         2.000,00 ·      0,00  [azul]  vence dia 21 · em 15d
+  internet          160,00 ·      0,00  [azul]  vence dia 10 · em 4d
+  FGTS            9.000,00 ·      0,00  [cinza] nada lançado neste mês
+  ⛔ Σ(linhas planejado) 75.181,00 × cartão 75.181,00 → ⭐ BATE
+
+O SININHO com DADO REAL (plano de setembro = realizado de agosto)
+  [financeiro · ambar] Confere FGTS: veio R$ 1.751,36 acima do plano
+     Em setembro saiu R$ 10.187,15 de FGTS contra R$ 8.435,79 que você planejou — 21% acima.
+  [financeiro · ambar] Confere Água e Esgoto: veio R$ 201,56 acima do plano
+  ⭐ 3 rodadas → 2 avisos (anti-spam por origem+alvo)
+
+CELULAR 200 em 523ms · DESKTOP 200 em 131ms · JS 844 KB · CSS 174 KB
+  ✓ 12/12 peças no bundle · ✓ zero hex no chunk DESTA tela · ✓ os 7 tokens nos DOIS temas
+ROTA  GET ?mes=2026-10 → 200 · ?mes=2026-09 → 200 (margem 49,2%)
+      POST PLANEJAR sem marcar → 422 NAO_ESTA_NA_LISTA, com a saída escrita
+marcações 0 → 0 · planos 0 → 0 · avisos 19 → 19 · ⭐ ZERO ESCRITA
+```
+
+**916 arquivos · 11.892 verdes · TS 0 · `pg_dump pre-custos-fixos-20261006-155207.dump` (8.775.194 bytes, tamanho conferido) · migration ADITIVA PURA (2 CREATE TABLE, 3 CHECKs, zero ALTER) · deploys 4/4 (`vHvz9Lv4EEHbQr-DJ7YjV`, `GzChzvvYPUg6XPlAcMu2n`) · Δ bundle +28 KB.**
+
+⚠️ **E O NAVEGADOR DE MÊS VIROU TOKEN** — ele é compartilhado por 4 telas (Contas a Pagar, Recebimentos, Lançamentos PF e esta); escrever um 2º *"só pro v4"* seria dois jeitos de navegar mês no mesmo sistema. **O gesto não mudou; as outras 3 telas ganharam o tema escuro de graça.**
+
+⚠️ **NENHUM INVARIANTE PODE TER SE MOVIDO, e a prova é melhor que um antes/depois:** o sprint **não gravou uma linha** em prod (marcações 0, planos 0, avisos 19→19, conferido depois do juiz rodar), e invariante é função do estado do banco. O juiz de hoje: `venda 2 · cartão 7 · estoque 237`, com os avisos abertos sendo `PADRAO_RENDIMENTO 8 · FISCAL_DECLARADO 7 · CONTAGEM_SOBRE_NEGATIVO 2 · FICHA_SEM_COMPARACAO 1` — **zero de `CUSTO_FIXO_ACIMA_DO_PLANO`**, que é o certo enquanto nenhuma categoria estiver marcada.
+
+📋 **FICA PRO DONO (o gesto é dele, e o sistema não declara por ele):**
+1. **Marcar as categorias fixas** e **declarar o plano de cada uma** — enquanto não declarar, os 3 cartões dizem *"a apurar"*, de propósito.
+2. ⚠️ **DUAS CATEGORIAS COM NOME REPETIDO** (medido): *"DAS Simples Nacional"* ×2 (`DEDUCOES` e `IMPOSTOS_SOBRE_LUCRO`) e *"Frete"* ×2 (`OUTRAS_DESPESAS` e `DESPESAS_COMERCIAIS`). A tela mostra o `dreGroup` como qualificador **só quando o nome repete** — mas se for duplicata de cadastro, mesclar é decisão dele.
+3. ⚠️ **A LACUNA DO CARTÃO DE CRÉDITO, dita na tela:** custo fixo pago no cartão entra como **pagamento de fatura**, sem a categoria da despesa — então ele **não aparece na linha dele**. Medido: 79 compras de cartão em agosto, 48 em setembro, 2 em outubro.
+4. ⚠️ **R$ 112.253,53 de SAÍDA SEM CATEGORIA em setembro** (19% do SAIU): o que estiver ali não entra em linha nenhuma de custo fixo. É a fila de categorização cobrando.
+5. 📋 **A margem é por CMV de COMPRA** — o número honesto por consumo depende da **FASE 4 do estoque (CMV por competência)**, que segue não construída.
+
 ## ⛔⛔⛔ A CONTAGEM É A ÂNCORA — ELA SEMPRE ENTRA, PRA QUALQUER ITEM (05-06/10/2026)
 
 **Lei geral do dono, e ela SUBSTITUI a recusa de 22/09:** *"Toda contagem lançada ENTRA, sem exceção de estado do item: saldo positivo, zero ou NEGATIVO (qtd e/ou R$). (…) **Nenhum caminho termina em recusa.**"* É a régua dos líderes (SAP/Oracle/NetSuite): **a contagem física é a âncora dos registros** — o sistema cria o ajuste de CORREÇÃO, o saldo vira o contado, e negativo vira **investigação**, nunca bloqueio.
