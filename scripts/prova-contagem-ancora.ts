@@ -121,12 +121,12 @@ async function main() {
         }
 
         /** ⭐ AS FICHAS VOLTAM A TER CUSTO (a pergunta do dono) */
-        const comps = await tx.stockFichaComponente.findMany({ where: { itemId: FERMENTO }, select: { fichaVersaoId: true, quantidade: true } })
+        const comps = await tx.stockFichaComponente.findMany({ where: { itemId: FERMENTO }, select: { versaoId: true, qtdPlanejada: true } })
         const cm = (await custoMedioPorItem(tx, CO)).get(FERMENTO)
         console.log(`\n══════ AS FICHAS QUE USAM FERMENTO ══════`)
         console.log(`componentes apontando pro fermento: ${comps.length} · custo médio agora: ${cm == null ? 'NULL' : brl(cm)}`)
         if (comps.length && cm != null) {
-          const q = comps[0].quantidade
+          const q = comps[0].qtdPlanejada
           console.log(`  exemplo: ${n3(q)} KG × ${brl(cm)} = ${brl(q * cm)} — a ficha deixou de dizer "a definir"`)
         }
 
