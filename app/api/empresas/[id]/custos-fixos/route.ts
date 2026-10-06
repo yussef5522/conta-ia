@@ -17,6 +17,7 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { mesCorrente } from '@/lib/periodo/mes-corrente'
 import { lerCustosFixos } from '@/lib/custos-fixos/leitura'
 import { marcarComoFixa, tirarDaLista, definirPlanejado, CustoFixoError, MES_RE } from '@/lib/custos-fixos/gestos'
+import { previaDaSemente, semear, type PreviaDaSemente } from '@/lib/custos-fixos/semear'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -30,6 +31,20 @@ const corpo = z.discriminatedUnion('acao', [
     /** ⚠️ `null` APAGA o plano (volta pra "não declarei"); 0 é "declarei zero" */
     valor: z.number().min(0).nullable(),
   }),
+  /**
+   * ⭐⭐ SEMEAR EM LOTE — e o `confirmar` é o que separa a PRÉVIA da GRAVAÇÃO.
+   *
+   * ⛔ `confirmar: false` **não escreve nada** e devolve a prévia; `true` grava **o que a
+   * prévia disse**. Um endpoint só pros dois é o que torna impossível a tela mostrar uma
+   * lista e a gravação executar outra (a cicatriz do preview × confirm do import, 17/08).
+   */
+  z.object({
+    acao: z.literal('SEMEAR'),
+    mes: z.string().regex(MES_RE),
+    mesReferencia: z.string().regex(MES_RE).nullable().optional(),
+    incluirComPlano: z.boolean().default(false),
+    confirmar: z.boolean().default(false),
+  }),
 ])
 
 export async function GET(request: NextRequest, { params }: Params) {
@@ -41,8 +56,11 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     const p = request.nextUrl.searchParams.get('mes')
     const mes = p && MES_RE.test(p) ? p : mesCorrente()
+    // ⭐ a referência é escolha do dono (o "[mês]" do «preencher todos»); sem ela, o anterior
+    const r = request.nextUrl.searchParams.get('ref')
+    const ref = r && MES_RE.test(r) ? r : null
 
-    return NextResponse.json(await lerCustosFixos(companyId, mes))
+    return NextResponse.json(await lerCustosFixos(companyId, mes, new Date(), undefined, ref))
   } catch (e) {
     return handleApiError(e)
   }
@@ -59,10 +77,25 @@ export async function POST(request: NextRequest, { params }: Params) {
     const mes = body.mes && MES_RE.test(body.mes) ? body.mes : mesCorrente()
     const quem = ctx.user?.id ?? null
 
+    let previa: PreviaDaSemente | null = null
+    let aplicados = 0
+    let referencia: string | null = null
     try {
       if (body.acao === 'MARCAR') await marcarComoFixa(companyId, body.categoryId, quem)
       else if (body.acao === 'TIRAR') await tirarDaLista(companyId, body.categoryId, quem)
-      else await definirPlanejado(companyId, body.categoryId, mes, body.valor, quem)
+      else if (body.acao === 'PLANEJAR') await definirPlanejado(companyId, body.categoryId, mes, body.valor, quem)
+      else {
+        referencia = body.mesReferencia ?? null
+        if (body.confirmar) {
+          const r = await semear(companyId, mes, referencia, body.incluirComPlano, quem)
+          previa = r.previa
+          aplicados = r.aplicados
+        } else {
+          // ⛔ PRÉVIA: nada é gravado aqui
+          previa = await previaDaSemente(companyId, mes, referencia, body.incluirComPlano)
+        }
+        referencia = previa.mesReferencia
+      }
     } catch (e) {
       /**
        * ⚠️ A RECUSA ENSINA A SAÍDA, nunca devolve 500 mudo — a régua do tradutor de erro do
@@ -74,7 +107,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       throw e
     }
 
-    return NextResponse.json(await lerCustosFixos(companyId, mes))
+    const tela = await lerCustosFixos(companyId, mes, new Date(), undefined, referencia)
+    return NextResponse.json({ ...tela, previa, aplicados })
   } catch (e) {
     return handleApiError(e)
   }

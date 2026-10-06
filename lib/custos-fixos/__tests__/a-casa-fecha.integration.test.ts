@@ -181,13 +181,25 @@ describe('⭐ os gestos do dono', () => {
     expect(t.casaCustaMes).toBeNull()
   })
 
-  it('⭐ o seletor não oferece o que já está na lista', async () => {
+  /**
+   * ⚠️⚠️ **INVERTIDO EM 06/10 COM O MOTIVO ESCRITO, não apagado.** Ele afirmava *"o seletor não
+   * oferece o que já está na lista"* — e o dono pediu o contrário: *"mostra as já marcadas com ✓
+   * (pra desmarcar fácil também)"*. Esconder as marcadas tornava o desmarcar impossível por lá.
+   *
+   * ⭐ **A metade CERTA dele continua mordendo:** categoria de RECEITA nunca é oferecida, e
+   * agora o teste também trava o `jaFixa`, que é o que separa o ✓ do +.
+   */
+  it('⭐ o seletor mostra o universo INTEIRO, com ✓ em quem já é fixa', async () => {
     const antes = await lerCustosFixos(companyId, MES, AGORA)
     expect(antes.disponiveis.map((d) => d.id)).toContain(catAluguel)
+    expect(antes.disponiveis.find((d) => d.id === catAluguel)?.jaFixa).toBe(false)
+
     await marcarComoFixa(companyId, catAluguel, null)
     const depois = await lerCustosFixos(companyId, MES, AGORA)
-    expect(depois.disponiveis.map((d) => d.id)).not.toContain(catAluguel)
-    // ⛔ e categoria de RECEITA nunca é oferecida
+    expect(depois.disponiveis.map((d) => d.id), 'ela CONTINUA no seletor — é de lá que se desmarca')
+      .toContain(catAluguel)
+    expect(depois.disponiveis.find((d) => d.id === catAluguel)?.jaFixa, 'com o ✓').toBe(true)
+    // ⛔ e categoria de RECEITA nunca é oferecida (a metade que não mudou)
     expect(depois.disponiveis.map((d) => d.id)).not.toContain(catReceita)
   })
 

@@ -195,6 +195,95 @@ describe('⭐ o menu e a porta guardada', () => {
   })
 })
 
+describe('⛔⛔ semear SUGERE, nunca decide — "o plano é MEU número"', () => {
+  const src = semComentarios(ler(TELA))
+
+  it('⭐⭐ o botão da LINHA só PREENCHE o campo — ele nunca salva', () => {
+    // ⚠️ a mesma disciplina do mínimo sugerido do estoque: `setMin(...)`, nunca `salvar()`
+    const i = src.indexOf('usar o realizado de')
+    const bloco = src.slice(Math.max(0, i - 400), i + 200)
+    expect(bloco, 'o botão preenche o estado do campo').toContain('setTxt(')
+    expect(bloco, 'e NÃO chama a gravação').not.toContain('aoSalvar(')
+  })
+
+  it('⛔ ele só aparece onde FALTA plano e onde há número pra semear', () => {
+    expect(src).toContain('valor == null && semente > 0')
+  })
+
+  it('⭐ o lote abre a PRÉVIA — o clique nunca grava direto', () => {
+    const i = src.indexOf('preencher todos com o realizado')
+    const bloco = src.slice(Math.max(0, i - 700), i + 120)
+    expect(bloco).toContain("acao: 'SEMEAR'")
+    expect(bloco, 'o 1º clique é prévia').toContain('confirmar: false')
+  })
+
+  it('⭐⭐ a prévia que a tela desenha vem do SERVIDOR, não de um cálculo local', () => {
+    expect(src).toContain('r.data.previa')
+    /**
+     * ⛔ O PAINEL DESENHA `previa.linhas` — a lista que a GRAVAÇÃO vai executar. Se ele
+     * montasse a lista a partir de `dados.linhas`, a tela mostraria um conjunto e o servidor
+     * gravaria outro: a cicatriz do preview × confirm do import de OFX (17/08).
+     */
+    const i = src.indexOf('function PainelDaSemente')
+    const painel = src.slice(i)
+    expect(painel).toContain('previa.linhas.filter((l) => l.vai)')
+    expect(painel, 'o painel não conhece a lista da tela').not.toContain('dados.linhas')
+    expect(painel, 'nem o quanto — a soma é a do servidor').toContain('previa.soma')
+  })
+
+  /**
+   * ⚠️⚠️ **ESTE GUARD VEIO VERDE NA 1ª VERSÃO — "menção, não uso" pela 9ª vez nesta casa.**
+   * Ele fazia `toContain('useState(false)')`, e o arquivo tem OUTROS três (`todas`,
+   * `abrindoSeletor`, `erro`): repondo o defeito (`useState(true)` no toggle) ele **passava**,
+   * porque achava o `useState(false)` do vizinho. O que morde é ancorar na VARIÁVEL.
+   */
+  it('⛔ o toggle "substituir os que já têm plano" NASCE DESMARCADO', () => {
+    expect(src, 'o estado DESTE toggle, não o do vizinho')
+      .toContain('const [incluirComPlano, setIncluirComPlano] = useState(false)')
+    const i = src.indexOf('substituir também os que já têm plano')
+    const bloco = src.slice(Math.max(0, i - 400), i + 80)
+    expect(bloco).toContain('checked={incluirComPlano}')
+  })
+
+  it('⛔⛔ e o DEFAULT do servidor também é "não substituir" — chamada sem o campo não apaga plano', () => {
+    const rota = semComentarios(ler('app/api/empresas/[id]/custos-fixos/route.ts'))
+    expect(rota).toContain('incluirComPlano: z.boolean().default(false)')
+    expect(rota, 'e a prévia é o default: confirmar precisa ser pedido').toContain('confirmar: z.boolean().default(false)')
+  })
+
+  it('⚠️ a referência PARCIAL é dita nas duas pontas (barra e prévia)', () => {
+    expect(src).toContain('dados.referenciaEhParcial')
+    expect(src).toContain('previa.referenciaEhParcial')
+  })
+
+  it('⭐ e quem fica DE FORA aparece com o porquê', () => {
+    expect(src).toContain('l.porque')
+  })
+})
+
+describe('⛔ o seletor mostra o ✓ e busca pela régua da casa', () => {
+  const src = semComentarios(ler(TELA))
+
+  it('⭐ ele usa a `casaBusca` — com `includes` cru, "agua" não acha "Água e Esgoto"', () => {
+    expect(usosDe(src, 'filtrarPorBusca')).toBeGreaterThan(0)
+    expect(src, 'nenhum filtro de busca na mão').not.toMatch(/toLowerCase\(\)\.includes\(/)
+  })
+
+  it('⭐ o ✓ marca quem já é fixa, e o MESMO chip desmarca', () => {
+    expect(src).toContain('c.jaFixa')
+    expect(src).toContain('aria-pressed={c.jaFixa}')
+    const i = src.indexOf('aoAlternar={(c)')
+    const bloco = src.slice(i, i + 260)
+    expect(bloco, 'marcar e desmarcar caem no MESMO POST').toContain("c.jaFixa ? 'TIRAR' : 'MARCAR'")
+  })
+
+  it('⚠️ o vazio da busca DIZ o recorte, nunca "não encontrado" seco', () => {
+    const i = src.indexOf('Nada com «')
+    expect(i).toBeGreaterThan(-1)
+    expect(src.slice(i, i + 160)).toContain('disponiveis.length')
+  })
+})
+
 describe('⭐ a tela diz o que não alcança', () => {
   const src = semComentarios(ler(TELA))
 

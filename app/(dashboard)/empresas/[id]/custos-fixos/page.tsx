@@ -18,14 +18,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { use } from 'react'
 import {
-  AlertTriangle, ArrowRight, Check, ChevronDown, Loader2, Plus, Receipt, Wallet, X,
+  AlertTriangle, ArrowRight, Check, ChevronDown, Loader2, Plus, Receipt, Sparkles, Wallet, X,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { NavegadorDeMes } from '@/components/contas-pagar/NavegadorDeMes'
 import { formatBRL } from '@/lib/format/money'
-import { mesCorrente, rotuloDoMes } from '@/lib/periodo/mes-corrente'
+import { mesCorrente, mesVizinho, rotuloDoMes } from '@/lib/periodo/mes-corrente'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
-import type { CustosFixosNaTela, LinhaDoCustoFixo } from '@/lib/custos-fixos/leitura'
+import { filtrarPorBusca } from '@/lib/busca-texto'
+import type { CustosFixosNaTela, LinhaDoCustoFixo, CategoriaDisponivel } from '@/lib/custos-fixos/leitura'
+import type { PreviaDaSemente } from '@/lib/custos-fixos/semear'
 import type { TomDoSelo } from '@/lib/custos-fixos/situacao'
 import { iconeDaCategoria } from '@/lib/custos-fixos/icones'
 
@@ -43,10 +45,17 @@ const TOM: Record<TomDoSelo, { bg: string; ink: string }> = {
 
 type Estado = 'CARREGANDO' | 'FALHOU' | 'OK'
 
+/** ⚠️ o POST devolve a tela recalculada; na semeadura ele devolve a PRÉVIA junto */
+type Resposta = CustosFixosNaTela & { previa?: PreviaDaSemente | null; aplicados?: number }
+
 export default function CustosFixosPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [mes, setMes] = useState(mesCorrente())
   const [dados, setDados] = useState<CustosFixosNaTela | null>(null)
+  /** ⭐ o mês cujo realizado semeia o plano — `null` = o anterior ao visto (o default honesto) */
+  const [ref, setRef] = useState<string | null>(null)
+  const [previa, setPrevia] = useState<PreviaDaSemente | null>(null)
+  const [incluirComPlano, setIncluirComPlano] = useState(false)
   /**
    * ⛔ ESTADO EXPLÍCITO (a lição da lixeira, 20/09): enquanto "ausência de dado" servir de
    * estado, o caso não previsto vira spinner eterno. Aqui `FALHOU` tem nome e tem botão.
@@ -59,23 +68,31 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
 
   const carregar = useCallback(async () => {
     setEstado((e) => (e === 'OK' ? 'OK' : 'CARREGANDO'))
-    const r = await fetchComTimeout<CustosFixosNaTela>(`/api/empresas/${id}/custos-fixos?mes=${mes}`)
+    const qs = new URLSearchParams({ mes })
+    if (ref) qs.set('ref', ref)
+    const r = await fetchComTimeout<CustosFixosNaTela>(`/api/empresas/${id}/custos-fixos?${qs}`)
     if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui carregar.'); setEstado('FALHOU'); return }
     setDados(r.data); setErro(null); setEstado('OK')
-  }, [id, mes])
+  }, [id, mes, ref])
 
   useEffect(() => { void carregar() }, [carregar])
 
   /** ⭐ todo gesto devolve a TELA recalculada — o estado novo é o que o servidor aceitou */
   const gesto = useCallback(async (corpo: Record<string, unknown>, chave: string) => {
     setSalvando(chave)
-    const r = await fetchComTimeout<CustosFixosNaTela>(`/api/empresas/${id}/custos-fixos`, {
+    const r = await fetchComTimeout<Resposta>(`/api/empresas/${id}/custos-fixos`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...corpo, mes }), timeoutMs: 60_000,
     })
     setSalvando(null)
     if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui salvar.'); return }
     setDados(r.data); setErro(null)
+    /**
+     * ⭐ A PRÉVIA vem do SERVIDOR, e é ela que a tela desenha. ⛔ Depois de CONFIRMAR ela é
+     * fechada: deixar o painel aberto mostrando "vai preencher 7" depois de já ter preenchido
+     * faria o dono confirmar de novo (a família do clique que gravou em silêncio, 14/09).
+     */
+    setPrevia(r.data.previa && !corpo.confirmar ? r.data.previa : null)
   }, [id, mes])
 
   const visiveis = useMemo(() => {
@@ -182,6 +199,21 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
             <p className="hidden flex-1 truncate text-[11.5px] lg:block" style={{ color: 'var(--prod-muted)' }}>
               o planejado é seu; o realizado é o que o fluxo pagou no mês
             </p>
+            {/*
+              ⭐⭐ SEMEAR EM LOTE — e ele abre a PRÉVIA, nunca grava no clique.
+              ⚠️ Só aparece quando há linha pra semear: botão que não faz nada é ruído.
+            */}
+            {dados.linhas.some((l) => l.planejado == null || incluirComPlano) && (
+              <button type="button"
+                onClick={() => void gesto({ acao: 'SEMEAR', mesReferencia: dados.mesReferencia, incluirComPlano, confirmar: false }, 'semear')}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold"
+                style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-accent)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }}>
+                {salvando === 'semear'
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Sparkles className="h-3.5 w-3.5" />}
+                preencher todos com o realizado de {rotuloDoMes(dados.mesReferencia)}
+              </button>
+            )}
             <button type="button" onClick={() => setAbrindoSeletor((v) => !v)}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold"
               style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
@@ -189,11 +221,49 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
             </button>
           </div>
 
+          {/* ⭐ a REFERÊNCIA é escolha do dono — e o botão da linha usa a MESMA */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pb-2 text-[11px]"
+            style={{ color: 'var(--prod-muted)' }}>
+            <span>semear o plano com o realizado de</span>
+            {[mesVizinho(mes, -1), mesVizinho(mesVizinho(mes, -1), -1), mes].map((m) => (
+              <button key={m} type="button" onClick={() => setRef(m)}
+                className="rounded px-1.5 py-0.5 font-medium"
+                style={m === dados.mesReferencia
+                  ? { background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }
+                  : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}>
+                {rotuloDoMes(m)}
+              </button>
+            ))}
+            {/* ⚠️ referência que ainda está correndo tem o realizado PELA METADE — e a tela diz */}
+            {dados.referenciaEhParcial && (
+              <span style={{ color: 'var(--fam-ambar-ink)' }}>
+                ⚠️ {rotuloDoMes(dados.mesReferencia)} ainda está correndo — o realizado dele é parcial
+              </span>
+            )}
+          </div>
+
+          {previa && (
+            <PainelDaSemente
+              previa={previa}
+              salvando={salvando === 'semear'}
+              incluirComPlano={incluirComPlano}
+              aoMudarIncluir={(v) => {
+                setIncluirComPlano(v)
+                void gesto({ acao: 'SEMEAR', mesReferencia: previa.mesReferencia, incluirComPlano: v, confirmar: false }, 'semear')
+              }}
+              aoConfirmar={() => void gesto({ acao: 'SEMEAR', mesReferencia: previa.mesReferencia, incluirComPlano, confirmar: true }, 'semear')}
+              aoFechar={() => setPrevia(null)}
+            />
+          )}
+
           {abrindoSeletor && (
             <SeletorDeCategoria
               disponiveis={dados.disponiveis}
               salvando={salvando}
-              aoEscolher={(categoryId) => void gesto({ acao: 'MARCAR', categoryId }, `marcar:${categoryId}`)}
+              aoAlternar={(c) => void gesto(
+                { acao: c.jaFixa ? 'TIRAR' : 'MARCAR', categoryId: c.id },
+                `${c.jaFixa ? 'tirar' : 'marcar'}:${c.id}`,
+              )}
               aoFechar={() => setAbrindoSeletor(false)}
             />
           )}
@@ -221,6 +291,7 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
                     linha={l}
                     zebra={i % 2 === 1}
                     salvando={salvando === `plano:${l.categoryId}`}
+                    mesReferencia={dados.mesReferencia}
                     aoPlanejar={(valor) => void gesto({ acao: 'PLANEJAR', categoryId: l.categoryId, valor }, `plano:${l.categoryId}`)}
                     aoTirar={() => void gesto({ acao: 'TIRAR', categoryId: l.categoryId }, `tirar:${l.categoryId}`)}
                   />
@@ -326,10 +397,11 @@ function CartaoDeDono({ familia, titulo, sub, valor, sufixo, aApurar, detalhe }:
 }
 
 /** ⭐ UMA linha: ícone + nome · planejado editável · realizado · selo. Clica → as transações. */
-function LinhaDaTela({ linha, zebra, salvando, aoPlanejar, aoTirar }: {
+function LinhaDaTela({ linha, zebra, salvando, mesReferencia, aoPlanejar, aoTirar }: {
   linha: LinhaDoCustoFixo
   zebra: boolean
   salvando: boolean
+  mesReferencia: string
   aoPlanejar: (valor: number | null) => void
   aoTirar: () => void
 }) {
@@ -368,7 +440,14 @@ function LinhaDaTela({ linha, zebra, salvando, aoPlanejar, aoTirar }: {
         </button>
       </div>
 
-      <CampoDoPlano valor={linha.planejado} salvando={salvando} rastro={linha.planejadoRastro} aoSalvar={aoPlanejar} />
+      <CampoDoPlano
+        valor={linha.planejado}
+        salvando={salvando}
+        rastro={linha.planejadoRastro}
+        semente={linha.realizadoReferencia}
+        mesReferencia={mesReferencia}
+        aoSalvar={aoPlanejar}
+      />
 
       <div className="flex items-baseline justify-between lg:block lg:text-right">
         <span className="text-[11px] lg:hidden" style={{ color: 'var(--prod-muted)' }}>realizado</span>
@@ -397,10 +476,13 @@ function LinhaDaTela({ linha, zebra, salvando, aoPlanejar, aoTirar }: {
  *
  * ⚠️ E vazio APAGA o plano (volta pra "não declarei"), que é diferente de declarar ZERO.
  */
-function CampoDoPlano({ valor, salvando, rastro, aoSalvar }: {
+function CampoDoPlano({ valor, salvando, rastro, semente, mesReferencia, aoSalvar }: {
   valor: number | null
   salvando: boolean
   rastro: { quem: string | null; quando: string } | null
+  /** ⭐ o realizado do mês de referência — o número que o botão PREENCHE */
+  semente: number
+  mesReferencia: string
   aoSalvar: (v: number | null) => void
 }) {
   const inicial = valor == null ? '' : valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -422,10 +504,28 @@ function CampoDoPlano({ valor, salvando, rastro, aoSalvar }: {
     aoSalvar(n)
   }
 
+  const fmtCampo = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
   return (
     <div className="flex items-center justify-between gap-2 lg:justify-end">
       <span className="text-[11px] lg:hidden" style={{ color: 'var(--prod-muted)' }}>planejado</span>
       <div className="flex items-center gap-1.5">
+        {/*
+          ⭐⭐ O BOTÃO **SÓ PREENCHE O CAMPO** — ordem do dono: *"eu confirmo/edito e salvo"*.
+          ⛔⛔ Ele NUNCA chama `aoSalvar`, e isso é a mesma disciplina do mínimo sugerido do
+          estoque (*"o campo é meu"*): gravar sozinho poria no plano um número que o dono não
+          escolheu, e o plano é justamente a AFIRMAÇÃO dele. Salvar continua sendo o blur/Enter.
+          ⚠️ Só aparece onde FALTA plano e onde há número pra semear — botão que preenche com
+          R$ 0,00 ensinaria a ignorar o botão.
+        */}
+        {valor == null && semente > 0 && (
+          <button type="button" onClick={() => setTxt(fmtCampo(semente))}
+            title={`preenche com o que saiu nesta categoria em ${rotuloDoMes(mesReferencia)} — você confere e salva`}
+            className="shrink-0 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium"
+            style={{ background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)' }}>
+            usar o realizado de {rotuloDoMes(mesReferencia)}
+          </button>
+        )}
         {salvando && <Loader2 className="h-3 w-3 animate-spin" style={{ color: 'var(--prod-muted)' }} />}
         <input
           value={txt}
@@ -448,25 +548,62 @@ function CampoDoPlano({ valor, salvando, rastro, aoSalvar }: {
   )
 }
 
-/** ⭐ o gesto "marcar categoria como fixa" — só categorias de DESPESA que ainda não estão na lista */
-function SeletorDeCategoria({ disponiveis, salvando, aoEscolher, aoFechar }: {
-  disponiveis: { id: string; nome: string; dreGroup: string | null; qualificador: string | null }[]
+/**
+ * ⭐⭐ O SELETOR — A VISÃO COMPLETA, com ✓ em quem já é fixa (06/10).
+ *
+ * **Ordem do dono:** *"o seletor ganha busca e mostra as já marcadas com ✓ (pra desmarcar
+ * fácil também)."*
+ *
+ * ⛔ **E CONTINUA UMA PORTA SÓ:** marcar e desmarcar caem no MESMO `POST` (`MARCAR`/`TIRAR`),
+ * que é o mesmo que o X da linha usa. O ✓ aqui é outra MAÇANETA pro mesmo gesto, nunca uma
+ * segunda régua — e por isso as duas não têm como discordar.
+ *
+ * ⚠️⚠️ **A BUSCA É A `casaBusca` DA CASA, e isso não é preciosismo:** com `includes` cru,
+ * digitar *"agua"* **não acharia "Água e Esgoto"** — é literalmente o bug de 08/09 (`contains`
+ * case-sensitive no Postgres e o acento por cima). Palavra em qualquer ordem, sem caixa e sem
+ * acento, sobre a MESMA lista que a tela desenha.
+ */
+function SeletorDeCategoria({ disponiveis, salvando, aoAlternar, aoFechar }: {
+  disponiveis: CategoriaDisponivel[]
   salvando: string | null
-  aoEscolher: (categoryId: string) => void
+  aoAlternar: (c: CategoriaDisponivel) => void
   aoFechar: () => void
 }) {
   const [busca, setBusca] = useState('')
-  const filtradas = useMemo(() => {
-    const q = busca.trim().toLowerCase()
-    if (!q) return disponiveis
-    return disponiveis.filter((c) => c.nome.toLowerCase().includes(q))
-  }, [busca, disponiveis])
+  const filtradas = useMemo(
+    // ⭐ busca pelo nome E pelo qualificador: com dois "Frete", o grupo é o que distingue
+    () => filtrarPorBusca(disponiveis, busca, (c) => `${c.nome} ${c.qualificador ?? ''}`),
+    [busca, disponiveis],
+  )
+  const fixas = filtradas.filter((c) => c.jaFixa)
+  const livres = filtradas.filter((c) => !c.jaFixa)
+
+  const chip = (c: CategoriaDisponivel) => {
+    const ocupado = salvando === `marcar:${c.id}` || salvando === `tirar:${c.id}`
+    return (
+      <button key={c.id} type="button" onClick={() => aoAlternar(c)}
+        aria-pressed={c.jaFixa}
+        title={c.jaFixa ? `tirar ${c.nome} dos custos fixos` : `marcar ${c.nome} como custo fixo`}
+        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px]"
+        style={c.jaFixa
+          ? { background: 'var(--fam-verde-bg)', color: 'var(--fam-verde-ink)', boxShadow: 'inset 0 0 0 1px var(--fam-verde-mid)' }
+          : { background: 'var(--prod-surface)', color: 'var(--prod-primary)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }}>
+        {ocupado
+          ? <Loader2 className="h-3 w-3 animate-spin" />
+          : c.jaFixa
+            ? <Check className="h-3 w-3" />
+            : <Plus className="h-3 w-3" style={{ color: 'var(--prod-accent)' }} />}
+        {c.nome}
+        {c.qualificador && <span style={{ color: 'var(--prod-muted)' }}>· {c.qualificador}</span>}
+      </button>
+    )
+  }
 
   return (
     <div className="border-t px-4 py-3" style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}>
       <div className="mb-2 flex items-center gap-2">
         <label className="flex-1 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-          Qual categoria a casa paga todo mês?
+          Qual categoria a casa paga todo mês? (clique no ✓ pra tirar da lista)
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="aluguel"
             className="mt-1 block w-full rounded-lg px-2 py-1.5 text-[13px]"
             style={{ border: '1px solid var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }} />
@@ -474,25 +611,140 @@ function SeletorDeCategoria({ disponiveis, salvando, aoEscolher, aoFechar }: {
         <button type="button" onClick={aoFechar} className="mt-4 rounded p-1" aria-label="fechar"
           style={{ color: 'var(--prod-muted)' }}><X className="h-4 w-4" /></button>
       </div>
+
       {filtradas.length === 0 ? (
         <p className="text-[12px]" style={{ color: 'var(--prod-secondary)' }}>
-          Nada com «{busca}» entre as categorias de despesa que ainda não são fixas.
+          {/* ⚠️ o vazio DIZ o recorte — "nenhuma encontrada" faria o dono achar que a categoria não existe */}
+          Nada com «{busca}» entre as {disponiveis.length} categorias de despesa da empresa.
         </p>
       ) : (
-        <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto">
-          {filtradas.map((c) => (
-            <button key={c.id} type="button" onClick={() => aoEscolher(c.id)}
-              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px]"
-              style={{ background: 'var(--prod-surface)', color: 'var(--prod-primary)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }}>
-              {salvando === `marcar:${c.id}`
-                ? <Loader2 className="h-3 w-3 animate-spin" />
-                : <Check className="h-3 w-3" style={{ color: 'var(--prod-accent)' }} />}
-              {c.nome}
-              {c.qualificador && <span style={{ color: 'var(--prod-muted)' }}>· {c.qualificador}</span>}
-            </button>
-          ))}
+        <div className="max-h-64 space-y-2 overflow-y-auto">
+          {fixas.length > 0 && (
+            <div>
+              <p className="mb-1 text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
+                já são fixas ({fixas.length})
+              </p>
+              <div className="flex flex-wrap gap-1.5">{fixas.map(chip)}</div>
+            </div>
+          )}
+          <div>
+            <p className="mb-1 text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
+              marcar como fixa ({livres.length})
+            </p>
+            {livres.length === 0
+              ? <p className="text-[12px]" style={{ color: 'var(--prod-secondary)' }}>todas as que casam com a busca já estão na lista.</p>
+              : <div className="flex flex-wrap gap-1.5">{livres.map(chip)}</div>}
+          </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * ⭐⭐ A PRÉVIA DA SEMEADURA — o que acontece se eu confirmar, numa tela.
+ *
+ * ⛔⛔ **ELA VEM DO SERVIDOR, e é a MESMA lista que a gravação executa.** A tela não decide
+ * quem entra: se decidisse, mostraria uma lista e o servidor gravaria outra — a cicatriz do
+ * preview × confirm do import de OFX (17/08), que custou o módulo inteiro.
+ *
+ * ⚠️ E o que fica DE FORA aparece com o PORQUÊ. Exclusão silenciosa num gesto em lote é como
+ * o dono descobre semanas depois que metade não entrou.
+ */
+function PainelDaSemente({ previa, salvando, incluirComPlano, aoMudarIncluir, aoConfirmar, aoFechar }: {
+  previa: PreviaDaSemente
+  salvando: boolean
+  incluirComPlano: boolean
+  aoMudarIncluir: (v: boolean) => void
+  aoConfirmar: () => void
+  aoFechar: () => void
+}) {
+  const fora = previa.linhas.filter((l) => !l.vai)
+  return (
+    <div className="border-t px-4 py-3" style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Sparkles className="h-4 w-4 shrink-0" style={{ color: 'var(--prod-accent)' }} />
+        <p className="min-w-0 flex-1 text-[13px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
+          Preencher o plano de {rotuloDoMes(previa.mesDestino)} com o realizado de {rotuloDoMes(previa.mesReferencia)}
+        </p>
+        <button type="button" onClick={aoFechar} className="rounded p-1" aria-label="fechar"
+          style={{ color: 'var(--prod-muted)' }}><X className="h-4 w-4" /></button>
+      </div>
+
+      {previa.referenciaEhParcial && (
+        <p className="mb-2 rounded-lg px-2 py-1.5 text-[11.5px] leading-snug"
+          style={{ background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
+          ⚠️ {rotuloDoMes(previa.mesReferencia)} ainda está correndo — o realizado dele é parcial,
+          então o plano sai menor do que o mês inteiro vai custar.
+        </p>
+      )}
+
+      {previa.quantas === 0 ? (
+        <p className="text-[12.5px]" style={{ color: 'var(--prod-secondary)' }}>
+          Nada a preencher com esta referência.
+          {previa.jaTemPlano > 0 && ` ${previa.jaTemPlano} ${previa.jaTemPlano === 1 ? 'categoria já tem' : 'categorias já têm'} plano.`}
+          {previa.semRealizado > 0 && ` ${previa.semRealizado} não ${previa.semRealizado === 1 ? 'teve' : 'tiveram'} lançamento em ${rotuloDoMes(previa.mesReferencia)}.`}
+        </p>
+      ) : (
+        <>
+          <ul className="mb-2 max-h-56 overflow-y-auto">
+            {previa.linhas.filter((l) => l.vai).map((l) => (
+              <li key={l.categoryId} className="flex items-baseline justify-between gap-3 border-b py-1 text-[12.5px]"
+                style={{ borderColor: 'var(--prod-line)' }}>
+                <span className="min-w-0 truncate" style={{ color: 'var(--prod-primary)' }}>
+                  {l.nome}
+                  {l.qualificador && <span style={{ color: 'var(--prod-muted)' }}> · {l.qualificador}</span>}
+                </span>
+                <span className="shrink-0 tabular-nums" style={{ color: 'var(--prod-muted)' }}>
+                  {/* ⭐ o ANTES e o DEPOIS, pra o dono ver o que está trocando */}
+                  {l.planoAtual == null ? '—' : formatBRL(l.planoAtual)}
+                  {' → '}
+                  <b style={{ color: 'var(--prod-primary)' }}>{formatBRL(l.valor)}</b>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mb-2 text-[12.5px]" style={{ color: 'var(--prod-secondary)' }}>
+            {previa.quantas} {previa.quantas === 1 ? 'categoria' : 'categorias'} ·{' '}
+            <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{formatBRL(previa.soma)}</b> no total
+          </p>
+        </>
+      )}
+
+      {fora.length > 0 && (
+        <details className="mb-2">
+          <summary className="cursor-pointer text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+            {fora.length} {fora.length === 1 ? 'fica' : 'ficam'} de fora — ver o porquê
+          </summary>
+          <ul className="mt-1 space-y-0.5">
+            {fora.map((l) => (
+              <li key={l.categoryId} className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                <b style={{ color: 'var(--prod-secondary)' }}>{l.nome}</b> — {l.porque}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        {/*
+          ⛔⛔ NASCE DESMARCADO: o plano é afirmação do dono, e um lote que passa por cima
+          apagaria uma decisão sem avisar (a régua do rename em lote, 09/09).
+        */}
+        <label className="flex items-center gap-1.5 text-[11.5px]" style={{ color: 'var(--prod-secondary)' }}>
+          <input type="checkbox" checked={incluirComPlano} onChange={(e) => aoMudarIncluir(e.target.checked)} />
+          substituir também os que já têm plano
+        </label>
+        <button type="button" onClick={aoConfirmar} disabled={salvando || previa.quantas === 0}
+          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold disabled:opacity-50"
+          style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
+          {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          preencher {previa.quantas > 0 ? `${previa.quantas} ` : ''}e salvar
+        </button>
+        <span className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+          dá pra editar cada linha depois — o número é seu
+        </span>
+      </div>
     </div>
   )
 }

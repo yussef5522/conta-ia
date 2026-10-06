@@ -21,13 +21,14 @@
 import { prisma } from '@/lib/db'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { whereFluxoCaixa } from '@/lib/fluxo-caixa/motor'
-import { janelaDoMes, mesCorrente } from '@/lib/periodo/mes-corrente'
+import { janelaDoMes, mesCorrente, mesVizinho } from '@/lib/periodo/mes-corrente'
 import { situacaoDaLinha, type SeloDaSituacao, type ContaEmAbertoDaLinha } from './situacao'
 import { medirMargem, pontoDeEquilibrio, type MargemMedida, type PontoDeEquilibrio } from './margem'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
-export interface CategoriaDisponivel {
+/** ⭐ o nome de uma categoria como a tela mostra — a base da linha E do seletor */
+export interface CategoriaNomeada {
   id: string
   nome: string
   dreGroup: string | null
@@ -39,13 +40,32 @@ export interface CategoriaDisponivel {
   qualificador: string | null
 }
 
-export interface LinhaDoCustoFixo extends CategoriaDisponivel {
+export interface CategoriaDisponivel extends CategoriaNomeada {
+  /**
+   * ⭐ já está na lista de custos fixos? É o ✓ do seletor — e é ele que permite **desmarcar
+   * de lá**. ⚠️ Só existe no SELETOR: na linha seria sempre `true`, e campo que nunca varia
+   * é campo que alguém lê como se significasse algo.
+   */
+  jaFixa: boolean
+}
+
+export interface LinhaDoCustoFixo extends CategoriaNomeada {
   categoryId: string
   /** o que o dono declarou — `null` = ainda não declarou (≠ declarou zero) */
   planejado: number | null
   planejadoRastro: { quem: string | null; quando: string } | null
   /** o que o fluxo REALMENTE pagou no mês naquela categoria */
   realizado: number
+  /**
+   * ⭐ 06/10 — O NÚMERO QUE SEMEIA O PLANO: o realizado daquela categoria no **mês de
+   * REFERÊNCIA** (por padrão o mês anterior ao visto).
+   *
+   * ⛔⛔ **UM número semeia, não dois.** O botão da linha e o "preencher todos" leem ESTE
+   * campo — se a linha usasse o realizado do mês VISTO e o lote usasse outro, haveria duas
+   * respostas pra *"com que número começa o plano?"*, e elas divergiriam no dia 1º (quando o
+   * mês visto tem realizado quase zero).
+   */
+  realizadoReferencia: number
   lancamentos: number
   emAbertoValor: number
   emAbertoN: number
@@ -64,6 +84,10 @@ export interface CartaoPorDiaAberto {
 export interface CustosFixosNaTela {
   mes: string
   ehMesCorrente: boolean
+  /** ⭐ o mês cujo realizado semeia o plano — default: o anterior ao visto */
+  mesReferencia: string
+  /** ⚠️ a referência é um mês que ainda está correndo? (o realizado dela é PARCIAL) */
+  referenciaEhParcial: boolean
   /** ⭐ cartão (a): Σ do PLANEJADO das linhas. `null` = nada declarado ainda */
   casaCustaMes: number | null
   /** quantas linhas marcadas ainda não têm plano, e quanto elas realizaram */
@@ -76,7 +100,14 @@ export interface CustosFixosNaTela {
   totalRealizado: number
   /** ⭐ "% pago" = realizado ÷ planejado. `null` sem plano — nunca 0% */
   pctPago: number | null
-  /** o seletor do gesto "marcar categoria como fixa" */
+  /**
+   * o seletor do gesto "marcar categoria como fixa" — **o universo INTEIRO de despesa**,
+   * cada uma dizendo se já está na lista.
+   *
+   * ⭐ 06/10: antes só vinham as NÃO marcadas, e aí o seletor não tinha como oferecer o
+   * desmarcar. Com `jaFixa` ele passa a ser a visão completa — e **continua uma porta só**:
+   * marcar e desmarcar caem no MESMO `POST` (`MARCAR`/`TIRAR`).
+   */
   disponiveis: CategoriaDisponivel[]
   /** ⚠️ a lacuna do cartão, medida e dita na tela */
   comprasNoCartao: { n: number } | null
@@ -120,14 +151,30 @@ export function hrefDasTransacoes(companyId: string, categoryId: string, mes: st
   return `/transacoes?${p.toString()}`
 }
 
+/**
+ * ⭐ O MÊS QUE SEMEIA O PLANO, por padrão: **o ANTERIOR ao visto**.
+ *
+ * ⛔ Por que não o próprio mês visto: no dia 6 de outubro o realizado de outubro é quase
+ * zero — semear com ele poria um plano de R$ 900 onde a folha é R$ 46.000. O mês anterior é
+ * o único **completo** que o dono tem na mão, e é com ele que ele raciocina (*"este mês deve
+ * custar o que custou no mês passado"*).
+ */
+export function referenciaPadrao(mes: string): string {
+  return mesVizinho(mes, -1)
+}
+
 export async function lerCustosFixos(
   companyId: string,
   mes: string,
   agora: Date = new Date(),
   db: Db = prisma,
+  /** ⭐ o mês cujo realizado semeia o plano — `null` usa o anterior ao visto */
+  mesReferencia?: string | null,
 ): Promise<CustosFixosNaTela> {
   const { de, ate } = janelaDoMes(mes)
   const ehMesCorrente = mes === mesCorrente(agora)
+  const ref = mesReferencia ?? referenciaPadrao(mes)
+  const janelaRef = janelaDoMes(ref)
 
   /**
    * ⚠️ A JANELA DA MARGEM TERMINA NO FIM DO MÊS OLHADO (ou agora, se for o corrente) — assim
@@ -136,7 +183,7 @@ export async function lerCustosFixos(
    */
   const fimDaJanelaDaMargem = ehMesCorrente ? agora : new Date(ate.getTime() - 1)
 
-  const [marcadas, planos, realizadoCru, catsExpense, margem] = await Promise.all([
+  const [marcadas, planos, realizadoCru, realizadoRefCru, catsExpense, margem] = await Promise.all([
     db.custoFixoCategoria.findMany({
       where: { companyId, removidoEm: null },
       select: { categoryId: true, category: { select: { id: true, name: true, dreGroup: true, isActive: true } } },
@@ -151,6 +198,20 @@ export async function lerCustosFixos(
       _sum: { amount: true },
       _count: true,
     }),
+    /**
+     * ⭐ o realizado do mês de REFERÊNCIA — o número que semeia o plano.
+     *
+     * ⚠️ Mesma porta (`whereFluxoCaixa`), mesma forma: se esta consulta tivesse régua própria,
+     * o botão "usar o realizado" semearia um número que a tela não mostra em mês nenhum.
+     */
+    ref === mes
+      ? Promise.resolve(null)
+      : db.transaction.groupBy({
+          by: ['categoryId'],
+          where: { ...whereFluxoCaixa(companyId, { de: janelaRef.de, ate: new Date(janelaRef.ate.getTime() - 1) }), type: 'DEBIT' },
+          _sum: { amount: true },
+          _count: true,
+        }),
     db.category.findMany({
       where: { companyId, type: 'EXPENSE', isActive: true },
       select: { id: true, name: true, dreGroup: true },
@@ -183,6 +244,10 @@ export async function lerCustosFixos(
   const quemDefiniu = await nomesDeQuem(planos.map((p) => p.definidoPorId), db)
 
   const realPorCat = new Map(realizadoCru.filter((r) => r.categoryId).map((r) => [r.categoryId as string, r]))
+  // ⚠️ referência == mês visto reusa a MESMA leitura (nada de 2ª consulta pro mesmo período)
+  const refPorCat = new Map(
+    (realizadoRefCru ?? realizadoCru).filter((r) => r.categoryId).map((r) => [r.categoryId as string, r]),
+  )
   const planoPorCat = new Map(planos.map((p) => [p.categoryId, p]))
   const abertoPorCat = new Map<string, ContaEmAbertoDaLinha[]>()
   for (const c of emAberto) {
@@ -212,6 +277,7 @@ export async function lerCustosFixos(
         ? { quem: p.definidoPorId ? (quemDefiniu.get(p.definidoPorId) ?? null) : null, quando: p.atualizadoEm.toISOString() }
         : null,
       realizado,
+      realizadoReferencia: refPorCat.get(c.id)?._sum.amount ?? 0,
       lancamentos: r?._count ?? 0,
       emAbertoValor: abertas.reduce((s, x) => s + x.amount, 0),
       emAbertoN: abertas.length,
@@ -259,6 +325,13 @@ export async function lerCustosFixos(
   return {
     mes,
     ehMesCorrente,
+    mesReferencia: ref,
+    /**
+     * ⚠️ **A REFERÊNCIA PARCIAL É DITA, nunca escondida.** Semear o plano com o realizado de um
+     * mês que ainda está correndo põe um número pela metade no campo — e o dono não tem como
+     * saber disso olhando o valor. A tela avisa; ele decide.
+     */
+    referenciaEhParcial: ref === mesCorrente(agora),
     casaCustaMes,
     semPlano: { n: semPlanoLinhas.length, realizado: semPlanoLinhas.reduce((s, l) => s + l.realizado, 0) },
     porDiaAberto,
@@ -269,8 +342,12 @@ export async function lerCustosFixos(
     totalRealizado,
     /** ⚠️ sem plano NÃO é 0% pago — é desconhecido */
     pctPago: casaCustaMes != null && casaCustaMes > 0 ? totalRealizado / casaCustaMes : null,
+    /**
+     * ⭐ O UNIVERSO INTEIRO, com o ✓ de quem já está na lista — é o que permite DESMARCAR pelo
+     * mesmo seletor. ⛔ E continua uma porta só: marcar e desmarcar caem no MESMO `POST`.
+     */
     disponiveis: comQualificador(
-      catsExpense.filter((c) => !idsFixos.includes(c.id)).map((c) => ({ id: c.id, nome: c.name, dreGroup: c.dreGroup })),
+      catsExpense.map((c) => ({ id: c.id, nome: c.name, dreGroup: c.dreGroup, jaFixa: idsFixos.includes(c.id) })),
     ),
     comprasNoCartao: comprasNoCartao > 0 ? { n: comprasNoCartao } : null,
   }
