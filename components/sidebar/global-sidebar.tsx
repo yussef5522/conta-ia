@@ -16,7 +16,6 @@ import {
   Clock,
   Wallet,
   Upload,
-  Repeat,
   Users,
   Link2,
   Building2,
@@ -343,14 +342,24 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
-        <SidebarItem
-          perm="transaction.view"
-          icon={Repeat}
-          label="Recorrentes"
-          href={`/recorrentes${empresaQs}`}
-          isActive={pathname.startsWith('/recorrentes')}
-          onClick={onNavigate}
-        />
+        {/*
+          ⭐⭐ 06/10/2026 — ONDE "RECORRENTES" VIVIA, VIRA "CUSTOS FIXOS" (ordem do dono).
+          ⚠️ Medido em prod antes de trocar: **0 recorrências em TODAS as empresas** e 0
+          transações geradas — a tela nunca foi usada. ⛔ Mas o MOTOR fica vivo (o scheduler
+          roda em `instrumentation.ts` e 5 lugares leem `recurring_schedules`); o que muda é
+          quem ocupa o lugar no menu. A porta do Recorrentes continua aberta, linkada no pé
+          da tela de Custos fixos — *remoção sem realocação é perda*.
+        */}
+        {empresaAtiva && (
+          <SidebarItem
+            perm="transaction.view"
+            icon={Wallet}
+            label="Custos fixos"
+            href={`/empresas/${empresaAtiva}/custos-fixos`}
+            isActive={/^\/empresas\/[^/]+\/custos-fixos(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
         {!soEstoque && (
         <SidebarItem
           perm="transaction.view"

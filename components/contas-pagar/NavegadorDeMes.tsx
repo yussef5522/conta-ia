@@ -9,6 +9,10 @@
 // conclui que as vencidas de agosto sumiram — a mentira que a régua dos dois tempos existe
 // pra impedir. ⚠️ Por isso a `frase` é **obrigatória** desde 26/09 (ver abaixo).
 
+// ⭐ 06/10/2026 — A ROUPA VIROU TOKEN (`var(--prod-*)`), e os dois temas saem de graça.
+// ⚠️ Ele é compartilhado por 4 telas (Contas a Pagar, Recebimentos, Lançamentos PF e Custos
+// fixos): escrever um 2º navegador "só pro v4" seria dois jeitos de navegar mês no mesmo
+// sistema — exatamente o que o comentário acima proíbe. **O gesto não mudou; só a tinta.**
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { mesVizinho, rotuloDoMes, mesCorrente } from '@/lib/periodo/mes-corrente'
 
@@ -30,23 +34,25 @@ export function NavegadorDeMes({ mes, onMudar, frase }: {
 }) {
   const corrente = mesCorrente()
   return (
-    <div className="-mt-1 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+    <div className="-mt-1 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style={{ color: 'var(--prod-secondary)' }}>
       <div className="inline-flex items-center gap-0.5">
         <button
           type="button"
           onClick={() => onMudar(mesVizinho(mes, -1))}
-          className="rounded p-0.5 hover:bg-slate-100"
+          className="rounded p-0.5"
+          style={{ color: 'var(--prod-secondary)' }}
           aria-label="mês anterior"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
         </button>
-        <span className="min-w-[92px] text-center text-[13px] font-semibold capitalize text-slate-800">
+        <span className="min-w-[92px] text-center text-[13px] font-semibold capitalize" style={{ color: 'var(--prod-primary)' }}>
           {rotuloDoMes(mes)}
         </span>
         <button
           type="button"
           onClick={() => onMudar(mesVizinho(mes, 1))}
-          className="rounded p-0.5 hover:bg-slate-100"
+          className="rounded p-0.5"
+          style={{ color: 'var(--prod-secondary)' }}
           aria-label="mês seguinte"
         >
           <ChevronRight className="h-3.5 w-3.5" />
@@ -55,12 +61,12 @@ export function NavegadorDeMes({ mes, onMudar, frase }: {
 
       {/* ⚠️ "voltar pro mês" só aparece FORA do corrente — botão que não faz nada é ruído */}
       {mes !== corrente && (
-        <button type="button" onClick={() => onMudar(corrente)} className="font-medium text-violet-700 hover:underline">
+        <button type="button" onClick={() => onMudar(corrente)} className="font-medium hover:underline" style={{ color: 'var(--prod-accent)' }}>
           voltar pra {rotuloDoMes(corrente)}
         </button>
       )}
 
-      <span className="w-full text-[11px] text-slate-400 sm:w-auto">
+      <span className="w-full text-[11px] sm:w-auto" style={{ color: 'var(--prod-muted)' }}>
         {frase}
       </span>
     </div>

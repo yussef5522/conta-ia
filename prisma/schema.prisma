@@ -193,6 +193,10 @@ model Company {
   businessCreditCards BusinessCreditCard[]
   investmentContracts InvestmentContract[]
 
+  // Sprint Custos Fixos (06/10/2026) — a casa num olhar
+  custosFixosCategorias CustoFixoCategoria[]
+  custosFixosPlanejados CustoFixoPlanejado[]
+
   @@map("companies")
 }
 
@@ -727,6 +731,8 @@ model Category {
   recurringSchedules RecurringSchedule[]
   rules              AiLearningRule[]
   history            CategoryHistory[]
+  custoFixo          CustoFixoCategoria[]
+  custosFixosPlano   CustoFixoPlanejado[]
 
   // Mesma sub-categoria pode existir em parents diferentes (ex: "Outras"
   // sob "Receita Operacional" e sob "Despesas Operacionais").
@@ -5067,4 +5073,58 @@ model InvestmentContribution {
   @@index([contractId])
   @@index([contractId, competencia])
   @@map("investment_contributions")
+}
+
+// ============================================================================
+// ⭐⭐⭐ CUSTOS FIXOS (06/10/2026) — "a casa num olhar".
+//
+// ⛔⛔ DUAS TABELAS, E AS DUAS GUARDAM **DECISÃO DO DONO**, nunca número derivado.
+// O REALIZADO não mora aqui: ele vem das `transactions` já categorizadas, pela porta
+// do `whereFluxoCaixa`. Gravar realizado seria a 2ª fonte do mesmo fato — a doença que
+// esta casa pagou no `CreditCardInvoice.status` (eternamente OPEN depois de vencer) e
+// no `balance` que driftou R$ 2.112,00 em 30/09. **Decisão se grava; fato se deriva.**
+// ============================================================================
+
+/// ⭐ "esta categoria é um custo fixo da casa" — decisão do dono, com rastro.
+/// ⚠️ Reversível com HISTÓRIA: desmarcar carimba `removidoEm`, não apaga a linha —
+/// senão não dá pra responder "quem tirou o aluguel da lista, e quando?".
+model CustoFixoCategoria {
+  id            String    @id @default(cuid())
+  companyId     String
+  categoryId    String
+  marcadoPorId  String?
+  marcadoEm     DateTime  @default(now())
+  removidoPorId String?
+  removidoEm    DateTime?
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  /// ⛔ a mesma categoria virar dois custos fixos é IMPOSSÍVEL no banco, não "checado"
+  @@unique([companyId, categoryId])
+  @@index([companyId, removidoEm])
+  @@map("custo_fixo_categoria")
+}
+
+/// ⭐ "o que este custo fixo DEVE custar neste mês" — o PLANEJADO, declarado pelo dono.
+/// ⚠️ Por MÊS de propósito: o aluguel reajusta, o contador muda de preço. Um valor único
+/// por categoria faria o plano de janeiro julgar o realizado de dezembro.
+model CustoFixoPlanejado {
+  id            String   @id @default(cuid())
+  companyId     String
+  categoryId    String
+  /// `YYYY-MM` — CHECK de FORMA no banco (migration), vocabulário no TypeScript
+  mes           String
+  valor         Float
+  definidoPorId String?
+  definidoEm    DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  /// ⛔ um plano por categoria por mês — editar é UPDATE, nunca uma 2ª linha
+  @@unique([companyId, categoryId, mes])
+  @@index([companyId, mes])
+  @@map("custo_fixo_planejado")
 }

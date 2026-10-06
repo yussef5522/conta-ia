@@ -13,6 +13,7 @@
 import { prisma } from '@/lib/db'
 import { produzirAvisosDeProducao, type ResumoDaCarga } from './producao'
 import { produzirAvisosDeEstoque } from './estoque'
+import { produzirAvisosDeFinanceiro } from './financeiro'
 import { montarSemanaVerde } from '../semana-verde'
 import { registrarAviso, avisosAbertos } from '../central'
 
@@ -94,6 +95,18 @@ export async function rodarProdutoresDeAviso(agora: Date = new Date()): Promise<
       r.reabertos += q.reabertos
       r.resolvidos += q.resolvidos
       for (const x of q.recusados) r.recusados.push({ empresa: e.name, ...x })
+      /**
+       * ⭐ O FINANCEIRO (custo fixo acima do plano, 06/10) — independente dos dois de cima: a
+       * causa dele é outra (plano × realizado) e não existe supressão cruzada aqui.
+       *
+       * ⚠️ Empresa que nunca marcou custo fixo nenhum devolve zero e **não grava nada** — a
+       * leitura parte da lista do dono, então o produtor é mudo até ele declarar o primeiro.
+       */
+      const f = await produzirAvisosDeFinanceiro(e.id, agora)
+      r.gravados += f.gravados
+      r.reabertos += f.reabertos
+      r.resolvidos += f.resolvidos
+      for (const x of f.recusados) r.recusados.push({ empresa: e.name, ...x })
       if (await verdeDaSemana(e.id, agora)) r.verdesSemanais++
     } catch (err) {
       // ⛔ uma empresa com problema não derruba a rodada das outras nem o juiz

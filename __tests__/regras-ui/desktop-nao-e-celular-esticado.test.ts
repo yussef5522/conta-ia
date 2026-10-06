@@ -36,6 +36,12 @@ const COM_COCKPIT = [
    * cards no celular, **os MESMOS dados** — o que muda é o layout, nunca o conteúdo.
    */
   'app/(dashboard)/empresas/[id]/estoque/producao/por-dia/page.tsx',
+  /**
+   * ⭐ ENTROU em 06/10: Custos fixos. UMA grade que REFLUI (coluna no celular, 4 colunas no
+   * desktop), com os rótulos do celular em `lg:hidden` e o cabeçalho da tabela só a partir
+   * de `lg` — os MESMOS dados, nunca um cartão por viewport.
+   */
+  'app/(dashboard)/empresas/[id]/custos-fixos/page.tsx',
 ]
 
 /**
@@ -51,7 +57,15 @@ const COM_COCKPIT = [
 function temComposicao(src: string, modo: 'DESKTOP' | 'CELULAR'): boolean {
   for (const m of src.matchAll(/className="([^"]*)"/g)) {
     const classes = m[1].split(/\s+/)
-    if (modo === 'DESKTOP' && classes.includes('hidden') && classes.includes('lg:block')) return true
+    /**
+     * ⚠️ **06/10 — `lg:grid`/`lg:flex`/`lg:table` contam IGUAL a `lg:block`.** A pergunta é
+     * *"existe elemento escondido por padrão que aparece a partir de `lg`?"* — o DISPLAY que
+     * ele assume lá é escolha de layout, não de composição. Exigir `block` reprovaria uma
+     * tabela que vira grade no desktop: é a mesma cegueira do `col-span-4` que este arquivo
+     * já registra ("guard que mede a letra vira falso vermelho no 1º refactor legítimo").
+     */
+    const apareceNoDesktop = classes.some((c) => /^lg:(block|grid|flex|table|inline-flex)$/.test(c))
+    if (modo === 'DESKTOP' && classes.includes('hidden') && apareceNoDesktop) return true
     if (modo === 'CELULAR' && classes.includes('lg:hidden')) return true
   }
   return false
@@ -70,12 +84,17 @@ describe('o detector de composição', () => {
     expect(temComposicao('<div className="hidden lg:block">', 'DESKTOP')).toBe(true)
     expect(temComposicao('<div className="hidden overflow-x-auto lg:block">', 'DESKTOP')).toBe(true)
     expect(temComposicao('<div className="lg:block hidden">', 'DESKTOP')).toBe(true)
+    // ⭐ e o display não importa: grade/flex/tabela são a MESMA composição
+    expect(temComposicao('<div className="hidden lg:grid">', 'DESKTOP')).toBe(true)
+    expect(temComposicao('<div className="hidden lg:flex">', 'DESKTOP')).toBe(true)
   })
 
   it('⛔ NÃO vê onde não há (nem por substring de outra classe)', () => {
     expect(temComposicao('<div className="overflow-x-auto">', 'DESKTOP')).toBe(false)
     // ⚠️ `lg:hidden` não é composição de DESKTOP, e `hidden` sozinho também não
     expect(temComposicao('<div className="hidden">', 'DESKTOP')).toBe(false)
+    // ⛔ `lg:grid-cols-3` NÃO é "aparece no desktop" — é só o nº de colunas
+    expect(temComposicao('<div className="hidden lg:grid-cols-3">', 'DESKTOP')).toBe(false)
     expect(temComposicao('<div className="space-y-1.5 lg:hidden">', 'DESKTOP')).toBe(false)
     // ⛔ e `sm:hidden` (outro breakpoint) não conta como a composição de celular desta régua
     expect(temComposicao('<div className="sm:hidden">', 'CELULAR')).toBe(false)
