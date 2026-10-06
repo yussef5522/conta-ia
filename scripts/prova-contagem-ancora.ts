@@ -53,10 +53,16 @@ async function main() {
           },
         }) as unknown as PrismaClient
 
-        const sessao = await tx.stockContagem.create({
-          data: { companyId: CO, tipo: 'ROTINA', status: 'ABERTA' },
-        })
-        console.log(`\nsessão de contagem aberta (dentro do rollback): ${sessao.id}`)
+        /**
+         * ⚠️⚠️ **REUSA A SESSÃO ABERTA, não cria uma.** O índice único parcial ("1 sessão ABERTA
+         * por empresa", decisão de 23/08) recusaria a 2ª — e foi ele que me parou na 1ª rodada.
+         * ⭐ E a sessão aberta é a da **marcyelle** (05/10 23:30, 0 linhas): escrever nela de
+         * verdade seria mexer no trabalho dela. Aqui tudo volta atrás no rollback.
+         */
+        const sessao =
+          (await tx.stockContagem.findFirst({ where: { companyId: CO, status: 'ABERTA' } })) ??
+          (await tx.stockContagem.create({ data: { companyId: CO, tipo: 'ROTINA', status: 'ABERTA' } }))
+        console.log(`\nsessão usada (e desfeita no rollback): ${sessao.id} · aberta por ${sessao.criadoPorNome ?? '—'}`)
 
         for (const [rotulo, itemId, contado] of [
           ['FERMENTO (o caso do dono: "eu tenho 6 KG na prateleira")', FERMENTO, 6],
