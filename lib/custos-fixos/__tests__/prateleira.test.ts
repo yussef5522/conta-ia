@@ -26,8 +26,10 @@ import {
 const S: SubtotaisDasPrateleiras = {
   casaPlanejado: 100_000,
   casaRealizado: 40_000,
+  casaLinhas: 26,
   bancoPlanejado: 12_102,
   bancoRealizado: 1_799.39,
+  bancoLinhas: 5,
   compromissos: 51_300,
   compromissosAApurar: 0,
 }
@@ -95,14 +97,14 @@ describe('⭐⭐ AS 8 COMBINAÇÕES — a soma e o rótulo de cada uma', () => {
 
 describe('⛔⛔ prateleira LIGADA sem plano não vale ZERO — ela torna o cartão "a apurar"', () => {
   it('⛔ casa ligada e sem plano: "a casa é de graça" é a pior leitura possível', () => {
-    const semCasa = { ...S, casaPlanejado: null }
+    const semCasa = { ...S, casaPlanejado: null } // ⚠️ casaLinhas: 26 — TEM linha, sem plano
     const r = contaDosCartoes(chips(true, true, true), semCasa)
     expect(r.total).toBeNull()
     expect(r.porque).toContain('a casa')
   })
 
   it('⛔ banco ligado e sem plano idem — e o motivo NOMEIA qual falta', () => {
-    const semBanco = { ...S, bancoPlanejado: null }
+    const semBanco = { ...S, bancoPlanejado: null } // ⚠️ bancoLinhas: 5 — TEM linha, sem plano
     const r = contaDosCartoes(chips(true, true, true), semBanco)
     expect(r.total).toBeNull()
     expect(r.porque).toContain('o banco')
@@ -110,9 +112,37 @@ describe('⛔⛔ prateleira LIGADA sem plano não vale ZERO — ela torna o cart
   })
 
   it('⭐ DESLIGAR a prateleira sem plano devolve o número — é o que faz o cenário funcionar', () => {
-    const semBanco = { ...S, bancoPlanejado: null }
+    const semBanco = { ...S, bancoPlanejado: null } // ⚠️ bancoLinhas: 5 — TEM linha, sem plano
     const r = contaDosCartoes(chips(true, false, true), semBanco)
     expect(r.total).toBeCloseTo(151_300, 2)
+  })
+
+  /**
+   * ⛔⛔⛔ **ESTE CASO FOI ACHADO PELA PROVA EM PROD (07/10), não por raciocínio.**
+   *
+   * Em setembro a Caçula tem R$ 95.618,64 de plano na casa e R$ 103.051,67 de compromisso
+   * medido — e o 1º cartão dizia **"a apurar"**, porque a prateleira do BANCO está VAZIA (zero
+   * categorias marcadas) com o chip ligado, e a cascata tratava isso como *"não declarou"*. A
+   * frase pedia *"declare o que cada custo fixo do banco deve custar"* sobre uma prateleira
+   * que não tem UMA linha — e o dono não teria saída a não ser desligar um interruptor que ele
+   * nem sabe por que está no caminho.
+   *
+   * ⭐ Prateleira VAZIA vale **ZERO**: é um FATO ("não tem nada aqui"), igual a
+   * `compromissos: 0`. O *"a apurar"* fica pro caso que ele existe pra cobrir — a prateleira
+   * que TEM linha e nenhuma com plano.
+   */
+  it('⛔⛔ prateleira VAZIA (0 linhas) vale ZERO, nunca "a apurar"', () => {
+    const bancoVazio = { ...S, bancoPlanejado: null, bancoRealizado: 0, bancoLinhas: 0 }
+    const r = contaDosCartoes(chips(true, true, true), bancoVazio)
+    expect(r.total, 'a casa + os compromissos continuam somando').toBeCloseTo(151_300, 2)
+    expect(r.porque).toBeNull()
+  })
+
+  it('⛔ e isso NÃO afrouxa: prateleira COM linha e sem plano segue "a apurar"', () => {
+    const comLinhaSemPlano = { ...S, bancoPlanejado: null, bancoLinhas: 3 }
+    const r = contaDosCartoes(chips(true, true, true), comLinhaSemPlano)
+    expect(r.total).toBeNull()
+    expect(r.porque).toContain('o banco')
   })
 
   it('⚠️ COMPROMISSOS zero é FATO, não ausência de declaração — não vira "a apurar"', () => {
@@ -137,7 +167,7 @@ describe('⭐ o que ficou FORA aparece com o VALOR, nunca só "filtrado"', () =>
   })
 
   it('⚠️ prateleira VAZIA desligada não vira linha — não há o que estar fora', () => {
-    const vazio = { ...S, bancoPlanejado: null, bancoRealizado: 0 }
+    const vazio = { ...S, bancoPlanejado: null, bancoRealizado: 0, bancoLinhas: 0 }
     const r = contaDosCartoes(chips(true, false, true), vazio)
     expect(r.foraDaConta).toBeNull()
   })

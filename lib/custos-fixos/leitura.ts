@@ -443,8 +443,10 @@ export async function lerCustosFixos(
   const subtotais: SubtotaisDasPrateleiras = {
     casaPlanejado: casa.planejado,
     casaRealizado: casa.realizado,
+    casaLinhas: casa.linhas.length,
     bancoPlanejado: banco.planejado,
     bancoRealizado: banco.realizado,
+    bancoLinhas: banco.linhas.length,
     compromissos: compromissos.total,
     compromissosAApurar: compromissos.foraDaSoma.n,
   }

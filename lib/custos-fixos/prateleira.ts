@@ -66,6 +66,23 @@ export interface SubtotaisDasPrateleiras {
   /** Σ do PLANEJADO das linhas do banco. `null` = nada declarado ainda */
   bancoPlanejado: number | null
   bancoRealizado: number
+  /**
+   * ⭐⭐ QUANTAS LINHAS CADA PRATELEIRA TEM — e isso NÃO é enfeite, é o que separa *"não
+   * declarei"* de *"não tem nada aqui"*.
+   *
+   * ⛔⛔ **ACHADO PELA PROVA EM PROD (07/10):** sem este campo, a prateleira do BANCO **vazia**
+   * (zero categorias marcadas) com o chip LIGADO tornava o 1º cartão *"a apurar"* — e a frase
+   * pedia *"declare o que cada custo fixo do banco deve custar"* sobre uma prateleira que não
+   * tem UMA linha. Em setembro, com R$ 95.618,64 de plano declarado e R$ 103.051,67 de
+   * compromisso medido, o cartão dizia **a apurar**. O dono não teria saída a não ser desligar
+   * um interruptor que ele nem sabe por que está no caminho.
+   *
+   * ⭐ A régua honesta: prateleira VAZIA vale **ZERO**, como `compromissos: 0` vale zero — é um
+   * FATO ("não tem nada aqui"), não uma ausência de declaração. O *"a apurar"* fica pro caso
+   * que ele existe pra cobrir: a prateleira que TEM linha e **nenhuma** com plano.
+   */
+  casaLinhas: number
+  bancoLinhas: number
   /** ⚠️ compromisso não tem "planejado": é caixa que CERTAMENTE sai, medida do contrato/fatura */
   compromissos: number
   /** ⚠️ quantos compromissos ficaram "a apurar" (parcela POS sem previsão, fatura não importada) */
@@ -122,10 +139,11 @@ export function contaDosCartoes(c: Chips, s: SubtotaisDasPrateleiras): ContaDosC
   const rotulo = rotuloDoPrimeiroCartao(c)
 
   // ⭐ o que ficou FORA — dito SEMPRE que algo está fora, com o valor, nunca só "filtrado"
+  // ⚠️ prateleira VAZIA desligada não vira linha: não há o que estar fora
   const fora: string[] = []
-  if (!c.casa && (s.casaPlanejado != null || s.casaRealizado > 0))
+  if (!c.casa && s.casaLinhas > 0)
     fora.push(`casa ${s.casaPlanejado != null ? brl(s.casaPlanejado) : 'a apurar'}`)
-  if (!c.banco && (s.bancoPlanejado != null || s.bancoRealizado > 0))
+  if (!c.banco && s.bancoLinhas > 0)
     fora.push(`banco ${s.bancoPlanejado != null ? brl(s.bancoPlanejado) : 'a apurar'}`)
   if (!c.compromissos && s.compromissos > 0) fora.push(`compromissos ${brl(s.compromissos)}`)
   const foraDaConta = fora.length > 0 ? `fora da conta: ${fora.join(' · ')}` : null
@@ -143,11 +161,14 @@ export function contaDosCartoes(c: Chips, s: SubtotaisDasPrateleiras): ContaDosC
   const faltando: string[] = []
   let total = 0
   if (c.casa) {
-    if (s.casaPlanejado == null) faltando.push('a casa')
+    // ⭐ VAZIA vale zero (fato); COM linha e sem plano vira "a apurar" (ausência de declaração)
+    if (s.casaLinhas === 0) total += 0
+    else if (s.casaPlanejado == null) faltando.push('a casa')
     else total += s.casaPlanejado
   }
   if (c.banco) {
-    if (s.bancoPlanejado == null) faltando.push('o banco')
+    if (s.bancoLinhas === 0) total += 0
+    else if (s.bancoPlanejado == null) faltando.push('o banco')
     else total += s.bancoPlanejado
   }
   if (c.compromissos) total += s.compromissos
