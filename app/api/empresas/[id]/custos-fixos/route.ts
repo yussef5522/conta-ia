@@ -18,11 +18,27 @@ import { mesCorrente } from '@/lib/periodo/mes-corrente'
 import { lerCustosFixos } from '@/lib/custos-fixos/leitura'
 import { marcarComoFixa, tirarDaLista, definirPlanejado, CustoFixoError, MES_RE } from '@/lib/custos-fixos/gestos'
 import { previaDaSemente, semear, type PreviaDaSemente } from '@/lib/custos-fixos/semear'
+import { PRATELEIRAS } from '@/lib/custos-fixos/prateleira'
+import { salvarChips } from '@/lib/custos-fixos/chips'
 
 interface Params { params: Promise<{ id: string }> }
 
 const corpo = z.discriminatedUnion('acao', [
-  z.object({ acao: z.literal('MARCAR'), categoryId: z.string().min(1), mes: z.string().regex(MES_RE).optional() }),
+  z.object({
+    acao: z.literal('MARCAR'),
+    categoryId: z.string().min(1),
+    mes: z.string().regex(MES_RE).optional(),
+    /**
+     * ⭐ 07/10 — EM QUAL PRATELEIRA. Ausente preserva a de quem já está na lista (marcar de
+     * novo não move a linha) e usa CASA pra quem entra agora.
+     *
+     * ⛔⛔ **O ENUM DERIVA DE `PRATELEIRAS`, nunca é digitado aqui.** Repetir a lista à mão foi
+     * o que deixou DOIS gestos mortos por dias em 25/09 (`z.enum` da rota × `TODAS_AS_ACOES`
+     * da lib): prateleira nova no TypeScript e esquecida no schema vira 400 "Gesto inválido"
+     * sem ninguém entender por quê.
+     */
+    prateleira: z.enum(PRATELEIRAS).optional(),
+  }),
   z.object({ acao: z.literal('TIRAR'), categoryId: z.string().min(1), mes: z.string().regex(MES_RE).optional() }),
   z.object({
     acao: z.literal('PLANEJAR'),
@@ -45,6 +61,20 @@ const corpo = z.discriminatedUnion('acao', [
     incluirComPlano: z.boolean().default(false),
     confirmar: z.boolean().default(false),
   }),
+  /**
+   * ⭐ OS INTERRUPTORES — e eles passam pelo MESMO choke-point de propósito.
+   *
+   * ⚠️ A tela recalcula os cartões NA HORA (função pura, sem ida ao servidor) e manda este
+   * gesto em segundo plano só pra PERSISTIR. Se a tela esperasse a resposta pra pintar, o
+   * toggle teria lag de rede num gesto que é visual.
+   */
+  z.object({
+    acao: z.literal('CHIPS'),
+    mes: z.string().regex(MES_RE).optional(),
+    casa: z.boolean(),
+    banco: z.boolean(),
+    compromissos: z.boolean(),
+  }),
 ])
 
 export async function GET(request: NextRequest, { params }: Params) {
@@ -60,7 +90,10 @@ export async function GET(request: NextRequest, { params }: Params) {
     const r = request.nextUrl.searchParams.get('ref')
     const ref = r && MES_RE.test(r) ? r : null
 
-    return NextResponse.json(await lerCustosFixos(companyId, mes, new Date(), undefined, ref))
+    // ⭐ o `userId` é o que faz os chips do DONO virem no primeiro paint (sem piscar)
+    return NextResponse.json(
+      await lerCustosFixos(companyId, mes, new Date(), undefined, ref, ctx.user?.id ?? null),
+    )
   } catch (e) {
     return handleApiError(e)
   }
@@ -81,10 +114,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     let aplicados = 0
     let referencia: string | null = null
     try {
-      if (body.acao === 'MARCAR') await marcarComoFixa(companyId, body.categoryId, quem)
+      if (body.acao === 'MARCAR')
+        await marcarComoFixa(companyId, body.categoryId, quem, undefined, body.prateleira)
       else if (body.acao === 'TIRAR') await tirarDaLista(companyId, body.categoryId, quem)
       else if (body.acao === 'PLANEJAR') await definirPlanejado(companyId, body.categoryId, mes, body.valor, quem)
-      else {
+      else if (body.acao === 'CHIPS') {
+        // ⚠️ sem usuário resolvido não há onde persistir — a tela segue com o estado local
+        if (quem) {
+          await salvarChips(companyId, quem, {
+            casa: body.casa,
+            banco: body.banco,
+            compromissos: body.compromissos,
+          })
+        }
+      } else {
         referencia = body.mesReferencia ?? null
         if (body.confirmar) {
           const r = await semear(companyId, mes, referencia, body.incluirComPlano, quem)
@@ -107,7 +150,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       throw e
     }
 
-    const tela = await lerCustosFixos(companyId, mes, new Date(), undefined, referencia)
+    const tela = await lerCustosFixos(companyId, mes, new Date(), undefined, referencia, quem)
     return NextResponse.json({ ...tela, previa, aplicados })
   } catch (e) {
     return handleApiError(e)

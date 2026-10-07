@@ -13,12 +13,19 @@
  * ⛔ **NADA DE BLOCO DE AVISO INLINE** (lei de 04/10): o estouro do plano vive no SELO da linha
  * (que é o estado daquela linha) e no SININHO. Bloco de aviso aqui seria a 2ª vitrine do mesmo
  * dado — a doença que matou o `BlocoDeAvisos` da home da produção.
+ *
+ * ⭐⭐⭐ **v2 (07/10) — AS 3 PRATELEIRAS LIGÁVEIS.** A ÚNICA conta que a tela faz é chamar
+ * `cartoesDoTopo`, **a MESMA função pura que o servidor chamou pro primeiro paint**. O toggle
+ * dos chips recalcula localmente (sem lag de rede, porque é gesto visual) e persiste em
+ * segundo plano. ⛔ Aritmética própria aqui faria os 8 estados dos chips serem 8 chances de a
+ * tela mostrar um número que o servidor não confirma.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { use } from 'react'
 import {
-  AlertTriangle, ArrowRight, Check, ChevronDown, Loader2, Plus, Receipt, Sparkles, Wallet, X,
+  AlertTriangle, ArrowRight, ArrowRightLeft, Building2, CalendarClock, Check, ChevronDown,
+  CreditCard, Landmark, Loader2, Plus, Receipt, Sparkles, Wallet, X,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { NavegadorDeMes } from '@/components/contas-pagar/NavegadorDeMes'
@@ -26,10 +33,21 @@ import { formatBRL } from '@/lib/format/money'
 import { mesCorrente, mesVizinho, rotuloDoMes } from '@/lib/periodo/mes-corrente'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { filtrarPorBusca } from '@/lib/busca-texto'
-import type { CustosFixosNaTela, LinhaDoCustoFixo, CategoriaDisponivel } from '@/lib/custos-fixos/leitura'
+import type {
+  CustosFixosNaTela, LinhaDoCustoFixo, CategoriaDisponivel, PrateleiraNaTela,
+} from '@/lib/custos-fixos/leitura'
 import type { PreviaDaSemente } from '@/lib/custos-fixos/semear'
 import type { TomDoSelo } from '@/lib/custos-fixos/situacao'
 import { iconeDaCategoria } from '@/lib/custos-fixos/icones'
+/**
+ * ⛔⛔ **A ARITMÉTICA VEM DE `prateleira.ts`, que é PURO.** Importar `margem.ts` (onde a fórmula
+ * do equilíbrio morava até 07/10) arrastaria o `prisma` pro bundle do navegador — foi por isso
+ * que a conta mudou de arquivo em vez de ser copiada pra cá.
+ */
+import {
+  cartoesDoTopo, PRATELEIRAS, type Chips, type Prateleira,
+} from '@/lib/custos-fixos/prateleira'
+import type { CompromissosDoMes, LinhaDeParcela, LinhaDeFatura } from '@/lib/custos-fixos/compromissos'
 
 /** ⚠️ acima disso a lista colapsa — ordem do dono (~8) */
 const LINHAS_VISIVEIS = 8
@@ -62,9 +80,16 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
    */
   const [estado, setEstado] = useState<Estado>('CARREGANDO')
   const [erro, setErro] = useState<string | null>(null)
-  const [todas, setTodas] = useState(false)
   const [abrindoSeletor, setAbrindoSeletor] = useState(false)
   const [salvando, setSalvando] = useState<string | null>(null)
+  /**
+   * ⭐⭐ OS CHIPS SÃO ESTADO LOCAL, semeados pelo payload e persistidos em SEGUNDO PLANO.
+   *
+   * ⚠️ Esperar a resposta do servidor pra pintar daria lag de rede num gesto VISUAL — o dono
+   * liga e desliga pra comparar cenário, não pra gravar. O servidor guarda pra o próximo
+   * acesso (celular × notebook); o número na tela sai da função pura, na hora.
+   */
+  const [chips, setChips] = useState<Chips | null>(null)
 
   const carregar = useCallback(async () => {
     setEstado((e) => (e === 'OK' ? 'OK' : 'CARREGANDO'))
@@ -73,6 +98,9 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
     const r = await fetchComTimeout<CustosFixosNaTela>(`/api/empresas/${id}/custos-fixos?${qs}`)
     if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui carregar.'); setEstado('FALHOU'); return }
     setDados(r.data); setErro(null); setEstado('OK')
+    // ⚠️ só semeia na PRIMEIRA carga: recarregar o mês não pode desfazer o toggle que o dono
+    // acabou de dar (ele navega entre meses com a mesma visão ligada).
+    setChips((c) => c ?? r.data!.chips)
   }, [id, mes, ref])
 
   useEffect(() => { void carregar() }, [carregar])
@@ -95,10 +123,35 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
     setPrevia(r.data.previa && !corpo.confirmar ? r.data.previa : null)
   }, [id, mes])
 
-  const visiveis = useMemo(() => {
-    if (!dados) return []
-    return todas ? dados.linhas : dados.linhas.slice(0, LINHAS_VISIVEIS)
-  }, [dados, todas])
+  /**
+   * ⭐⭐ O TOGGLE: pinta na hora (estado local) e PERSISTE em segundo plano.
+   *
+   * ⚠️ A persistência é fail-soft de propósito — se o POST falhar, o dono continua vendo o
+   * cenário que ele escolheu; o que se perde é a lembrança no próximo acesso, não o gesto.
+   */
+  const alternarChip = useCallback((k: keyof Chips) => {
+    setChips((c) => {
+      const base = c ?? dados?.chips ?? { casa: true, banco: true, compromissos: true }
+      const novo = { ...base, [k]: !base[k] }
+      void fetchComTimeout(`/api/empresas/${id}/custos-fixos`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'CHIPS', mes, ...novo }),
+      })
+      return novo
+    })
+  }, [dados, id, mes])
+
+  /**
+   * ⭐⭐⭐ OS 4 CARTÕES — pela MESMA função pura que o servidor usou.
+   *
+   * ⛔ Nenhuma aritmética de dinheiro aqui: `cartoesDoTopo` é a régua única, e é ela que
+   * garante que ligar/desligar não produza um número que o servidor não assine.
+   */
+  const cartoes = useMemo(() => {
+    if (!dados) return null
+    const c = chips ?? dados.chips
+    return cartoesDoTopo(c, dados.subtotais, dados.cartaoPorDia.dias, dados.margem)
+  }, [dados, chips])
 
   if (estado === 'CARREGANDO' && !dados) {
     return (
@@ -155,15 +208,23 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
-      {/* ─────────── OS 3 NÚMEROS DE DONO ─────────── */}
-      <div className="grid gap-3 sm:grid-cols-3">
+      {/* ─────────── ⭐ OS INTERRUPTORES ─────────── */}
+      <ChipsDasPrateleiras
+        chips={chips ?? dados.chips}
+        temBanco={dados.banco.linhas.length > 0}
+        temCompromissos={dados.compromissos.parcelas.length + dados.compromissos.faturas.length > 0}
+        aoAlternar={alternarChip}
+      />
+
+      {/* ─────────── OS 4 NÚMEROS DE DONO ─────────── */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <CartaoDeDono
           familia="indigo"
-          titulo="A casa custa"
+          titulo={cartoes!.conta.rotulo}
           sub={`${rotuloDoMes(mes)} — o plano que você declarou`}
-          valor={dados.casaCustaMes}
+          valor={cartoes!.conta.total}
           sufixo="/mês"
-          aApurar="declare o plano de cada custo fixo aqui embaixo"
+          aApurar={cartoes!.conta.porque ?? 'a apurar'}
           detalhe={dados.semPlano.n > 0
             ? `${dados.semPlano.n} ${dados.semPlano.n === 1 ? 'categoria' : 'categorias'} ainda sem plano — o realizado delas é ${formatBRL(dados.semPlano.realizado)}`
             : null}
@@ -171,24 +232,46 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
         <CartaoDeDono
           familia="azul"
           titulo="Por dia aberto"
-          sub="quanto a casa come por dia, parada"
-          valor={dados.porDiaAberto.valor}
+          sub="quanto isso come por dia, parado"
+          valor={cartoes!.porDia.valor}
           aApurar="depende do plano acima"
-          detalhe={dados.porDiaAberto.rotulo}
+          detalhe={cartoes!.porDia.rotulo}
         />
         <CartaoDeDono
           familia="verde"
           titulo="Ponto de equilíbrio"
-          sub="vendendo isso por dia, a casa se paga"
-          valor={dados.pontoDeEquilibrio.porDia}
-          aApurar={dados.pontoDeEquilibrio.porque ?? 'a apurar'}
-          detalhe={dados.pontoDeEquilibrio.conta
-            ? `${dados.pontoDeEquilibrio.conta} · ${dados.margem.ressalva}`
+          sub="vendendo isso por dia, isso se paga"
+          valor={cartoes!.equilibrio.porDia}
+          aApurar={cartoes!.equilibrio.porque ?? 'a apurar'}
+          detalhe={cartoes!.equilibrio.conta
+            ? `${cartoes!.equilibrio.conta} · ${dados.margem.ressalva}`
             : dados.margem.ressalva}
+        />
+        {/*
+          ⭐⭐ O 4º CARTÃO — e ele NÃO obedece aos chips, de propósito (ordem do dono).
+          ⛔ Os três de cima servem pra ENSAIAR cenário; este responde "quanto preciso vender
+          HOJE pra não afundar", e a resposta não muda porque o dono desligou um interruptor.
+          Um 4º cartão que obedecesse seria o cartão do equilíbrio com outro nome.
+        */}
+        <CartaoDeDono
+          familia="coral"
+          escuro
+          titulo="Pra não afundar"
+          sub="cobre casa, banco e dívida; acima disso começa a sobrar de verdade"
+          valor={cartoes!.afundar.porDia}
+          aApurar={cartoes!.afundar.porque ?? 'a apurar'}
+          detalhe={cartoes!.afundar.conta}
         />
       </div>
 
-      {/* ─────────── A LISTA ─────────── */}
+      {/* ⚠️ O QUE FICOU FORA DA CONTA — dito com o valor, nunca só "filtrado" */}
+      {cartoes!.conta.foraDaConta && (
+        <p className="px-1 text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+          {cartoes!.conta.foraDaConta}
+        </p>
+      )}
+
+      {/* ─────────── AS FERRAMENTAS (marcar · semear) ─────────── */}
       <Card style={{ background: 'var(--prod-surface)', borderColor: 'var(--prod-line)' }}>
         <CardContent className="p-0">
           <div className="flex flex-wrap items-center gap-2 px-4 py-3">
@@ -199,10 +282,6 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
             <p className="hidden flex-1 truncate text-[11.5px] lg:block" style={{ color: 'var(--prod-muted)' }}>
               o planejado é seu; o realizado é o que o fluxo pagou no mês
             </p>
-            {/*
-              ⭐⭐ SEMEAR EM LOTE — e ele abre a PRÉVIA, nunca grava no clique.
-              ⚠️ Só aparece quando há linha pra semear: botão que não faz nada é ruído.
-            */}
             {dados.linhas.some((l) => l.planejado == null || incluirComPlano) && (
               <button type="button"
                 onClick={() => void gesto({ acao: 'SEMEAR', mesReferencia: dados.mesReferencia, incluirComPlano, confirmar: false }, 'semear')}
@@ -234,7 +313,6 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
                 {rotuloDoMes(m)}
               </button>
             ))}
-            {/* ⚠️ referência que ainda está correndo tem o realizado PELA METADE — e a tela diz */}
             {dados.referenciaEhParcial && (
               <span style={{ color: 'var(--fam-ambar-ink)' }}>
                 ⚠️ {rotuloDoMes(dados.mesReferencia)} ainda está correndo — o realizado dele é parcial
@@ -260,79 +338,61 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
             <SeletorDeCategoria
               disponiveis={dados.disponiveis}
               salvando={salvando}
-              aoAlternar={(c) => void gesto(
-                { acao: c.jaFixa ? 'TIRAR' : 'MARCAR', categoryId: c.id },
-                `${c.jaFixa ? 'tirar' : 'marcar'}:${c.id}`,
+              aoMarcar={(c, prateleira) => void gesto(
+                { acao: 'MARCAR', categoryId: c.id, prateleira },
+                `marcar:${c.id}`,
               )}
+              aoTirar={(c) => void gesto({ acao: 'TIRAR', categoryId: c.id }, `tirar:${c.id}`)}
               aoFechar={() => setAbrindoSeletor(false)}
             />
           )}
 
-          {dados.linhas.length === 0 ? (
+          {dados.linhas.length === 0 && (
             <p className="px-4 pb-4 text-[13px]" style={{ color: 'var(--prod-secondary)' }}>
               Nenhuma categoria marcada como custo fixo ainda. Marque as que a casa paga todo mês
               (aluguel, salários, energia, água, internet, contador, sistema) — o realizado aparece
               sozinho, vindo das contas que você já categoriza.
             </p>
-          ) : (
-            <>
-              {/* cabeçalho só no desktop — no celular cada linha é um cartão */}
-              <div className="hidden px-4 pb-1 text-[11px] uppercase tracking-wide lg:grid lg:grid-cols-[1fr_140px_140px_150px]"
-                style={{ color: 'var(--prod-muted)' }}>
-                <span>categoria</span>
-                <span className="text-right">planejado</span>
-                <span className="text-right">realizado</span>
-                <span className="text-right">situação</span>
-              </div>
-              <ul>
-                {visiveis.map((l, i) => (
-                  <LinhaDaTela
-                    key={l.categoryId}
-                    linha={l}
-                    zebra={i % 2 === 1}
-                    salvando={salvando === `plano:${l.categoryId}`}
-                    mesReferencia={dados.mesReferencia}
-                    aoPlanejar={(valor) => void gesto({ acao: 'PLANEJAR', categoryId: l.categoryId, valor }, `plano:${l.categoryId}`)}
-                    aoTirar={() => void gesto({ acao: 'TIRAR', categoryId: l.categoryId }, `tirar:${l.categoryId}`)}
-                  />
-                ))}
-              </ul>
-
-              {dados.linhas.length > LINHAS_VISIVEIS && (
-                <button type="button" onClick={() => setTodas((v) => !v)}
-                  className="flex w-full items-center justify-center gap-1.5 border-t py-2 text-[12px] font-medium"
-                  style={{ borderColor: 'var(--prod-line)', color: 'var(--prod-accent)' }}>
-                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${todas ? 'rotate-180' : ''}`} />
-                  {todas ? 'ver só as primeiras' : `+${dados.linhas.length - LINHAS_VISIVEIS} categorias · ver todas`}
-                </button>
-              )}
-
-              {/* ─────────── RODAPÉ: Σ planejado × Σ realizado × % pago ─────────── */}
-              <div className="border-t px-4 py-3" style={{ borderColor: 'var(--prod-line-strong)' }}>
-                <div className="flex flex-wrap items-baseline justify-end gap-x-6 gap-y-1 text-[13px]">
-                  <span style={{ color: 'var(--prod-muted)' }}>
-                    Σ planejado{' '}
-                    <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>
-                      {dados.totalPlanejado == null ? 'a apurar' : formatBRL(dados.totalPlanejado)}
-                    </b>
-                  </span>
-                  <span style={{ color: 'var(--prod-muted)' }}>
-                    Σ realizado{' '}
-                    <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{formatBRL(dados.totalRealizado)}</b>
-                  </span>
-                  <span style={{ color: 'var(--prod-muted)' }}>
-                    % pago{' '}
-                    <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>
-                      {/* ⚠️ sem plano NÃO é 0% — é desconhecido */}
-                      {dados.pctPago == null ? 'a apurar' : `${Math.round(dados.pctPago * 100)}%`}
-                    </b>
-                  </span>
-                </div>
-              </div>
-            </>
           )}
         </CardContent>
       </Card>
+
+      {/* ─────────── 🏠 A CASA ─────────── */}
+      <SecaoDaPrateleira
+        icone={<Building2 className="h-4 w-4 shrink-0" style={{ color: 'var(--fam-indigo-ink)' }} />}
+        titulo="🏠 A casa"
+        sub="os custos fixos operacionais"
+        prateleira={dados.casa}
+        ligada={(chips ?? dados.chips).casa}
+        mesReferencia={dados.mesReferencia}
+        salvando={salvando}
+        aoPlanejar={(l, valor) => void gesto({ acao: 'PLANEJAR', categoryId: l.categoryId, valor }, `plano:${l.categoryId}`)}
+        aoTirar={(l) => void gesto({ acao: 'TIRAR', categoryId: l.categoryId }, `tirar:${l.categoryId}`)}
+        aoMover={(l, p) => void gesto({ acao: 'MARCAR', categoryId: l.categoryId, prateleira: p }, `marcar:${l.categoryId}`)}
+        vazio="nenhuma categoria operacional marcada ainda."
+      />
+
+      {/* ─────────── 🏦 O BANCO ─────────── */}
+      <SecaoDaPrateleira
+        icone={<Landmark className="h-4 w-4 shrink-0" style={{ color: 'var(--fam-ambar-ink)' }} />}
+        titulo="🏦 O banco"
+        sub="os juros e tarifas recorrentes — não é a casa, é o custo do dinheiro"
+        prateleira={dados.banco}
+        ligada={(chips ?? dados.chips).banco}
+        mesReferencia={dados.mesReferencia}
+        salvando={salvando}
+        aoPlanejar={(l, valor) => void gesto({ acao: 'PLANEJAR', categoryId: l.categoryId, valor }, `plano:${l.categoryId}`)}
+        aoTirar={(l) => void gesto({ acao: 'TIRAR', categoryId: l.categoryId }, `tirar:${l.categoryId}`)}
+        aoMover={(l, p) => void gesto({ acao: 'MARCAR', categoryId: l.categoryId, prateleira: p }, `marcar:${l.categoryId}`)}
+        vazio="nenhuma categoria no banco ainda — marque os juros e as tarifas aqui pra separar o custo do dinheiro do custo da casa."
+      />
+
+      {/* ─────────── 📅 COMPROMISSOS DO MÊS ─────────── */}
+      <SecaoDeCompromissos
+        compromissos={dados.compromissos}
+        ligada={(chips ?? dados.chips).compromissos}
+        mes={mes}
+      />
 
       {/* ⚠️ A LACUNA, DITA: custo fixo pago no cartão não aparece no realizado deste mês */}
       {dados.comprasNoCartao && (
@@ -360,9 +420,16 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
   )
 }
 
-/** ⭐ o cartão de dono v4: fundo da família, texto da família, sublinha serifada em itálico */
-function CartaoDeDono({ familia, titulo, sub, valor, sufixo, aApurar, detalhe }: {
-  familia: 'indigo' | 'azul' | 'verde'
+/**
+ * ⭐ o cartão de dono v4: fundo da família, texto da família, sublinha serifada em itálico.
+ *
+ * ⚠️ `escuro` é o pedido do dono pro 4º cartão (*"coral-ESCURO"*): o chão passa a ser o degrau
+ * `-mid` (preenchido) e a tinta vira `--prod-acao-ink`, que é a tinta sobre fundo forte e
+ * **inverte nos dois temas**. Um hex cravado aqui ficaria ilegível no tema escuro.
+ */
+function CartaoDeDono({ familia, escuro, titulo, sub, valor, sufixo, aApurar, detalhe }: {
+  familia: 'indigo' | 'azul' | 'verde' | 'coral'
+  escuro?: boolean
   titulo: string
   sub: string
   valor: number | null
@@ -370,25 +437,28 @@ function CartaoDeDono({ familia, titulo, sub, valor, sufixo, aApurar, detalhe }:
   aApurar: string
   detalhe: string | null
 }) {
+  const chao = escuro ? `var(--fam-${familia}-mid)` : `var(--fam-${familia}-bg)`
+  const tinta = escuro ? 'var(--prod-acao-ink)' : `var(--fam-${familia}-ink)`
+  const apoio = escuro ? 'var(--prod-acao-ink)' : `var(--fam-${familia}-mid)`
   return (
-    <div className="rounded-xl p-3.5" style={{ background: `var(--fam-${familia}-bg)` }}>
-      <p className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: `var(--fam-${familia}-ink)` }}>
+    <div className="rounded-xl p-3.5" style={{ background: chao }}>
+      <p className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: tinta }}>
         {titulo}
       </p>
-      <p className="font-serif text-[11.5px] italic" style={{ color: `var(--fam-${familia}-mid)` }}>{sub}</p>
+      <p className="font-serif text-[11.5px] italic" style={{ color: apoio, opacity: escuro ? 0.85 : 1 }}>{sub}</p>
       {valor == null ? (
         <>
-          <p className="mt-1.5 text-[19px] font-semibold" style={{ color: `var(--fam-${familia}-ink)` }}>a apurar</p>
-          <p className="mt-0.5 text-[11px] leading-snug" style={{ color: `var(--fam-${familia}-mid)` }}>{aApurar}</p>
+          <p className="mt-1.5 text-[19px] font-semibold" style={{ color: tinta }}>a apurar</p>
+          <p className="mt-0.5 text-[11px] leading-snug" style={{ color: apoio, opacity: escuro ? 0.85 : 1 }}>{aApurar}</p>
         </>
       ) : (
         <>
-          <p className="mt-1.5 text-[22px] font-semibold tabular-nums" style={{ color: `var(--fam-${familia}-ink)` }}>
+          <p className="mt-1.5 text-[22px] font-semibold tabular-nums" style={{ color: tinta }}>
             {formatBRL(valor)}
             {sufixo && <span className="text-[12px] font-normal"> {sufixo}</span>}
           </p>
           {detalhe && (
-            <p className="mt-0.5 text-[11px] leading-snug" style={{ color: `var(--fam-${familia}-mid)` }}>{detalhe}</p>
+            <p className="mt-0.5 text-[11px] leading-snug" style={{ color: apoio, opacity: escuro ? 0.85 : 1 }}>{detalhe}</p>
           )}
         </>
       )}
@@ -396,14 +466,355 @@ function CartaoDeDono({ familia, titulo, sub, valor, sufixo, aApurar, detalhe }:
   )
 }
 
+/**
+ * ⭐⭐ OS 3 INTERRUPTORES — `[🏠 casa ✓] [🏦 banco ✓] [📅 compromissos ✓]`.
+ *
+ * ⚠️ **Prateleira VAZIA aparece desligável do mesmo jeito, só marcada "vazia"** — esconder o
+ * chip de uma prateleira sem linha faria o dono achar que o interruptor não existe, e no dia
+ * em que ele marcasse o primeiro juro o chip apareceria do nada.
+ */
+function ChipsDasPrateleiras({ chips, temBanco, temCompromissos, aoAlternar }: {
+  chips: Chips
+  temBanco: boolean
+  temCompromissos: boolean
+  aoAlternar: (k: keyof Chips) => void
+}) {
+  const itens: { k: keyof Chips; rotulo: string; vazia: boolean }[] = [
+    { k: 'casa', rotulo: '🏠 casa', vazia: false },
+    { k: 'banco', rotulo: '🏦 banco', vazia: !temBanco },
+    { k: 'compromissos', rotulo: '📅 compromissos', vazia: !temCompromissos },
+  ]
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>na conta:</span>
+      {itens.map((i) => {
+        const on = chips[i.k]
+        return (
+          <button key={i.k} type="button" onClick={() => aoAlternar(i.k)}
+            aria-pressed={on}
+            title={on ? `tirar ${i.rotulo} da conta dos cartões` : `pôr ${i.rotulo} na conta dos cartões`}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-medium"
+            style={on
+              ? { background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }
+              : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }}>
+            {i.rotulo}
+            {on ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+            {i.vazia && <span className="text-[10px]" style={{ opacity: 0.75 }}>(vazia)</span>}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * ⭐⭐ UMA PRATELEIRA DE CATEGORIA — e é **UM componente pros DOIS** (casa e banco).
+ *
+ * ⛔⛔ Duas listas copiadas divergiriam no primeiro rótulo novo, e o dono veria a mesma
+ * pergunta desenhada de dois jeitos na MESMA página — a doença que o sprint de 23/09 ("uma
+ * lista só") matou na Conciliação. O que muda entre as duas é o TÍTULO e a cor do ícone.
+ *
+ * ⚠️ **O SUBTOTAL É A Σ DAS LINHAS QUE ESTA SEÇÃO DESENHA** (vem do servidor, reduzido da
+ * mesma lista) — é o guard que o dono pediu: *"Σ(linhas de cada prateleira) == subtotal dela"*.
+ *
+ * ⚠️ **Prateleira DESLIGADA não desaparece: ela fica apagada, dizendo que está fora da conta.**
+ * Sumir faria o dono procurar as linhas que ele acabou de tirar do cálculo.
+ */
+function SecaoDaPrateleira({
+  icone, titulo, sub, prateleira, ligada, mesReferencia, salvando, aoPlanejar, aoTirar, aoMover, vazio,
+}: {
+  icone: ReactNode
+  titulo: string
+  sub: string
+  prateleira: PrateleiraNaTela
+  ligada: boolean
+  mesReferencia: string
+  salvando: string | null
+  aoPlanejar: (l: LinhaDoCustoFixo, valor: number | null) => void
+  aoTirar: (l: LinhaDoCustoFixo) => void
+  aoMover: (l: LinhaDoCustoFixo, p: Prateleira) => void
+  vazio: string
+}) {
+  const [todas, setTodas] = useState(false)
+  const visiveis = todas ? prateleira.linhas : prateleira.linhas.slice(0, LINHAS_VISIVEIS)
+  const outra: Prateleira = prateleira.prateleira === 'CASA' ? 'BANCO' : 'CASA'
+
+  return (
+    <Card style={{ background: 'var(--prod-surface)', borderColor: 'var(--prod-line)', opacity: ligada ? 1 : 0.6 }}>
+      <CardContent className="p-0">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-3">
+          {icone}
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--prod-primary)' }}>{titulo}</h2>
+          <p className="font-serif text-[11.5px] italic" style={{ color: 'var(--prod-muted)' }}>{sub}</p>
+          {!ligada && (
+            <span className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold"
+              style={{ background: 'var(--fam-cinza-bg)', color: 'var(--fam-cinza-ink)' }}>
+              fora da conta dos cartões
+            </span>
+          )}
+        </div>
+
+        {prateleira.linhas.length === 0 ? (
+          <p className="px-4 pb-4 text-[13px]" style={{ color: 'var(--prod-secondary)' }}>{vazio}</p>
+        ) : (
+          <>
+            <div className="hidden px-4 pb-1 text-[11px] uppercase tracking-wide lg:grid lg:grid-cols-[1fr_140px_140px_150px]"
+              style={{ color: 'var(--prod-muted)' }}>
+              <span>categoria</span>
+              <span className="text-right">planejado</span>
+              <span className="text-right">realizado</span>
+              <span className="text-right">situação</span>
+            </div>
+            <ul>
+              {visiveis.map((l, i) => (
+                <LinhaDaTela
+                  key={l.categoryId}
+                  linha={l}
+                  zebra={i % 2 === 1}
+                  salvando={salvando === `plano:${l.categoryId}`}
+                  mesReferencia={mesReferencia}
+                  outraPrateleira={outra}
+                  aoPlanejar={(valor) => aoPlanejar(l, valor)}
+                  aoTirar={() => aoTirar(l)}
+                  aoMover={() => aoMover(l, outra)}
+                />
+              ))}
+            </ul>
+
+            {prateleira.linhas.length > LINHAS_VISIVEIS && (
+              <button type="button" onClick={() => setTodas((v) => !v)}
+                className="flex w-full items-center justify-center gap-1.5 border-t py-2 text-[12px] font-medium"
+                style={{ borderColor: 'var(--prod-line)', color: 'var(--prod-accent)' }}>
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${todas ? 'rotate-180' : ''}`} />
+                {todas ? 'ver só as primeiras' : `+${prateleira.linhas.length - LINHAS_VISIVEIS} categorias · ver todas`}
+              </button>
+            )}
+
+            <div className="border-t px-4 py-3" style={{ borderColor: 'var(--prod-line-strong)' }}>
+              <div className="flex flex-wrap items-baseline justify-end gap-x-6 gap-y-1 text-[13px]">
+                <span style={{ color: 'var(--prod-muted)' }}>
+                  Σ planejado{' '}
+                  <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+                    {prateleira.planejado == null ? 'a apurar' : formatBRL(prateleira.planejado)}
+                  </b>
+                </span>
+                <span style={{ color: 'var(--prod-muted)' }}>
+                  Σ realizado{' '}
+                  <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{formatBRL(prateleira.realizado)}</b>
+                </span>
+                <span style={{ color: 'var(--prod-muted)' }}>
+                  % pago{' '}
+                  <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+                    {/* ⚠️ sem plano NÃO é 0% — é desconhecido */}
+                    {prateleira.pctPago == null ? 'a apurar' : `${Math.round(prateleira.pctPago * 100)}%`}
+                  </b>
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * ⭐⭐⭐ 📅 COMPROMISSOS DO MÊS — "não são custo, são caixa que certamente sai".
+ *
+ * ⛔ **ZERO CONTA AQUI.** Valor, selo, "faltam N parcelas" e as somas vêm do servidor
+ * (`lerCompromissos`), que por sua vez delega pro `estadoDaParcela`, `forecastProxima`,
+ * `faturaNetTotal` e `estadoDaFatura`. A tela desenha.
+ *
+ * ⚠️ **Linha FORA da Σ aparece marcada, com o porquê** — a parcela do mútuo flexível e a
+ * fatura não importada. Exclusão escondida é tão ruim quanto exclusão nenhuma.
+ */
+function SecaoDeCompromissos({ compromissos, ligada, mes }: {
+  compromissos: CompromissosDoMes
+  ligada: boolean
+  mes: string
+}) {
+  const c = compromissos
+  const vazio = c.parcelas.length === 0 && c.faturas.length === 0
+  return (
+    <Card style={{ background: 'var(--prod-surface)', borderColor: 'var(--prod-line)', opacity: ligada ? 1 : 0.6 }}>
+      <CardContent className="p-0">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-3">
+          <CalendarClock className="h-4 w-4 shrink-0" style={{ color: 'var(--fam-teal-ink)' }} />
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--prod-primary)' }}>📅 Compromissos do mês</h2>
+          <p className="font-serif text-[11.5px] italic" style={{ color: 'var(--prod-muted)' }}>
+            não são custo — é caixa que certamente sai
+          </p>
+          {!ligada && (
+            <span className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold"
+              style={{ background: 'var(--fam-cinza-bg)', color: 'var(--fam-cinza-ink)' }}>
+              fora da conta dos cartões
+            </span>
+          )}
+        </div>
+
+        {/* ⭐ a 1 linha que o dono pediu — e ela só aparece quando a CONDIÇÃO é verdadeira */}
+        {c.jurosJaNoBanco && (
+          <p className="mx-4 mb-2 rounded-lg px-2 py-1.5 text-[11.5px] leading-snug"
+            style={{ background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
+            ⚠️ {c.jurosJaNoBanco}
+          </p>
+        )}
+
+        {vazio ? (
+          <p className="px-4 pb-4 text-[13px]" style={{ color: 'var(--prod-secondary)' }}>
+            Nada vence neste mês — nenhuma parcela de empréstimo e nenhum cartão com fatura.
+          </p>
+        ) : (
+          <>
+            {c.parcelas.length > 0 && (
+              <div className="border-t" style={{ borderColor: 'var(--prod-line)' }}>
+                <p className="px-4 pt-2 text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
+                  parcelas de empréstimo ({c.parcelas.length})
+                </p>
+                <ul>{c.parcelas.map((p, i) => <LinhaDeParcelaNaTela key={`${p.loanId}-${p.numero}`} p={p} zebra={i % 2 === 1} />)}</ul>
+                <div className="px-4 pb-2 pt-1 text-right text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+                  Σ parcelas{' '}
+                  <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{formatBRL(c.somaParcelas)}</b>
+                </div>
+              </div>
+            )}
+
+            {c.faturas.length > 0 && (
+              <div className="border-t" style={{ borderColor: 'var(--prod-line)' }}>
+                <p className="px-4 pt-2 text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
+                  faturas de cartão ({c.faturas.length})
+                </p>
+                <ul>{c.faturas.map((f, i) => <LinhaDeFaturaNaTela key={f.cardId} f={f} zebra={i % 2 === 1} mes={mes} />)}</ul>
+                <div className="px-4 pb-2 pt-1 text-right text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+                  Σ faturas{' '}
+                  <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{formatBRL(c.somaFaturas)}</b>
+                </div>
+              </div>
+            )}
+
+            <div className="border-t px-4 py-3" style={{ borderColor: 'var(--prod-line-strong)' }}>
+              <div className="flex flex-wrap items-baseline justify-between gap-2 text-[13px]">
+                {/* ⚠️ o que ficou FORA da Σ, contado e explicado */}
+                {c.foraDaSoma.n > 0 ? (
+                  <details className="min-w-0 flex-1">
+                    <summary className="cursor-pointer text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                      {c.foraDaSoma.n} {c.foraDaSoma.n === 1 ? 'linha fica' : 'linhas ficam'} fora da soma — ver o porquê
+                    </summary>
+                    <ul className="mt-1 space-y-0.5">
+                      {c.foraDaSoma.porque.map((t, i) => (
+                        <li key={i} className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>{t}</li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : <span />}
+                <span style={{ color: 'var(--prod-muted)' }}>
+                  Σ compromissos{' '}
+                  <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{formatBRL(c.total)}</b>
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** ⭐ a linha da parcela — e clicar abre O CONTRATO (a fonte) */
+function LinhaDeParcelaNaTela({ p, zebra }: { p: LinhaDeParcela; zebra: boolean }) {
+  const tom = p.estado === 'PAGA' ? TOM.verde
+    : p.estado === 'ATRASADA' ? TOM.coral
+    : p.estado === 'PARCIAL' ? TOM.ambar
+    : p.estado === 'VENCE_HOJE' ? TOM.ambar
+    : TOM.azul
+  return (
+    <li className="grid grid-cols-1 gap-x-3 gap-y-1 border-t px-4 py-2.5 lg:grid-cols-[1fr_160px_170px] lg:items-center"
+      style={{ borderColor: 'var(--prod-line)', background: zebra ? 'var(--prod-surface-1)' : undefined }}>
+      <div className="min-w-0">
+        <a href={p.href} className="flex items-center gap-1 text-[13.5px] font-medium hover:underline"
+          style={{ color: 'var(--prod-primary)' }}>
+          <span className="truncate">{p.contrato}</span>
+          <ArrowRight className="h-3 w-3 shrink-0" style={{ color: 'var(--prod-accent)' }} />
+        </a>
+        <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+          parcela {p.numero} · vence dia {p.diaDoVencimento} · {p.faltam}
+          {!p.contaNaSoma && ' · fora da soma'}
+        </p>
+      </div>
+      <div className="flex items-baseline justify-between lg:block lg:text-right">
+        <span className="text-[11px] lg:hidden" style={{ color: 'var(--prod-muted)' }}>parcela</span>
+        <div>
+          <span className="text-[14px] font-semibold tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+            {/* ⚠️ "a apurar" NUNCA vira R$ 0,00 */}
+            {p.valor == null ? 'a apurar' : `${p.valorEhPrevisto ? '~' : ''}${formatBRL(p.valor)}`}
+          </span>
+          {p.valorPorque && (
+            <p className="text-[10.5px] leading-snug" style={{ color: 'var(--prod-muted)' }}>{p.valorPorque}</p>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center justify-between lg:justify-end">
+        <span className="text-[11px] lg:hidden" style={{ color: 'var(--prod-muted)' }}>situação</span>
+        <span className="rounded-md px-1.5 py-0.5 text-[11.5px] font-semibold"
+          style={{ background: tom.bg, color: tom.ink }}>{p.selo}</span>
+      </div>
+    </li>
+  )
+}
+
+/** ⭐ a linha da fatura — e clicar abre O CARTÃO (a fonte) */
+function LinhaDeFaturaNaTela({ f, zebra, mes }: { f: LinhaDeFatura; zebra: boolean; mes: string }) {
+  const tom = f.naoImportada ? TOM.cinza
+    : f.estado === 'PAGA' ? TOM.verde
+    : f.estado === 'VENCIDA' ? TOM.coral
+    : f.estado === 'PARCIAL' ? TOM.ambar
+    : f.estado === 'FECHADA' ? TOM.ambar
+    : TOM.azul
+  return (
+    <li className="grid grid-cols-1 gap-x-3 gap-y-1 border-t px-4 py-2.5 lg:grid-cols-[1fr_160px_170px] lg:items-center"
+      style={{ borderColor: 'var(--prod-line)', background: zebra ? 'var(--prod-surface-1)' : undefined }}>
+      <div className="flex min-w-0 items-center gap-2">
+        <CreditCard className="h-4 w-4 shrink-0" style={{ color: 'var(--prod-muted)' }} />
+        <div className="min-w-0 flex-1">
+          <a href={f.href} className="flex items-center gap-1 text-[13.5px] font-medium hover:underline"
+            style={{ color: 'var(--prod-primary)' }}>
+            <span className="truncate">{f.nome}{f.ultimos4 ? ` ****${f.ultimos4}` : ''}</span>
+            <ArrowRight className="h-3 w-3 shrink-0" style={{ color: 'var(--prod-accent)' }} />
+          </a>
+          <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+            fatura {mes} · {f.nCompras} compra{f.nCompras === 1 ? '' : 's'} · vence dia {f.diaDoVencimento}
+            {f.estornos > 0 && ` · ${formatBRL(f.estornos)} de estorno`}
+            {f.pago && ` · pago ${formatBRL(f.pago.valor)}`}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-baseline justify-between lg:block lg:text-right">
+        <span className="text-[11px] lg:hidden" style={{ color: 'var(--prod-muted)' }}>fatura</span>
+        <span className="text-[14px] font-semibold tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+          {/* ⛔ fatura NÃO IMPORTADA é estado PRÓPRIO, nunca R$ 0,00 */}
+          {f.net == null ? 'a apurar' : formatBRL(f.net)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between lg:justify-end">
+        <span className="text-[11px] lg:hidden" style={{ color: 'var(--prod-muted)' }}>situação</span>
+        <span className="rounded-md px-1.5 py-0.5 text-right text-[11px] font-semibold"
+          style={{ background: tom.bg, color: tom.ink }}>{f.selo}</span>
+      </div>
+    </li>
+  )
+}
+
 /** ⭐ UMA linha: ícone + nome · planejado editável · realizado · selo. Clica → as transações. */
-function LinhaDaTela({ linha, zebra, salvando, mesReferencia, aoPlanejar, aoTirar }: {
+function LinhaDaTela({ linha, zebra, salvando, mesReferencia, outraPrateleira, aoPlanejar, aoTirar, aoMover }: {
   linha: LinhaDoCustoFixo
   zebra: boolean
   salvando: boolean
   mesReferencia: string
+  /** ⭐ pra onde o botão de mover leva — "pra casa" ou "pro banco" */
+  outraPrateleira: Prateleira
   aoPlanejar: (valor: number | null) => void
   aoTirar: () => void
+  aoMover: () => void
 }) {
   const Icone = iconeDaCategoria(linha.nome)
   const tom = TOM[linha.situacao.tom]
@@ -434,6 +845,17 @@ function LinhaDaTela({ linha, zebra, salvando, mesReferencia, aoPlanejar, aoTira
             {linha.emAbertoN > 0 && ` · ${linha.emAbertoN} em aberto (${formatBRL(linha.emAbertoValor)})`}
           </p>
         </div>
+        {/*
+          ⭐⭐ MOVER DE PRATELEIRA NA PRÓPRIA LINHA — é por aqui que as 3 categorias de juros
+          migram pro banco. ⛔ E ele chama o MESMO `MARCAR` do seletor: marcar e mover são o
+          mesmo gesto por desenho, então a trava e o rastro valem nos dois sem ninguém lembrar.
+        */}
+        <button type="button" onClick={aoMover}
+          title={`mover ${linha.nome} pra prateleira ${outraPrateleira === 'BANCO' ? 'do banco' : 'da casa'}`}
+          aria-label={`mover ${linha.nome} pra ${outraPrateleira === 'BANCO' ? 'o banco' : 'a casa'}`}
+          className="shrink-0 rounded p-1" style={{ color: 'var(--prod-accent)' }}>
+          <ArrowRightLeft className="h-3.5 w-3.5" />
+        </button>
         <button type="button" onClick={aoTirar} aria-label={`tirar ${linha.nome} dos custos fixos`}
           className="shrink-0 rounded p-1" style={{ color: 'var(--prod-muted)' }}>
           <X className="h-3.5 w-3.5" />
@@ -563,13 +985,22 @@ function CampoDoPlano({ valor, salvando, rastro, semente, mesReferencia, aoSalva
  * case-sensitive no Postgres e o acento por cima). Palavra em qualquer ordem, sem caixa e sem
  * acento, sobre a MESMA lista que a tela desenha.
  */
-function SeletorDeCategoria({ disponiveis, salvando, aoAlternar, aoFechar }: {
+function SeletorDeCategoria({ disponiveis, salvando, aoMarcar, aoTirar, aoFechar }: {
   disponiveis: CategoriaDisponivel[]
   salvando: string | null
-  aoAlternar: (c: CategoriaDisponivel) => void
+  aoMarcar: (c: CategoriaDisponivel, prateleira: Prateleira) => void
+  aoTirar: (c: CategoriaDisponivel) => void
   aoFechar: () => void
 }) {
   const [busca, setBusca] = useState('')
+  /**
+   * ⭐ EM QUAL PRATELEIRA A PRÓXIMA MARCAÇÃO CAI — ordem do dono (*"o seletor ganha a escolha
+   * da prateleira, casa|banco"*).
+   *
+   * ⚠️ Nasce em CASA porque é o caso comum; a escolha é explícita e fica à vista, então marcar
+   * no banco nunca acontece por acidente.
+   */
+  const [alvo, setAlvo] = useState<Prateleira>('CASA')
   const filtradas = useMemo(
     // ⭐ busca pelo nome E pelo qualificador: com dois "Frete", o grupo é o que distingue
     () => filtrarPorBusca(disponiveis, busca, (c) => `${c.nome} ${c.qualificador ?? ''}`),
@@ -580,19 +1011,44 @@ function SeletorDeCategoria({ disponiveis, salvando, aoAlternar, aoFechar }: {
 
   const chip = (c: CategoriaDisponivel) => {
     const ocupado = salvando === `marcar:${c.id}` || salvando === `tirar:${c.id}`
+    /**
+     * ⭐ O ✓ DIZ **ONDE** A CATEGORIA ESTÁ, não só que ela é fixa. Sem o ícone da prateleira o
+     * ✓ esconderia em qual das duas ela caiu — e aí o dono não teria como conferir a migração
+     * dos juros.
+     */
+    const onde = c.prateleira === 'BANCO' ? '🏦' : '🏠'
+    const outra: Prateleira = c.prateleira === 'BANCO' ? 'CASA' : 'BANCO'
+    if (c.jaFixa) {
+      return (
+        <span key={c.id} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px]"
+          style={{ background: 'var(--fam-verde-bg)', color: 'var(--fam-verde-ink)', boxShadow: 'inset 0 0 0 1px var(--fam-verde-mid)' }}>
+          {ocupado ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+          <span>{onde} {c.nome}</span>
+          {c.qualificador && <span style={{ color: 'var(--prod-muted)' }}>· {c.qualificador}</span>}
+          {/* ⭐ mover de prateleira — o MESMO `MARCAR`, nunca uma 2ª porta de gravação */}
+          <button type="button" onClick={() => aoMarcar(c, outra)}
+            title={`mover ${c.nome} pra prateleira ${outra === 'BANCO' ? 'do banco' : 'da casa'}`}
+            aria-label={`mover ${c.nome} pra ${outra === 'BANCO' ? 'o banco' : 'a casa'}`}
+            className="rounded p-0.5" style={{ color: 'var(--prod-accent)' }}>
+            <ArrowRightLeft className="h-3 w-3" />
+          </button>
+          <button type="button" onClick={() => aoTirar(c)}
+            title={`tirar ${c.nome} dos custos fixos`} aria-label={`tirar ${c.nome} dos custos fixos`}
+            className="rounded p-0.5" style={{ color: 'var(--fam-verde-ink)' }}>
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      )
+    }
     return (
-      <button key={c.id} type="button" onClick={() => aoAlternar(c)}
-        aria-pressed={c.jaFixa}
-        title={c.jaFixa ? `tirar ${c.nome} dos custos fixos` : `marcar ${c.nome} como custo fixo`}
+      <button key={c.id} type="button" onClick={() => aoMarcar(c, alvo)}
+        aria-pressed={false}
+        title={`marcar ${c.nome} como custo fixo ${alvo === 'BANCO' ? 'do banco' : 'da casa'}`}
         className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px]"
-        style={c.jaFixa
-          ? { background: 'var(--fam-verde-bg)', color: 'var(--fam-verde-ink)', boxShadow: 'inset 0 0 0 1px var(--fam-verde-mid)' }
-          : { background: 'var(--prod-surface)', color: 'var(--prod-primary)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }}>
+        style={{ background: 'var(--prod-surface)', color: 'var(--prod-primary)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }}>
         {ocupado
           ? <Loader2 className="h-3 w-3 animate-spin" />
-          : c.jaFixa
-            ? <Check className="h-3 w-3" />
-            : <Plus className="h-3 w-3" style={{ color: 'var(--prod-accent)' }} />}
+          : <Plus className="h-3 w-3" style={{ color: 'var(--prod-accent)' }} />}
         {c.nome}
         {c.qualificador && <span style={{ color: 'var(--prod-muted)' }}>· {c.qualificador}</span>}
       </button>
@@ -601,6 +1057,25 @@ function SeletorDeCategoria({ disponiveis, salvando, aoAlternar, aoFechar }: {
 
   return (
     <div className="border-t px-4 py-3" style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}>
+      {/* ⭐ a escolha da prateleira — e ela fica À VISTA antes do clique, nunca depois */}
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+        <span>marcar na prateleira:</span>
+        {PRATELEIRAS.map((p) => (
+          <button key={p} type="button" onClick={() => setAlvo(p)} aria-pressed={alvo === p}
+            className="rounded px-2 py-0.5 font-medium"
+            style={alvo === p
+              ? { background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }
+              : { background: 'var(--prod-surface)', color: 'var(--prod-secondary)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }}>
+            {p === 'CASA' ? '🏠 casa' : '🏦 banco'}
+          </button>
+        ))}
+        <span style={{ opacity: 0.8 }}>
+          {alvo === 'BANCO'
+            ? '— juro e tarifa: o custo do dinheiro, não da casa'
+            : '— o que a casa paga pra funcionar'}
+        </span>
+      </div>
+
       <div className="mb-2 flex items-center gap-2">
         <label className="flex-1 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
           Qual categoria a casa paga todo mês? (clique no ✓ pra tirar da lista)

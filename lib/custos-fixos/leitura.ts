@@ -24,8 +24,54 @@ import { whereFluxoCaixa } from '@/lib/fluxo-caixa/motor'
 import { janelaDoMes, mesCorrente, mesVizinho } from '@/lib/periodo/mes-corrente'
 import { situacaoDaLinha, type SeloDaSituacao, type ContaEmAbertoDaLinha } from './situacao'
 import { medirMargem, pontoDeEquilibrio, type MargemMedida, type PontoDeEquilibrio } from './margem'
+import {
+  contaDosCartoes,
+  praNaoAfundar,
+  prateleiraOuPadrao,
+  type Chips,
+  type ContaDosCartoes,
+  type Prateleira,
+  type PraNaoAfundar,
+  type SubtotaisDasPrateleiras,
+} from './prateleira'
+import { lerChips } from './chips'
+import { lerCompromissos, type CompromissosDoMes } from './compromissos'
 
 type Db = PrismaClient | Prisma.TransactionClient
+
+/**
+ * ⛔⛔⛔ O GUARD DE DUPLA CONTAGEM — e ele é ESTRUTURAL, não um aviso que alguém precisa ler.
+ *
+ * **Ordem do dono:** *"nenhuma transação/compromisso em 2 somas do topo"*.
+ *
+ * A prateleira 📅 COMPROMISSOS conta o PAGAMENTO DA FATURA e a PARCELA DO EMPRÉSTIMO. Se a
+ * transação que pagou uma dessas coisas carregar uma categoria marcada como fixa (casa ou
+ * banco), ela entraria no `realizado` daquela linha **E** no compromisso — o MESMO real em
+ * duas somas, e o 4º cartão exigiria vender o dobro.
+ *
+ * ⚠️ **MEDIDO EM PROD ANTES DE ESCREVER (07/10): o estrago é ZERO hoje** — das 58 transações
+ * que pagaram parcela, 2 têm categoria e **nenhuma** tem categoria FIXA; dos 6 pagamentos de
+ * fatura, **nenhum** tem categoria. Então este filtro **não move um centavo agora** — ele
+ * torna o estado ruim IMPOSSÍVEL amanhã, quando o dono categorizar um desses pagamentos.
+ *
+ * ⛔ **O CARTÃO EXIGE O VÍNCULO, nunca a flag `isCardPayment` sozinha** — é a régua de 20/09
+ * (*"a flag diz «parece», o vínculo diz «é»"*), a mesma que o `seloDoSistema` aplica. Sem
+ * `businessCreditCardId` a linha não quita fatura nenhuma, então ela NÃO é compromisso e tem
+ * que continuar contando no realizado.
+ *
+ * ⛔ **E as DUAS portas do empréstimo** (1:1 `loanInstallmentPaid` e N:1
+ * `loanInstallmentPayments`): checar uma e declarar resolvido é o bug de 14/08, que custou um
+ * dia de diagnóstico errado.
+ */
+export const SEM_DUPLA_CONTAGEM: Prisma.TransactionWhereInput = {
+  NOT: {
+    OR: [
+      { AND: [{ isCardPayment: true }, { businessCreditCardId: { not: null } }] },
+      { loanInstallmentPaid: { isNot: null } },
+      { loanInstallmentPayments: { some: {} } },
+    ],
+  },
+}
 
 /** ⭐ o nome de uma categoria como a tela mostra — a base da linha E do seletor */
 export interface CategoriaNomeada {
@@ -42,6 +88,12 @@ export interface CategoriaNomeada {
 
 export interface CategoriaDisponivel extends CategoriaNomeada {
   /**
+   * ⭐ 07/10 — a prateleira de quem JÁ está na lista (`null` pra quem não está). É o que
+   * permite o seletor mostrar *"✓ na casa"* × *"✓ no banco"* — sem isso o ✓ diria que a
+   * categoria é fixa e esconderia em qual das duas prateleiras ela caiu.
+   */
+  prateleira: Prateleira | null
+  /**
    * ⭐ já está na lista de custos fixos? É o ✓ do seletor — e é ele que permite **desmarcar
    * de lá**. ⚠️ Só existe no SELETOR: na linha seria sempre `true`, e campo que nunca varia
    * é campo que alguém lê como se significasse algo.
@@ -51,6 +103,8 @@ export interface CategoriaDisponivel extends CategoriaNomeada {
 
 export interface LinhaDoCustoFixo extends CategoriaNomeada {
   categoryId: string
+  /** ⭐ 07/10 — em qual prateleira esta linha mora (CASA = operacional · BANCO = juro) */
+  prateleira: Prateleira
   /** o que o dono declarou — `null` = ainda não declarou (≠ declarou zero) */
   planejado: number | null
   planejadoRastro: { quem: string | null; quando: string } | null
@@ -79,6 +133,19 @@ export interface CartaoPorDiaAberto {
   dias: number
   /** ⚠️ o rótulo HONESTO: a empresa não tem calendário de funcionamento cadastrado */
   rotulo: string
+}
+
+/** ⭐ uma prateleira de CATEGORIA desenhada na tela */
+export interface PrateleiraNaTela {
+  prateleira: Prateleira
+  linhas: LinhaDoCustoFixo[]
+  /** Σ do planejado das linhas DESTA prateleira. `null` = nenhuma declarada */
+  planejado: number | null
+  realizado: number
+  /** quantas linhas desta prateleira ainda não têm plano */
+  semPlano: number
+  /** ⭐ "% pago" DESTA prateleira. `null` sem plano — nunca 0% */
+  pctPago: number | null
 }
 
 export interface CustosFixosNaTela {
@@ -111,6 +178,28 @@ export interface CustosFixosNaTela {
   disponiveis: CategoriaDisponivel[]
   /** ⚠️ a lacuna do cartão, medida e dita na tela */
   comprasNoCartao: { n: number } | null
+
+  // ─────────── ⭐ 07/10 — v2: as 3 prateleiras e os interruptores ───────────
+  /** 🏠 A CASA — os custos fixos operacionais */
+  casa: PrateleiraNaTela
+  /** 🏦 O BANCO — os juros recorrentes que o dono marcou como banco */
+  banco: PrateleiraNaTela
+  /** 📅 COMPROMISSOS DO MÊS — parcela de empréstimo e fatura de cartão */
+  compromissos: CompromissosDoMes
+  /** os subtotais crus — a ENTRADA da aritmética dos cartões, que a TELA também usa no toggle */
+  subtotais: SubtotaisDasPrateleiras
+  /** o estado persistido dos 3 interruptores deste usuário */
+  chips: Chips
+  /**
+   * ⭐ os 3 primeiros cartões JÁ CALCULADOS com os chips persistidos — o primeiro paint não
+   * pisca. ⚠️ A tela recalcula com a MESMA função pura no toggle (`contaDosCartoes`), nunca
+   * com aritmética própria.
+   */
+  conta: ContaDosCartoes
+  cartaoPorDia: CartaoPorDiaAberto
+  cartaoEquilibrio: PontoDeEquilibrio
+  /** ⭐ o 4º cartão — FIXO, não obedece aos chips: é sempre a verdade completa */
+  afundar: PraNaoAfundar
 }
 
 /** ⭐ quantos dias o mês tem — o denominador do "por dia aberto" */
@@ -170,6 +259,8 @@ export async function lerCustosFixos(
   db: Db = prisma,
   /** ⭐ o mês cujo realizado semeia o plano — `null` usa o anterior ao visto */
   mesReferencia?: string | null,
+  /** ⭐ 07/10 — de quem são os chips. `null` (script/cron) usa a conta COMPLETA */
+  userId?: string | null,
 ): Promise<CustosFixosNaTela> {
   const { de, ate } = janelaDoMes(mes)
   const ehMesCorrente = mes === mesCorrente(agora)
@@ -186,7 +277,11 @@ export async function lerCustosFixos(
   const [marcadas, planos, realizadoCru, realizadoRefCru, catsExpense, margem] = await Promise.all([
     db.custoFixoCategoria.findMany({
       where: { companyId, removidoEm: null },
-      select: { categoryId: true, category: { select: { id: true, name: true, dreGroup: true, isActive: true } } },
+      select: {
+        categoryId: true,
+        prateleira: true,
+        category: { select: { id: true, name: true, dreGroup: true, isActive: true } },
+      },
     }),
     db.custoFixoPlanejado.findMany({
       where: { companyId, mes },
@@ -194,7 +289,15 @@ export async function lerCustosFixos(
     }),
     db.transaction.groupBy({
       by: ['categoryId'],
-      where: { ...whereFluxoCaixa(companyId, { de, ate: new Date(ate.getTime() - 1) }), type: 'DEBIT' },
+      /**
+       * ⚠️ `AND` em vez de spread: o `whereFluxoCaixa` TEM um `NOT` no topo, e espalhar o
+       * guard por cima o APAGARIA em silêncio — a transferência com categoria de transferência
+       * voltaria a contar. Compor é a forma que não clobbera.
+       */
+      where: {
+        AND: [whereFluxoCaixa(companyId, { de, ate: new Date(ate.getTime() - 1) }), SEM_DUPLA_CONTAGEM],
+        type: 'DEBIT',
+      },
       _sum: { amount: true },
       _count: true,
     }),
@@ -208,7 +311,13 @@ export async function lerCustosFixos(
       ? Promise.resolve(null)
       : db.transaction.groupBy({
           by: ['categoryId'],
-          where: { ...whereFluxoCaixa(companyId, { de: janelaRef.de, ate: new Date(janelaRef.ate.getTime() - 1) }), type: 'DEBIT' },
+          where: {
+            AND: [
+              whereFluxoCaixa(companyId, { de: janelaRef.de, ate: new Date(janelaRef.ate.getTime() - 1) }),
+              SEM_DUPLA_CONTAGEM,
+            ],
+            type: 'DEBIT',
+          },
           _sum: { amount: true },
           _count: true,
         }),
@@ -221,6 +330,7 @@ export async function lerCustosFixos(
   ])
 
   const idsFixos = marcadas.map((m) => m.categoryId)
+  const idsDoBanco = marcadas.filter((m) => prateleiraOuPadrao(m.prateleira) === 'BANCO').map((m) => m.categoryId)
 
   /**
    * ⚠️ CONTA A PAGAR NASCE **SEM** `bankAccountId` (a ponte do estoque desde 24/08) — medido:
@@ -256,11 +366,13 @@ export async function lerCustosFixos(
   }
 
   const marcadasAtivas = marcadas.filter((m) => m.category?.isActive !== false)
+  const prateleiraPorCat = new Map(marcadas.map((m) => [m.categoryId, prateleiraOuPadrao(m.prateleira)]))
   const comNome = comQualificador(
     marcadasAtivas.map((m) => ({
       id: m.categoryId,
       nome: m.category?.name ?? '(categoria removida)',
       dreGroup: m.category?.dreGroup ?? null,
+      prateleira: prateleiraOuPadrao(m.prateleira),
     })),
   )
 
@@ -300,6 +412,43 @@ export async function lerCustosFixos(
     return Math.max(b.planejado ?? 0, b.realizado) - Math.max(a.planejado ?? 0, a.realizado)
   })
 
+  /**
+   * ⭐⭐ AS PRATELEIRAS — e o subtotal de cada uma é a Σ das linhas DELA, por construção.
+   *
+   * ⛔ É o guard que o dono pediu (*"Σ(linhas de cada prateleira) == subtotal dela =="
+   * composição dos cartões"*): o subtotal não é consultado de novo no banco, ele é reduzido da
+   * MESMA lista que a tela desenha. Uma 2ª consulta aqui faria o rodapé da seção discordar das
+   * linhas acima dele no primeiro caso de borda.
+   */
+  function montarPrateleira(p: Prateleira): PrateleiraNaTela {
+    const dela = linhas.filter((l) => l.prateleira === p)
+    const comPlanoDela = dela.filter((l) => l.planejado != null)
+    const planejado = comPlanoDela.length > 0 ? comPlanoDela.reduce((s2, l) => s2 + (l.planejado ?? 0), 0) : null
+    const realizado = dela.reduce((s2, l) => s2 + l.realizado, 0)
+    return {
+      prateleira: p,
+      linhas: dela,
+      planejado,
+      realizado,
+      semPlano: dela.length - comPlanoDela.length,
+      pctPago: planejado != null && planejado > 0 ? realizado / planejado : null,
+    }
+  }
+  const casa = montarPrateleira('CASA')
+  const banco = montarPrateleira('BANCO')
+
+  const compromissos = await lerCompromissos(companyId, mes, agora, db, idsDoBanco)
+  const chips = await lerChips(companyId, userId ?? null, db)
+
+  const subtotais: SubtotaisDasPrateleiras = {
+    casaPlanejado: casa.planejado,
+    casaRealizado: casa.realizado,
+    bancoPlanejado: banco.planejado,
+    bancoRealizado: banco.realizado,
+    compromissos: compromissos.total,
+    compromissosAApurar: compromissos.foraDaSoma.n,
+  }
+
   const comPlano = linhas.filter((l) => l.planejado != null)
   /**
    * ⭐⭐ O CARTÃO (a) É A Σ DAS LINHAS, **por construção** — é o guard que o dono pediu. ⛔ E
@@ -317,6 +466,23 @@ export async function lerCustosFixos(
     dias,
     rotulo: `${dias} dias no mês — a empresa não tem calendário de funcionamento cadastrado, então conto os dias corridos`,
   }
+
+  /**
+   * ⭐⭐⭐ OS 3 PRIMEIROS CARTÕES, calculados com os chips PERSISTIDOS.
+   *
+   * ⛔⛔ **A MESMA FUNÇÃO PURA QUE A TELA USA NO TOGGLE** (`contaDosCartoes` +
+   * `pontoDeEquilibrio`). Isto é o que faz os 8 estados dos chips serem 8 leituras da mesma
+   * régua em vez de 8 chances de a tela mostrar um número que o servidor não confirma.
+   */
+  const conta = contaDosCartoes(chips, subtotais)
+  const cartaoPorDia: CartaoPorDiaAberto = {
+    valor: conta.total == null ? null : conta.total / dias,
+    dias,
+    rotulo: porDiaAberto.rotulo,
+  }
+  const cartaoEquilibrio = pontoDeEquilibrio(cartaoPorDia.valor, margem)
+  /** ⭐ o 4º cartão IGNORA os chips de propósito — ver `praNaoAfundar` */
+  const afundar = praNaoAfundar(subtotais, dias, margem.pct, margem.porque)
 
   const comprasNoCartao = await db.transaction.count({
     where: { businessCreditCardId: { not: null }, isCardPayment: false, date: { gte: de, lt: ate } },
@@ -347,9 +513,24 @@ export async function lerCustosFixos(
      * mesmo seletor. ⛔ E continua uma porta só: marcar e desmarcar caem no MESMO `POST`.
      */
     disponiveis: comQualificador(
-      catsExpense.map((c) => ({ id: c.id, nome: c.name, dreGroup: c.dreGroup, jaFixa: idsFixos.includes(c.id) })),
+      catsExpense.map((c) => ({
+        id: c.id,
+        nome: c.name,
+        dreGroup: c.dreGroup,
+        jaFixa: idsFixos.includes(c.id),
+        prateleira: prateleiraPorCat.get(c.id) ?? null,
+      })),
     ),
     comprasNoCartao: comprasNoCartao > 0 ? { n: comprasNoCartao } : null,
+    casa,
+    banco,
+    compromissos,
+    subtotais,
+    chips,
+    conta,
+    cartaoPorDia,
+    cartaoEquilibrio,
+    afundar,
   }
 }
 

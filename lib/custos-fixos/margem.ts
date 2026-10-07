@@ -161,34 +161,13 @@ export async function medirMargem(
   })
 }
 
-export interface PontoDeEquilibrio {
-  /** quanto vender por dia aberto. `null` = a apurar */
-  porDia: number | null
-  porque: string | null
-  conta: string | null
-}
-
 /**
- * ⭐⭐ O PONTO DE EQUILÍBRIO — e ele herda o "a apurar" das DUAS pontas.
+ * ⭐⭐ O PONTO DE EQUILÍBRIO MUDOU DE CASA (07/10) — a fórmula vive em `prateleira.ts`.
  *
- * ⛔ Sem custo fixo declarado não existe meta (dividir zero por margem daria R$ 0,00/dia, que
- * se lê como *"a casa se paga sozinha"* — a pior mentira possível neste cartão). Sem margem
- * medida, idem. **Nunca número inventado** é ordem do dono, e as duas ausências caem aqui.
+ * ⛔⛔ **REEXPORTE, NUNCA 2ª CÓPIA.** A TELA precisa da fórmula pra recalcular os cartões no
+ * toggle dos chips, e este arquivo importa `prisma` no topo — importá-lo num componente
+ * `'use client'` arrastaria o Prisma pro bundle do navegador. Então a conta mudou pra um
+ * arquivo PURO e aqui ficou o endereço antigo: os importadores de sempre continuam
+ * funcionando, e **existe uma fórmula só**.
  */
-export function pontoDeEquilibrio(
-  custoFixoDiario: number | null,
-  margem: MargemMedida,
-): PontoDeEquilibrio {
-  if (custoFixoDiario == null) {
-    return { porDia: null, porque: 'declare o que cada custo fixo deve custar pra eu calcular', conta: null }
-  }
-  if (margem.pct == null || margem.pct <= 0) {
-    return { porDia: null, porque: margem.porque ?? 'margem indisponível', conta: null }
-  }
-  const porDia = custoFixoDiario / margem.pct
-  return {
-    porDia,
-    porque: null,
-    conta: `${formatBRL(custoFixoDiario)} por dia ÷ margem de ${(margem.pct * 100).toFixed(1)}%`,
-  }
-}
+export { pontoDeEquilibrio, type PontoDeEquilibrio } from './prateleira'

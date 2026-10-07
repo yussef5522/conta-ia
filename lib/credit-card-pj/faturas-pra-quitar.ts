@@ -58,6 +58,34 @@ export function vencimentoDaCompetencia(invoiceMonth: string, dueDay: number): s
 }
 
 /**
+ * ⭐⭐ O FECHAMENTO DA COMPETÊNCIA — o irmão do `vencimentoDaCompetencia`, e ele mora AQUI
+ * de propósito: *derivar as datas da fatura VIRTUAL do PJ a partir dos dias do cartão* é UMA
+ * pergunta, e ela tem um endereço só. Escrever a conta do fechamento noutro arquivo faria as
+ * duas metades da mesma data divergirem no primeiro mês de 30 dias.
+ *
+ * ⚠️ **O fechamento é ANTES do vencimento, e pode ser no mês ANTERIOR.** `fecha 26 · vence 12`
+ * (o banco caixa, medido em prod) significa: fechou em 26 do mês passado e vence em 12 deste.
+ * Cravar "mesmo mês" diria que a fatura fecha 14 dias DEPOIS de vencer.
+ */
+export function fechamentoDaCompetencia(
+  invoiceMonth: string,
+  closingDay: number,
+  dueDay: number,
+): string | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(invoiceMonth)
+  if (!m) return null
+  const ano = Number(m[1])
+  const mes = Number(m[2])
+  if (mes < 1 || mes > 12) return null
+  // fecha no mesmo mês do vencimento só quando o dia de fechar vem ANTES do de vencer
+  const deslocamento = closingDay < dueDay ? 0 : -1
+  const alvo = new Date(Date.UTC(ano, mes - 1 + deslocamento, 1))
+  const ultimo = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate()
+  const dia = Math.min(Math.max(1, closingDay), ultimo)
+  return new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth(), dia)).toISOString().slice(0, 10)
+}
+
+/**
  * ⭐⭐ Os cartões REGISTRADOS da empresa, cada um com as faturas que existem.
  *
  * ⚠️ Uma consulta pros N cartões (não uma por cartão): é a cicatriz dos 9,6 s de 10/09, e

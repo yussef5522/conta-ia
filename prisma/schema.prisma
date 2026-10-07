@@ -79,8 +79,9 @@ model User {
   pjToPfBridges PJtoPFBridge[]
 
   // Fase 4 (12/06/2026) — quem revisou warnings de duplicação pós-import
-  importWarningsDismissed ImportWarning[] @relation("ImportWarningDismissedBy")
-  importWarningsResolved  ImportWarning[] @relation("ImportWarningResolvedBy")
+  importWarningsDismissed ImportWarning[]  @relation("ImportWarningDismissedBy")
+  importWarningsResolved  ImportWarning[]  @relation("ImportWarningResolvedBy")
+  custosFixosChips        CustoFixoChips[]
 
   @@map("users")
 }
@@ -196,6 +197,7 @@ model Company {
   // Sprint Custos Fixos (06/10/2026) — a casa num olhar
   custosFixosCategorias CustoFixoCategoria[]
   custosFixosPlanejados CustoFixoPlanejado[]
+  custosFixosChips      CustoFixoChips[]
 
   @@map("companies")
 }
@@ -722,9 +724,9 @@ model Category {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  parent             Category?           @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
-  children           Category[]          @relation("CategoryParent")
+  company            Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent             Category?            @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children           Category[]           @relation("CategoryParent")
   transactions       Transaction[]
   suppliers          Supplier[]
   customers          Customer[]
@@ -4253,41 +4255,41 @@ model StockPorDiaPreferencia {
 /// ⚠️ O e-mail CONTINUA (é cópia, não substituto): quem está fora do sistema precisa ser
 /// alcançado. O que muda é que a verdade passa a ter um lugar que o dono abre.
 model Aviso {
-  id         String @id @default(cuid())
-  companyId  String // REGRA 8 — valor indexado, sem @relation
+  id           String    @id @default(cuid())
+  companyId    String // REGRA 8 — valor indexado, sem @relation
   /// producao | estoque | financeiro | sistema.
   /// ⛔⛔ **É LEI DO DONO que financeiro NUNCA apareça na produção** — o bloco por setor filtra
   /// por esta coluna, e é ela que torna a lei aplicável em vez de combinada.
-  setor      String
+  setor        String
   /// vermelho | coral | ambar | azul | verde — vira o FILETE de cor do aviso.
-  severidade String
+  severidade   String
   /// ⛔⛔ O TÍTULO É A **AÇÃO**, na língua do balcão: *"Não cria ordem de QUEIJO CHEDDAR antes
   /// de corrigir a ficha"*. Nunca o nome técnico do invariante.
-  titulo     String
+  titulo       String
   /// o PORQUÊ, em 1-2 frases de gente: *"se alguém pedir 10, separa queijo pra 1 só"*.
-  corpo      String
+  corpo        String
   /// ⛔⛔ **"O QUE FAZER" É OBRIGATÓRIO — e o banco recusa vazio.** Aviso sem ação clara não
   /// pode ser criado (ordem do dono): alarme que não diz o que fazer é o ruído que ensina o
   /// dono a parar de ler (os 111 falsos de 26/08).
-  oQueFazer  String
+  oQueFazer    String
   /// o botão que leva DIRETO ao lugar. ⚠️ Nulo é permitido só quando a ação não tem tela
   /// própria (ex.: "conte o item na próxima contagem") — e aí o `oQueFazer` carrega o caminho.
-  acaoRotulo String?
-  acaoHref   String?
+  acaoRotulo   String?
+  acaoHref     String?
   /// QUAL guard/juiz falou (ex.: `P8`, `M5`, `F3`). Entra na chave de dedupe.
-  origem     String
+  origem       String
   /// O OBJETO do aviso (id da ficha, da ordem, do item…). ⭐ `origem + alvo` é o que faz o
   /// MESMO problema ATUALIZAR o aviso existente em vez de criar 10 — o anti-spam é estrutural.
-  alvo       String
+  alvo         String
   /// ⭐ quantas vezes o produtor reafirmou o mesmo problema — é o que permite dizer
   /// "4 lotes seguidos" sem criar 4 avisos.
-  vezes      Int       @default(1)
-  criadoEm   DateTime  @default(now())
-  atualizadoEm DateTime @updatedAt
-  lidoEm     DateTime?
+  vezes        Int       @default(1)
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  lidoEm       DateTime?
   /// ⭐ resolvido SOME da tela (ordem do dono). Não apaga: o rastro fica, e se o problema
   /// voltar o mesmo `origem+alvo` REABRE a linha em vez de nascer outra.
-  resolvidoEm DateTime?
+  resolvidoEm  DateTime?
 
   @@unique([companyId, origem, alvo])
   @@index([companyId, setor, resolvidoEm])
@@ -5097,6 +5099,14 @@ model CustoFixoCategoria {
   removidoPorId String?
   removidoEm    DateTime?
 
+  /// ⭐ CASA (custo operacional) ou BANCO (juro recorrente) — a prateleira onde a linha mora.
+  /// ⚠️ O VOCABULÁRIO mora no TypeScript (`lib/custos-fixos/prateleira.ts`), nunca num CHECK:
+  /// a lição de 21/09 é que CHECK com lista fechada em tabela de CONFIGURAÇÃO vira parede no
+  /// dia em que a palavra nova chega. O CHECK do banco valida FORMA (maiúscula, não-vazia).
+  prateleira              String    @default("CASA")
+  prateleiraDefinidaPorId String?
+  prateleiraDefinidaEm    DateTime?
+
   company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
@@ -5127,4 +5137,26 @@ model CustoFixoPlanejado {
   @@unique([companyId, categoryId, mes])
   @@index([companyId, mes])
   @@map("custo_fixo_planejado")
+}
+
+/// ⭐ O ESTADO DOS 3 INTERRUPTORES DAS PRATELEIRAS, por usuário.
+/// ⚠️ Tabela e não `localStorage`: localStorage é por NAVEGADOR, e o dono confere no celular
+/// E no notebook — a escolha feita num sumiria no outro.
+/// ⚠️ **AUSÊNCIA DE LINHA = TUDO LIGADO** (a realidade de hoje). Quem nunca tocou nos chips
+/// vê a conta COMPLETA; a visão "empresa de verdade no futuro" (só casa) é escolha dele.
+model CustoFixoChips {
+  id           String   @id @default(cuid())
+  companyId    String
+  userId       String
+  casa         Boolean  @default(true)
+  banco        Boolean  @default(true)
+  compromissos Boolean  @default(true)
+  atualizadoEm DateTime @default(now()) @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// ⛔ dois registros pro mesmo par (empresa, usuário) é IMPOSSÍVEL no banco
+  @@unique([companyId, userId])
+  @@map("custo_fixo_chips")
 }

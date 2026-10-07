@@ -14,6 +14,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+/** ⛔ UM detector, UM lugar — a cópia local era cega a import multilinha (REGRA 11, 07/10) */
+import { semComentarios, usosDe } from './_leitura-de-fonte'
 
 const raiz = process.cwd()
 const TELA = 'app/(dashboard)/empresas/[id]/custos-fixos/page.tsx'
@@ -21,27 +23,39 @@ const LEITURA = 'lib/custos-fixos/leitura.ts'
 const SIDEBAR = 'components/sidebar/global-sidebar.tsx'
 
 const ler = (p: string) => readFileSync(join(raiz, p), 'utf-8')
-const semComentarios = (s: string) =>
-  s.replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
-
-/** ⚠️ conta o USO, nunca a MENÇÃO: import e comentário não valem (a lição do `hrefSemPagamento`) */
-function usosDe(src: string, nome: string): number {
-  const limpo = semComentarios(src).split('\n').filter((l) => !/^\s*import\b/.test(l)).join('\n')
-  return (limpo.match(new RegExp(`\\b${nome}\\b`, 'g')) ?? []).length
-}
 
 describe('⛔⛔ a tela NÃO calcula dinheiro — ela desenha o que o servidor aceitou', () => {
   const src = semComentarios(ler(TELA))
 
-  it('⭐ os 3 cartões leem o payload, não uma conta local', () => {
-    expect(src).toContain('dados.casaCustaMes')
-    expect(src).toContain('dados.porDiaAberto.valor')
-    expect(src).toContain('dados.pontoDeEquilibrio.porDia')
+  /**
+   * ⚠️⚠️ **REAPONTADO EM 07/10, e ele ficou MAIS FORTE — não afrouxado.**
+   *
+   * Ele quebrou COM A TELA CERTA: os cartões liam `dados.casaCustaMes` e passaram a ler
+   * `cartoes.conta.total`, porque a v2 recalcula ao vivo no toggle dos chips. *Grep não
+   * distingue "refatorei" de "quebrei"* — é a razão de existir da REGRA 3.
+   *
+   * ⭐ A pergunta não mudou (*"a tela faz conta de dinheiro?"*); o que mudou é a resposta
+   * honesta: **ela faz UMA conta, chamando a MESMA função pura que o servidor chamou**. Então
+   * o guard passou a exigir isso explicitamente — e a proibir aritmética própria, que antes
+   * ele nem olhava nos 4 cartões.
+   */
+  it('⭐ os 4 cartões leem a MESMA função pura do servidor, nunca uma conta local', () => {
+    // a lib pura é a fonte: `cartoesDoTopo` é o que o servidor chamou pro 1º paint
+    expect(usosDe(src, 'cartoesDoTopo')).toBeGreaterThan(0)
+    expect(src).toContain('cartoes!.conta.total')
+    expect(src).toContain('cartoes!.porDia.valor')
+    expect(src).toContain('cartoes!.equilibrio.porDia')
+    expect(src).toContain('cartoes!.afundar.porDia')
+    // ⛔ e o rótulo do 1º cartão também sai de lá — digitá-lo aqui seria a 2ª régua
+    expect(src).toContain('cartoes!.conta.rotulo')
   })
 
   it('⛔ nenhuma divisão de dinheiro na tela — margem e por-dia saem da lib', () => {
     // ⚠️ o que mordeu em outras telas foi a tela fazendo a conta "pra ficar mais simples"
     expect(src).not.toMatch(/casaCustaMes\s*\/\s*/)
+    // ⭐ 07/10: nem o total dos chips se divide aqui — quem divide é a lib
+    expect(src).not.toMatch(/conta\.total\s*\/\s*/)
+    expect(src).not.toMatch(/subtotais\.[a-zA-Z]+\s*[+\-*/]/)
     expect(src).not.toMatch(/\/\s*(margem|margemPct|dados\.margem)/)
     expect(src).not.toMatch(/custoFixoDiario/)
   })
@@ -54,13 +68,24 @@ describe('⛔⛔ a tela NÃO calcula dinheiro — ela desenha o que o servidor a
     expect(src).not.toMatch(/dueDate/)
   })
 
-  it('⭐ o total do rodapé é o do payload, nunca um `reduce` local de dinheiro', () => {
-    expect(src).toContain('dados.totalPlanejado')
-    expect(src).toContain('dados.totalRealizado')
-    expect(src).toContain('dados.pctPago')
-    // ⛔ nenhum `reduce` somando realizado/planejado na tela
+  /**
+   * ⚠️ **REAPONTADO EM 07/10:** o rodapé deixou de ser UM (da lista única) e passou a ser UM
+   * POR PRATELEIRA (`prateleira.planejado`), porque a lista virou duas seções. A régua é a
+   * mesma — *o subtotal vem do servidor, nunca de um `reduce` de dinheiro na tela* — e a
+   * proibição do `reduce` continua mordendo, que é a metade que importa.
+   */
+  it('⭐ o subtotal de cada prateleira é o do payload, nunca um `reduce` local de dinheiro', () => {
+    expect(src).toContain('prateleira.planejado')
+    expect(src).toContain('prateleira.realizado')
+    expect(src).toContain('prateleira.pctPago')
+    // ⭐ e os compromissos idem: a Σ vem de `lerCompromissos`
+    expect(src).toContain('c.somaParcelas')
+    expect(src).toContain('c.somaFaturas')
+    expect(src).toContain('c.total')
+    // ⛔ nenhum `reduce` somando realizado/planejado/valor na tela
     expect(src).not.toMatch(/reduce\([^)]*realizado/)
     expect(src).not.toMatch(/reduce\([^)]*planejado/)
+    expect(src).not.toMatch(/reduce\([^)]*valor/)
   })
 })
 
@@ -79,10 +104,10 @@ describe('⛔⛔ "a apurar" NUNCA vira R$ 0,00', () => {
     expect(atePonto, 'sem plano não existe percentual — dividir por nada daria 0%').toContain("'a apurar'")
   })
 
-  it('⭐ Σ planejado idem', () => {
+  it('⭐ Σ planejado idem (agora por prateleira)', () => {
     const i = src.indexOf('Σ planejado')
     const bloco = src.slice(i, i + 400)
-    expect(bloco).toContain('totalPlanejado == null')
+    expect(bloco).toContain('prateleira.planejado == null')
     expect(bloco).toContain("'a apurar'")
   })
 })
@@ -269,12 +294,27 @@ describe('⛔ o seletor mostra o ✓ e busca pela régua da casa', () => {
     expect(src, 'nenhum filtro de busca na mão').not.toMatch(/toLowerCase\(\)\.includes\(/)
   })
 
-  it('⭐ o ✓ marca quem já é fixa, e o MESMO chip desmarca', () => {
+  /**
+   * ⚠️ **REAPONTADO EM 07/10:** o chip da já-fixa deixou de ser um TOGGLE (um botão que
+   * alternava MARCAR/TIRAR) e virou um selo com DOIS gestos — mover de prateleira e tirar —,
+   * porque agora existe a pergunta *"em qual prateleira?"*. Um toggle não tem como responder
+   * três coisas com um clique.
+   *
+   * ⭐ A régua que continua mordendo, e é a que importa: **uma porta só de gravação.** Marcar,
+   * mover e tirar caem no MESMO `POST` (`MARCAR`/`TIRAR`) que o X da linha usa.
+   */
+  it('⭐ o ✓ diz ONDE a categoria está, e marcar/mover/tirar caem na MESMA porta', () => {
     expect(src).toContain('c.jaFixa')
-    expect(src).toContain('aria-pressed={c.jaFixa}')
-    const i = src.indexOf('aoAlternar={(c)')
-    const bloco = src.slice(i, i + 260)
-    expect(bloco, 'marcar e desmarcar caem no MESMO POST').toContain("c.jaFixa ? 'TIRAR' : 'MARCAR'")
+    // ⭐ o ✓ carrega a prateleira: sem isso ele esconderia em qual das duas a linha caiu
+    expect(src).toContain("c.prateleira === 'BANCO' ? '🏦' : '🏠'")
+    const i = src.indexOf('aoMarcar={(c, prateleira)')
+    expect(i, 'o seletor marca pela porta única').toBeGreaterThan(-1)
+    const bloco = src.slice(i, i + 220)
+    expect(bloco, 'marcar passa pelo MESMO POST').toContain("acao: 'MARCAR'")
+    expect(bloco, 'e leva a prateleira escolhida').toContain('prateleira')
+    const j = src.indexOf('aoTirar={(c)')
+    expect(j).toBeGreaterThan(-1)
+    expect(src.slice(j, j + 160), 'tirar idem').toContain("acao: 'TIRAR'")
   })
 
   it('⚠️ o vazio da busca DIZ o recorte, nunca "não encontrado" seco', () => {

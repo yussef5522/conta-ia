@@ -10,6 +10,7 @@
  */
 import { prisma } from '@/lib/db'
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { prateleiraOuPadrao, type Prateleira } from './prateleira'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -35,7 +36,17 @@ export async function marcarComoFixa(
   categoryId: string,
   quemId: string | null,
   db: Db = prisma,
-): Promise<{ marcada: true }> {
+  /**
+   * ⭐ 07/10 — EM QUAL PRATELEIRA. `undefined` preserva a de quem já estava na lista (marcar de
+   * novo não move a linha de lugar) e usa o padrão CASA pra quem entra agora.
+   *
+   * ⛔⛔ **MARCAR E MOVER CAEM NO MESMO GESTO, de propósito.** A ordem é *"o seletor de marcar
+   * categoria ganha a escolha da prateleira"* — se mover fosse um segundo endpoint, haveria
+   * duas portas gravando a mesma decisão, e a 2ª herdaria as travas da 1ª só se alguém
+   * lembrasse (é a doença do `PAGAMENTO_EMPRESTIMO` que gravou sem split em 11/09).
+   */
+  prateleira?: Prateleira,
+): Promise<{ marcada: true; prateleira: Prateleira }> {
   const cat = await db.category.findFirst({
     where: { id: categoryId, companyId },
     select: { id: true, type: true, isActive: true },
@@ -52,13 +63,24 @@ export async function marcarComoFixa(
     throw new CustoFixoError('Esta categoria está desativada — reative antes de marcar como fixa.', 'CATEGORIA_INATIVA')
   }
 
-  await db.custoFixoCategoria.upsert({
+  const agora = new Date()
+  /**
+   * ⚠️ O RASTRO DA PRATELEIRA SÓ NASCE QUANDO ELA FOI ESCOLHIDA. Carimbar quem/quando numa
+   * marcação que caiu no padrão CASA diria *"o dono pôs isto no banco"* sobre uma decisão que
+   * ninguém tomou — e o CHECK do banco exige os dois campos juntos ou nenhum (REGRA 13).
+   */
+  const rastro = prateleira
+    ? { prateleira, prateleiraDefinidaPorId: quemId, prateleiraDefinidaEm: agora }
+    : {}
+
+  const linha = await db.custoFixoCategoria.upsert({
     where: { companyId_categoryId: { companyId, categoryId } },
-    create: { companyId, categoryId, marcadoPorId: quemId },
+    create: { companyId, categoryId, marcadoPorId: quemId, ...rastro },
     // ⛔ reabrir ZERA o rastro da remoção — senão a linha fica dizendo "removida" e ativa
-    update: { removidoEm: null, removidoPorId: null, marcadoPorId: quemId, marcadoEm: new Date() },
+    update: { removidoEm: null, removidoPorId: null, marcadoPorId: quemId, marcadoEm: agora, ...rastro },
+    select: { prateleira: true },
   })
-  return { marcada: true }
+  return { marcada: true, prateleira: prateleiraOuPadrao(linha.prateleira) }
 }
 
 /**
