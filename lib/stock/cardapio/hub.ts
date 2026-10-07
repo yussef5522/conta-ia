@@ -117,17 +117,34 @@ function margemDe(preco: number | null, custo: number | null): number | null {
   return round2((preco - custo) / preco)
 }
 
+/**
+ * ⭐ A JANELA GANHOU `de`/`ate` EM 07/10 (margem v3), e é ADITIVO: `dias` segue valendo.
+ *
+ * ⛔ **Por que não bastava `dias`:** a tela de margem recorta por **calendário** (hoje ·
+ * semana · mês · datas escolhidas), e `Date.now() − N×86400000` é uma janela ROLANTE — "mês"
+ * viraria "os últimos 30 dias", que começa no meio de setembro. Dois recortes diferentes com
+ * o mesmo nome é como a casa e a liga passariam a discordar do mesmo período.
+ *
+ * ⚠️ E a janela entra por PARÂMETRO, nunca derivada do relógio aqui dentro: *o relógio só
+ * serve pra exibir "hoje" na tela, nunca pra decidir* (a régua de 13/08).
+ */
 export async function hubCardapio(
   companyId: string,
-  opts: { dias?: number | null } = {},
+  opts: { dias?: number | null; de?: Date | null; ate?: Date | null } = {},
   db: PrismaClient = defaultPrisma,
 ): Promise<HubCardapio> {
   const dias = opts.dias ?? null
-  const desde = dias != null ? new Date(Date.now() - dias * 86400000) : null
+  const desde = opts.de ?? (dias != null ? new Date(Date.now() - dias * 86400000) : null)
+  const limite = opts.ate ?? null
 
   const [linhasVenda, mapa, ignoradosDb, fichas, itens, ctx, custoDe] = await Promise.all([
     db.stockVendaLinha.findMany({
-      where: { companyId, ...(desde ? { data: { gte: desde } } : {}) },
+      where: {
+        companyId,
+        ...(desde || limite
+          ? { data: { ...(desde ? { gte: desde } : {}), ...(limite ? { lt: limite } : {}) } }
+          : {}),
+      },
       select: { nomeSuitable: true, quantidade: true, valorTotal: true, data: true },
     }),
     db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true, itemId: true } }),

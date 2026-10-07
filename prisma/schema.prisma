@@ -5144,6 +5144,48 @@ model CustoFixoPlanejado {
 /// E no notebook — a escolha feita num sumiria no outro.
 /// ⚠️ **AUSÊNCIA DE LINHA = TUDO LIGADO** (a realidade de hoje). Quem nunca tocou nos chips
 /// vê a conta COMPLETA; a visão "empresa de verdade no futuro" (só casa) é escolha dele.
+/// ⭐⭐ MARGEM v3 (07/10/2026) — CANAL DE VENDA + TAXA.
+///
+/// ⚠️ `taxaPct` é FRAÇÃO (0.12 = 12%), a mesma escala da `margem.pct` — duas convenções de
+/// percentual no mesmo sistema é como um deles sai 100× errado.
+/// ⛔ NULLABLE de propósito: canal sem taxa declarada fica "a declarar" na tela, NUNCA 0% —
+/// 0% afirmaria que o canal é de graça. (Foi por isso que o iFood não entrou semeado: o
+/// dono deixou a % em branco no pedido de 07/10.)
+/// ⚠️ ISOLAMENTO DO MÓDULO: `companyId` é VALOR indexado, sem @relation.
+model StockCanalVenda {
+  id           String   @id @default(cuid())
+  companyId    String
+  nome         String
+  taxaPct      Float?
+  ativo        Boolean  @default(true)
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @default(now()) @updatedAt
+
+  @@index([companyId, ativo])
+  @@map("stock_canal_venda")
+}
+
+/// ⭐⭐ QUANTOS SABORES CADA TAMANHO OBRIGA — DECLARAÇÃO do dono, com rastro.
+///
+/// ⛔⛔ NUNCA medição: a razão sabores/pizza medida em prod oscila de **0,37 a 7,03** em 31
+/// dias, então derivar o número do dado daria um valor diferente por semana. É a mesma regra
+/// do FATOR de rendimento (03/10): *"fator é declaração do dono — nenhuma medição na conta"*.
+/// ⛔ `sabores` sem default: tamanho cadastrado sem o número valeria 1 em silêncio, e o
+/// montador desenharia a pizza errada.
+model StockRegraSaboresTamanho {
+  id           String   @id @default(cuid())
+  companyId    String
+  tamanho      String
+  sabores      Int
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @default(now()) @updatedAt
+
+  @@unique([companyId, tamanho])
+  @@map("stock_regra_sabores_tamanho")
+}
+
 model CustoFixoChips {
   id           String   @id @default(cuid())
   companyId    String
