@@ -147,13 +147,6 @@ async function main() {
         console.log(`   ⛔ nenhuma linha em DUAS prateleiras: ${new Set([...t.casa.linhas, ...t.banco.linhas].map((l) => l.categoryId)).size === t.linhas.length ? '✓' : '⛔'}`)
         console.log(`   juro já no banco? ${t.compromissos.jurosJaNoBanco ?? 'a condição segue FALSA (as tx de parcela não têm categoria)'}`)
 
-        // ⭐ e os chips persistindo
-        const rc = await fetch(`${BASE}/api/empresas/${CO}/custos-fixos`, {
-          method: 'POST', headers: { cookie, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ acao: 'CHIPS', mes: MES, casa: true, banco: false, compromissos: false }),
-        })
-        console.log(`\n   POST CHIPS (só 🏠) → HTTP ${rc.status}`)
-
         throw new Error('ROLLBACK_PROPOSITAL')
       },
       { timeout: 120_000 },
@@ -162,6 +155,43 @@ async function main() {
     if (!String((e as Error).message).includes('ROLLBACK_PROPOSITAL')) throw e
     console.log('   ⛔ ROLLBACK aplicado — nada do passo 3 ficou gravado')
   }
+
+  /**
+   * ─────────── 3b. O CHIPS PERSISTINDO — e por que ele NÃO cabe na transação ───────────
+   *
+   * ⚠️⚠️ **ERRO MEU, PEGO PELA PRÓPRIA CONTABILIDADE DE ESCRITA:** eu tinha posto este `fetch`
+   * DENTRO do `$transaction` achando que o rollback o desfaria. **Não desfaz** — o `fetch` vai
+   * pro processo do SERVIDOR, com conexão própria; a minha transação local não o alcança. O
+   * resultado foi 1 linha de chips gravada em prod (`casa: true, banco/compromissos: false`),
+   * que o dono abriria amanhã vendo só 🏠 — uma visão que ele nunca escolheu.
+   *
+   * ⭐ Agora o gesto roda FORA, declarado, e a linha é **apagada no fim** — apagar devolve o
+   * dono ao default (TUDO LIGADO), que é o estado de ausência de linha.
+   */
+  console.log('\n══════ 3b. OS CHIPS PERSISTINDO (e a linha é apagada no fim) ══════')
+  const rc = await fetch(`${BASE}/api/empresas/${CO}/custos-fixos`, {
+    method: 'POST', headers: { cookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ acao: 'CHIPS', mes: MES, casa: true, banco: false, compromissos: false }),
+  })
+  const jc = await rc.json()
+  console.log(`   POST CHIPS (só 🏠) → HTTP ${rc.status} · o payload volta com chips=${JSON.stringify(jc.chips)}`)
+  console.log(`   e o 1º cartão já vem recalculado: "${jc.conta?.rotulo}" ${num(jc.conta?.total ?? null)}`)
+  const apagados = await prisma.custoFixoChips.deleteMany({ where: { companyId: CO } })
+  console.log(`   ⛔ linha de chips apagada (${apagados.count}) — o dono volta ao default TUDO LIGADO`)
+
+  // ─────────── 3c. O MÊS QUE TEM PLANO DECLARADO (setembro) ───────────
+  console.log('\n══════ 3c. SETEMBRO — o mês em que o dono JÁ declarou o plano ══════')
+  const set = await lerCustosFixos(CO, '2026-09', new Date(), undefined, null, u.id)
+  console.log(`   🏠 CASA: ${set.casa.linhas.length} linhas · planejado ${num(set.casa.planejado)} · realizado ${brl(set.casa.realizado)} · ${set.casa.pctPago == null ? '% pago a apurar' : `${Math.round(set.casa.pctPago * 100)}% pago`}`)
+  console.log(`   📅 COMPROMISSOS: ${brl(set.compromissos.total)} (parcelas ${brl(set.compromissos.somaParcelas)} + faturas ${brl(set.compromissos.somaFaturas)})`)
+  console.log(`   1º cartão: "${set.conta.rotulo}" ${num(set.conta.total)}`)
+  console.log(`   2º POR DIA: ${num(set.cartaoPorDia.valor)} · ${set.cartaoPorDia.dias} dias`)
+  console.log(`   3º EQUILÍBRIO: ${num(set.cartaoEquilibrio.porDia)}${set.cartaoEquilibrio.conta ? ` (${set.cartaoEquilibrio.conta})` : ''}`)
+  console.log(`   4º PRA NÃO AFUNDAR: ${num(set.afundar.porDia)}${set.afundar.conta ? ` (${set.afundar.conta})` : ''}`)
+  const somaSet = set.casa.linhas.filter((l) => l.planejado != null).reduce((s2, l) => s2 + (l.planejado ?? 0), 0)
+  console.log(`   ⛔ Σ(linhas planejado) ${brl(somaSet)} × subtotal ${num(set.casa.planejado)} → ${Math.abs(somaSet - (set.casa.planejado ?? 0)) < 0.005 ? '⭐ BATE' : '⛔ NÃO BATE'}`)
+  const compoe = (set.casa.planejado ?? 0) + (set.banco.planejado ?? 0) + set.compromissos.total
+  console.log(`   ⛔ composição do 1º cartão (casa+banco+compromissos) ${brl(compoe)} × cartão ${num(set.conta.total)} → ${Math.abs(compoe - (set.conta.total ?? 0)) < 0.005 ? '⭐ BATE' : '⛔ NÃO BATE'}`)
 
   // ─────────── 4. A TELA, 2 viewports × 2 temas ───────────
   console.log('\n══════ 4. A TELA (2 viewports × 2 temas) ══════')
@@ -178,7 +208,12 @@ async function main() {
     ['os subgrupos', 'parcelas de empréstimo ('],
     ['as faturas', 'faturas de cartão ('],
     ['a escolha da prateleira', 'marcar na prateleira:'],
-    ['o mover de prateleira', 'mover ${linha.nome} pra prateleira'],
+    /**
+     * ⚠️ FRAGMENTO LITERAL, nunca o template inteiro: o minificador PARTE
+     * `mover ${'${linha.nome}'} pra prateleira` em pedaços, e procurar a frase montada deu
+     * falso vermelho na 1ª rodada — a cicatriz do `Sa\xeddas:` de 15/09 e do `t.selo` de 27/09.
+     */
+    ['o mover de prateleira', ' pra prateleira '],
     ['o "fora da conta"', 'fora da conta dos cartões'],
     ['o "a apurar" honesto', 'a apurar'],
     ['o estado de falha com saída', 'tentar de novo'],
