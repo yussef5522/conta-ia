@@ -48,6 +48,7 @@ import {
   Printer,
   Tag,
   ChefHat,
+  Home,
   Radar as RadarIcon,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
@@ -357,6 +358,24 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             label="Custos fixos"
             href={`/empresas/${empresaAtiva}/custos-fixos`}
             isActive={/^\/empresas\/[^/]+\/custos-fixos(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
+        {/*
+          ⭐⭐ 07/10/2026 — "QUEM PAGA A CASA" (margem & equilíbrio v3).
+          ⚠️ `transaction.view` e não `stock.view`: a tela mostra preço, margem e o CUSTO FIXO
+          da empresa — é dinheiro, não operação de estoque. O operador que conta a câmara não
+          vê isto (a fronteira de papel de 24/08).
+          ⭐ Fica ao lado de Custos fixos de propósito: é a mesma pergunta pelos dois lados —
+          lá o dono declara o que a casa custa, aqui ele vê quem a paga.
+        */}
+        {empresaAtiva && (
+          <SidebarItem
+            perm="transaction.view"
+            icon={Home}
+            label="Quem paga a casa"
+            href={`/empresas/${empresaAtiva}/margem`}
+            isActive={/^\/empresas\/[^/]+\/margem(\/|$)/.test(pathname)}
             onClick={onNavigate}
           />
         )}

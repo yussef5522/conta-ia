@@ -116,6 +116,25 @@ export interface Casa {
    * `porque` explica a ausência — *"a tela diz a cobertura em vez de um dia inventado"*.
    */
   placar: { dia: string | null; porque: string | null }
+  /**
+   * ⭐⭐ O VEREDITO, COM A RESSALVA DA COBERTURA — e isto nasceu de um DEFEITO MEU que só a
+   * prova em prod pegou (07/10): a casa anunciava **"✓ PAGA — transbordou R$ 13.689,75"**
+   * enquanto o placar, dois centímetros abaixo, se recusava a nomear o dia dizendo *"só 55%
+   * do que você vendeu tem custo conhecido"*.
+   *
+   * ⛔⛔ **Dois pesos na mesma tela é pior que nenhum número:** se 45% das vendas estão fora
+   * da obra, o "pagou" é sobre a metade que eu consigo medir — e anunciá-lo seco é dar ao
+   * dono uma certeza que o dado não sustenta. É a família do *"a conta fecha NÃO prova
+   * classificação certa"* (13/08).
+   *
+   * ⭐ `confiavel` é `true` só acima de `COBERTURA_MINIMA`. Abaixo, a `ressalva` viaja com o
+   * veredito e a tela é obrigada a desenhá-la junto.
+   */
+  veredito: {
+    estado: 'PAGA' | 'EM_OBRA' | 'A_APURAR'
+    confiavel: boolean
+    ressalva: string | null
+  }
 }
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -215,8 +234,25 @@ export function montarCasa(opts: {
       : { dia: null, porque: 'a sobra do período ainda não cobriu a casa' }
   }
 
+  // ⭐ o veredito carrega a ressalva da cobertura — a tela não tem como mostrar um "✓ PAGA"
+  // seco sobre dado parcial
+  const cobPct = sobras.cobertura.pct
+  const confiavel = cobPct != null && cobPct >= COBERTURA_MINIMA
+  const estado: Casa['veredito']['estado'] =
+    custoFixo == null || custoFixo <= 0 ? 'A_APURAR' : pagou ? 'PAGA' : 'EM_OBRA'
+
   return {
     composicao: { ...composicao, texto: textoDaComposicao(composicao) },
+    veredito: {
+      estado,
+      confiavel,
+      ressalva:
+        estado === 'A_APURAR' || confiavel
+          ? null
+          : cobPct == null
+            ? 'nenhuma venda no período'
+            : `é o que dá pra medir: ${(cobPct * 100).toFixed(0)}% do que você vendeu tem custo conhecido, e ${sobras.cobertura.produtosFora} produto${sobras.cobertura.produtosFora > 1 ? 's' : ''} ${sobras.cobertura.produtosFora > 1 ? 'estão' : 'está'} fora da obra`,
+    },
     custoFixo,
     custoFixoDiario: custoFixo != null && dias > 0 ? round2(custoFixo / dias) : null,
     dias,

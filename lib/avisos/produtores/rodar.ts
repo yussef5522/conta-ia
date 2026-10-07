@@ -14,6 +14,7 @@ import { prisma } from '@/lib/db'
 import { produzirAvisosDeProducao, type ResumoDaCarga } from './producao'
 import { produzirAvisosDeEstoque } from './estoque'
 import { produzirAvisosDeFinanceiro } from './financeiro'
+import { produzirAvisosDeMargem } from './margem'
 import { montarSemanaVerde } from '../semana-verde'
 import { registrarAviso, avisosAbertos } from '../central'
 
@@ -107,6 +108,17 @@ export async function rodarProdutoresDeAviso(agora: Date = new Date()): Promise<
       r.reabertos += f.reabertos
       r.resolvidos += f.resolvidos
       for (const x of f.recusados) r.recusados.push({ empresa: e.name, ...x })
+      /**
+       * ⭐⭐ A MARGEM (07/10) — sobra negativa, margem que despencou, e o relatório de
+       * complementos incompleto.
+       *
+       * ⛔ Entra DEPOIS do estoque de propósito: o aviso de sobra negativa só faz sentido
+       * sobre produto cujo custo é confiável, e é a rodada do estoque que resolve os avisos
+       * de insumo sem custo. ⚠️ Empresa sem produto com custo devolve zero e não grava nada.
+       */
+      const mg = await produzirAvisosDeMargem(e.id, agora)
+      r.gravados += mg.gravados
+      r.reabertos += mg.reabertos
       if (await verdeDaSemana(e.id, agora)) r.verdesSemanais++
     } catch (err) {
       // ⛔ uma empresa com problema não derruba a rodada das outras nem o juiz
