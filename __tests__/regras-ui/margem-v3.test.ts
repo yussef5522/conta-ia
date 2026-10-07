@@ -146,6 +146,19 @@ describe('⛔⛔ NADA DE AVISO INLINE (a lei de 04/10) — o que pede AÇÃO vai
     const rodar = semComentarios(ler(R('lib/avisos/produtores/rodar.ts')))
     expect(usosDe(rodar, 'produzirAvisosDeMargem'), 'produtor sem chamador é promessa').toBeGreaterThan(0)
   })
+
+  it('⛔⛔ o produtor NÃO decide nada — ele lê, chama a régua pura e grava', () => {
+    const prod = semComentarios(ler(R('lib/avisos/produtores/margem.ts')))
+    // ⭐ a régua mora em lib pura e é EXECUTADA em teste; aqui só se prova o encaixe
+    expect(usosDe(prod, 'reguaDosAvisosDaMargem')).toBeGreaterThan(0)
+    // ⛔ nenhuma frase de aviso pode voltar a nascer no produtor
+    expect(prod).not.toContain('titulo:')
+    expect(prod).not.toContain('severidade:')
+    expect(prod).not.toContain('oQueFazer:')
+    // ⚠️ o gate do mês parcial vem da constante, nunca de um número digitado aqui
+    expect(usosDe(prod, 'DIA_QUE_ABRE_A_COMPARACAO')).toBeGreaterThan(0)
+    expect(prod).not.toMatch(/diaDoMes >= \d/)
+  })
 })
 
 describe('⭐ A TELA DIZ A COMPOSIÇÃO DOS CHIPS, e o veredito nunca vem seco', () => {
