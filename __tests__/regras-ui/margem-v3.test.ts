@@ -76,6 +76,18 @@ describe('⛔ UMA COMPOSIÇÃO, DOIS VIEWPORTS (REGRA 12)', () => {
     expect(bloco).not.toMatch(/<svg[^>]*width="\d/)
   })
 
+  it('⛔⛔ a pilha de tijolos NUNCA estoura o telhado (a sobreposição de 07/10)', () => {
+    const i = tela.indexOf('function CasaDeTijolos')
+    const bloco = tela.slice(i, tela.indexOf('function Conta'))
+    // ⭐ a altura de cada tijolo é a fatia DELE vezes a altura PAGA — nunca vezes H cru:
+    // com a sobra passando do custo fixo, `× H` fazia a pilha passar do telhado e o
+    // `Math.max(0, y)` empilhava os de cima um sobre o outro.
+    expect(bloco).toMatch(/t\.pctDaSobra \* alturaPaga/)
+    expect(bloco).not.toMatch(/t\.pctDaSobra \* H/)
+    // ⚠️ e `alturaPaga` tem que ser calculada ANTES do laço que empilha
+    expect(bloco.indexOf('const alturaPaga')).toBeLessThan(bloco.indexOf('c.tijolos.map'))
+  })
+
   it('⭐ o rótulo do tijolo só é desenhado quando CABE — senão vaza do tijolo', () => {
     const i = tela.indexOf('function CasaDeTijolos')
     const bloco = tela.slice(i, tela.indexOf('function Conta'))

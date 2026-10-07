@@ -60,20 +60,51 @@ describe('⛔⛔ O GUARD DO DONO: Σ(tijolos) == sobra BRUTA == Σ da liga', () 
     expect(liga.somaDaAba).toBeCloseTo(s.sobraTotal, 2)
   })
 
-  it('⭐ a ÁREA do tijolo é proporcional à contribuição', () => {
+  /**
+   * ⚠️⚠️ TESTE INVERTIDO EM 07/10, COM O MOTIVO ESCRITO — ele afirmava
+   * `pctDaSobra == sobraTotal / custoFixo`, que é a conta do RÓTULO (`pctDaCasa`), não da ÁREA.
+   *
+   * ⛔ O defeito que isso escondia apareceu na prova em prod: a sobra de outubro é **152% da
+   * casa**, então a Σ dos `pctDaSobra` dava 1,52, a pilha de tijolos passava do telhado e a
+   * tela clampava o `y` em 0 — os tijolos de cima **se sobrepunham**. A metade CERTA do teste
+   * (área ∝ contribuição) continua travada, agora com o denominador que a faz somar 1.
+   */
+  it('⭐⭐ a ÁREA é a fatia da SOBRA e a Σ dos tijolos é 1 — inclusive com a casa PAGA', () => {
     const s = sobrasDoPeriodo(PROD)
+    // ⚠️ a cena é a de prod: a sobra PASSA do custo fixo (a casa se pagou e transbordou).
+    // Em prod a razão é 152%; a fixture é um recorte, então o custo fixo aqui é menor.
+    const CUSTO_FIXO = 20_000
     const casa = montarCasa({
-      sobras: s, custoFixo: 43_599.36, dias: 7,
+      sobras: s, custoFixo: CUSTO_FIXO, dias: 7,
       composicao: { casa: true, banco: true, compromissos: true },
       complementos: { custo: 0, ocorrenciasComCusto: 0, ocorrenciasSemCusto: 0 },
     })
+    expect(casa.sobraTotal).toBeGreaterThan(CUSTO_FIXO)
+
     for (const t of casa.tijolos) {
-      expect(t.pctDaSobra).toBeCloseTo(t.sobraTotal / 43_599.36, 9)
-      expect(t.pctDaCasa).toBeCloseTo(t.sobraTotal / 43_599.36, 9)
+      // ÁREA: fatia da sobra
+      expect(t.pctDaSobra).toBeCloseTo(t.sobraTotal / s.sobraTotal, 9)
+      // RÓTULO: fração da casa — e ele PODE passar de 1, que é informação boa
+      expect(t.pctDaCasa).toBeCloseTo(t.sobraTotal / CUSTO_FIXO, 9)
     }
+    // ⛔⛔ o invariante que impede a pilha de estourar o telhado
+    const somaArea = casa.tijolos.reduce((a, t) => a + t.pctDaSobra, 0)
+    expect(somaArea).toBeCloseTo(1, 6)
     // ⭐ o 👑 é o maior contribuinte, nunca o mais vendido
     expect(casa.tijolos[0].rei).toBe(true)
     expect(casa.tijolos[0].nome).toBe('Combo Caçula')
+  })
+
+  it('⭐ a Σ da área é 1 TAMBÉM sem plano declarado (custo fixo nulo)', () => {
+    const s = sobrasDoPeriodo(PROD)
+    const casa = montarCasa({
+      sobras: s, custoFixo: null, dias: 7,
+      composicao: { casa: true, banco: false, compromissos: false },
+      complementos: { custo: 0, ocorrenciasComCusto: 0, ocorrenciasSemCusto: 0 },
+    })
+    expect(casa.tijolos.reduce((a, t) => a + t.pctDaSobra, 0)).toBeCloseTo(1, 6)
+    // ⚠️ sem plano não existe fração da casa — é `null`, nunca 0
+    expect(casa.tijolos.every((t) => t.pctDaCasa === null)).toBe(true)
   })
 
   it('⭐ sobra == preço − custo POR CONSTRUÇÃO', () => {

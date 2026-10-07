@@ -45,9 +45,9 @@ export interface Tijolo {
   icone: string
   sobraTotal: number
   unidades: number
-  /** fração da CASA que este tijolo pagou (sobra ÷ custo fixo do período) */
+  /** ⭐ RÓTULO: fração da CASA que este tijolo pagou (sobra ÷ custo fixo) — PODE passar de 1 */
   pctDaCasa: number | null
-  /** fração da SOBRA do período — usada pra a ÁREA quando não há custo fixo */
+  /** ⭐⭐ ÁREA: fração da SOBRA do período — a Σ dos tijolos é SEMPRE 1 */
   pctDaSobra: number
   /** 👑 no maior contribuinte */
   rei: boolean
@@ -148,10 +148,19 @@ export function textoDaComposicao(c: { casa: boolean; banco: boolean; compromiss
 }
 
 /**
- * ⭐ A ÁREA DO TIJOLO É PROPORCIONAL À CONTRIBUIÇÃO — e o denominador é o CUSTO FIXO quando
- * ele existe (é a casa que está sendo paga), caindo pra a própria sobra quando o dono ainda
- * não declarou o plano. ⛔ Sem esse fallback a casa inteira ficaria invisível em mês sem
- * plano, justamente quando o dono abre a tela pra entender por que não sabe o número.
+ * ⭐ A ÁREA DO TIJOLO É PROPORCIONAL À CONTRIBUIÇÃO, e são DOIS números com papéis diferentes:
+ *
+ * - **`pctDaSobra`** = a fatia da SOBRA que é dele → é a **ÁREA** do tijolo no desenho.
+ *   ⛔⛔ O denominador é SEMPRE a sobra do período, então **a Σ dos tijolos é 1**. Até 07/10
+ *   ele dividia pelo CUSTO FIXO quando havia plano — e aí, com a casa paga, a Σ passava de 1
+ *   (medido em prod: sobra 66.544,11 contra casa 43.599,36 = **152%**), a pilha estourava o
+ *   telhado e os tijolos de cima **se sobrepunham** no clamp da tela. Área que não soma 1 não
+ *   é proporcional: é o guard do dono quebrado no caso mais comum (mês que fechou bem).
+ * - **`pctDaCasa`** = sobra ÷ custo fixo → é o **RÓTULO** ("este produto pagou 25% da casa").
+ *   Esse PODE passar de 100% e é informação boa; ele não desenha nada.
+ *
+ * ⚠️ Quanto da casa a pilha inteira ocupa é `pctPago`, que a TELA aplica à altura total —
+ * sem plano declarado a pilha enche o telhado e o veredito diz "a apurar" ao lado.
  */
 export function montarCasa(opts: {
   sobras: Sobras
@@ -168,7 +177,8 @@ export function montarCasa(opts: {
   // ⭐⭐ é a LÍQUIDA que decide "pagou" — a bruta segue sendo a Σ dos tijolos (o guard)
   const sobraLiquida = round2(sobraTotal - complementos.custo)
 
-  const denominador = custoFixo != null && custoFixo > 0 ? custoFixo : sobraTotal
+  // ⛔ a ÁREA divide pela SOBRA, nunca pelo custo fixo — ver o bloco acima
+  const denominador = sobraTotal
   const pctPago = custoFixo != null && custoFixo > 0 ? Math.min(1, sobraLiquida / custoFixo) : null
   const pagou = custoFixo != null && custoFixo > 0 && sobraLiquida >= custoFixo
 

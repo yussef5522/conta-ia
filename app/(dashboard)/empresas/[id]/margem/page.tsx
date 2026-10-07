@@ -252,14 +252,20 @@ function CasaDeTijolos({
   const H = 260 // altura das PAREDES (o telhado fica acima)
   const TELHADO = 46
 
-  // ⭐ a altura de cada tijolo é a fração DELE; o teto do desenho é o telhado (100%)
+  // ⭐⭐ A PILHA OCUPA O NÍVEL PAGO, e cada tijolo é a fatia DELE dentro desse nível.
+  //
+  // ⛔ Até 07/10 a altura era `pctDaSobra × H` com o pct dividido pelo CUSTO FIXO: com a casa
+  // paga (prod: sobra 152% da casa) a pilha passava do telhado, o `Math.max(0, y)` clampava e
+  // os tijolos de cima **se sobrepunham**. Agora a proporção entre tijolos é intocada e quem
+  // decide a altura TOTAL é o `pctPago` (que já vem clampado em 1) — o transbordo é a faixa
+  // própria logo abaixo, nunca tijolo saindo do desenho.
+  const alturaPaga = Math.min(H, (c.pctPago ?? (c.sobraTotal > 0 ? 1 : 0)) * H)
   let y = H
   const desenho = c.tijolos.map((t) => {
-    const h = Math.max(3, Math.min(H, t.pctDaSobra * H))
+    const h = Math.max(3, Math.min(H, t.pctDaSobra * alturaPaga))
     y -= h
     return { t, y: Math.max(0, y), h }
   })
-  const alturaPaga = Math.min(H, (c.pctPago ?? (c.sobraTotal > 0 ? 1 : 0)) * H)
 
   return (
     <Card style={{ background: 'var(--prod-surface)' }}>
