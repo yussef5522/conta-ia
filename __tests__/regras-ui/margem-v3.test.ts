@@ -38,12 +38,23 @@ describe('⛔⛔ ZERO HEX CRAVADO — a tela pinta por TOKEN, nos dois temas', (
 
   it('⭐ os tokens que a tela usa existem nos DOIS mapas do CSS', () => {
     const css = ler(R('app/globals.css'))
+    /**
+     * ⭐ Os dois mapas da casa são `:root` (claro) e `.dark` (escuro) — e a régua é a CONTAGEM
+     * de declarações, não um fatiamento do arquivo: o `globals.css` tem **dois** blocos
+     * `.dark` e vários `:root`, então cortar no primeiro `.dark {` acusa token que está lá
+     * (foi o falso vermelho da 1ª versão deste guard).
+     *
+     * ⛔ Conferir só a EXISTÊNCIA aprovaria um token declarado apenas no claro — e a tela
+     * ficaria com o texto de um tema sobre o fundo do outro. Medido no CSS que prod serve:
+     * cada token aparece exatamente 2×.
+     */
+    const vezes = (t: string) => css.split(`${t}:`).length - 1
     const usados = [...new Set((tela.match(/var\((--[a-z0-9-]+)\)/g) ?? []).map((m) => m.slice(4, -1)))]
     expect(usados.length).toBeGreaterThan(8)
     for (const t of usados) {
       // ⚠️ `--fam-${x}-mid` é montado por template na tela: a família vem do payload
       if (t.startsWith('--fam-') && !/^--fam-[a-z]+-(bg|mid|ink)$/.test(t)) continue
-      expect(css, `token ${t} não existe no CSS`).toContain(`${t}:`)
+      expect(vezes(t), `token ${t} precisa dos DOIS mapas (claro e escuro)`).toBeGreaterThanOrEqual(2)
     }
     // ⭐ os tokens de família montados por template têm que existir pra TODA família do mapa
     const familias = [
@@ -55,7 +66,7 @@ describe('⛔⛔ ZERO HEX CRAVADO — a tela pinta por TOKEN, nos dois temas', (
     ]
     expect(familias.length).toBeGreaterThan(4)
     for (const f of familias) {
-      expect(css, `--fam-${f}-mid`).toContain(`--fam-${f}-mid:`)
+      expect(vezes(`--fam-${f}-mid`), `--fam-${f}-mid nos dois mapas`).toBeGreaterThanOrEqual(2)
     }
   })
 })
