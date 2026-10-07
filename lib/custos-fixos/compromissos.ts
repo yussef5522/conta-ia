@@ -21,17 +21,30 @@
  * a devolução é conforme caixa) e *"a soma só PROMOVE"*. Usar o `statusDaConta` aqui chamaria o
  * mútuo de atrasado — o que o CLAUDE.md proíbe por escrito.
  *
- * ⛔⛔ **A PARCELA FLEXIBLE NÃO ENTRA NA Σ ENQUANTO NÃO FOR PAGA — ela aparece, marcada.** A
- * prateleira promete *"caixa que CERTAMENTE sai"*, e a agenda do FLEXIBLE é **nominal**: o dono
- * devolve 40-50k conforme o caixa. Somar os R$ 41.428,57 nominais faria o 4º cartão exigir que
- * ele venda 41 mil a mais por um pagamento que ele ainda não decidiu fazer. É a MESMA régua do
- * `parcelaMensalTotal` (que exclui FLEXIBLE desde 06/08). **Paga, ela conta** — aí não é
- * previsão, é fato: o dinheiro saiu.
+ * ⛔⛔⛔ **A REFERÊNCIA FLEXÍVEL É PAGA PELO CAIXA DO MÊS, E CONTA SEMPRE NA Σ (07/10/2026).**
+ * A lei mora em `lib/loans/referencia-flexivel.ts` (o bloco de lá conta a história inteira):
+ * no recorte de um mês, a referência daquele mês é paga pelo **caixa que SAIU dentro do mês**,
+ * nunca pela ordem do vínculo — foi o vínculo que fez OUTUBRO mostrar *"paga"* a partir de um
+ * pagamento de AGOSTO. Não paga, ela entra pelo **NOMINAL**, marcada `~referência flexível`.
+ *
+ * ⚠️⚠️ **ISTO REVERTEU DUAS FRASES QUE EU ESCREVI AQUI NO MESMO DIA** (*"não entra na Σ
+ * enquanto não for paga"* e *"um pagamento que ele ainda não decidiu fazer"*): o dono devolveu
+ * em TRÊS meses seguidos, então o caixa sai mesmo — *"tela de compromissos que esconde 41 mil
+ * me faz afundar sorrindo"*.
+ *
+ * ⚠️ **DIVERGÊNCIA DECLARADA:** o `parcelaMensalTotal` da carteira de empréstimos **continua
+ * excluindo FLEXIBLE** (desde 06/08) — ele responde *"quanto de parcela OBRIGATÓRIA eu pago"*,
+ * e o mútuo não tem parcela obrigatória. As duas telas passam a mostrar números diferentes
+ * para a Arafat, de propósito; mudar o outro não foi pedido e seria decisão do dono.
  */
 import { prisma } from '@/lib/db'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { janelaDoMes } from '@/lib/periodo/mes-corrente'
 import { estadoDaParcela, type EstadoDaParcela } from '@/lib/loans/estado-da-parcela'
+import {
+  referenciaFlexivelDoMes,
+  type DevolucaoDoContrato,
+} from '@/lib/loans/referencia-flexivel'
 import { forecastProxima } from '@/lib/loans/forecast'
 import { faturaNetTotal } from '@/lib/credit-card-pj/fatura-net-total'
 import {
@@ -61,8 +74,14 @@ export interface LinhaDeParcela {
   estado: EstadoDaParcela
   flexible: boolean
   /**
-   * ⛔ entra na Σ da prateleira? FLEXIBLE não-paga e parcela "a apurar" ficam FORA —
-   * e a tela DIZ por quê, nunca esconde a linha.
+   * ⭐ a frase que explica a referência flexível do mês (a linha-mitigação de 07/10).
+   * `null` em parcela bancária e na referência flexível já paga.
+   */
+  avisoFlexivel: string | null
+  /**
+   * ⛔ entra na Σ da prateleira? **Só a parcela "a apurar" fica FORA** — e a tela DIZ por quê,
+   * nunca esconde a linha. ⚠️ A referência FLEXÍVEL não-paga **ENTRA pelo nominal** desde
+   * 07/10 (ajuste do dono; ver o bloco no laço).
    */
   contaNaSoma: boolean
   href: string
@@ -200,7 +219,15 @@ export async function lerCompromissos(
             interest: true,
             paidTotal: true,
             reconciledTransactionId: true,
-            payments: { select: { amount: true } },
+            /**
+             * ⚠️⚠️ A DATA do pagamento é o campo que faltava — foi a ausência dela que deixou
+             * o selo de OUTUBRO sair de um pagamento de AGOSTO (07/10). Sem `date` nos dois
+             * vínculos, a lei da referência flexível não tem como existir. É a doença do
+             * select incompleto (o PIX de 7.000, 17/08): o motor decide com um campo que a
+             * consulta não trouxe, e não dá erro — dá silêncio.
+             */
+            reconciledTransaction: { select: { date: true, amount: true } },
+            payments: { select: { amount: true, transaction: { select: { date: true } } } },
           },
           orderBy: { number: 'asc' },
         },
@@ -253,19 +280,65 @@ export async function lerCompromissos(
     const contrato = `${l.lender}${l.contractNumber ? ` ${l.contractNumber}` : ''}`
     const ultima = l.installments[l.installments.length - 1]
 
+    /**
+     * ⭐⭐ TODAS as devoluções do contrato, COM DATA — é o insumo da lei da referência
+     * flexível (`referenciaFlexivelDoMes`), que recorta por MÊS em vez de ler o vínculo.
+     *
+     * ⚠️ Lê as DUAS portas (1:1 e N:1) porque o contrato real usa as duas: as devoluções de
+     * jul/ago entraram por 1:1 e a de setembro por N:1 — checar UMA e declarar completo foi
+     * literalmente o bug de 14/08. **Não há dupla contagem:** o trigger
+     * `loan_installment_no_double_link` torna impossível uma parcela ter as duas.
+     */
+    const devolucoes: DevolucaoDoContrato[] = flexible
+      ? l.installments.flatMap((i) => [
+          ...(i.reconciledTransaction
+            ? [{ data: i.reconciledTransaction.date, valor: i.reconciledTransaction.amount }]
+            : []),
+          ...i.payments.flatMap((p) => (p.transaction ? [{ data: p.transaction.date, valor: p.amount }] : [])),
+        ])
+      : []
+
     for (const i of noMes) {
-      const veredito = estadoDaParcela(
-        {
-          dueDate: i.dueDate,
-          payment: i.payment,
-          status: i.status,
-          paidTotal: i.paidTotal,
-          pagamentos: i.payments,
-          valorDoVinculo11: null,
-        },
-        { flexible, hoje: agora },
-      )
-      const v = valorDaParcela(veredito, i, { rateType: l.rateType }, forecast)
+      /**
+       * ⛔⛔ AQUI A LEI SE BIFURCA, e o escopo é o que a mantém honesta: FLEXIBLE pergunta
+       * *"o caixa deste mês cobriu a referência?"*; bancário segue no `estadoDaParcela`, onde
+       * *"PAID gravado é DECISÃO"* — a Caixa #28 venceu em maio e foi paga em junho, e no
+       * recorte de maio ela É paga, com atraso. Uma lei só mentiria num dos dois.
+       */
+      const ref = flexible
+        ? referenciaFlexivelDoMes(i.payment, devolucoes, { mes, de, ate }, agora)
+        : null
+
+      const veredito = ref
+        ? {
+            estado: ref.estado as EstadoDaParcela,
+            pago: ref.saiuNoMes,
+            falta: 0,
+            mordidas: ref.mordidas,
+            selo: ref.selo,
+          }
+        : estadoDaParcela(
+            {
+              dueDate: i.dueDate,
+              payment: i.payment,
+              status: i.status,
+              paidTotal: i.paidTotal,
+              pagamentos: i.payments,
+              valorDoVinculo11: null,
+            },
+            { flexible, hoje: agora },
+          )
+
+      const v = ref
+        ? {
+            valor: ref.valor,
+            // ⭐ a referência nominal é PREVISÃO: a tela marca `~`, nunca como fato
+            valorEhPrevisto: ref.ehReferencia,
+            valorPorque: ref.ehReferencia
+              ? 'referência nominal da agenda flexível — a devolução é conforme o caixa'
+              : null,
+          }
+        : valorDaParcela(veredito, i, { rateType: l.rateType }, forecast)
 
       /**
        * ⚠️ "faltam N parcelas" conta o que o `estadoDaParcela` NÃO chama de PAGA — não o
@@ -287,14 +360,22 @@ export async function lerCompromissos(
           ).estado !== 'PAGA',
       ).length
 
-      const paga = veredito.estado === 'PAGA' || veredito.estado === 'PARCIAL'
-      const contaNaSoma = v.valor != null && (!flexible || paga)
+      /**
+       * ⭐⭐ O AJUSTE DO DONO (07/10) QUE REVERTEU UMA DECISÃO MINHA DO MESMO DIA.
+       *
+       * Eu havia escrito *"FLEXIBLE não-paga fica FORA da Σ"* supondo *"um pagamento que o
+       * dono ainda não decidiu fazer"*. **A premissa estava errada**: ele devolveu em TRÊS
+       * meses seguidos (jul 40k · ago 50k · set 50k). Nas palavras dele: *"eu devolvo todo
+       * mês, esse caixa certamente sai; tela de compromissos que esconde 41 mil me faz
+       * afundar sorrindo"*.
+       *
+       * ⛔ Então a referência flexível **CONTA sempre** — pelo nominal quando não paga
+       * (marcada `~referência flexível`), pelo que saiu quando paga. O único motivo de ficar
+       * fora da Σ voltou a ser UM: **valor a apurar** (o POS sem parcela casada).
+       */
+      const contaNaSoma = v.valor != null
       if (!contaNaSoma) {
-        foraPorque.push(
-          v.valor == null
-            ? `${contrato} parcela ${i.number}: valor a apurar`
-            : `${contrato} parcela ${i.number}: agenda flexível — a devolução é conforme o caixa, não entra como certa`,
-        )
+        foraPorque.push(`${contrato} parcela ${i.number}: valor a apurar`)
       }
 
       parcelas.push({
@@ -312,6 +393,13 @@ export async function lerCompromissos(
         selo: veredito.selo,
         estado: veredito.estado,
         flexible,
+        /**
+         * ⭐ A LINHA-MITIGAÇÃO (exigência do dono): a página do empréstimo diz "#2 paga"
+         * (pergunta do CONTRATO) e outubro diz "a vencer" (pergunta do MÊS). São perguntas
+         * diferentes, e por regra da casa isso não pode ficar mudo — a prateleira DIZ qual
+         * é a dela, com a data da última devolução.
+         */
+        avisoFlexivel: ref?.porque ?? null,
         contaNaSoma,
         href: `/empresas/${companyId}/emprestimos/${l.id}`,
       })

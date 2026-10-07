@@ -740,6 +740,15 @@ function LinhaDeParcelaNaTela({ p, zebra }: { p: LinhaDeParcela; zebra: boolean 
           parcela {p.numero} · vence dia {p.diaDoVencimento} · {p.faltam}
           {!p.contaNaSoma && ' · fora da soma'}
         </p>
+        {/* ⭐ A LINHA-MITIGAÇÃO (07/10): a página do empréstimo responde a pergunta do
+            CONTRATO ("#2 paga") e esta prateleira a do MÊS ("o caixa de outubro não saiu").
+            São perguntas diferentes, e a tela DIZ qual é a dela — senão as duas se
+            contradizem na cabeça de quem lê. */}
+        {p.avisoFlexivel && (
+          <p className="mt-0.5 text-[11px] leading-snug" style={{ color: 'var(--prod-accent)' }}>
+            {p.avisoFlexivel}
+          </p>
+        )}
       </div>
       <div className="flex items-baseline justify-between lg:block lg:text-right">
         <span className="text-[11px] lg:hidden" style={{ color: 'var(--prod-muted)' }}>parcela</span>

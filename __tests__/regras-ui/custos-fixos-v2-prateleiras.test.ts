@@ -154,6 +154,26 @@ describe('⭐⭐ 📅 COMPROMISSOS — a prateleira que não é custo', () => {
     expect(tela).toContain('faturas de cartão (')
   })
 
+  /**
+   * ⭐⭐ A LINHA-MITIGAÇÃO DA REFERÊNCIA FLEXÍVEL (07/10) — exigência do dono.
+   *
+   * A página do empréstimo responde a pergunta do CONTRATO (*"#2 paga"*, pelo vínculo de
+   * agosto) e esta prateleira a pergunta do MÊS (*"o caixa de outubro não saiu"*). As duas
+   * são verdade, e por regra da casa a divergência **não pode ficar muda** — a prateleira DIZ
+   * qual é a dela, com a data da última devolução.
+   *
+   * ⚠️ A asserção é pelo **USO dentro do bloco da linha**, não pela menção no arquivo: a
+   * frase também aparece no comentário que documenta o defeito, e *"o arquivo que documenta o
+   * defeito não pode ser o que o absolve"* (a cicatriz de 21/09, a 11ª "menção, não uso").
+   */
+  it('⭐ a linha da parcela DESENHA o aviso da referência flexível', () => {
+    const i = tela.indexOf('function LinhaDeParcelaNaTela')
+    expect(i, 'o componente da linha existe').toBeGreaterThan(-1)
+    const bloco = tela.slice(i, tela.indexOf('function LinhaDeFaturaNaTela'))
+    expect(usosDe(bloco, 'avisoFlexivel'), 'o gate E o texto, dentro da linha').toBeGreaterThan(1)
+    expect(bloco).toContain('{p.avisoFlexivel}')
+  })
+
   it('⭐ clicar na parcela abre O CONTRATO e na fatura abre O CARTÃO (a fonte)', () => {
     expect(semComentarios(ler(COMPROMISSOS))).toContain('/emprestimos/${l.id}')
     expect(semComentarios(ler(COMPROMISSOS))).toContain('/cartoes/${c.id}')

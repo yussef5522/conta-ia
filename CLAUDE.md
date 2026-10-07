@@ -2193,6 +2193,83 @@ marcações 26 → 26 · no banco 0 → 0 · planos 19 → 19 · chips 0 → 0 �
 4. ⚠️ **Caso de borda registrado, não "consertado":** ligar **só 🏦** com a prateleira vazia mostra *equilíbrio R$ 0,00* — é verdade (aquele cenário custa zero) e a linha de baixo diz *"fora da conta: casa a apurar · compromissos R$ 94.051,51"*. Se ele preferir *"a apurar"* ali, é uma linha.
 5. 📋 **Carregadas de 06/10:** os nomes repetidos (*"DAS Simples Nacional"*, *"Frete"*) · R$ 112.253,53 de saída sem categoria em setembro · a lacuna do cartão (custo fixo pago no cartão não aparece na linha dele) · a margem por CMV de COMPRA.
 
+## ⛔⛔⛔ O SELO DE OUTUBRO SAÍA DE UM PAGAMENTO DE AGOSTO — A REFERÊNCIA FLEXÍVEL É PAGA PELO CAIXA DO MÊS (07/10/2026)
+
+**O dono:** *"paguei R$ 50.000 ao Arafat MÊS PASSADO (set); a parcela de OUTUBRO ainda NÃO foi paga. A tela de compromissos de outubro mostra «parcela 2 · R$ 50.000 · paga»."*
+
+### ⭐⭐ O RETRATO CONTRADISSE AS TRÊS HIPÓTESES DELE — e a 4ª causa é maior
+
+```
+#1 · venc 15/09 (set) · 1:1 → 06/07  R$ 40.000
+#2 · venc 15/10 (out) · 1:1 → 04/08  R$ 50.000   ⛔ o selo mentiroso de OUTUBRO
+#3 · venc 15/11 (nov) · N:1 → 01/09  R$ 50.000   ⭐ o pagamento de SETEMBRO
+#4..#7 em aberto · principal 380.000 · devolvido 140.000 · saldo 240.000
+```
+
+| hipótese do dono | veredito medido |
+|---|---|
+| o pagamento de **15/09** promove a parcela errada? | **não existe pagamento em 15/09.** O de setembro é **01/09**, e ele promoveu a **#3 (novembro)**. ⭐ **O selo de outubro vem do pagamento de AGOSTO** |
+| a "parcela do mês" é escolhida errada? | **não** — `lerCompromissos` filtra por `dueDate` e acerta: outubro é a #2 |
+| a referência 2 cobre set E out? | **não** — cada referência cobre um mês nominal (#1 set · #2 out · #3 nov) |
+
+**⛔ A causa real:** a devolução promove a **próxima parcela aberta por NÚMERO**, e a agenda nominal começa em **setembro** enquanto o dono começou a devolver em **julho** — ele está **duas devoluções à frente** (140.000 devolvidos contra 82.857,14 que o nominal pedia até outubro). O selo saía do **VÍNCULO**, e **nada na cadeia olhava a DATA do pagamento contra o mês que estava sendo visto**.
+
+⚠️ O `estadoDaParcela` está **certo na pergunta dele** (*"esta linha da agenda foi liquidada?"*); o defeito era `lerCompromissos` usá-lo pra uma pergunta de **MÊS**.
+
+### ⭐⭐⭐ A LEI (aprovada pelo dono) — `lib/loans/referencia-flexivel.ts`, função PURA
+
+> **Só para FLEXIBLE:** no recorte de um mês, a referência daquele mês é **paga pelo caixa que SAIU dentro do mês** — nunca pela ordem do vínculo.
+
+**⛔⛔ E REALOCAR OS VÍNCULOS É IMPOSSÍVEL, não só indesejável:** julho e agosto **não têm referência nenhuma** (a agenda começa em setembro) — não existe parcela onde encostar os R$ 90.000 daqueles meses. É o argumento mais forte a favor de olhar o CAIXA e deixar o vínculo em paz: ele é escrituração, não verdade do mês.
+
+**⭐ E ela torna o selo IMUNE À ORDEM DO VÍNCULO:** quando o dono devolver, o caixa do mês passa do nominal e a referência fecha **independente de em qual parcela o vínculo caiu** — era a exigência dele (*"quando eu pagar, vira paga sozinho"*). Há teste com o vínculo pendurado em DEZEMBRO e outubro fechando.
+
+**⛔⛔ A LEI NÃO ALCANÇA O BANCÁRIO, de propósito.** Ali *"PAID gravado é DECISÃO"* (02/10) tem que valer: a **Caixa #28** venceu em maio e foi debitada em **junho** — no recorte de maio ela **É paga, com atraso**. Dizer "a vencer" sobre dinheiro que saiu faria o dono pagar duas vezes. **Contrafactual travado em teste**, e repondo o vazamento ele fica vermelho.
+
+### ⛔⛔ O AJUSTE DO DONO REVERTEU UMA DECISÃO MINHA DO MESMO DIA
+
+Eu havia escrito, em 07/10: *"FLEXIBLE não-paga fica FORA da Σ — a prateleira promete caixa que CERTAMENTE sai, e somar R$ 41.428,57 faria o 4º cartão exigir vender 41 mil a mais por um pagamento que o dono ainda não decidiu fazer"*. **A premissa estava errada e o dado a derrubou:** ele devolveu em **três meses seguidos** (jul 40k · ago 50k · set 50k). Nas palavras dele: ***"eu devolvo todo mês, esse caixa certamente sai; tela de compromissos que esconde 41 mil me faz afundar sorrindo"***.
+
+⭐ Então a referência não paga **CONTA na Σ pelo NOMINAL**, marcada `~referência flexível`; paga, conta pelo que REALMENTE saiu. **O teste que afirmava a lei antiga foi INVERTIDO com o motivo escrito, não apagado** — e a metade certa dele (*a linha NÃO SOME e o porquê é DITO*) continua travada.
+
+⚠️ **Borda declarada:** caixa **PARCIAL** no mês (saiu 20k de 41.428,57) **segue valendo o NOMINAL**, com o parcial dito no selo — a prateleira responde *"quanto o mês CUSTA"*, não *"quanto ainda falta sair"*, então não há dupla contagem.
+
+⚠️ **DIVERGÊNCIA DECLARADA:** o `parcelaMensalTotal` da carteira de empréstimos **continua excluindo FLEXIBLE** (desde 06/08) — ele responde *"quanto de parcela OBRIGATÓRIA eu pago"*, e o mútuo não tem parcela obrigatória. As duas telas mostram números diferentes pra Arafat **de propósito**; mudar o outro não foi pedido.
+
+### ⭐ A LINHA-MITIGAÇÃO (exigência do dono) — porque as duas telas respondem perguntas diferentes
+
+A **página do empréstimo fica como está** (pergunta do CONTRATO: a #2 tem vínculo, e a linha já mostra *"pago em 04/08"* ao lado do vencimento 15/10, com o cronograma rotulado *"nominal — referência, sem parcela obrigatória"* e o **Histórico de devoluções** com as 3 datas). A prateleira responde a pergunta do MÊS — e **DIZ qual é a dela**, com a data da última devolução:
+
+> *"agenda flexível — a referência de outubro ainda não teve devolução; a última saiu em 01/09"*
+
+⚠️ Guard de UI pelo **USO dentro do bloco da linha**, não pela menção no arquivo: a frase também vive no comentário que documenta o defeito, e *"o arquivo que documenta o defeito não pode ser o que o absolve"*.
+
+### ⚠️ O CAMPO QUE FALTAVA ERA A DATA — select incompleto, de novo
+
+`lerCompromissos` trazia `payments: { select: { amount: true } }` e **nenhuma data**. Sem `date` nos DOIS vínculos a lei não tem como existir — é a doença do **PIX de 7.000** (17/08): *o motor decide com um campo que a consulta não trouxe, e não dá erro: dá silêncio*. Agora lê as **duas portas** (1:1 e N:1), porque o contrato real usa as duas — e **não há dupla contagem**: o trigger `loan_installment_no_double_link` torna impossível uma parcela ter as duas.
+
+### ⚠️⚠️ REGRA 11 — 4 DEFEITOS REPOSTOS, 4 MORDERAM
+
+| defeito reposto | vermelhos |
+|---|---|
+| o selo voltando a sair do VÍNCULO (o caso de outubro) | **5** |
+| a Σ voltando a excluir FLEXIBLE não-paga | **3** |
+| a linha-mitigação saindo da leitura | **4** |
+| a lei VAZANDO pro bancário (ignora o escopo) | **4** — inclui o contrafactual da Caixa #28 |
+| o aviso arrancado do JSX (guard de UI) | **1** |
+
+⚠️ **E três sondas minhas erraram antes de eu medir certo**, cada uma com cara de defeito de prod: `saldoDevedorAtual` é **PURA** e eu a chamei como `(prisma, id)` (devolveu `NaN` e eu quase reportei saldo quebrado); `pontoDeEquilibrio` devolve **`porDia`**, não `valor` (o `undefined` caiu no meu `== null` e virou *"a apurar"* nos cartões 3 e 4); e `cartoesDoTopo` devolve **objeto**, não array (meu laço rodou zero vezes e não imprimiu cartão nenhum). *Sonda errada dá um vermelho tão convincente quanto um defeito real* — nenhuma das três virou conclusão.
+
+### ⭐ VARREDURA DOS OUTROS FLEXÍVEIS
+
+```
+⭐ Arafat — forno (2ª tranche) · 110.000 · 7× 15.714,29 · 1º venc 2027-04-15
+   devoluções: ZERO · defeito hoje: nenhum — mas é o MESMO caminho de código, então a lei cobre
+⛔ fora do FLEXIBLE (NÃO mudam — atraso ≠ não pago):
+   Caixa 1837311 #28 venc 2026-05 ← pago 2026-06   ·   #29 venc 2026-06 ← pago 2026-07
+```
+Varredura das 353 parcelas: **5 com pagamento de mês diferente do vencimento** — 3 do FLEXIBLE (o caso) e 2 atrasos legítimos da Caixa.
+
 ## ⛔⛔⛔ A CONTAGEM É A ÂNCORA — ELA SEMPRE ENTRA, PRA QUALQUER ITEM (05-06/10/2026)
 
 **Lei geral do dono, e ela SUBSTITUI a recusa de 22/09:** *"Toda contagem lançada ENTRA, sem exceção de estado do item: saldo positivo, zero ou NEGATIVO (qtd e/ou R$). (…) **Nenhum caminho termina em recusa.**"* É a régua dos líderes (SAP/Oracle/NetSuite): **a contagem física é a âncora dos registros** — o sistema cria o ajuste de CORREÇÃO, o saldo vira o contado, e negativo vira **investigação**, nunca bloqueio.
@@ -8736,7 +8813,7 @@ TypeScript strict em tudo · commits semânticos (feat/fix/refactor/docs/test/ch
 - **⚠️ "OP.CREDITO C/GARANTIA" no Banrisul da Cacula = LIQUIDAÇÃO DE CARTÃO, NÃO empréstimo (dono confirmou 17/08).** É a venda de uma bandeira específica (Visa/Master) que o Banrisul liquida por essa rubrica porque a bandeira está vinculada à garantia do empréstimo — liquidação DIRETA, sem conta intermediária. As outras rubricas de cartão do Banrisul (ANTECIP STONE, DEBITO STONE, BANRI A VISTA, VERO ANTECIPACAO, ANTECIPACAO BANRICOMPRAS) são outras bandeiras/adquirentes; **nada duplicado**. OP.CREDITO é **87% do cartão Banrisul** (a bandeira principal: agosto 153k de 176k). **Prova = o PADRÃO D+1 útil com fim de semana em BLOCO** (seg 03/08 27.000, seg 10/08 27.929, seg 17/08 24.431 após o fim de semana; dias seguidos 06→6.975, 07→8.474), igual ao resto do cartão — não é saque manual, é o banco liquidando. **NÃO reclassificar; fica Receita de Vendas.** O motor de vendas trata OP.CREDITO como CARTÃO Banrisul (D+1 útil, fim de semana em bloco). **Diferente do limite de conta garantida (cheque especial)**, que opera negativo e aparece como JUROS/IOF/"TRANSF. ENCARGOS CTA UNICA" — essa sim é dívida. (Nota: liquidação de bandeira pode atrasar 1 dia e dobrar no seguinte — ter 04/08 teve ~0 OP.CREDITO, qua 05/08 veio 42.225 = ter+qua batidos; reforça o `~ESTIMADO`.)
 - **C61021766 = operação de crédito automática Sicredi (RESOLVIDO 05/08, caso isolado)** — o Sicredi abre um contrato ("conta garantida") pra cobrir uma parcela sem saldo e raspa a conta até quitar. Aconteceu 1× na caçula: 6 lançamentos em 20-21/07/2026 (R$ 7.294,40, terminando em "LIQUIDACAO CONTRATO-C61021766") pra cobrir a #22 do C41022227. **Decisão do usuário:** NÃO cadastrar o contrato nem construir tratamento próprio. Os 6 foram **categorizados como "Juros sobre Empréstimos" (DESPESAS_FINANCEIRAS)**, não como amortização — porque a #22 do C41022227 (7.139,85) já constará paga pelo documento oficial com o split correto (principal fora do DRE); lançar os 6 como amortização contaria o principal 2×. Despesa financeira evita a duplicidade, mantém fora do resultado operacional, é honesto (não é o ideal — parte seria principal — mas o caso é isolado). **Se voltar a acontecer com frequência, avaliar tratamento próprio.** Nota relacionada: a #22 do C41022227 vai ficar paga pelo documento SEM tx vinculada (o dinheiro veio da operação de crédito, não da conta corrente) — correto, não forçar vínculo.
 - **Empréstimo 0% / FLEXIBLE — encargo SEMPRE zero no vínculo** (Sprint FLEXIBLE Arafat 06/08 — RESOLVIDO) — `computeLinkSplit` (`lib/loans/link-payment.ts`): `interestRateMonthly === 0` → `encargos = 0`, `amortização = valor pago inteiro`, `closing = opening − pago` (todo valor é baixa de passivo). Fecha o gap: devolver R$ 45.000 numa parcela nominal de R$ 41.428,57 NÃO cria R$ 3.571,43 de despesa financeira falsa. Confirm de vínculo (`vincular-parcela/confirm`): 0% sempre grava o split e move `amortization` pro valor pago. Saldo FLEXIBLE (`lib/loans/saldo.ts`) = `principal − Σamort(PAID)` (agenda nominal ignorada). UI (lista + detalhe): sem próxima parcela/progresso-por-parcela/cards de compromisso mensal, nunca "Atrasada", progresso em VALOR + histórico de devoluções. Gated 100% por `FLEXIBLE`/`rate===0` — os 8 bancários intocados. DRE inalterado (guard `encargos<=0`). Testes: `casar-pagamento.test.ts` + `saldo.test.ts`.
-- **Dívida com a Arafat — mútuo sem juros, saldo 290k** (Sprint Dívida Arafat 05/08; **números corrigidos contra o banco em 01/09**) — ⚠️ **este doc dizia R$ 340.000 e UMA devolução; o banco diz `principal = 380.000` e DUAS**: 40.000 em 06/07 e 50.000 em 04/08. Os dois caminhos chegam nos mesmos 290.000 de saldo (`380 − 90`), mas a leitura antiga escondia a devolução de julho. A caçula pegou **R$ 380.000** emprestado da **Arafat (arafet thalji, empresa do grupo)** em mai/2026 SEM JUROS; devolveu **40.000 (06/07) e 50.000 (04/08)**; faltam **290.000** (devolução conforme caixa, 40-50k/mês). ⚠️ As duas devoluções estão vinculadas por **1:1** (`reconciledTransactionId`) nas parcelas #1 e #2 — o N:1 deste contrato está VAZIO. Cadastrado no módulo de Empréstimos como: credor "Arafat (arafet thalji)", saldo 290.000, **taxa 0%**, SAC nominal 7x, `scheduleSource='FLEXIBLE'` (NUNCA marca "Atrasada" — cronograma é só referência), na conta caixa loja/cofre, com `notes` explicando o contexto. **Entrada original dos 340k NÃO registrada** (competência mai/2026, decisão do usuário). Os 50k de 04/08 reclassificados de "Juros sobre Empréstimos" pra "Amortização de Mútuo (terceiros)" (TRANSFERENCIA, não-DRE) — **só categoria, SEM vincular** (o saldo 290k já é líquido; vincular abateria de novo → 240k errado). Categoria nova "Amortização de Mútuo (terceiros)" criada pra isso. Próximas devoluções: vincular ao empréstimo (encargo 0, abate saldo exato) — gap 0% já resolvido (item acima). **PENDENTE:** a reclassificação dos 50k de 04/08 (categoria) ainda NÃO foi gravada — mostrei o preview, falta o "confirma?" do Yussef.
+- **Dívida com a Arafat — mútuo sem juros, saldo 240k** (Sprint Dívida Arafat 05/08; números corrigidos contra o banco em 01/09 e **de novo em 07/10**) — ⚠️⚠️ **ESTE DOC JÁ ERROU DUAS VEZES AQUI, e a classe é a mesma: ler UMA porta de vínculo e declarar completo.** Em 01/09 dizia *"R$ 340.000 e UMA devolução"*; em 07/10 dizia *"DUAS devoluções, com o N:1 deste contrato VAZIO"*. **O banco diz TRÊS:** 40.000 em **06/07** (1:1) · 50.000 em **04/08** (1:1) · **50.000 em 01/09 (N:1)** — a terceira entrou pela porta que o doc afirmava vazia. **`principal = 380.000` · devolvido 140.000 · saldo devedor R$ 240.000** (conferido pela `saldoDevedorAtual`, a régua da casa). A caçula pegou **R$ 380.000** emprestado da **Arafat (arafet thalji, empresa do grupo)** em mai/2026 SEM JUROS (devolução conforme caixa, 40-50k/mês — **três meses seguidos**, que é o dado que sustenta a lei de 07/10 abaixo). Cadastrado no módulo de Empréstimos como: credor "Arafat (arafet thalji)", saldo 240.000, **taxa 0%**, SAC nominal 7x, `scheduleSource='FLEXIBLE'` (NUNCA marca "Atrasada" — cronograma é só referência), na conta caixa loja/cofre, com `notes` explicando o contexto. **Entrada original NÃO registrada** (competência mai/2026, decisão do usuário). Os 50k de 04/08 reclassificados de "Juros sobre Empréstimos" pra "Amortização de Mútuo (terceiros)" (TRANSFERENCIA, não-DRE). ⚠️ **A ressalva de 05/08 (*"só categoria, SEM vincular — o saldo 290k já é líquido"*) ENVELHECEU e NÃO vale mais:** a devolução **está** vinculada hoje (1:1 na #2), e com `principal = 380.000` o saldo deriva certo nos 240.000 — não há dupla contagem. Categoria nova "Amortização de Mútuo (terceiros)" criada pra isso. Próximas devoluções: vincular ao empréstimo (encargo 0, abate saldo exato) — gap 0% já resolvido (item acima). **PENDENTE:** a reclassificação dos 50k de 04/08 (categoria) ainda NÃO foi gravada — mostrei o preview, falta o "confirma?" do Yussef.
 - **DÉBITO DE UI — linha de empréstimo NÃO cadastrado trava o usuário** (Sprint Categorizar C61021766 05/08) — quando a detecção acha um nº de contrato NÃO cadastrado (`detect-payment.ts` kind `NOT_REGISTERED`), o `pendentes-client.tsx` **remove o dropdown de categoria** e deixa só o link "cadastrar". Isso PRENDE o usuário: não dá pra categorizar nem vincular — a única saída (no C61021766) foi gravar direto no servidor. Cliente real ficaria travado. **Corrigir:** a linha deve oferecer AS DUAS opções — "cadastrar o empréstimo" (sugestão) E o dropdown de categoria normal (saída padrão). Detectar empréstimo é SUGESTÃO, nunca remove a saída padrão — mesma regra do resto do sistema (sugere, usuário decide). Vale revisar também o kind `CONTRACT`/`CANDIDATES`: hoje substituem o dropdown; idealmente oferecem "Vincular à parcela" COMO destaque, mas mantêm categorizar acessível.
 - **Casar pagamento de empréstimo — FASES 2-5 deployadas** (Sprint Casar Pagamento 04/08) — tela `/corrigir-agenda` aceita SAC+valor financiado+carência; detecção nos Pendentes (`detect-payment.ts`: contrato Sicredi direto, candidatos Banrisul/Caixa sem adivinhar); painel N:1 (`LinkPaymentModal`) agrupa débitos parciais → split amortização (fora DRE) + encargos (despesa financeira) via ponte `LoanInstallmentPayment`; DRE reinjeta encargos reais, agenda inválida → vincula sem injetar split. Aceite C41022570 validado read-only (21 tx jul = 5.951,33 → amort 4.166,66 + encargos 1.784,67). **Falta o usuário:** (1) corrigir a agenda do C41022570 pela tela (SAC, financiado 150.000, taxa 0,4868%/m pós, carência 12 juros capitalizados), (2) vincular os 21 lançamentos de julho. As 32 tx Sicredi seguem pendentes até isso.
 

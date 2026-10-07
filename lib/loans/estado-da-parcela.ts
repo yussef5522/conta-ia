@@ -79,7 +79,9 @@ export interface VereditoDaParcela {
 }
 
 /** ⚠️ 2 centavos: ruído de arredondamento, o mesmo degrau `FECHA` do resto da casa */
-const TOL = 0.02
+/** ⚠️ exportado porque a REFERÊNCIA FLEXÍVEL DO MÊS (07/10) compara o caixa do mês com o
+ *  nominal e precisa do MESMO degrau — duas tolerâncias divergiriam no primeiro centavo. */
+export const TOL = 0.02
 /** ⚠️ exportado porque a GRAVAÇÃO soma os mesmos centavos que a LEITURA — duas
  *  implementações de arredondamento divergem no primeiro meio-centavo. */
 export const arredondar2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100

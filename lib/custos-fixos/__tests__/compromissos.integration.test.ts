@@ -182,7 +182,13 @@ describe('⭐ (a) PARCELAS DE EMPRÉSTIMO — uma linha por contrato, do contrat
     expect(r.foraDaSoma.porque.join(' ')).toContain('a apurar')
   })
 
-  it('⛔⛔ o SELO vem do `estadoDaParcela`: o mútuo FLEXIBLE NUNCA é "atrasado"', async () => {
+  /**
+   * ⚠️ TÍTULO AJUSTADO EM 07/10: o selo do FLEXIBLE passou a vir da `referenciaFlexivelDoMes`
+   * (a lei do caixa do mês), não do `estadoDaParcela`. **A pergunta do teste não mudou** — o
+   * mútuo NUNCA é "atrasado" —, mudou quem a responde. O bancário segue no `estadoDaParcela`,
+   * e isso tem contrafactual próprio no fim do arquivo.
+   */
+  it('⛔⛔ o mútuo FLEXIBLE NUNCA é "atrasado", nem com o vencimento no passado', async () => {
     await criarContrato({
       lender: 'Arafat (arafet thalji)',
       contractNumber: 'MUTUO',
@@ -198,7 +204,19 @@ describe('⭐ (a) PARCELAS DE EMPRÉSTIMO — uma linha por contrato, do contrat
     expect(p.selo.toLowerCase()).not.toContain('atrasad')
   })
 
-  it('⛔⛔ FLEXIBLE não-paga FICA FORA da Σ — a prateleira promete caixa que CERTAMENTE sai', async () => {
+  /**
+   * ⚠️⚠️ **TESTE INVERTIDO EM 07/10 COM O MOTIVO ESCRITO, não apagado.** Ele afirmava
+   * *"FLEXIBLE não-paga FICA FORA da Σ — a prateleira promete caixa que CERTAMENTE sai"*.
+   *
+   * **A premissa caiu no dado:** eu supus *"um pagamento que o dono ainda não decidiu fazer"*,
+   * e ele devolveu em TRÊS meses seguidos (jul 40k · ago 50k · set 50k). Ordem dele:
+   * *"eu devolvo todo mês, esse caixa certamente sai; tela de compromissos que esconde 41 mil
+   * me faz afundar sorrindo"*.
+   *
+   * ⭐ **A metade CERTA do teste velho continua travada:** a linha NÃO SOME e o porquê é DITO
+   * — o que mudou é que ela deixou de sair da soma pra sair com a marca `~referência`.
+   */
+  it('⭐⭐ FLEXIBLE não-paga CONTA na Σ pelo NOMINAL, marcada ~referência (07/10)', async () => {
     await criarContrato({
       lender: 'Arafat (arafet thalji)',
       contractNumber: 'MUTUO',
@@ -208,11 +226,18 @@ describe('⭐ (a) PARCELAS DE EMPRÉSTIMO — uma linha por contrato, do contrat
     })
     const r = await lerCompromissos(companyId, MES, AGORA)
     expect(r.parcelas).toHaveLength(1)
-    expect(r.parcelas[0].contaNaSoma, 'a devolução é conforme o caixa').toBe(false)
-    expect(r.somaParcelas).toBe(0)
-    // ⚠️ e a linha NÃO SOME — ela aparece, e o porquê é dito
-    expect(r.foraDaSoma.n).toBeGreaterThan(0)
-    expect(r.foraDaSoma.porque.join(' ')).toContain('flexível')
+    const p = r.parcelas[0]
+    expect(p.contaNaSoma, 'o dono devolve todo mês — esse caixa sai').toBe(true)
+    expect(p.valor).toBeCloseTo(41_428.57, 2)
+    expect(r.somaParcelas).toBeCloseTo(41_428.57, 2)
+    // ⭐ e ela NÃO se passa por fato: a tela marca `~`
+    expect(p.valorEhPrevisto).toBe(true)
+    expect(p.selo).toContain('~referência flexível')
+    // ⚠️ o único motivo de ficar fora da Σ voltou a ser UM: valor a apurar
+    expect(r.foraDaSoma.n).toBe(0)
+    // ⭐ a linha-mitigação DIZ por que a referência do mês não está paga
+    expect(p.avisoFlexivel).toContain('setembro')
+    expect(p.avisoFlexivel).toContain('ainda não teve devolução')
   })
 
   it('⭐ FLEXIBLE PAGA conta — aí não é previsão, é fato (o dinheiro saiu)', async () => {
@@ -345,7 +370,11 @@ describe('⛔⛔ O INVARIANTE DO DONO: Σ(linhas que contam) == Σ da prateleira
       scheduleSource: 'IMPORTED',
       parcelas: [{ number: 1, dia: 26, payment: 2_325.59, interest: 200 }],
     })
-    // ⚠️ o FLEXIBLE entra na LISTA e NÃO na soma — é o caso que quebra a conta ingênua
+    /**
+     * ⚠️ Desde 07/10 o FLEXIBLE **entra na soma pelo nominal** (ajuste do dono). O caso que
+     * quebra a conta ingênua passou a ser o CARTÃO sem fatura importada, logo abaixo — e o
+     * invariante continua sendo o mesmo: Σ(linhas que contam) == Σ da prateleira.
+     */
     await criarContrato({
       lender: 'Arafat (arafet thalji)',
       contractNumber: 'MUTUO',
@@ -380,9 +409,10 @@ describe('⛔⛔ O INVARIANTE DO DONO: Σ(linhas que contam) == Σ da prateleira
     expect(somaDasLinhasDeParcela).toBeCloseTo(r.somaParcelas, 2)
     expect(somaDasLinhasDeFatura).toBeCloseTo(r.somaFaturas, 2)
     expect(r.total).toBeCloseTo(r.somaParcelas + r.somaFaturas, 2)
-    expect(r.total).toBeCloseTo(2_325.59 + 1_000, 2)
-    // ⭐ as duas linhas fora da soma estão CONTADAS e EXPLICADAS
-    expect(r.foraDaSoma.n).toBe(2)
+    // ⭐ 07/10: o nominal do FLEXIBLE entra na conta
+    expect(r.total).toBeCloseTo(2_325.59 + 41_428.57 + 1_000, 2)
+    // ⭐ a linha fora da soma está CONTADA e EXPLICADA (o cartão sem fatura importada)
+    expect(r.foraDaSoma.n).toBe(1)
     expect(r.parcelas).toHaveLength(2)
     expect(r.faturas).toHaveLength(2)
   })
@@ -434,5 +464,252 @@ describe('⭐⭐ A CONDIÇÃO DA DUPLA CONTAGEM — medida, não suposta', () =>
 
     const r = await lerCompromissos(companyId, MES, AGORA, undefined, [cat.id])
     expect(r.jurosJaNoBanco).toContain('prateleira do banco')
+  })
+})
+
+/**
+ * ⭐⭐⭐ O CASO ARAFAT, COM OS NÚMEROS REAIS DE PROD, NOS DOIS MESES (07/10/2026).
+ *
+ * ⛔ **O defeito que motivou a lei:** outubro mostrava *"parcela 2 · R$ 50.000 · paga"* e o
+ * dono não havia pago outubro — o selo vinha do pagamento de **AGOSTO**, porque a devolução
+ * promove a próxima parcela aberta por NÚMERO e a agenda nominal só começa em setembro.
+ *
+ * ⚠️ O cenário é montado com as datas e valores MEDIDOS em prod: agenda 7× R$ 41.428,57 a
+ * partir de 15/09, devoluções de **40.000 em 06/07** (1:1), **50.000 em 04/08** (1:1) e
+ * **50.000 em 01/09** (N:1). Fixture que não reproduz a ordem real não prova nada sobre prod.
+ */
+describe('⭐⭐⭐ ARAFAT — a referência do mês é paga pelo CAIXA do mês (os dois meses)', () => {
+  const CNPJ_ARAFAT = '70707070707071'
+  let coId = ''
+  let ctId = ''
+
+  beforeEach(async () => {
+    await prisma.company.deleteMany({ where: { cnpj: CNPJ_ARAFAT } })
+    const c = await prisma.company.create({ data: { cnpj: CNPJ_ARAFAT, name: 'CASO ARAFAT' } })
+    coId = c.id
+    const conta = await prisma.bankAccount.create({
+      data: { companyId: coId, name: 'caixa loja/cofre', bankName: 'teste', accountType: 'CHECKING', balance: 0 },
+    })
+    ctId = conta.id
+
+    const l = await prisma.loan.create({
+      data: {
+        companyId: coId,
+        bankAccountId: ctId,
+        lender: 'Arafat (arafet thalji)',
+        principal: 380_000,
+        interestRateMonthly: 0,
+        termMonths: 7,
+        amortizationSystem: 'SAC',
+        firstDueDate: new Date(Date.UTC(2026, 8, 15)),
+        disbursementDate: new Date(Date.UTC(2026, 4, 1)),
+        status: 'ACTIVE',
+        rateType: 'PRE',
+        scheduleSource: 'FLEXIBLE',
+      } as never,
+    })
+
+    // a agenda NOMINAL: 7× 41.428,57 do dia 15, de setembro a março
+    for (let n = 1; n <= 7; n++) {
+      await prisma.loanInstallment.create({
+        data: {
+          loanId: l.id,
+          number: n,
+          dueDate: new Date(Date.UTC(2026, 7 + n, 15)),
+          openingBalance: 380_000,
+          interest: 0,
+          amortization: 41_428.57,
+          payment: 41_428.57,
+          closingBalance: 380_000 - 41_428.57 * n,
+          status: n <= 3 ? 'PAID' : 'OPEN',
+        } as never,
+      })
+    }
+
+    const tx = async (d: Date, valor: number, desc: string) =>
+      prisma.transaction.create({
+        data: {
+          bankAccountId: ctId, date: d, description: desc, amount: valor,
+          type: 'DEBIT', lifecycle: 'EFFECTED', status: 'RECONCILED',
+        } as never,
+      })
+
+    const ins = await prisma.loanInstallment.findMany({ where: { loanId: l.id }, orderBy: { number: 'asc' } })
+
+    // ⚠️ as DUAS portas, como em prod: #1 e #2 por 1:1, #3 por N:1
+    const t1 = await tx(new Date(Date.UTC(2026, 6, 6)), 40_000, 'arafat ')
+    await prisma.loanInstallment.update({
+      where: { id: ins[0].id },
+      data: { reconciledTransactionId: t1.id, paidTotal: 40_000, paidDate: t1.date } as never,
+    })
+    const t2 = await tx(new Date(Date.UTC(2026, 7, 4)), 50_000, 'Arafat emprestimo')
+    await prisma.loanInstallment.update({
+      where: { id: ins[1].id },
+      data: { reconciledTransactionId: t2.id, paidTotal: 50_000, paidDate: t2.date } as never,
+    })
+    const t3 = await tx(new Date(Date.UTC(2026, 8, 1)), 50_000, 'Devolução de mútuo — Arafat (parcela #3)')
+    await prisma.loanInstallmentPayment.create({
+      data: { installmentId: ins[2].id, transactionId: t3.id, amount: 50_000 } as never,
+    })
+    await prisma.loanInstallment.update({
+      where: { id: ins[2].id },
+      data: { paidTotal: 50_000, paidDate: t3.date } as never,
+    })
+  })
+
+  afterEach(async () => {
+    await prisma.company.deleteMany({ where: { cnpj: CNPJ_ARAFAT } })
+  })
+
+  it('⭐ SETEMBRO mostra PAGA — e pelo caixa de setembro (50.000), não pelos 40.000 de julho', async () => {
+    const r = await lerCompromissos(coId, '2026-09', new Date('2026-09-20T12:00:00Z'))
+    const p = r.parcelas.find((x) => x.contrato.startsWith('Arafat'))!
+    expect(p.numero, 'a referência de setembro é a #1').toBe(1)
+    expect(p.estado).toBe('PAGA')
+    expect(p.selo).toBe('paga')
+    // ⛔ o valor é o caixa que REALMENTE saiu no mês — os 40.000 são de JULHO
+    expect(p.valor).toBeCloseTo(50_000, 2)
+    expect(p.valorEhPrevisto).toBe(false)
+    expect(p.contaNaSoma).toBe(true)
+    // ⭐ paga não ganha linha-mitigação (frase sobre o que não acontece é ruído)
+    expect(p.avisoFlexivel).toBeNull()
+  })
+
+  it('⛔⛔ OUTUBRO mostra A VENCER (vence dia 15) — o defeito que o dono reportou', async () => {
+    const r = await lerCompromissos(coId, '2026-10', new Date('2026-10-07T12:00:00Z'))
+    const p = r.parcelas.find((x) => x.contrato.startsWith('Arafat'))!
+    expect(p.numero, 'a referência de outubro é a #2').toBe(2)
+    // ⛔ ERA 'PAGA' pelo pagamento de 04/08 — este é o red-then-green do caso
+    expect(p.estado).toBe('A_VENCER')
+    expect(p.selo).toContain('~referência flexível')
+    expect(p.diaDoVencimento).toBe(15)
+    // ⭐ e o nominal CONTA na Σ (ajuste do dono): esconder 41 mil o faria afundar sorrindo
+    expect(p.valor).toBeCloseTo(41_428.57, 2)
+    expect(p.contaNaSoma).toBe(true)
+    expect(r.somaParcelas).toBeCloseTo(41_428.57, 2)
+    // ⭐ a linha-mitigação NOMEIA a última devolução (01/09), que é o pedido do dono
+    expect(p.avisoFlexivel).toContain('outubro')
+    expect(p.avisoFlexivel).toContain('01/09')
+  })
+
+  it('⭐ NOVEMBRO também é a vencer — a devolução de 01/09 não paga o mês de novembro', async () => {
+    const r = await lerCompromissos(coId, '2026-11', new Date('2026-11-05T12:00:00Z'))
+    const p = r.parcelas.find((x) => x.contrato.startsWith('Arafat'))!
+    expect(p.numero).toBe(3)
+    // ⛔ a #3 é a que o vínculo N:1 chama de paga — e novembro não teve caixa
+    expect(p.estado).toBe('A_VENCER')
+    expect(p.avisoFlexivel).toContain('novembro')
+  })
+
+  it('⭐⭐ quando o caixa do mês cobre o nominal, vira paga SOZINHO — e o vínculo é irrelevante', async () => {
+    // o dono devolve 50.000 em 10/10; o vínculo cai na #4 (dezembro), como a alocação real faz
+    const tx = await prisma.transaction.create({
+      data: {
+        bankAccountId: ctId, date: new Date(Date.UTC(2026, 9, 10)), description: 'devolucao arafat',
+        amount: 50_000, type: 'DEBIT', lifecycle: 'EFFECTED', status: 'RECONCILED',
+      } as never,
+    })
+    const quarta = await prisma.loanInstallment.findFirstOrThrow({
+      where: { loan: { companyId: coId }, number: 4 },
+    })
+    await prisma.loanInstallmentPayment.create({
+      data: { installmentId: quarta.id, transactionId: tx.id, amount: 50_000 } as never,
+    })
+
+    const r = await lerCompromissos(coId, '2026-10', new Date('2026-10-20T12:00:00Z'))
+    const p = r.parcelas.find((x) => x.contrato.startsWith('Arafat'))!
+    // ⭐ OUTUBRO fecha mesmo com o vínculo pendurado em DEZEMBRO — a lei é imune à ordem
+    expect(p.estado).toBe('PAGA')
+    expect(p.valor).toBeCloseTo(50_000, 2)
+    expect(p.avisoFlexivel).toBeNull()
+  })
+
+  it('⚠️ caixa PARCIAL no mês segue valendo o NOMINAL, com o parcial dito no selo', async () => {
+    const tx = await prisma.transaction.create({
+      data: {
+        bankAccountId: ctId, date: new Date(Date.UTC(2026, 9, 12)), description: 'devolucao parcial',
+        amount: 20_000, type: 'DEBIT', lifecycle: 'EFFECTED', status: 'RECONCILED',
+      } as never,
+    })
+    const quarta = await prisma.loanInstallment.findFirstOrThrow({
+      where: { loan: { companyId: coId }, number: 4 },
+    })
+    await prisma.loanInstallmentPayment.create({
+      data: { installmentId: quarta.id, transactionId: tx.id, amount: 20_000 } as never,
+    })
+
+    const r = await lerCompromissos(coId, '2026-10', new Date('2026-10-20T12:00:00Z'))
+    const p = r.parcelas.find((x) => x.contrato.startsWith('Arafat'))!
+    expect(p.estado).toBe('A_VENCER')
+    // ⭐ a prateleira responde "quanto o mês CUSTA", não "quanto ainda falta sair"
+    expect(p.valor).toBeCloseTo(41_428.57, 2)
+    expect(p.selo).toContain('devolvido')
+    expect(p.avisoFlexivel).toContain('20.000')
+  })
+})
+
+/**
+ * ⛔⛔ O CONTRAFACTUAL QUE IMPEDE A LEI DE VAZAR PRO BANCÁRIO (07/10/2026).
+ *
+ * Na parcela de banco *"PAID gravado é DECISÃO"* (02/10) tem que continuar valendo. O caso
+ * real: a **Caixa 1837311 #28** venceu em **maio** e foi debitada em **junho** — no recorte de
+ * maio ela **É paga, com atraso**. Se a lei da referência flexível alcançasse o bancário, a
+ * tela diria *"a vencer"* sobre dinheiro que já saiu, e o dono pagaria duas vezes.
+ */
+describe('⛔⛔ A LEI NÃO ALCANÇA O BANCÁRIO — atraso ≠ não pago', () => {
+  const CNPJ_CX = '70707070707072'
+  let coId = ''
+
+  beforeEach(async () => {
+    await prisma.company.deleteMany({ where: { cnpj: CNPJ_CX } })
+    const c = await prisma.company.create({ data: { cnpj: CNPJ_CX, name: 'CONTRAFACTUAL CAIXA' } })
+    coId = c.id
+    const conta = await prisma.bankAccount.create({
+      data: { companyId: coId, name: 'banco caixa', bankName: 'teste', accountType: 'CHECKING', balance: 0 },
+    })
+    const l = await prisma.loan.create({
+      data: {
+        companyId: coId, bankAccountId: conta.id, lender: 'Caixa Econômica Federal',
+        contractNumber: '000000000001837311', principal: 150_000, interestRateMonthly: 0.005,
+        termMonths: 36, amortizationSystem: 'PRICE', firstDueDate: new Date(Date.UTC(2026, 4, 26)),
+        disbursementDate: new Date(Date.UTC(2024, 10, 26)), status: 'ACTIVE',
+        rateType: 'POS', scheduleSource: 'IMPORTED',
+      } as never,
+    })
+    // #28 vence 26/05 e foi PAGA em 10/06 — o mês do pagamento é OUTRO
+    const i = await prisma.loanInstallment.create({
+      data: {
+        loanId: l.id, number: 28, dueDate: new Date(Date.UTC(2026, 4, 26)),
+        openingBalance: 30_000, interest: 311.26, amortization: 2_615.76, payment: 2_927.02,
+        closingBalance: 27_384.24, status: 'PAID',
+      } as never,
+    })
+    const tx = await prisma.transaction.create({
+      data: {
+        bankAccountId: conta.id, date: new Date(Date.UTC(2026, 5, 10)),
+        description: 'DEBITO PRESTA SIEMP', amount: 2_927.02, type: 'DEBIT',
+        lifecycle: 'EFFECTED', status: 'RECONCILED',
+      } as never,
+    })
+    await prisma.loanInstallment.update({
+      where: { id: i.id },
+      data: { reconciledTransactionId: tx.id, paidTotal: 2_927.02, paidDate: tx.date } as never,
+    })
+  })
+
+  afterEach(async () => {
+    await prisma.company.deleteMany({ where: { cnpj: CNPJ_CX } })
+  })
+
+  it('⛔ a #28 continua PAGA no recorte de MAIO, mesmo paga em JUNHO', async () => {
+    const r = await lerCompromissos(coId, '2026-05', new Date('2026-05-30T12:00:00Z'))
+    expect(r.parcelas).toHaveLength(1)
+    const p = r.parcelas[0]
+    expect(p.flexible).toBe(false)
+    expect(p.estado, 'PAID gravado é DECISÃO — atraso não é "a vencer"').toBe('PAGA')
+    expect(p.valor).toBeCloseTo(2_927.02, 2)
+    expect(p.contaNaSoma).toBe(true)
+    // ⭐ e o bancário NUNCA ganha a linha-mitigação do flexível
+    expect(p.avisoFlexivel).toBeNull()
   })
 })
