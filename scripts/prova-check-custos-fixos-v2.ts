@@ -31,11 +31,20 @@ async function main() {
   }
   console.log(`\nANTES → marcações ${antes.categorias} · chips ${antes.chips}`)
 
-  // ⚠️ uma categoria REAL da empresa, pra o FK não ser o que recusa
-  const cat = await prisma.category.findFirstOrThrow({
+  /**
+   * ⚠️⚠️ **CATEGORIAS DISTINTAS PRA CADA CASO LEGÍTIMO, e isso me mordeu na 1ª rodada:** os
+   * três legítimos usavam a MESMA `(companyId, categoryId)` e o `@@unique` recusou o 2º e o
+   * 3º — o script reportou *"RECUSOU E NÃO DEVIA"* sobre um CHECK que estava certo. **Prova
+   * mal montada acusa o código inocente.**
+   */
+  const cats = await prisma.category.findMany({
     where: { companyId: CO, type: 'EXPENSE' },
     select: { id: true, name: true },
+    take: 6,
+    orderBy: { name: 'asc' },
   })
+  if (cats.length < 6) throw new Error('preciso de 6 categorias de despesa pra montar a prova')
+  const cat = cats[0]
   const user = await prisma.user.findFirstOrThrow({ select: { id: true } })
   const rnd = (n: number) => `provav2_${n}`
 
@@ -80,13 +89,13 @@ async function main() {
       nome: 'LEGÍTIMO: BANCO com rastro completo',
       sql: `INSERT INTO "custo_fixo_categoria"
               ("id","companyId","categoryId","marcadoEm","prateleira","prateleiraDefinidaPorId","prateleiraDefinidaEm")
-            VALUES ('${rnd(6)}','${CO}','${cat.id}',now(),'BANCO','${user.id}',now())`,
+            VALUES ('${rnd(6)}','${CO}','${cats[1].id}',now(),'BANCO','${user.id}',now())`,
       recusaPor: null,
     },
     {
       nome: 'LEGÍTIMO: CASA sem rastro (nunca foi movida — é o default)',
       sql: `INSERT INTO "custo_fixo_categoria" ("id","companyId","categoryId","marcadoEm","prateleira")
-            VALUES ('${rnd(7)}','${CO}','${cat.id}',now(),'CASA')`,
+            VALUES ('${rnd(7)}','${CO}','${cats[2].id}',now(),'CASA')`,
       recusaPor: null,
     },
     /**
@@ -97,7 +106,7 @@ async function main() {
     {
       nome: '⭐ PRATELEIRA NOVA ("COFRE") entra — o banco não guarda vocabulário',
       sql: `INSERT INTO "custo_fixo_categoria" ("id","companyId","categoryId","marcadoEm","prateleira")
-            VALUES ('${rnd(8)}','${CO}','${cat.id}',now(),'COFRE')`,
+            VALUES ('${rnd(8)}','${CO}','${cats[3].id}',now(),'COFRE')`,
       recusaPor: null,
     },
     // ─────────── o unique dos chips ───────────
@@ -111,7 +120,12 @@ async function main() {
       nome: 'chips DUPLICADO pro mesmo (empresa, usuário)',
       sql: `INSERT INTO "custo_fixo_chips" ("id","companyId","userId","casa","banco","compromissos","atualizadoEm")
             VALUES ('${rnd(10)}','${CO}','${user.id}',false,false,false,now())`,
-      recusaPor: 'custo_fixo_chips_companyId_userId_key',
+      /**
+       * ⚠️ O erro cru do Prisma mostra as COLUNAS da chave (`Key ("companyId","userId")=…`),
+       * **não** o nome do índice — casar pelo nome deu *"recusado pela constraint ERRADA"*
+       * sobre o índice certo na 1ª rodada.
+       */
+      recusaPor: 'Key ("companyId", "userId")',
     },
   ]
 
