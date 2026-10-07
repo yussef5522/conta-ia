@@ -2074,6 +2074,125 @@ marcações 26 → 26 · planos 0 → 0 · ⭐ ZERO ESCRITA
 
 📋 **FICA PRO DONO:** as **26 marcadas** estão esperando plano. Um clique em *"preencher todos com o realizado de setembro"* resolve **21** delas (R$ 109.139,50); as **8 que não tiveram gasto em setembro** (pró-labore, provisão de férias, seguro predial, tributos federais, marketing, coleta de lixo, ponto eletrônico, INSS) **precisam do número dele** — e a prévia as nomeia uma por uma, em vez de semear zero.
 
+## ⭐⭐⭐ CUSTOS FIXOS v2 — AS 3 PRATELEIRAS LIGÁVEIS + O 4º NÚMERO (07/10/2026)
+
+**Ordem do dono:** *"🏠 A CASA · 🏦 O BANCO · 📅 COMPROMISSOS DO MÊS, cada uma com interruptor próprio; os chips recalculam os cartões AO VIVO; e o 4º cartão PRA NÃO AFUNDAR é FIXO, não depende dos chips. INVESTIGAR ANTES como os contratos guardam parcela — retrato no relatório."*
+
+### ⭐⭐ O RETRATO VEIO PRIMEIRO, E ELE DECIDIU TRÊS COISAS
+
+| pergunta | o que o dado disse |
+|---|---|
+| **como o contrato guarda a parcela?** | ⭐ **é LINHA de `loan_installments`** (number, dueDate, payment, interest, amortization), **nunca um campo "valor da parcela" no contrato**. Dia do vencimento **constante** em alguns (Arafat 15, Sicredi C41022227 15) e **variável** noutros (Banrisul 002100057538834: 26, 27, 2, 28). Valor **fixo** no PRE (2 valores distintos em 36 parcelas) e **tabela** no POS (76 valores distintos em 76 parcelas) |
+| **quanto vence em outubro?** | **9 parcelas · R$ 94.051,51** — e uma delas já **PAGA** (o mútuo Arafat, R$ 50.000 debitados em 15/10) |
+| **a dupla contagem existe?** | ⛔ **medida: ZERO hoje.** Das **58** transações que pagaram parcela, **2** têm categoria e **NENHUMA** tem categoria fixa; dos **6** pagamentos de fatura, **nenhum** tem categoria; compras de cartão dentro do `whereFluxoCaixa`: **0** |
+| **as faturas de outubro?** | ⛔ **NENHUMA importada** nos 4 cartões (a do Carter fechou dia 5 e não entrou) |
+
+**⚠️⚠️ E O RETRATO DERRUBOU UMA FRASE DO PRÓPRIO PEDIDO.** A ordem dizia *"se o juro da parcela já estiver em categoria marcada no BANCO, a tela DIZ em 1 linha"* — e a CONDIÇÃO é **FALSA**: os juros das prateleiras do banco vêm de **conta garantida e tarifas**, não das parcelas (as 58 transações de parcela não têm categoria nenhuma). A condição está implementada ao pé da letra e **a frase não aparece**, porque *frase sobre o que não acontece é ruído que treina o dono a não ler*.
+
+### ⛔⛔ A PRATELEIRA É COLUNA, E O VOCABULÁRIO **NÃO** MORA NO BANCO
+
+`custo_fixo_categoria` ganhou `prateleira TEXT NOT NULL DEFAULT 'CASA'` + rastro (`prateleiraDefinidaPorId`/`Em`, nullable).
+
+- ⭐ **O default `CASA` é a direção SEGURA:** as **26** categorias que o dono marcou em 06/10 continuam onde ele as pôs — conferido em prod, `CASA: 26`. Um default `BANCO` teria movido 26 linhas sem ninguém pedir.
+- ⛔⛔ **CHECK de FORMA, nunca de VOCABULÁRIO** (`prateleira = upper(prateleira) AND length(trim(…)) > 0`). A lição de 21/09 foi caríssima: CHECK com lista fechada numa tabela de CONFIGURAÇÃO virou parede **em um dia**, e migration de ALTER aplicada não se reescreve. **Provado em prod: a prateleira nova `'COFRE'` ENTRA no banco** — quem a recusa é o `z.enum(PRATELEIRAS)` da rota (400), que **DERIVA** da lista do TypeScript. Repetir a lista à mão foi o que deixou 2 gestos mortos por dias em 25/09.
+- ⛔⛔ **REGRA 13 no CHECK do rastro:** o `IS NOT NULL` vem **explícito e antes** da comparação de conteúdo. `length(trim(NULL))` não é 0, é NULL, e NULL faz o CHECK **passar** — o furo exato do `chk_aviso_acao_completa` de 04/10. **Medido no próprio Postgres:** forma ingênua → `NULL → PASSARIA`; a nossa → `false → RECUSA`.
+
+### ⭐⭐⭐ UMA RÉGUA, DOIS LEITORES — é o que faz o "ao vivo" ser possível
+
+`lib/custos-fixos/prateleira.ts` é **PURO** e dono de *"quanto soma o que está ligado"*. O **SERVIDOR** chama `cartoesDoTopo` pro 1º paint (com os chips persistidos) e a **TELA** chama a MESMA no toggle. ⛔ Aritmética própria na tela faria os **8 estados dos chips** serem 8 chances de ela mostrar um número que o servidor não assina.
+
+**⚠️ E O `pontoDeEquilibrio` MUDOU DE CASA por causa de BUNDLE:** a fórmula vivia em `margem.ts`, que importa `prisma` no topo — importá-la num `'use client'` arrastaria o Prisma pro navegador. Ela **mudou** de arquivo e o `margem.ts` **REEXPORTA**: os importadores de sempre seguem funcionando e **existe uma fórmula só**.
+
+### ⛔⛔⛔ O GUARD DE DUPLA CONTAGEM — ESTRUTURAL, E COM CASO ARMADO
+
+`SEM_DUPLA_CONTAGEM` tira do realizado o **pagamento de fatura COM vínculo** (⛔ a flag `isCardPayment` sozinha nunca decide — a régua de 20/09) e a parcela pelas **DUAS portas** do empréstimo (1:1 e N:1 — checar uma e declarar resolvido foi o bug de 14/08).
+
+- ⚠️ **Composto com `AND`, nunca spread:** o `whereFluxoCaixa` **tem um `NOT` no topo**, e espalhar o guard por cima o **apagaria em silêncio** → transferência própria voltaria a contar como custo fixo. Há teste com a transferência real de R$ 25.000 provando isso.
+- ⚠️⚠️ **O "caso armado" é o ponto do arquivo de teste.** Como o estrago em prod é **zero hoje**, um teste montado com o dado de hoje passaria **VERDE com o guard removido** — selo de graça. Então ele **arma** o estado ruim (a transação da parcela carregando a categoria do BANCO) e mede o **contrafactual** da régua velha: *"sem o guard, ela somaria o mesmo real"*.
+
+### ⭐⭐ 📅 COMPROMISSOS — ZERO MOTOR NOVO
+
+`estadoDaParcela` (selo) · `forecastProxima` (valor do POS) · `faturaNetTotal` + `estadoDaFatura` (fatura) · `vencimentoDaCompetencia` e o irmão novo `fechamentoDaCompetencia`, que mora **junto dele** (derivar as datas da fatura virtual do PJ é UMA pergunta, com um endereço só).
+
+**⚠️⚠️ DESVIO DELIBERADO DA LETRA DA ORDEM, e o motivo é o CLAUDE.md:** o pedido diz *"selo pago/vence/atrasado pelo `statusDaConta`"* — mas parcela tem dono próprio (`estadoDaParcela`, 02/10), que sabe três coisas que o `statusDaConta` não sabe: **PARCIAL** (a parcela paga em mordidas), a **isenção do FLEXIBLE** e *"a soma só PROMOVE"*. Usar o `statusDaConta` aqui chamaria o mútuo da Arafat de **atrasado** — o que este doc proíbe por escrito. **Provado:** venc dia 15 com "hoje" depois, e o selo diz **paga**, nunca atrasada.
+
+**AS RÉGUAS DE HONESTIDADE, todas travadas em teste:**
+- ⛔⛔ **FLEXIBLE não-paga fica FORA da Σ** — a prateleira promete *"caixa que CERTAMENTE sai"*, e a agenda do mútuo é **nominal**. Somar R$ 41.428,57 faria o 4º cartão exigir vender 41 mil a mais por um pagamento que o dono ainda não decidiu. É a régua do `parcelaMensalTotal` (06/08). **Paga, ela conta** — aí é fato.
+- ⛔ **POS que é a PRÓXIMA sem parcela casada é "a apurar"**, nunca o nominal: no C41022227 o nominal é 4.385,96 e o real saiu **6.903,45**. ⚠️ Este teste **nasceu errado e o código me corrigiu** — eu esperava o nominal marcado; a régua do `forecastProxima` (*"sem casada → a apurar, nunca inventa"*) é a certa. O ramo do nominal-marcado existe pra a parcela que **não é a próxima** e também cai no mês.
+- ⛔⛔ **Fatura NÃO IMPORTADA é estado PRÓPRIO, nunca R$ 0,00.** Medido: as 4 de outubro não existem; zero diria *"este mês o cartão não custou nada"* na véspera do vencimento.
+- ⚠️ **O que fica fora da Σ é CONTADO e EXPLICADO** na tela (`foraDaSoma`), nunca escondido.
+
+### ⭐⭐ O 4º CARTÃO IGNORA OS CHIPS — e é a razão de ele existir
+
+Os três primeiros servem pra **ensaiar cenário** (*"como seria sem o banco?"*); o 4º responde *"quanto preciso vender HOJE pra não afundar"*, e a resposta **não muda** porque ele desligou um interruptor. Um 4º cartão que obedecesse seria o cartão do equilíbrio com outro nome. **Provado em prod: valor IDÊNTICO nas 8 combinações.** Coral-ESCURO por **token** (`--fam-coral-mid` + `--prod-acao-ink`, que inverte nos dois temas) — hex cravado ali ficaria ilegível no escuro.
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU UM DEFEITO MEU: PRATELEIRA VAZIA VIRANDO "A APURAR"
+
+Em **setembro** a Caçula tem **R$ 95.618,64** de plano na casa e **R$ 103.051,67** de compromisso medido — e o 1º cartão dizia **"a apurar"**, porque a prateleira do BANCO está **VAZIA** (zero categorias) com o chip ligado, e a cascata tratava isso como *"não declarou"*. A frase pedia *"declare o que cada custo fixo do banco deve custar"* sobre uma prateleira **que não tem UMA linha** — e o dono não teria saída a não ser desligar um interruptor que ele nem sabe por que está no caminho.
+
+⭐ **A régua honesta: prateleira VAZIA vale ZERO** — é um FATO (*"não tem nada aqui"*), igual a `compromissos: 0`. O *"a apurar"* fica pro caso que ele existe pra cobrir: a prateleira que **TEM linha e nenhuma com plano**. ⛔ E **não afrouxou**: há teste do caso oposto (com linha, sem plano → segue "a apurar").
+
+### ⚠️⚠️ REGRA 11 — 10 DEFEITOS REPOSTOS, E UM VEIO VERDE: A 11ª "MENÇÃO, NÃO USO"
+
+Morderam: o guard de dupla contagem removido (**2**) · o guard **espalhado** por cima do `NOT` (**2**) · FLEXIBLE não-paga entrando na Σ (**2**) · fatura não importada virando R$ 0,00 (**1**) · prateleira ligada sem plano valendo zero (**3**) · o 4º cartão obedecendo aos chips (**3**) · CHECK com vocabulário fechado (**1**) · MOVER como 2ª porta (**1**) · prateleira VAZIA virando "a apurar" (**1**).
+
+⛔⛔ **A TELA COM CONTA PRÓPRIA VEIO VERDE** — e a causa é nova: o `usosDe` filtrava **LINHA** que começa com `import`, então num import **MULTILINHA** o nome sobrevivia na 2ª linha e a **MENÇÃO** bastava. Repus a aritmética na tela e os 168 passaram. ⭐ **A cura não é um regex melhor por guard: é UM detector, UM lugar** (`__tests__/regras-ui/_leitura-de-fonte.ts`) — duas cópias do mesmo detector divergem, e foi assim que esta passou cega. E a asserção virou **estrutural**: o corpo do `useMemo` dos cartões não pode ter `+`, `/` nem `?? 0`.
+
+**⚠️ 4 GUARDS DE 06/10 REAPONTADOS com o motivo escrito** (o alvo mudou de casa — *grep não distingue "refatorei" de "quebrei"*), **2 deles MAIS FORTES**: o dos cartões passou a exigir a lib compartilhada **e** proibir aritmética (antes nem olhava); o do ✓ do seletor passou a exigir que o ✓ **diga ONDE** a categoria está, e que marcar/mover/tirar caiam na **mesma porta**.
+
+### PROVADO EM PROD, NAVEGANDO, 2 VIEWPORTS × 2 TEMAS × 8 ESTADOS DOS CHIPS
+
+```
+OUTUBRO (o dono ainda não declarou o plano do mês)
+  🏠 CASA 26 linhas · planejado a apurar · realizado R$ 54.125,96
+  🏦 BANCO 0 linhas   📅 COMPROMISSOS 9 parcelas + 4 faturas = R$ 94.051,51
+  as 4 faturas de 10/2026: NÃO IMPORTADAS (a apurar, nunca R$ 0,00) — fora da Σ, com o porquê
+  juro já no banco? ⭐ a condição é FALSA — a frase não aparece
+
+AS 9 PARCELAS
+  Sicredi C61021346-2 #4 · dia 10 · ~R$ 4.337,52 [A_VENCER] · faltam 33 (termina 06/2029)
+  Banrisul 002100064956967 #25 · dia 11 · R$ 4.092,02 [A_VENCER] · faltam 12 (termina 09/2027)
+  ⭐ Arafat #2 · dia 15 · R$ 50.000,00 [PAGA] · agenda flexível — NUNCA "atrasada"
+  Sicredi C41022227-1 #25 · dia 15 · ~R$ 6.903,45   Caixa 1827478 #34 · dia 24 · ~R$ 7.526,06
+  Sicredi C41033828-8 #23 · dia 25 · R$ 10.234,35 · faltam 2 (termina 11/2026)
+
+OS 8 ESTADOS (pela MESMA função que a tela chama no toggle)
+  [🏠🏦📅] CASA+BANCO+COMPROMISSOS   [·🏦📅] R$ 94.051,51 · dia R$ 3.033,92 · equilíbrio R$ 5.883,40
+  [··📅] COMPROMISSOS R$ 94.051,51   [···] NADA NA CONTA — "ligue pelo menos uma"
+  ⛔ combinações que FECHAM: 8 de 8
+  ⭐ "pra não afundar" nas 8: IDÊNTICO (não obedece aos chips)
+
+SETEMBRO (o mês em que ele JÁ declarou)
+  🏠 CASA planejado R$ 95.618,64 · realizado R$ 107.602,80 · 113% pago
+  📅 COMPROMISSOS R$ 103.051,67 (parcelas 84.051,51 + faturas 19.000,16)
+  1º CASA+BANCO+COMPROMISSOS R$ 198.670,31 · 2º POR DIA R$ 6.622,34 (30 dias)
+  3º EQUILÍBRIO R$ 13.473,07 · 4º PRA NÃO AFUNDAR R$ 13.473,07 (÷ margem 49,2%)
+  ⛔ Σ(linhas planejado) 95.618,64 × subtotal 95.618,64 → ⭐ BATE
+  ⛔ composição do 1º cartão 198.670,31 × cartão 198.670,31 → ⭐ BATE
+
+OS JUROS MIGRANDO (rollback forçado): CASA 26 → 23 · BANCO 0 → 3
+  Σ(linhas) == subtotal nas duas ✓ · nenhuma linha em DUAS prateleiras ✓
+
+CELULAR 200/503ms · DESKTOP 200/132ms · JS 868 KB · CSS 174 KB
+  ✓ 16/16 peças · ✓ zero hex no chunk DESTA tela · ✓ os 10 tokens nos DOIS temas
+POST MARCAR prateleira='COFRE' → 400 ⭐ (o zod derivado de PRATELEIRAS)
+marcações 26 → 26 · no banco 0 → 0 · planos 19 → 19 · chips 0 → 0 · ⭐ INTACTO
+```
+
+**921 arquivos · 11.998 verdes · TS 0 · migration ADITIVA (ADD COLUMN c/ DEFAULT em 26 linhas + 2 CHECKs + 1 CREATE TABLE) · `pg_dump pre-custos-fixos-v2-20261007034735.dump` (8.429.883 bytes, tamanho conferido) · deploys 4/4 (`i3xXFKwKQuCBNvg1DIUU3`, `oGDanLFHwz15b9uFcF_Hz`) · Δ bundle +16 KB.**
+
+**⚠️⚠️ TRÊS ESCORREGÕES MEUS NESTA SESSÃO, os três registrados:**
+1. **O `pg_dump` saiu com 0 BYTES e eu quase segui** — o `. ./.env` não exporta o `DATABASE_URL` (o `$` é escapado pro dotenv). ***`pg_dump` só conta depois de conferir o TAMANHO*** (a cicatriz de 28/09, cometida de novo). E na 2ª tentativa **a exceção do Node vazou a URI com a senha no meu output** — comando que toca `DATABASE_URL` roda com `stdio` silenciado **e o `catch` não imprime a mensagem**.
+2. **O POST de CHIPS estava DENTRO do `$transaction`** da prova achando que o rollback o desfaria. **Não desfaz** — o `fetch` vai pro processo do SERVIDOR, com conexão própria. Gravou 1 linha de chips em prod (só 🏠), que o dono abriria amanhã numa visão que ele nunca escolheu. **Linha APAGADA** (volta ao default TUDO LIGADO) e o passo saiu da transação, com limpeza declarada. ⭐ **Quem pegou foi a contabilidade de escrita da própria prova** — sem o `antes/depois` eu não teria visto.
+3. **O meu `grep "Tests"` escondeu uma suíte que NÃO COLETOU.** Depois de extrair o detector, o `custos-fixos-v4.test.ts` ficou com `semComentarios is not defined` (o import foi inserido procurando `node:fs` e o arquivo usa `fs`) — e o grep imprimiu **"28 passed"** com 35 testes mortos. ***Sonda errada dá um verde tão convincente quanto um vermelho.***
+
+📋 **FICA PRO DONO (o gesto é dele):**
+1. **Mover as 3 categorias de juros pra 🏦 BANCO** — o caminho está provado por rollback (CASA 26→23, BANCO 0→3). É 1 clique no ⇄ de cada linha, ou no seletor com a prateleira escolhida.
+2. **Declarar o plano de OUTUBRO** — hoje só setembro tem (19 planos, R$ 95.618,64), então os 3 primeiros cartões de outubro dizem *"a apurar"* **de propósito**. O botão *"preencher todos com o realizado de setembro"* resolve a maioria.
+3. ⚠️ **As 4 faturas de outubro não foram importadas** — enquanto não entrarem, os compromissos de outubro contam só as parcelas (R$ 94.051,51); em setembro, com fatura, eles são R$ 103.051,67.
+4. ⚠️ **Caso de borda registrado, não "consertado":** ligar **só 🏦** com a prateleira vazia mostra *equilíbrio R$ 0,00* — é verdade (aquele cenário custa zero) e a linha de baixo diz *"fora da conta: casa a apurar · compromissos R$ 94.051,51"*. Se ele preferir *"a apurar"* ali, é uma linha.
+5. 📋 **Carregadas de 06/10:** os nomes repetidos (*"DAS Simples Nacional"*, *"Frete"*) · R$ 112.253,53 de saída sem categoria em setembro · a lacuna do cartão (custo fixo pago no cartão não aparece na linha dele) · a margem por CMV de COMPRA.
+
 ## ⛔⛔⛔ A CONTAGEM É A ÂNCORA — ELA SEMPRE ENTRA, PRA QUALQUER ITEM (05-06/10/2026)
 
 **Lei geral do dono, e ela SUBSTITUI a recusa de 22/09:** *"Toda contagem lançada ENTRA, sem exceção de estado do item: saldo positivo, zero ou NEGATIVO (qtd e/ou R$). (…) **Nenhum caminho termina em recusa.**"* É a régua dos líderes (SAP/Oracle/NetSuite): **a contagem física é a âncora dos registros** — o sistema cria o ajuste de CORREÇÃO, o saldo vira o contado, e negativo vira **investigação**, nunca bloqueio.
