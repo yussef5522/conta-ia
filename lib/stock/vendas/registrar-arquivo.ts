@@ -54,7 +54,13 @@ export async function registrarArquivoDoImport(
   const nome = a.nomeArquivo.trim()
   if (!nome) return
 
-  const dataDate = new Date(`${a.data}T12:00:00`)
+  /**
+   * ⚠️ `T12:00:00.000Z` com o **Z EXPLÍCITO**: sem ele o instante depende do fuso do PROCESSO
+   * (em `America/Sao_Paulo` viraria 15h UTC), e a linha do arquivo cairia numa hora diferente
+   * da que o import de produtos grava. Quem lê por faixa não sentiria; quem comparar exato,
+   * sim — e já sentiu (14/09).
+   */
+  const dataDate = new Date(`${a.data}T12:00:00.000Z`)
   try {
     await db.stockVendaArquivo.upsert({
       where: {

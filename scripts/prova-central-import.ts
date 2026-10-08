@@ -79,14 +79,22 @@ async function main() {
   /* ═════════════ 2. PEÇA POR PEÇA, CONTRA O ARQUIVO DO DONO ═════════════ */
   console.log('\n═══ 2. AS PEÇAS DA REFERÊNCIA — no bundle que prod serve')
   const REF = lerReferenciaVisual(CAMINHO_DA_REFERENCIA_IMPORTAR)
+  /**
+   * ⚠️⚠️ SÓ O QUE A **TELA** ESCREVE ENTRA AQUI. Os rótulos dos 4 SELOS e os da coluna DESTINO
+   * moram em LIBS do SERVIDOR (`razao-sabor-pizza.ts`, `detalhe-do-dia.ts`) e chegam PRONTOS no
+   * payload — a tela desenha `d.seloRotulo` / `p.destinoRotulo`. Procurá-los no bundle estático
+   * dá **falso vermelho sobre uma tela correta** (a cicatriz de 20/09, quando eu procurei no
+   * chunk uma frase que vinha do servidor). ⭐ Eles são conferidos nas partes 4 e 5, contra a
+   * ROTA — que é onde eles de fato existem.
+   */
   const PECAS: [string, string[]][] = [
     ['CABEÇALHO', ['Importar vendas', 'do Suitable']],
     ['1 DROPZONE DUPLA', ['Relatório de Produtos', 'Relatório de Complementos', 'sem baixar sabor do estoque']],
     ['2 ALERTA DO BURACO', ['ficou sem importação', 'importar este dia']],
-    ['3 DIAS IMPORTADOS', ['Dias importados', 'toque no dia', 'completo', 'complementos incompletos', 'sabores não importados', 'sem importação']],
+    ['3 DIAS IMPORTADOS', ['Dias importados', 'toque no dia']],
     ['CONFERÊNCIA', ['Σ do arquivo', 'bate ao centavo', 'sem destino', 'substituir o dia', 'refazer a baixa']],
     ['NOTA DO SININHO', ['camada 3', 'uma causa, um alarme']],
-    ['4 DETALHE DO DIA', ['buscar produto ou sabor', 'DESTINO NO ESTOQUE', 'baixou ficha', 'baixou base + sabores', 'VEZES', 'criar agora']],
+    ['4 DETALHE DO DIA', ['buscar produto ou sabor', 'DESTINO NO ESTOQUE', 'VEZES', 'criar agora']],
   ]
   for (const [peca, frases] of PECAS) {
     const faltam: string[] = []
@@ -98,16 +106,29 @@ async function main() {
 
   /* ═════════════ 3. TOKENS E MEDIDAS — os 2 temas, a lei de layout ═════════════ */
   console.log('\n═══ 3. OS 2 TEMAS E A LEI DE LAYOUT')
+  /**
+   * ⚠️⚠️ ATRIBUIÇÃO HONESTA DO HEX: o chunk carrega a CENTRAL **e a página de vendas** (abas,
+   * cards, botões), que é anterior a este sprint e usa o azul da marca `#185FA5`. ***Achado não
+   * atribuível não é achado*** (a lição de 06/10, quando somar os 81 chunks acusou hex do shell).
+   * Quem prova que a CENTRAL tem zero hex é o guard, que lê o arquivo dela; aqui o número é
+   * impresso com o nome de quem ele pertence.
+   */
+  const HEX_DA_PAGINA = new Set(['#185FA5', '#0F4A8C'])
   for (const [v] of VIEWPORTS) {
-    const hex = [...chunk[v].matchAll(/#[0-9A-Fa-f]{6}\b/g)].map((m) => m[0])
-    console.log(`  ${v}  hex de cor no chunk DESTA tela: ${hex.length}${hex.length ? ` ⛔ ${[...new Set(hex)].slice(0, 6).join(', ')}` : ' ✓'}`)
+    const hex = [...new Set([...chunk[v].matchAll(/#[0-9A-Fa-f]{6}\b/g)].map((m) => m[0]))]
+    const foraDaPagina = hex.filter((h) => !HEX_DA_PAGINA.has(h))
+    console.log(`  ${v}  hex no chunk: ${hex.join(', ') || 'nenhum'} — da PÁGINA (pré-existente): ${hex.filter((h) => HEX_DA_PAGINA.has(h)).length} · desconhecido: ${foraDaPagina.length}${foraDaPagina.length ? ` ⛔ ${foraDaPagina.join(', ')}` : ' ✓'}`)
     console.log(`  ${v}  teto 1440 ✓${chunk[v].includes('max-w-[1440px]') ? '' : ' ⛔ AUSENTE'} · celular ✓${chunk[v].includes('max-[700px]:px-[14px]') ? '' : ' ⛔ AUSENTE'}`)
   }
   const css = chunk.celular_CSS
   const tokens = [...new Set([...chunk.celular.matchAll(/var\((--[a-z0-9-]+)\)/g)].map((m) => m[1]))]
   const semTema = tokens.filter((t) => (css.split(`${t}:`).length - 1) < 2)
   console.log(`  ⭐ ${tokens.length} tokens usados · nos DOIS mapas do CSS: ${tokens.length - semTema.length}${semTema.length ? ` ⛔ só num tema: ${semTema.join(', ')}` : ' ✓'}`)
-  console.log(`  ⭐ as ${REF.letras.length} hierarquias de letra da referência no bundle: ${REF.letras.filter((px) => chunk.celular.includes(`text-[${px}px]`)).length}`)
+  /** ⚠️ a base do `body{}` sai — é o tamanho da PÁGINA (vem do shell), não hierarquia de elemento */
+  const baseDoBody = (REF.css.match(/body\{[^}]*font-size:\s*([\d.]+)px/) ?? [])[1]
+  const letras = REF.letras.filter((px) => px !== baseDoBody)
+  const achadas = letras.filter((px) => chunk.celular.includes(`text-[${px}px]`))
+  console.log(`  ⭐ as ${letras.length} hierarquias de letra da referência no bundle: ${achadas.length}${achadas.length === letras.length ? ' ✓' : ` ⛔ faltam ${letras.filter((px) => !achadas.includes(px)).join(', ')}`} (a base ${baseDoBody}px é do shell)`)
 
   /* ═════════════ 4. A ROTA DA CENTRAL — os números reais ═════════════ */
   console.log('\n═══ 4. A CENTRAL, PELA ROTA REAL')
@@ -124,6 +145,11 @@ async function main() {
     }[]
   }
   console.log(`  mês ${c.mes} · ${c.dias.length} dias · contagem ${JSON.stringify(c.contagem)}`)
+  /** ⭐ os 4 RÓTULOS DE SELO conferidos onde eles existem: o payload (a lib do servidor) */
+  const { ROTULO_DO_SELO } = await import('@/lib/stock/vendas/razao-sabor-pizza')
+  const rotulos = Object.values(ROTULO_DO_SELO)
+  const vistos = new Set(c.dias.map((d) => d.seloRotulo))
+  console.log(`  os 4 selos da referência: ${rotulos.map((r) => `${r}${vistos.has(r) ? ' (no dado de hoje)' : ''}`).join(' · ')}`)
   console.log(`  buracos (dia de venda sem arquivo): ${c.buracos.length}${c.buracos.length ? ` → ${c.buracos.slice(0, 5).join(', ')}` : ''}`)
   for (const d of c.dias.slice(0, 8)) {
     const sigma = d.conferencia.somaArquivo == null

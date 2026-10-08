@@ -85,14 +85,30 @@ export async function lerDetalheDoDia(
   dia: string,
   db: PrismaClient = defaultPrisma,
 ): Promise<DetalheDoDia> {
-  const dataDate = new Date(`${dia}T12:00:00`)
+  /**
+   * ⛔⛔⛔ A LEITURA É POR **FAIXA DO DIA**, NUNCA POR TIMESTAMP EXATO — e isto é a cicatriz de
+   * 14/09 renascendo, pega pela prova em prod: o detalhe dizia **0 sabores** num dia que a
+   * central mostra com *"razão 5,4 sabores/pizza"*.
+   *
+   * ⚠️⚠️ **OS DOIS WRITERS DO MÓDULO USAM CONVENÇÕES DE HORA DIFERENTES:**
+   *   · `stock_venda_complemento_linha` grava **00:00:00.000Z** (`diaUtc`);
+   *   · `stock_venda_linha` grava **12:00:00** — e `new Date('…T12:00:00')` **sem Z** depende do
+   *     fuso do PROCESSO (em `America/Sao_Paulo` viraria 15h UTC).
+   *
+   * ⛔ Comparar o instante EXATO **acerta um writer e erra o outro**, em silêncio: os produtos
+   * vinham e os sabores sumiam. A faixa (`gte` dia, `lt` dia+1) é indiferente a quem escreveu —
+   * hoje e no dia em que alguém mudar a hora.
+   */
+  const deDia = new Date(`${dia}T00:00:00.000Z`)
+  const ateDia = new Date(deDia.getTime() + 86_400_000)
+  const noDia = { gte: deDia, lt: ateDia }
   const [linhas, comp, mapaProd, mapaComp, bases] = await Promise.all([
     db.stockVendaLinha.findMany({
-      where: { companyId, data: dataDate },
+      where: { companyId, data: noDia },
       select: { nomeSuitable: true, quantidade: true, valorTotal: true },
     }),
     db.stockVendaComplementoLinha.findMany({
-      where: { companyId, data: dataDate },
+      where: { companyId, data: noDia },
       select: { nomeSuitable: true, ocorrencias: true },
     }),
     db.stockVendaProdutoMap.findMany({ where: { companyId } }),
