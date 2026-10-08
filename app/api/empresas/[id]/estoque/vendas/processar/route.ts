@@ -27,6 +27,13 @@ const schema = z.object({
    * reprocesso baixa o que faltou, sem reimportar nada.
    */
   itensPendentes: z.array(z.string()).optional(),
+  /**
+   * ⭐ O NOME DO ARQUIVO que o dono soltou na dropzone (08/10). Guardado junto do Σ
+   * declarado, é o que permite a conferência dizer QUAL arquivo explica este dia.
+   * ⚠️ Opcional: o reprocesso não tem arquivo (ele relê as linhas já gravadas), e inventar
+   * um nome ali seria afirmar uma origem que não houve.
+   */
+  nomeArquivo: z.string().trim().min(1).max(300).optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -36,7 +43,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const user = a.user
   const parsed = schema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }, { status: 400 })
-  const { data, html, confirmar, reprocessar, incluir, confirmouSanidade, itensPendentes } = parsed.data
+  const { data, html, confirmar, reprocessar, incluir, confirmouSanidade, itensPendentes, nomeArquivo } = parsed.data
   try {
     if (reprocessar) {
       if (confirmar) return NextResponse.json({ ok: true, recibo: await reprocessarDia(companyId, data, user.sub, prisma, confirmouSanidade ?? false, itensPendentes ?? []) })
@@ -45,7 +52,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ plano: r.plano, reprocesso: true, estornaItens: r.estornaItens })
     }
     if (!html) return NextResponse.json({ erro: 'Envie o arquivo do dia.' }, { status: 400 })
-    if (confirmar) return NextResponse.json({ ok: true, recibo: await processarVendas(companyId, data, html, user.sub, prisma, incluir ?? null, confirmouSanidade ?? false, itensPendentes ?? []) })
+    if (confirmar) return NextResponse.json({ ok: true, recibo: await processarVendas(companyId, data, html, user.sub, prisma, incluir ?? null, confirmouSanidade ?? false, itensPendentes ?? [], nomeArquivo) })
     return NextResponse.json({ plano: await montarPlanoVenda(companyId, data, html, prisma, incluir ?? null) })
   } catch (e) {
     if (e instanceof SuitableParseError) return NextResponse.json({ erro: e.message }, { status: 422 })

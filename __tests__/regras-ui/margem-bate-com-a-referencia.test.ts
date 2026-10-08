@@ -24,7 +24,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { semComentarios, usosDe } from './_leitura-de-fonte'
-import { lerReferenciaVisual } from '@/lib/margem/referencia'
+import { lerReferenciaVisual } from '@/lib/referencias/visual'
 
 const R = (p: string) => resolve(process.cwd(), p)
 const ler = (p: string) => readFileSync(p, 'utf8')

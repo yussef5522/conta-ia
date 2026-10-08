@@ -269,11 +269,25 @@ describe('⛔⛔ O MOTOR NÃO PODE VOLTAR A ESCONDER O COMPLEMENTO NEM A CRAVAR 
     }
   })
 
-  it('⭐ "GRANDE" é tamanho vazado e a lista é FECHADA', () => {
+  /**
+   * ⚠️ REAPONTADO EM 08/10, NÃO AFROUXADO: a lista fechada **mudou de casa** pra
+   * `lib/stock/vendas/razao-sabor-pizza.ts` quando a central de import passou a precisar da
+   * MESMA régua (REGRA 4 — duas listas de "o que não é sabor" divergiriam no primeiro nome
+   * novo). O `leitura.ts` **reexporta**, então os leitores antigos seguem iguais.
+   *
+   * ⛔ A PERGUNTA NÃO MUDOU (*a lista é FECHADA e o GRANDE está nela*); o que mudou é quem
+   * responde. ***Grep não distingue "refatorei" de "quebrei"*** — é a razão de existir da
+   * REGRA 3, e por isso o alvo se move em vez de a asserção morrer.
+   */
+  it('⭐ "GRANDE" é tamanho vazado, a lista é FECHADA e tem UM dono', () => {
+    const dono = semComentarios(ler(R('lib/stock/vendas/razao-sabor-pizza.ts')))
+    expect(dono, 'o dono da régua perdeu a lista fechada').toContain('NAO_SAO_SABOR')
+    expect(dono, 'GRANDE saiu da lista de tamanhos vazados').toMatch(/'GRANDE'/)
     const l = semComentarios(ler(LEITURA))
-    expect(l).toContain('NAO_SAO_SABOR')
-    expect(l).toMatch(/'GRANDE'/)
-    expect(usosDe(l, 'ehSaborDeVerdade')).toBeGreaterThan(1)
+    expect(l, 'a margem parou de consumir o dono da régua — voltou a ter régua própria').toContain(
+      'razao-sabor-pizza',
+    )
+    expect(usosDe(l, 'ehSaborDeVerdade')).toBeGreaterThan(0)
   })
 })
 

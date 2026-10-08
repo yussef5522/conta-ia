@@ -5210,6 +5210,24 @@ model StockBaseDoTamanho {
   @@map("stock_base_do_tamanho")
 }
 
+model StockVendaArquivo {
+  id             String   @id @default(cuid())
+  companyId      String
+  data           DateTime
+  relatorio      String // PRODUTOS | COMPLEMENTOS
+  nomeArquivo    String
+  linhasArquivo  Int
+  somaQuantidade Int
+  somaValor      Float? // null = este relatório não declara valor (complementos)
+  modo           String   @default("DIA") // DIA | PERIODO
+  importadoPorId String?
+  importadoEm    DateTime @default(now())
+
+  @@unique([companyId, data, relatorio])
+  @@index([companyId, data])
+  @@map("stock_venda_arquivo")
+}
+
 model StockDoseADeclarar {
   id          String   @id @default(cuid())
   companyId   String

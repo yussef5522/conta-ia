@@ -20,6 +20,7 @@ import { SABORES_DO_CARDAPIO, grupoPeloCardapio } from './grupo-complemento'
 import { importIdDe, type ModoImportComplemento } from './identidade-import-complemento'
 import { preverBaixaDasLinhas, baixarSeHouverFicha, type ReciboComplementos } from './baixa-complemento'
 import { agruparGrafiasPendentes } from './aplicar-agrupamento'
+import { registrarArquivoDoImport } from './registrar-arquivo'
 import { aplicarHerancas, type HerancaDeMapa } from './bebida-no-complemento'
 import type { AgrupamentoAutomatico } from './grafia-canonica'
 import { montarRevisaoDeLinhas, type RevisaoDoImport } from './revisao-do-import'
@@ -194,6 +195,12 @@ export async function previewComplementos(
 export async function confirmarComplementos(
   companyId: string, data: string, html: string, userId?: string, db: PrismaClient = defaultPrisma,
   modo: ModoImportComplemento = 'DIA',
+  /**
+   * ⭐ o nome do arquivo que o dono soltou na dropzone (08/10) — é o único jeito de a
+   * conferência dizer QUAL arquivo explica o dia. ⚠️ Opcional: os caminhos de teste e o
+   * reprocesso não têm arquivo, e inventar um nome seria pior que a ausência.
+   */
+  nomeArquivo?: string,
 ): Promise<{
   importId: string; linhas: number; ocorrencias: number; substituiu: boolean; modo: ModoImportComplemento
   /** ⭐ o que a baixa fez logo em seguida — `null` quando não havia o que baixar */
@@ -274,6 +281,27 @@ export async function confirmarComplementos(
       modo,
     }
   })
+
+  /**
+   * ⭐ O Σ DO ARQUIVO (08/10) — guardado FORA da transação e fail-soft, no padrão
+   * commit+ponte: o dado de venda já está gravado, e um problema no registro não pode
+   * desfazer um import legítimo.
+   *
+   * ⛔ `somaValor: null` DE PROPÓSITO: **34% das linhas deste relatório valem R$ 0,00**
+   * (sabor incluso no preço do produto), então o Σ em R$ dele não confere nada. Quem
+   * confere complemento é a CONTAGEM de ocorrências — a mesma razão por que o gate de
+   * sanidade deste import nunca foi por dinheiro.
+   */
+  if (nomeArquivo) {
+    await registrarArquivoDoImport({
+      companyId, data, relatorio: 'COMPLEMENTOS', nomeArquivo,
+      linhasArquivo: p.linhas.length,
+      somaQuantidade: p.linhas.reduce((t, l) => t + l.quantidade, 0),
+      somaValor: null,
+      modo,
+      userId,
+    }, db)
+  }
 
   // ⭐⭐ E A BAIXA ANDA JUNTO (07/09) — decisão do dono: *"o botão 'baixar' separado é estado
   // intermediário que só serve pra ser esquecido — provou isso a semana inteira"*.

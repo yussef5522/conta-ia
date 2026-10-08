@@ -20,7 +20,7 @@ import { lerMargem } from '@/lib/margem/leitura'
 import { lerMontador } from '@/lib/margem/leitura-montador'
 import { montarPlacar, montarCarregadores, linhaDaCobertura } from '@/lib/margem/placar'
 import { montarPizza } from '@/lib/margem/montador'
-import { lerReferenciaVisual } from '@/lib/margem/referencia'
+import { lerReferenciaVisual } from '@/lib/referencias/visual'
 
 const CO = process.env.PROVA_COMPANY_ID ?? 'cmq17yapb00gnrndlh33sctbo'
 const CEL = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'

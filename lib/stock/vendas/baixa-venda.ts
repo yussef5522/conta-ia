@@ -8,6 +8,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { explodirReceita } from '@/lib/stock/explodir-receita'
 import { parseSuitable } from './parse-suitable'
 import { lerComQuarentena } from './quarentena-venda'
+import { registrarArquivoDoImport } from './registrar-arquivo'
 import { medirSanidade, SanidadeNaoConfirmadaError } from './medir-sanidade'
 import type { ResultadoDaSanidade } from './sanidade-do-import'
 import { criarMovimento, estornarMovimento } from '../movement'
@@ -182,9 +183,27 @@ export async function montarPlanoVenda(companyId: string, data: string, html: st
 export interface ReciboVenda { importId: string; data: string; baixados: number; itensBaixados: number; pendentes: number; valorBaixado: number }
 
 /** EXECUTA a partir do HTML (import novo do dia). */
-export async function processarVendas(companyId: string, data: string, html: string, userId: string | undefined, db: PrismaClient = defaultPrisma, incluir: string[] | null = null, confirmouSanidade = false, itensPendentes: string[] = []): Promise<ReciboVenda> {
+export async function processarVendas(companyId: string, data: string, html: string, userId: string | undefined, db: PrismaClient = defaultPrisma, incluir: string[] | null = null, confirmouSanidade = false, itensPendentes: string[] = [], nomeArquivo?: string): Promise<ReciboVenda> {
   const { resultado } = await lerComQuarentena({ companyId, relatorio: 'PRODUTOS', html, data, userId }, parseSuitable, db)
-  return gravarVenda(companyId, data, resultado.linhas, incluir, userId, db, confirmouSanidade, itensPendentes)
+  const recibo = await gravarVenda(companyId, data, resultado.linhas, incluir, userId, db, confirmouSanidade, itensPendentes)
+  /**
+   * ⭐ O Σ DO ARQUIVO passa a ser GUARDADO (08/10) — era a lacuna que o retrato achou.
+   *
+   * ⚠️ DEPOIS do `gravarVenda` e fail-soft: o dado que importa já está no ledger, e um
+   * problema no registro não pode derrubar um import legítimo. ⛔ E vem do `resultado.linhas`
+   * — o que o ARQUIVO trouxe, antes de mapa, `incluir` ou pendente —, que é o único lado
+   * capaz de desmentir o gravado mais tarde.
+   */
+  if (nomeArquivo) {
+    await registrarArquivoDoImport({
+      companyId, data, relatorio: 'PRODUTOS', nomeArquivo,
+      linhasArquivo: resultado.linhas.length,
+      somaQuantidade: resultado.linhas.reduce((t, l) => t + l.quantidade, 0),
+      somaValor: Math.round(resultado.linhas.reduce((t, l) => t + l.valorTotal, 0) * 100) / 100,
+      userId,
+    }, db)
+  }
+  return recibo
 }
 
 /** DRY-RUN do reprocesso: o que vai acontecer se refizer um dia já importado (com o mapa

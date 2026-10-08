@@ -43,27 +43,23 @@ export interface MargemDaTela {
   diasComRelatorioSuspeito: { dia: string; pizzas: number; sabores: number; razao: number }[]
 }
 
+import { ehPizza, ehSaborDeVerdade, vereditoDoDia, PISO_DE_PIZZAS } from '@/lib/stock/vendas/razao-sabor-pizza'
+
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 
 /**
- * ⚠️ `GRANDE` (208 ocorrências em prod) é **TAMANHO vazado** no relatório de complementos,
- * não sabor — decisão do dono em 07/10: *"mapear como não-sabor, ignorar na fila, nunca virar
- * ficha de sabor"*. A lista é FECHADA e mora aqui, com o motivo.
+ * ⚠️⚠️ A RÉGUA MUDOU DE CASA, NÃO DE CONTEÚDO (08/10/2026).
  *
- * ⛔ Lista aberta (qualquer palavra de tamanho) escondería sabor legítimo: existe pizza
- * chamada `PORTUGUESA GRANDE` no cardápio, e ela É sabor.
+ * `NAO_SAO_SABOR`, `ehSaborDeVerdade` e o `EH_PIZZA` viraram `lib/stock/vendas/razao-sabor-pizza.ts`
+ * porque a **central de import** faz a MESMA pergunta (*"o relatório de sabores deste dia veio
+ * completo?"*). ⛔ Duas cópias fariam a central dizer *"completo ✓"* sobre um dia que o aviso
+ * do sininho acusa de incompleto — a doença que esta casa mais paga.
+ *
+ * ⚠️ O re-export mantém os importadores de sempre (`leitura-montador`, os testes) funcionando
+ * sem que cada um saiba de onde a régua mudou.
  */
-export const NAO_SAO_SABOR = new Set(['GRANDE', 'PEQUENA', 'FAMILIA', 'FAMÍLIA', 'MEDIA', 'MÉDIA', 'BROTO'])
-
-const canon = (s: string) =>
-  s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim()
-
-export function ehSaborDeVerdade(nome: string): boolean {
-  return !NAO_SAO_SABOR.has(canon(nome))
-}
-
-const EH_PIZZA = /PIZZA|PRECINHO|FAMILIA|BROTO|25\s?CM|35\s?CM|45\s?CM/i
+export { NAO_SAO_SABOR, ehSaborDeVerdade } from '@/lib/stock/vendas/razao-sabor-pizza'
 
 export async function lerMargem(
   companyId: string,
@@ -185,7 +181,7 @@ export async function lerMargem(
   // ─────────── o aviso de qualidade: razão sabor/pizza impossível ───────────
   const pizzaPorDia = new Map<string, number>()
   for (const l of linhasDeVenda) {
-    if (!EH_PIZZA.test(l.nomeSuitable)) continue
+    if (!ehPizza(l.nomeSuitable)) continue
     const d = iso(l.data)
     pizzaPorDia.set(d, (pizzaPorDia.get(d) ?? 0) + l.quantidade)
   }
@@ -197,11 +193,19 @@ export async function lerMargem(
   }
   const diasComRelatorioSuspeito: MargemDaTela['diasComRelatorioSuspeito'] = []
   for (const [dia, pizzas] of pizzaPorDia) {
-    if (pizzas < 20) continue // ⚠️ dia pequeno não sustenta razão (a trava do "um lote não é média")
+    // ⚠️ dia pequeno não sustenta razão (a trava do "um lote não é média") — e o PISO mora
+    //    no dono único, não digitado aqui: número solto em dois lugares é a 2ª régua
+    if (pizzas < PISO_DE_PIZZAS) continue
     const sabores = saborPorDia.get(dia) ?? 0
-    const razao = sabores / pizzas
-    // ⛔ razão < 1 é IMPOSSÍVEL: toda pizza obriga ao menos 1 sabor no cardápio
-    if (razao < 1) diasComRelatorioSuspeito.push({ dia, pizzas, sabores, razao })
+    /**
+     * ⭐ O VEREDITO VEM DO DONO ÚNICO — a central de import e este aviso não têm como
+     * discordar sobre o mesmo dia. ⛔ A condição aqui é `COMPLEMENTOS_INCOMPLETOS` e não
+     * "razão < 1" porque o veredito trata também o ZERO (selo próprio, gesto próprio).
+     */
+    const v = vereditoDoDia({ temProdutos: true, pizzas, sabores })
+    if (v.selo === 'COMPLEMENTOS_INCOMPLETOS' || v.selo === 'SABORES_NAO_IMPORTADOS') {
+      diasComRelatorioSuspeito.push({ dia, pizzas, sabores, razao: v.razao ?? 0 })
+    }
   }
   diasComRelatorioSuspeito.sort((a, b) => a.dia.localeCompare(b.dia))
 

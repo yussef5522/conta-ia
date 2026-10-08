@@ -29,11 +29,16 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { semComentarios, gatesQueEscondem } from './card-nao-nasce-escondido.test'
+import { usosDe } from './_leitura-de-fonte'
 
 const raiz = process.cwd()
 const PAGINA = 'app/(dashboard)/empresas/[id]/estoque/vendas/page.tsx'
 const COMPONENTE = 'components/estoque/revisao-do-import.tsx'
 const ROTA = 'app/api/empresas/[id]/estoque/vendas/revisao/route.ts'
+
+/** ⚠️ a central aposentou a aba "Processados": a maçaneta da revisão mudou de casa (08/10) */
+const R = (p: string) => join(raiz, p)
+const ler = (p: string) => readFileSync(p, 'utf-8')
 
 const fonte = readFileSync(join(raiz, PAGINA), 'utf-8')
 const renderizado = semComentarios(fonte)
@@ -103,10 +108,27 @@ describe('⛔⛔ a revisão do import tem MAÇANETA — nos dois relatórios e n
   })
 
   // ⭐⭐ (b) TODO IMPORT DA LISTA TEM "REVISAR" À VISTA — os dois relatórios.
-  it('a lista de dias de PRODUTOS oferece revisar', () => {
-    const botoes = botoesQueOferecem(renderizado, 'revisar')
-    expect(botoes.length, 'sumiu o botão de revisar').toBeGreaterThan(0)
-    expect(renderizado).toMatch(/relatorio: 'PRODUTOS', origem: 'LISTA'/)
+  /**
+   * ⚠️⚠️ REAPONTADO EM 08/10, E ELE QUEBROU **COM A TELA CERTA**: a lista de dias de PRODUTOS
+   * vivia na aba "Processados", que a CENTRAL (`docs/importar-referencia.html`) aposentou por
+   * ser estritamente mais rica. ***Grep não distingue "refatorei" de "quebrei"***.
+   *
+   * ⭐ A PERGUNTA É A MESMA — *"o dia importado tem caminho VISÍVEL pra quem quer ver/arrumar
+   * as linhas?"* — e a resposta mudou de casa: a linha do dia abre a conferência, de onde sai
+   * o **"ver as N linhas"** (o detalhe, com `[mapear →]` por linha). ⛔ E ele ficou MAIS forte:
+   * passou a exigir que o deep-link antigo (`?aba=processados`, que o histórico do item usa
+   * desde 08/09) **não caia em tela errada**.
+   */
+  it('a lista de dias de PRODUTOS oferece ver/arrumar as linhas — agora na central', () => {
+    const central = semComentarios(ler(R('components/estoque/central-de-import.tsx')))
+    expect(central, 'a linha do dia perdeu o caminho pro detalhe').toContain('ver as ')
+    expect(central, 'o detalhe perdeu o [mapear →] por linha').toContain('mapear →')
+    expect(usosDe(central, 'onMapearProduto'), 'o gesto de mapear sumiu do detalhe').toBeGreaterThan(1)
+    // ⭐ e a central É desenhada pela tela (não basta o componente existir — a cicatriz de 07/10)
+    expect(renderizado, 'a central não é renderizada pela tela de vendas').toContain('<CentralDeImportView')
+    // ⛔ link velho não vira tela errada
+    expect(renderizado, "o deep-link `?aba=processados` deixou de ter destino").toContain("q === 'complementos'")
+    expect(renderizado).toMatch(/aba=processados|ROTA LEGADA|processados/)
   })
 
   it('a lista de dias de COMPLEMENTOS oferece revisar (era o que NÃO existia)', () => {

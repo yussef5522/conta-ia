@@ -7,6 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
+import { CentralDeImportView } from '@/components/estoque/central-de-import'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
@@ -56,15 +57,38 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
     if (!dia || !/^\d{4}-\d{2}-\d{2}$/.test(dia)) return null
     return { data: dia, relatorio: q.get('relatorio') === 'COMPLEMENTOS' ? 'COMPLEMENTOS' : 'PRODUTOS', origem: 'LISTA' }
   })
-  const [aba, setAba] = useState<'importar' | 'complementos' | 'manual' | 'processados'>(() => {
-    if (typeof window === 'undefined') return 'importar'
+  /**
+   * ⭐⭐⭐ A TELA RENASCE COMO A CENTRAL (08/10/2026) — ordem do dono: *"a tela de importar de
+   * hoje (só dropzone) RENASCE como esta central"*, pela lei de `docs/importar-referencia.html`.
+   *
+   * ⛔⛔ A ABA "PROCESSADOS" MORREU — e não é apagar tela, é a central ser **estritamente
+   * mais rica** no que ela mostrava (dia · selo · un · R$ · arquivos · razão · quem · hora ·
+   * Σ do arquivo × Σ gravado · N sem destino) e **ter as mesmas portas** (ver as linhas ·
+   * mapear · refazer a baixa). Duas listas dos mesmos dias seriam duas vitrines do mesmo
+   * dado — a doença que esta casa paga desde "uma vitrine, um confirmar" (14/09).
+   *
+   * ⚠️⚠️ E O LINK ANTIGO NÃO VIRA TELA ERRADA: o histórico do item linka pra
+   * `?aba=processados#dia-YYYY-MM-DD` desde 08/09, então `processados` **cai na central**, que
+   * carrega `id={`dia-${'${d.dia}'}`}` em cada linha — a âncora continua levando ao dia certo.
+   * ***Link velho em print, e-mail ou histórico não pode virar 404 silencioso.***
+   */
+  const [aba, setAba] = useState<'central' | 'importar' | 'complementos' | 'manual'>(() => {
+    if (typeof window === 'undefined') return 'central'
     const q = new URLSearchParams(window.location.search).get('aba')
-    return q === 'processados' || q === 'complementos' || q === 'manual' ? q : 'importar'
+    if (q === 'complementos' || q === 'manual' || q === 'importar') return q
+    // ⚠️ ROTA LEGADA: `?aba=processados` é deep-link vivo — desemboca na central
+    return 'central'
   })
   const [preview, setPreview] = useState<Preview | null>(null)
   /** ⭐ a revisão do arquivo recém-lido — a MESMA lista de depois do import (14/09) */
   const [prevRevisao, setPrevRevisao] = useState<RevisaoDTO | null>(null)
   const [html, setHtml] = useState('')
+  /**
+   * ⭐ O NOME DO ARQUIVO (08/10) — guardado porque o confirmar é um gesto DEPOIS do upload:
+   * sem isto, o Σ declarado iria pro banco sem dizer QUAL arquivo o declarou.
+   * ⚠️ Fica vazio no reprocesso, e é o certo: lá não houve arquivo.
+   */
+  const [nomeArquivo, setNomeArquivo] = useState('')
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [editando, setEditando] = useState<Set<string>>(new Set())
@@ -108,7 +132,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       return r.data.revisao ?? null
     } catch { setErro('Falha de conexão.'); return null } finally { setCarregando(false) }
   }
-  const onFile = (f: File) => { const reader = new FileReader(); reader.onload = () => { const t = String(reader.result ?? ''); setHtml(t); enviar(t) }; reader.readAsText(f, 'utf-8') }
+  const onFile = (f: File) => { setNomeArquivo(f.name); const reader = new FileReader(); reader.onload = () => { const t = String(reader.result ?? ''); setHtml(t); enviar(t) }; reader.readAsText(f, 'utf-8') }
 
   const mapear = async (nomeSuitable: string, valor: string) => {
     if (valor === 'CRIAR_FICHA') { window.location.href = `/empresas/${id}/estoque/fichas/nova?nome=${encodeURIComponent(nomeSuitable)}&mapear=${encodeURIComponent(nomeSuitable)}&tipo=PRODUTO_FINAL&voltar=${encodeURIComponent(`/empresas/${id}/estoque/vendas`)}`; return }
@@ -153,7 +177,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
     try {
       const body = modoReprocesso
         ? { data: modoReprocesso, reprocessar: true, confirmar: true, confirmouSanidade }
-        : { html, data, confirmar: true, incluir: null, confirmouSanidade }
+        : { html, data, confirmar: true, incluir: null, confirmouSanidade, nomeArquivo: nomeArquivo || undefined }
       // ⚠️ o confirmar grava: teto MAIOR (60 s), porque desistir cedo de uma gravação que
       // está acontecendo é pior que esperar — mas ele TERMINA, com erro visível.
       const rr = await fetchComTimeout<{ recibo: Recibo }>(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), timeoutMs: 60_000 })
@@ -169,7 +193,8 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         // pra onde foi", e ela nasce aqui.
         const dia = j.recibo?.data ?? modoReprocesso ?? data
         if (dia) setRevisao({ data: dia, relatorio: 'PRODUTOS', origem: modoReprocesso ? 'LISTA' : 'IMPORT' })
-        if (modoReprocesso) setAba('processados')
+        // ⚠️ o reprocesso desemboca na CENTRAL (a aba 'Processados' foi aposentada por ela)
+        if (modoReprocesso) setAba('central')
       }
       else {
         /**
@@ -192,7 +217,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
     try {
       const body = modoReprocesso
         ? { data: modoReprocesso, reprocessar: true, confirmar: true, confirmouSanidade: true, itensPendentes: barrados.itens.map((b) => b.itemId) }
-        : { html, data, confirmar: true, incluir: null, confirmouSanidade: true, itensPendentes: barrados.itens.map((b) => b.itemId) }
+        : { html, data, confirmar: true, incluir: null, confirmouSanidade: true, itensPendentes: barrados.itens.map((b) => b.itemId), nomeArquivo: nomeArquivo || undefined }
       const rr = await fetchComTimeout<{ recibo: Recibo }>(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), timeoutMs: 60_000 })
       if (rr.ok && rr.data) {
         setRecibo(rr.data.recibo); setPlano(null); setModoReprocesso(null); setBarrados(null)
@@ -225,54 +250,44 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       )}
 
       {/* abas */}
-      <div className="flex gap-2 border-b border-slate-200">
+      <div className="flex flex-wrap gap-2 border-b border-slate-200">
+        <button onClick={() => setAba('central')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'central' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}>A central</button>
         <button onClick={() => setAba('importar')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'importar' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}>Importar dia</button>
         <button onClick={() => setAba('complementos')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'complementos' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}><Layers className="mr-1 inline h-3.5 w-3.5" />Complementos</button>
         <button onClick={() => setAba('manual')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'manual' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}><Store className="mr-1 inline h-3.5 w-3.5" />Lançamento manual</button>
-        <button onClick={() => setAba('processados')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'processados' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}><History className="mr-1 inline h-3.5 w-3.5" />Processados ({processados.length})</button>
       </div>
 
-      {aba === 'processados' ? (
-        <>
-        <Card><CardContent className="p-0">
-          {processados.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">Nenhum dia processado ainda.</p> : (
-            <table className="density-normal w-full">
-              <thead className="group/thead"><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
-                <SortableTh campo="data" col={sp.col} dir={sp.dir} onSort={sp.alternar}>Dia</SortableTh>
-                <SortableTh campo="baixados" col={sp.col} dir={sp.dir} onSort={sp.alternar} align="right">Baixados</SortableTh>
-                <SortableTh campo="valor" col={sp.col} dir={sp.dir} onSort={sp.alternar} align="right">Valor</SortableTh>
-                <SortableTh campo="pendentes" col={sp.col} dir={sp.dir} onSort={sp.alternar} align="right">Pendentes</SortableTh>
-                <th className="w-10 px-3 py-2"></th>
-              </tr></thead>
-              <tbody>{sp.ordenar(processados, (d, c) => (c === 'data' ? d.data : c === 'baixados' ? d.baixados : c === 'valor' ? d.valorBaixado : d.pendentes)).map((d) => (
-                <tr key={d.data} id={`dia-${d.data}`} className="scroll-mt-24 border-b border-slate-50 last:border-0 target:bg-amber-50">
-                  <td className="px-3 py-0 text-[13px] font-medium text-slate-800">{fmtDia(d.data)}</td>
-                  <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-700">{d.baixados}</td>
-                  <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-900">{brl(d.valorBaixado)}</td>
-                  <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${d.pendentes > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{d.pendentes}</td>
-                  <td className="px-3 py-0 text-[13px] text-right">
-                    {/* ⭐⭐ A REVISÃO ABRE DAQUI (14/09) — o extrato do que chegou naquele
-                        dia, com o destino de cada nome e o ajuste inline. ⛔ Antes o dono
-                        via "N pendentes" e tinha que sair da tela pra resolver: o número
-                        sem o caminho é o mesmo defeito da fila sem lista. */}
-                    {/* ⛔ BOTÃO DE VERDADE, não texto que só sublinha no hover: no celular
-                        não existe hover, e foi exatamente assim que este caminho ficou
-                        invisível (a lição do "converter a unidade", 30/08). */}
-                    <button onClick={() => setRevisao(revisao?.data === d.data && revisao.origem === 'LISTA' ? null : { data: d.data, relatorio: 'PRODUTOS', origem: 'LISTA' })}
-                      className="mr-2 inline-flex h-7 items-center gap-1 rounded-lg border border-violet-300 bg-violet-50 px-2 text-xs font-medium text-violet-700 hover:bg-violet-100">
-                      <ListChecks className="h-3 w-3" /> {revisao?.data === d.data && revisao.origem === 'LISTA' ? 'fechar' : 'revisar'}
-                    </button>
-                    <button onClick={() => reprocessar(d.data)} className="inline-flex items-center gap-1 text-xs text-[#185FA5] hover:underline"><RefreshCw className="h-3 w-3" /> reprocessar</button>
-                  </td>
-                </tr>
-              ))}</tbody>
-            </table>
-          )}
-        </CardContent></Card>
-        {revisao?.origem === 'LISTA' && revisao.relatorio === 'PRODUTOS' && (
-          <BlocoRevisao id={id} data={revisao.data} relatorio="PRODUTOS" onMudou={carregarProcessados} onFechar={() => setRevisao(null)} />
-        )}
-        </>
+      {aba === 'central' ? (
+        /**
+         * ⭐⭐ A CENTRAL É LEITURA; QUEM ESCREVE SÃO AS PORTAS QUE JÁ EXISTEM.
+         *
+         * ⛔ Nenhum gesto novo de gravação nasceu aqui: a dropzone leva pro fluxo de upload
+         * desta mesma tela (preview → modal → confirmar), o mapear vai pro dropdown do mapa, a
+         * ficha de sabor vai pro editor de ficha, e o refazer-a-baixa chama o MESMO
+         * `reprocessar` que a aba aposentada chamava. ***A central mostra; as portas gravam.***
+         */
+        <CentralDeImportView
+          empresaId={id}
+          onImportar={(relatorio, dia) => {
+            // ⚠️ a DATA viaja com o gesto: o arquivo do Suitable não traz período, e perder no
+            // caminho o dia que a central acabou de mostrar é obrigar o dono a redigitar.
+            if (dia) setData(dia)
+            setAba(relatorio === 'COMPLEMENTOS' ? 'complementos' : 'importar')
+          }}
+          onMapearProduto={(nome) => { setAba('importar'); setEditando((e) => new Set(e).add(nome)) }}
+          onCriarFichaDeSabor={(nome) => {
+            window.location.href = `/empresas/${id}/estoque/fichas/nova?nome=${encodeURIComponent(nome)}&mapearComplemento=${encodeURIComponent(nome)}&tipo=SABOR&voltar=${encodeURIComponent(`/empresas/${id}/estoque/vendas`)}`
+          }}
+          /**
+           * ⚠️ SUBSTITUIR O DIA = RE-IMPORTAR: o dono sobe o arquivo de novo e o import
+           * **substitui** as linhas daquele dia, com o preview mostrando o plano antes. O que
+           * leva ao gesto é o fluxo de upload com a data já posta — nunca uma 2ª porta de
+           * gravação (a régua do `@@unique` do módulo).
+           */
+          onSubstituirDia={(dia) => { setData(dia); setAba('importar') }}
+          /** ⭐ o gesto que mudou de casa com a aba "Processados" — estorna e refaz a baixa */
+          onReprocessarDia={(dia) => { setAba('importar'); void reprocessar(dia) }}
+        />
       ) : aba === 'complementos' ? (
         <>
           <ImportComplementos id={id} onImportado={(dia) => setRevisao({ data: dia, relatorio: 'COMPLEMENTOS', origem: 'IMPORT' })} />
@@ -285,7 +300,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
           )}
         </>
       ) : aba === 'manual' ? (
-        <LancamentoManual id={id} onProcessado={() => { carregarProcessados(); setAba('processados') }} />
+        <LancamentoManual id={id} onProcessado={() => { carregarProcessados(); setAba('central') }} />
       ) : (
         <>
           <Card><CardContent className="p-4">
@@ -537,6 +552,7 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
     avisoBaixa: string | null; baixaFalhou: boolean
   } | null>(null)
   // ⛔ PERÍODO semeia a prateleira e NUNCA vira dia de baixa (a linha fica marcada)
+  const [nomeArquivo, setNomeArquivo] = useState('')
   const [modo, setModo] = useState<'DIA' | 'PERIODO'>('DIA')
   const [busy, setBusy] = useState(false)
   const [modal, setModal] = useState(false)
@@ -550,7 +566,7 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/vendas/complementos`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data, html: corpo, confirmar, modo }),
+        body: JSON.stringify({ data, html: corpo, confirmar, modo, nomeArquivo: nomeArquivo || undefined }),
       })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui ler o arquivo.'); return null }
@@ -567,6 +583,7 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
 
   const onFile = (f: File) => {
     const reader = new FileReader()
+    setNomeArquivo(f.name)
     reader.onload = () => { const t = String(reader.result ?? ''); setHtml(t); chamar(false, t) }
     reader.readAsText(f, 'utf-8')
   }

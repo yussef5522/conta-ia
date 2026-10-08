@@ -15,6 +15,7 @@ import { produzirAvisosDeProducao, type ResumoDaCarga } from './producao'
 import { produzirAvisosDeEstoque } from './estoque'
 import { produzirAvisosDeFinanceiro } from './financeiro'
 import { produzirAvisosDeMargem } from './margem'
+import { produzirAvisosDeImportDeVenda } from './import-de-venda'
 import { montarSemanaVerde } from '../semana-verde'
 import { registrarAviso, avisosAbertos } from '../central'
 
@@ -119,6 +120,19 @@ export async function rodarProdutoresDeAviso(agora: Date = new Date()): Promise<
       const mg = await produzirAvisosDeMargem(e.id, agora)
       r.gravados += mg.gravados
       r.reabertos += mg.reabertos
+      /**
+       * ⭐⭐ CAMADA 3 DO IMPORT DE VENDA (08/10) — o dia que amanheceu torto.
+       *
+       * ⛔ Entra DEPOIS da margem de propósito, e o motivo é o mesmo da ordem de cima: o
+       * "Quem paga a casa" fica cego no dia sem import, então os avisos de margem daquele dia
+       * seriam consequência, não causa. ⚠️ Empresa que não importa venda devolve zero e não
+       * grava nada — o produtor é mudo até existir dia de venda.
+       */
+      const iv = await produzirAvisosDeImportDeVenda(e.id, agora)
+      r.gravados += iv.gravados
+      r.reabertos += iv.reabertos
+      r.resolvidos += iv.resolvidos
+      for (const x of iv.recusados) r.recusados.push({ empresa: e.name, ...x })
       if (await verdeDaSemana(e.id, agora)) r.verdesSemanais++
     } catch (err) {
       // ⛔ uma empresa com problema não derruba a rodada das outras nem o juiz

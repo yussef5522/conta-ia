@@ -24,10 +24,32 @@
  */
 export function semComentarios(s: string): string {
   return s
-    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
+    .replace(COMENTARIO_JSX, '')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 }
+
+/**
+ * ⛔⛔⛔ O COMENTÁRIO JSX SE FECHA NO PRIMEIRO FECHA-COMENTÁRIO, E ISSO NÃO É DETALHE DE REGEX
+ * (08/10/2026).
+ *
+ * A versão anterior usava um `[\s\S]*?` preguiçoso entre `{` e `}` — e o FIM dela exigia o
+ * fecha-comentário **seguido de `}`**. Num arquivo onde um bloco abre com `{` e a primeira
+ * coisa dentro dele é um comentário de bloco (o caso trivial de `}) {` seguido de um JSDoc de
+ * variável), o match **não parava no fecha-comentário dele**: corria até achar o primeiro
+ * comentário JSX de verdade lá embaixo e **engolia tudo no meio**.
+ *
+ * ⚠️⚠️ MEDIDO: na central de import ele comeu **4.431 caracteres**, levando o container
+ * (`max-w-[1440px]`), as medidas do celular e a `casaBusca` junto — e o guard passou a acusar
+ * peças que ESTAVAM na tela, enquanto seria **cego** a qualquer defeito naquele trecho.
+ * ***Detector com um lugar só é força; detector com um lugar só e um furo é cegueira em todos
+ * os guards de uma vez.***
+ *
+ * ⭐ A cura é dizer NA FORMA o que um comentário de bloco é: abre-comentário, nada que contenha
+ * o fecha, e o fecha. Assim o match **não pode** atravessar o fechamento, e o `{…}` em volta
+ * precisa abraçar exatamente um comentário.
+ */
+const COMENTARIO_JSX = /\{\s*\/\*(?:[^*]|\*(?!\/))*\*\/\s*\}/g
 
 /**
  * ⛔⛔ Tira a DECLARAÇÃO de import inteira, **multilinha incluída** — é o que faltava.

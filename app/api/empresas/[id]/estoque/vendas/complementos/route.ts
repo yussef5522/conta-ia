@@ -22,6 +22,8 @@ const importSchema = z.object({
   confirmar: z.boolean().optional(),
   // ⛔ PERÍODO semeia a prateleira e NUNCA baixa estoque (ver import-complementos.ts)
   modo: z.enum(['DIA', 'PERIODO']).optional(),
+  /** ⭐ o nome do arquivo da dropzone (08/10) — o outro lado da conferência Σ do dia */
+  nomeArquivo: z.string().trim().min(1).max(300).optional(),
 })
 
 /** A prateleira, sem precisar de upload — abre do que já está gravado. */
@@ -39,12 +41,12 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (a.erro) return a.erro
   const parsed = importSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }, { status: 400 })
-  const { data, html, confirmar, modo } = parsed.data
+  const { data, html, confirmar, modo, nomeArquivo } = parsed.data
   try {
     // ⚠️ o modo vai TAMBÉM pro preview: é ele que decide o `importId`, e sem isso o resumo
     // da baixa sairia calculado contra a chave errada (dia × período).
     if (!confirmar) return NextResponse.json(await previewComplementos(companyId, data, html, prisma, modo ?? 'DIA'))
-    return NextResponse.json(await confirmarComplementos(companyId, data, html, a.user!.sub, prisma, modo ?? 'DIA'))
+    return NextResponse.json(await confirmarComplementos(companyId, data, html, a.user!.sub, prisma, modo ?? 'DIA', nomeArquivo))
   } catch (e) {
     if (e instanceof ImportComplementoError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e

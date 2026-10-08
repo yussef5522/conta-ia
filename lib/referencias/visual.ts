@@ -1,9 +1,11 @@
 /**
- * ⭐⭐⭐ O LEITOR DA REFERÊNCIA VISUAL — uma régua, dois leitores (08/10/2026).
+ * ⭐⭐⭐ O LEITOR DAS REFERÊNCIAS VISUAIS — uma régua, N arquivos, N leitores (08/10/2026).
  *
- * `docs/margem-referencia.html` é a LEI VISUAL da tela `/margem`, e **duas coisas a leem**: o
- * guard (`__tests__/regras-ui/margem-bate-com-a-referencia.test.ts`) e a sonda da prova em
- * prod (`scripts/prova-margem-v3.ts`).
+ * Um arquivo em `docs/*-referencia.html` é a LEI VISUAL de uma tela, e **duas coisas leem cada
+ * um**: o guard (`__tests__/regras-ui/*-bate-com-a-referencia.test.ts`) e a sonda da prova em
+ * prod. ⚠️ Mudou de casa em 08/10 (`lib/margem/referencia.ts` → aqui) quando a **segunda**
+ * referência nasceu (a central de import): escrever um leitor por tela repetiria, com outro
+ * nome, exatamente a doença que o cabeçalho abaixo descreve.
  *
  * ⛔⛔ ESTE ARQUIVO NASCEU DE UM VERMELHO REAL. Na v3.1 o guard e a sonda extraíam as medidas
  * com **duas cópias do mesmo regex**; eu consertei a do guard (pra separar BREAKPOINT de
@@ -17,7 +19,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+/** ⚠️ a referência da margem continua acessível pelo nome antigo — os 2 leitores dela não mudam */
 export const CAMINHO_DA_REFERENCIA = 'docs/margem-referencia.html'
+export const CAMINHO_DA_REFERENCIA_IMPORTAR = 'docs/importar-referencia.html'
 
 export interface ReferenciaVisual {
   /** o arquivo inteiro */
@@ -36,8 +40,16 @@ export interface ReferenciaVisual {
   cortes: string[]
 }
 
-export function lerReferenciaVisual(raiz = process.cwd()): ReferenciaVisual {
-  const html = readFileSync(resolve(raiz, CAMINHO_DA_REFERENCIA), 'utf8')
+/**
+ * ⚠️ O CAMINHO É PARÂMETRO, com o da margem como default — assim os 2 leitores que já
+ * existiam seguem chamando `lerReferenciaVisual()` sem mudar uma linha, e a referência nova
+ * entra passando o caminho dela. ⛔ Um 2º arquivo de leitor é que seria a segunda régua.
+ */
+export function lerReferenciaVisual(
+  caminho: string = CAMINHO_DA_REFERENCIA,
+  raiz = process.cwd(),
+): ReferenciaVisual {
+  const html = readFileSync(resolve(raiz, caminho), 'utf8')
   const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
   const script = html.slice(html.indexOf('<script>'), html.lastIndexOf('</script>'))
 
