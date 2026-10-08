@@ -90,7 +90,21 @@ async function main() {
   }
 
   console.log('\n═══════ APLICANDO ═══════')
-  const r = await aplicarNormalizacao(EMPRESA, { preview: p }, prisma)
+  /**
+   * ⭐⭐ O AUTOR VAI NO RASTRO — a ordem do dono diz *"atualizarFicha versionado com rastro"*, e
+   * versão de receita sem autor é meia-gravação: em três meses ninguém sabe quem mudou a ficha.
+   *
+   * ⚠️ E ele é resolvido pelo **PAPEL NA EMPRESA** (`userCompanyRole`), nunca por e-mail
+   * chutado: no sprint das bases eu usei `admin@contaia.com.br` e levei **403**, porque ele não
+   * é o dono desta empresa. ⛔ Sem OWNER resolvido o script **ABORTA** em vez de gravar anônimo.
+   */
+  const papel = await prisma.userCompanyRole.findFirst({
+    where: { companyId: EMPRESA, role: { name: 'OWNER' } },
+    select: { userId: true, user: { select: { email: true, name: true } } },
+  })
+  if (!papel) throw new Error('não achei o OWNER desta empresa — sem autor eu não gravo')
+  console.log(`  autor do rastro: ${papel.user?.name ?? papel.user?.email ?? papel.userId}`)
+  const r = await aplicarNormalizacao(EMPRESA, { preview: p, userId: papel.userId }, prisma)
   for (const a of r.fichas) {
     console.log(`  «${a.nome}» v${a.de} → v${a.para} · ${a.resumo}`)
   }
