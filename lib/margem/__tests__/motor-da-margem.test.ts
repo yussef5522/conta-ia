@@ -382,6 +382,59 @@ describe('⭐ A LINHA DE CHEGADA — o último dia FECHADO, dizendo qual é', ()
     expect(l.sobra).toBeNull()
     expect(l.frase).toContain('nenhum dia com venda')
   })
+
+  /* ───── a MANCHETE PARTIDA (v3 — a referência destaca o valor em verde) ───── */
+
+  it('⭐⭐ a manchete vem PARTIDA, e `prefixo + destaque` reproduz a frase ao caractere', () => {
+    const l = linhaDeChegada(dias, 6228.48, agora)
+    // ⛔ a frase é DERIVADA da manchete: uma escrita só, duas formas — recortar na tela
+    // seria a 2ª régua da própria frase
+    expect(`${l.manchete.prefixo}${l.manchete.destaque ?? ''}`).toBe(l.frase)
+    expect(l.manchete.prefixo).toContain('pagou a casa do dia e ainda sobrou')
+    expect(l.manchete.destaque).toContain('1.327')
+  })
+
+  it('⭐ "daqui pra frente cada venda é lucro" saiu da frase e virou o RODAPÉ', () => {
+    const bateu = linhaDeChegada(dias, 6228.48, agora)
+    expect(bateu.lucroDaquiPraFrente).toBe(true)
+    // ⚠️ a referência põe a frase em OUTRO lugar do cartão (o pé, com outro peso): ela não
+    // pode continuar grudada no fim da manchete, senão apareceria duas vezes
+    expect(bateu.frase).not.toContain('daqui pra frente')
+
+    const naoBateu = linhaDeChegada([{ dia: '2026-10-06', sobra: 3000, unidades: 100 }], 6228.48, agora)
+    expect(naoBateu.lucroDaquiPraFrente).toBe(false)
+    expect(naoBateu.manchete.destaque).toBeNull()
+  })
+
+  it('⛔ sem plano e sem venda a manchete existe e NÃO tem destaque (nada a pintar)', () => {
+    expect(linhaDeChegada(dias, null, agora).manchete.destaque).toBeNull()
+    expect(linhaDeChegada([], 6228.48, agora).manchete.destaque).toBeNull()
+    expect(linhaDeChegada([], 6228.48, agora).lucroDaquiPraFrente).toBe(false)
+  })
+})
+
+describe('⭐ O NOME CURTO DO PERÍODO (v3) — o título do placar não repete a sublinha inteira', () => {
+  const agora = new Date('2026-10-07T19:00:00Z')
+
+  it('⭐ o `rotuloCurto` é o nome, o `rotulo` é o nome COM o recorte', () => {
+    const mes = janelaDaMargem('MES', agora)
+    expect(mes.rotuloCurto).toBe('outubro')
+    expect(mes.rotulo).toContain('outubro')
+    expect(mes.rotulo).toContain('até 07/10')
+    // ⛔ recortar o `rotulo` na tela seria a 2ª régua do nome do período
+    expect(mes.rotulo).not.toBe(mes.rotuloCurto)
+  })
+
+  it('⭐ os 4 períodos têm nome curto, e nenhum vem vazio', () => {
+    for (const p of ['HOJE', 'SEMANA', 'MES', 'DATAS'] as const) {
+      const j = janelaDaMargem(p, agora, { de: '2026-10-01', ate: '2026-10-07' })
+      expect(j.rotuloCurto.trim().length, `${p} sem nome curto`).toBeGreaterThan(0)
+    }
+    expect(janelaDaMargem('HOJE', agora).rotuloCurto).toBe('hoje')
+    expect(janelaDaMargem('SEMANA', agora).rotuloCurto).toBe('7 dias')
+    expect(janelaDaMargem('DATAS', agora, { de: '2026-10-01', ate: '2026-10-07' }).rotuloCurto)
+      .toBe('01/10 a 07/10')
+  })
 })
 
 describe('⭐⭐ A LIGA — os cortes pela MEDIANA, nunca pela média', () => {

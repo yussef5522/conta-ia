@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quem paga a casa — REFERÊNCIA VISUAL OFICIAL (aprovada pelo dono)</title>
+<style>
+/* ==========================================================================
+   CAIXAOS · "QUEM PAGA A CASA" — REFERÊNCIA VISUAL OFICIAL v3
+   Este arquivo é a LEI do visual. A tela em prod deve ficar IGUAL a isto,
+   nos dois temas e nos dois viewports (390px e 1280px).
+   Onde houver token genérico abaixo, mapear 1:1 para o token da casa.
+   Ícones: aqui são emoji/unicode; em prod usar o ícone equivalente da casa.
+   ========================================================================== */
+
+:root{
+  /* ---- mapear para os tokens da casa ---- */
+  --bg:#F8FAFC;              /* fundo da página (slate frio) */
+  --surface:#FFFFFF;         /* cartão */
+  --surface-2:#F1F5F9;       /* trilho/bloco interno */
+  --border:#E2E8F0;
+  --border-strong:#CBD5E1;
+  --text:#0F172A;
+  --text-2:#475569;
+  --text-3:#94A3B8;
+
+  /* famílias (mesmo mapa caraDaReceita da produção) */
+  --indigo:#534AB7; --indigo-50:#EEEDFE; --indigo-900:#26215C;
+  --verde:#1D9E75;  --verde-esc:#0F6E56; --verde-50:#E1F5EE; --verde-900:#04342C;
+  --ambar:#E9A23B;  --ambar-esc:#854F0B; --ambar-50:#FAEEDA; --ambar-900:#412402;
+  --coral:#E05B5B;  --coral-esc:#A32D2D; --coral-50:#FCEBEB; --coral-900:#501313;
+  --rosa:#D4518A;   --rosa-50:#FBEAF0;
+  --azul:#2E86D9;   --azul-esc:#185FA5; --azul-50:#E6F1FB;
+
+  --radius:12px; --radius-lg:16px;
+  --shadow:0 1px 2px rgba(15,23,42,.05);
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+}
+:root:not([data-theme="light"]) { color-scheme: light dark; }
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#16151D; --surface:#1E1D27; --surface-2:#262430;
+    --border:#2E2C3A; --border-strong:#3A3749;
+    --text:#F1F5F9; --text-2:#A9A6B8; --text-3:#6E6A80;
+    --indigo-50:#2A2750; --verde-50:#113228; --ambar-50:#3A2B12;
+    --coral-50:#3A1A1A; --rosa-50:#3A1F2C; --azul-50:#14283C;
+    --indigo-900:#C9C5F4; --verde-900:#9FE8CF; --ambar-900:#F3D9A8; --coral-900:#F4B9B9;
+    --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16151D; --surface:#1E1D27; --surface-2:#262430;
+  --border:#2E2C3A; --border-strong:#3A3749;
+  --text:#F1F5F9; --text-2:#A9A6B8; --text-3:#6E6A80;
+  --indigo-50:#2A2750; --verde-50:#113228; --ambar-50:#3A2B12;
+  --coral-50:#3A1A1A; --rosa-50:#3A1F2C; --azul-50:#14283C;
+  --indigo-900:#C9C5F4; --verde-900:#9FE8CF; --ambar-900:#F3D9A8; --coral-900:#F4B9B9;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:var(--font); font-size:14px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:860px; margin:0 auto; padding:20px 16px 64px}
+.num{font-variant-numeric:tabular-nums}
+a,[role=button]{cursor:pointer}
+
+/* ---------- cabeçalho da tela ---------- */
+.page-head{display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+.page-head h1{margin:0; font-size:20px; font-weight:600}
+.page-head .sub{margin:2px 0 0; font-size:13px; color:var(--text-2)}
+.chips{display:flex; gap:6px; flex-wrap:wrap}
+.chip{font-size:12.5px; padding:5px 12px; border-radius:999px; border:1px solid var(--border-strong); color:var(--text-2); background:var(--surface)}
+.chip.on{background:var(--indigo-50); color:var(--indigo-900); border-color:transparent; font-weight:600}
+.theme-btn{border:1px solid var(--border-strong); background:var(--surface); border-radius:999px; padding:5px 12px; font-size:12.5px; color:var(--text-2)}
+
+/* ---------- cartão base ---------- */
+.card{background:var(--surface); border:1px solid var(--border-strong); border-radius:var(--radius-lg); box-shadow:var(--shadow); overflow:hidden; margin-bottom:14px}
+.card-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 18px 8px; flex-wrap:wrap}
+.card-head h2{margin:0; font-size:15.5px; font-weight:600}
+.hint{font-size:11.5px; color:var(--text-3)}
+
+/* ---------- 1. LINHA DE CHEGADA DO DIA ---------- */
+.chegada-top{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:14px 18px 8px; flex-wrap:wrap}
+.chegada-kicker{font-size:11.5px; letter-spacing:.06em; font-weight:600; color:var(--text-2)}
+.chegada-frase{margin:4px 0 0; font-size:21px; font-weight:600}
+.chegada-frase .verde{color:var(--verde-esc)}
+.chegada-falta{text-align:right}
+.chegada-falta .lbl{font-size:11.5px; color:var(--text-2)}
+.chegada-falta .val{font-size:19px; font-weight:600}
+.trilho{position:relative; height:12px; background:var(--surface-2); border:1px solid var(--border); border-radius:999px; margin:6px 18px 0}
+.trilho .fill{position:absolute; inset:0 auto 0 0; width:72%; background:var(--indigo); border-radius:999px}
+.trilho .flag{position:absolute; right:-1px; top:-5px; width:3px; height:22px; background:var(--verde-esc); border-radius:2px}
+.chegada-foot{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:8px 18px 14px; font-size:12px; color:var(--text-2)}
+.chegada-foot b{color:var(--text)}
+.chegada-note{padding:0 18px 12px; font-size:11.5px; color:var(--text-3)}
+
+/* ---------- 2. O PLACAR ---------- */
+.placar-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:4px 18px 12px}
+@media (max-width:640px){ .placar-grid{grid-template-columns:1fr} }
+.pcard{background:var(--surface-2); border-radius:var(--radius); padding:13px 15px}
+.pcard .lbl{font-size:12px; color:var(--text-2); font-weight:600}
+.pcard .val{margin-top:4px; font-size:26px; font-weight:700; letter-spacing:-.01em}
+.pcard .sub{margin-top:2px; font-size:11px; color:var(--text-3)}
+.pcard.win{background:var(--verde-50)}
+.pcard.win .lbl{color:var(--verde-esc)}
+.pcard.win .val{color:var(--verde-900)}
+.pcard.win .sub{color:var(--verde-esc)}
+.pcard.falta{background:var(--ambar-50)}
+.pcard.falta .lbl{color:var(--ambar-esc)} .pcard.falta .val{color:var(--ambar-900)} .pcard.falta .sub{color:var(--ambar-esc)}
+.barra-casa{position:relative; display:flex; height:16px; border-radius:999px; overflow:hidden; border:1px solid var(--border); margin:0 18px}
+.barra-casa .casa{background:var(--indigo)}
+.barra-casa .lucro{background:var(--verde)}
+.barra-casa .resto{background:var(--surface-2)}
+.barra-legenda{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:6px 18px 14px; font-size:11.5px; color:var(--text-2)}
+.barra-legenda .l1{color:var(--indigo); font-weight:600}
+.barra-legenda .l2{color:var(--verde-esc); font-weight:600}
+.cobertura-line{padding:9px 18px; border-top:1px solid var(--border); background:var(--surface-2); font-size:12px; color:var(--text-2)}
+.cobertura-line b{color:var(--text)}
+
+/* ---------- 3. QUEM CARREGOU ---------- */
+.carga-row{display:flex; align-items:center; gap:10px; padding:9px 18px; border-top:1px solid var(--border); font-size:13.5px}
+.carga-row:first-of-type{border-top:0}
+.carga-row:hover{background:var(--surface-2)}
+.dot{width:10px; height:10px; border-radius:50%; flex:none}
+.carga-nome{width:200px; min-width:120px; font-weight:600; display:flex; gap:6px; align-items:center; overflow:hidden; white-space:nowrap; text-overflow:ellipsis}
+.carga-bar{flex:1; height:10px; background:var(--surface-2); border-radius:999px; overflow:hidden}
+.carga-bar>span{display:block; height:100%; border-radius:999px}
+.carga-val{width:132px; text-align:right}
+.carga-val b{font-size:13.5px}
+.carga-val .rs{color:var(--text-2); font-size:12.5px}
+@media (max-width:560px){
+  .carga-nome{width:40%}
+  .carga-val{width:auto; min-width:96px}
+}
+.fila-foot{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:9px 18px; border-top:1px solid var(--border); background:var(--ambar-50); font-size:12px; color:var(--ambar-esc)}
+.fila-foot a{color:var(--indigo); font-weight:600; text-decoration:none}
+
+/* ---------- 4. A LIGA ---------- */
+.liga-tabs{display:flex; gap:6px; padding:0 18px 8px; flex-wrap:wrap}
+.liga-row{display:flex; align-items:center; gap:10px; padding:9px 18px; border-top:1px solid var(--border); font-size:13.5px}
+.liga-row:hover{background:var(--surface-2)}
+.medal{width:22px; text-align:center; font-size:15px; flex:none}
+.liga-nome{flex:1; min-width:0; font-weight:600; display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+.selo{font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap}
+.selo.estrela{background:var(--verde-50); color:var(--verde-900)}
+.selo.burro{background:var(--ambar-50); color:var(--ambar-900)}
+.selo.joia{background:var(--indigo-50); color:var(--indigo-900)}
+.selo.repensar{background:var(--surface-2); color:var(--text-2)}
+.liga-val{text-align:right; min-width:120px}
+.liga-val b{color:var(--verde-esc)}
+.liga-val .det{font-size:11.5px; color:var(--text-3)}
+.mediana{padding:4px 18px 8px; font-size:11.5px; color:var(--text-3)}
+
+/* ---------- 5. MONTADOR ---------- */
+.mont-wrap{display:flex; gap:20px; padding:10px 18px 16px; align-items:center; flex-wrap:wrap}
+.mont-svg{width:170px; flex:none}
+.mont-conta{flex:1; min-width:250px; font-size:14px}
+.mont-conta .row{display:flex; justify-content:space-between; gap:10px; padding:3px 0}
+.mont-conta .row .mut{color:var(--text-2)}
+.mont-conta .tot{border-top:1px solid var(--border-strong); margin-top:5px; padding-top:7px; font-weight:600}
+.mont-conta .tot .val{font-size:16px; font-weight:700}
+.sobra-verde{color:var(--verde-esc); font-weight:700; font-size:16px}
+.sobra-ambar{color:var(--ambar-esc); font-weight:600}
+.preco-input{width:92px; font:inherit; font-weight:600; color:var(--text); background:var(--surface-2); border:1px solid var(--border-strong); border-radius:8px; padding:3px 8px; text-align:right}
+.fatia{cursor:pointer}
+.fatia:hover{opacity:.88}
+.escolha-sabor{padding:0 18px 14px}
+.escolha-sabor .lbl{font-size:12px; color:var(--text-2); margin-bottom:6px}
+.sabor-chip{display:inline-block; margin:0 6px 6px 0; font-size:12.5px; padding:4px 11px; border-radius:999px; border:1px solid var(--border-strong); background:var(--surface); color:var(--text)}
+.sabor-chip.sem{border-style:dashed; border-color:var(--ambar); color:var(--ambar-esc)}
+.sabor-chip:hover{background:var(--indigo-50); color:var(--indigo-900); border-color:transparent}
+
+/* ---------- 6. FILA DE SABORES ---------- */
+.fila-grid{display:flex; flex-wrap:wrap; gap:6px; padding:6px 18px 14px}
+.fila-chip{font-size:12px; padding:4px 11px; border-radius:999px; border:1px dashed var(--ambar); color:var(--ambar-esc); background:var(--surface)}
+.fila-chip b{color:var(--ambar-900)}
+.fila-chip:hover{background:var(--ambar-50)}
+
+footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===================== CABEÇALHO ===================== -->
+  <div class="page-head">
+    <div>
+      <h1>Quem paga a casa</h1>
+      <p class="sub num" data-bind="rotuloPeriodo">outubro (até 07/10)</p>
+    </div>
+    <div class="chips">
+      <span class="chip" data-bind="periodo=hoje">hoje</span>
+      <span class="chip" data-bind="periodo=7d">7 dias</span>
+      <span class="chip on" data-bind="periodo=mes">mês ✓</span>
+      <span class="chip" data-bind="periodo=datas">📅 datas</span>
+      <button class="theme-btn" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">🌙/☀️</button>
+    </div>
+  </div>
+
+  <!-- ===================== 1 · LINHA DE CHEGADA DO DIA ===================== -->
+  <!-- Mostra o ÚLTIMO DIA FECHADO. data-binds: libLinhaDeChegada -->
+  <section class="card" aria-label="A linha de chegada do dia">
+    <div class="chegada-top">
+      <div>
+        <div class="chegada-kicker">🏁 A LINHA DE CHEGADA · <span data-bind="diaFechado">06/10</span></div>
+        <p class="chegada-frase">06/10 pagou a casa do dia e ainda sobrou <span class="verde num" data-bind="transbordoDia">R$ 1.323,51</span></p>
+      </div>
+      <div class="chegada-falta">
+        <div class="lbl">casa do dia</div>
+        <div class="val num" data-bind="casaDoDia">R$ 6.228,48</div>
+      </div>
+    </div>
+    <div class="trilho" role="img" aria-label="barra do dia: 100% da casa paga, com transbordo">
+      <div class="fill" style="width:100%"></div>
+      <div class="flag"></div>
+    </div>
+    <div class="chegada-foot num">
+      <span>sobra do dia <b data-bind="sobraDoDia">R$ 7.551,99</b> · <span data-bind="unDia">285 un</span></span>
+      <span class="verde" style="color:var(--verde-esc); font-weight:600">daqui pra frente cada venda é lucro</span>
+    </div>
+    <div class="chegada-note">é o último dia fechado — o relatório de hoje entra na madrugada</div>
+  </section>
+
+  <!-- ===================== 2 · O PLACAR DO PERÍODO ===================== -->
+  <!-- REGRA DE OURO: cartão1 − cartão2 = cartão3, travado em teste. -->
+  <section class="card" aria-label="O placar do período">
+    <div class="card-head">
+      <h2>O placar de outubro</h2>
+      <span class="hint num" data-bind="composicaoChips">custo fixo: casa + banco + compromissos</span>
+    </div>
+    <div class="placar-grid">
+      <div class="pcard">
+        <div class="lbl">O que as vendas deixaram</div>
+        <div class="val num" data-bind="sobraLiquida">R$ 57.232</div>
+        <div class="sub num" data-bind="subSobra">sobra medida em 55% das vendas · já abatidos R$ 9.256 de complementos</div>
+      </div>
+      <div class="pcard">
+        <div class="lbl">A casa custou até aqui</div>
+        <div class="val num" data-bind="casaPeriodo">R$ 43.599</div>
+        <div class="sub">casa + banco + compromissos</div>
+      </div>
+      <!-- ESTADO PAGA (verde). Estado NÃO-PAGA: classe .falta, lbl "FALTAM", val "R$ X", sub "pra pagar a casa do período" -->
+      <div class="pcard win">
+        <div class="lbl">✓ CASA PAGA — e sobrou</div>
+        <div class="val num" data-bind="resultado">+R$ 13.632</div>
+        <div class="sub">daqui pra frente é lucro</div>
+      </div>
+    </div>
+    <!-- A BARRA ÚNICA: índigo = casa (até a 🏁), verde = transbordo. widths: casa/(casa+lucro) e lucro/(casa+lucro). Σ=100% POR CONSTRUÇÃO. Período não pago: índigo parcial + .resto cinza até 100%. -->
+    <div class="barra-casa" role="img" aria-label="a casa se enchendo: 76% índigo até a bandeira, 24% verde de lucro">
+      <div class="casa" style="width:76%"></div>
+      <div class="lucro" style="width:24%"></div>
+    </div>
+    <div class="barra-legenda">
+      <span class="l1">a casa se enchendo</span>
+      <span>🏁 a bandeira é 100% = casa paga</span>
+      <span class="l2 num">o verde é o lucro (+31%)</span>
+    </div>
+    <div class="cobertura-line num" data-bind="linhaCobertura">
+      cobertura: <b>55% das unidades vendidas têm custo</b> · 49 na obra · 114 fora · acima de <b>80%</b> eu digo <b>o dia em que a casa se pagou</b>
+    </div>
+  </section>
+
+  <!-- ===================== 3 · QUEM CARREGOU A CASA ===================== -->
+  <!-- Barra RELATIVA AO MAIOR (nunca à casa). % da casa vai no número, pode passar de 100. Top 6 + agrupado. Toda linha clicável → ficha. -->
+  <section class="card" aria-label="Quem carregou a casa">
+    <div class="card-head">
+      <h2>Quem carregou a casa</h2>
+      <span class="hint">% = quanto da casa cada um pagou · toque abre a ficha</span>
+    </div>
+    <div class="carga-row" role="button">
+      <span class="dot" style="background:var(--rosa)"></span>
+      <span class="carga-nome">👑 Combo Caçula</span>
+      <span class="carga-bar"><span style="width:100%; background:var(--rosa)"></span></span>
+      <span class="carga-val num"><b>45%</b> <span class="rs">· R$ 19.409</span></span>
+    </div>
+    <div class="carga-row" role="button">
+      <span class="dot" style="background:var(--indigo)"></span>
+      <span class="carga-nome">PIZZA FAMÍLIA 45</span>
+      <span class="carga-bar"><span style="width:57%; background:var(--indigo)"></span></span>
+      <span class="carga-val num"><b>25%</b> <span class="rs">· R$ 11.074</span></span>
+    </div>
+    <div class="carga-row" role="button">
+      <span class="dot" style="background:var(--indigo)"></span>
+      <span class="carga-nome">PIZZA G PRECINHO</span>
+      <span class="carga-bar"><span style="width:40%; background:var(--indigo)"></span></span>
+      <span class="carga-val num"><b>18%</b> <span class="rs">· R$ 7.839</span></span>
+    </div>
+    <div class="carga-row" role="button">
+      <span class="dot" style="background:var(--indigo)"></span>
+      <span class="carga-nome">PIZZA FAMÍLIA PRECINHO</span>
+      <span class="carga-bar"><span style="width:29%; background:var(--indigo)"></span></span>
+      <span class="carga-val num"><b>13%</b> <span class="rs">· R$ 5.573</span></span>
+    </div>
+    <div class="carga-row" role="button">
+      <span class="dot" style="background:var(--indigo)"></span>
+      <span class="carga-nome">PIZZA GRANDE 35</span>
+      <span class="carga-bar"><span style="width:28%; background:var(--indigo)"></span></span>
+      <span class="carga-val num"><b>12%</b> <span class="rs">· R$ 5.447</span></span>
+    </div>
+    <div class="carga-row" role="button">
+      <span class="dot" style="background:var(--text-3)"></span>
+      <span class="carga-nome" style="color:var(--text-2)">+ 44 produtos</span>
+      <span class="carga-bar"><span style="width:63%; background:var(--text-3)"></span></span>
+      <span class="carga-val num" style="color:var(--text-2)"><b>28%</b> <span class="rs">· ver todos ▾</span></span>
+    </div>
+    <div class="fila-foot">
+      <span>🪑 <b>114 fora da obra</b> — vendem e o custo é desconhecido · <b>95 sabores sem ficha</b></span>
+      <a href="#fila">criar fichas sobe a cobertura (55% → meta 80%) →</a>
+    </div>
+  </section>
+
+  <!-- ===================== 4 · A LIGA ===================== -->
+  <section class="card" aria-label="A liga do período">
+    <div class="card-head">
+      <h2>🏆 A liga do mês</h2>
+      <span class="hint">selo = veredito · tudo clicável → ficha</span>
+    </div>
+    <div class="liga-tabs">
+      <span class="chip on">encheu o caixa ✓</span>
+      <span class="chip">melhor margem</span>
+      <span class="chip">mais vendidos</span>
+    </div>
+    <div class="mediana num">os selos cortam pela MEDIANA do período: sobra R$ 227,50 · 15 un</div>
+    <div class="liga-row" role="button">
+      <span class="medal">🥇</span><span class="dot" style="background:var(--rosa)"></span>
+      <span class="liga-nome">Combo Caçula <span class="selo estrela">⭐ vende e sobra — estrela</span></span>
+      <span class="liga-val num"><b>R$ 19.408,50</b><div class="det">R$ 68,10/un · 285 un · 82%</div></span>
+    </div>
+    <div class="liga-row" role="button">
+      <span class="medal">🥈</span><span class="dot" style="background:var(--indigo)"></span>
+      <span class="liga-nome">PIZZA FAMÍLIA 45CM <span class="selo estrela">⭐ estrela</span></span>
+      <span class="liga-val num"><b>R$ 11.074,32</b><div class="det">R$ 102,54/un · 108 un · 85%</div></span>
+    </div>
+    <div class="liga-row" role="button">
+      <span class="medal">🥉</span><span class="dot" style="background:var(--indigo)"></span>
+      <span class="liga-nome">PIZZA G PRECINHO <span class="selo estrela">⭐ estrela</span></span>
+      <span class="liga-val num"><b>R$ 7.839,26</b><div class="det">R$ 54,82/un · 143 un · 85%</div></span>
+    </div>
+    <div class="liga-row" role="button">
+      <span class="medal">10</span><span class="dot" style="background:var(--indigo)"></span>
+      <span class="liga-nome">PROMO 2 PIZZAS G <span class="selo joia">🧩 joia escondida — divulgar</span></span>
+      <span class="liga-val num"><b>R$ 1.176,84</b><div class="det">R$ 98,07/un · 12 un · 81%</div></span>
+    </div>
+    <div class="liga-row" role="button">
+      <span class="medal">27</span><span class="dot" style="background:var(--azul)"></span>
+      <span class="liga-nome">ÁGUA MINERAL S/ GÁS <span class="selo burro">🐴 vende muito, sobra pouco</span></span>
+      <span class="liga-val num"><b>R$ 181,56</b><div class="det">R$ 3,56/un · 51 un · 71%</div></span>
+    </div>
+    <div class="liga-row" role="button">
+      <span class="medal">32</span><span class="dot" style="background:var(--azul)"></span>
+      <span class="liga-nome">HEINEKEN <span class="selo repensar">pra repensar</span></span>
+      <span class="liga-val num"><b>R$ 124,80</b><div class="det">R$ 12,48/un · 10 un · 54%</div></span>
+    </div>
+  </section>
+
+  <!-- ===================== 5 · MONTADOR DE PIZZA ===================== -->
+  <!-- INTERATIVO nesta referência: trocar tamanho redesenha as fatias; clicar fatia abre a lista; preço editável recalcula. Conta = base(tamanho) + Σ(1 ocorrência × ficha do sabor) — regra 02/09, SEM fator. -->
+  <section class="card" aria-label="Monte uma pizza e veja o custo">
+    <div class="card-head">
+      <h2>🍕 Monte uma pizza e veja o custo</h2>
+      <span class="hint">só simula — nada grava, nada baixa</span>
+    </div>
+    <div class="liga-tabs" id="tamanhos">
+      <span class="chip" data-tam="pequena">pequena · 1 sabor</span>
+      <span class="chip on" data-tam="grande">grande · 2 sabores ✓</span>
+      <span class="chip" data-tam="familia">família · 3 sabores</span>
+      <span class="chip" data-tam="precinhoG">precinho G · 2</span>
+    </div>
+    <div class="mont-wrap">
+      <svg id="pizzaSvg" class="mont-svg" viewBox="0 0 170 170" role="img" aria-label="pizza dividida em fatias clicáveis"></svg>
+      <div class="mont-conta num" id="conta"></div>
+    </div>
+    <div class="escolha-sabor" id="escolha" hidden>
+      <div class="lbl">escolher o sabor da fatia <b id="fatiaAlvo"></b> (com ficha primeiro; âmbar = sem ficha, tocar cria):</div>
+      <div id="listaSabores"></div>
+    </div>
+  </section>
+
+  <!-- ===================== 6 · FILA DOS SABORES SEM FICHA ===================== -->
+  <section class="card" id="fila" aria-label="Sabores vendidos sem ficha">
+    <div class="card-head">
+      <h2>🧩 95 sabores vendidos sem ficha</h2>
+      <span class="hint">cada ficha criada entra na obra e a cobertura sobe · maior volume primeiro</span>
+    </div>
+    <div class="fila-grid">
+      <span class="fila-chip" role="button"><b>182×</b> CHOCOLATE PRETO</span>
+      <span class="fila-chip" role="button"><b>89×</b> 4 QUEIJOS</span>
+      <span class="fila-chip" role="button"><b>67×</b> MAIONESE CASEIRA</span>
+      <span class="fila-chip" role="button"><b>64×</b> PORTUGUESA</span>
+      <span class="fila-chip" role="button"><b>57×</b> OURO BRANCO</span>
+      <span class="fila-chip" role="button"><b>56×</b> NAPOLITANA</span>
+      <span class="fila-chip" role="button"><b>50×</b> 5 QUEIJOS</span>
+      <span class="fila-chip" role="button"><b>46×</b> MARGHERITA</span>
+      <span class="fila-chip" role="button"><b>38×</b> BRÓCOLIS</span>
+      <span class="fila-chip" role="button">… e mais 86 ▾</span>
+    </div>
+  </section>
+
+  <footer>REFERÊNCIA VISUAL OFICIAL · aprovada pelo dono em 07/10/2026 · a tela em prod deve ser IGUAL a isto (2 temas × 2 viewports)</footer>
+</div>
+
+<script>
+/* ===== MONTADOR — comportamento de referência (vanilla, sem libs) =====
+   Em prod: mesmos passos, dados reais (bases apontadas + fichas de sabor
+   via explodirReceita, qtd=1 por fatia — regra 02/09, SEM fator).      */
+const SABORES = [
+  {nome:'calabresa',   custo:2.12, ficha:true},
+  {nome:'frango',      custo:2.74, ficha:true},
+  {nome:'frango c/ catupiry', custo:2.74, ficha:true},
+  {nome:'bacon',       custo:4.68, ficha:true},
+  {nome:'paulista',    custo:5.52, ficha:true},
+  {nome:'file c/ bacon', custo:13.18, ficha:true},
+  {nome:'4 queijos',   custo:null, ficha:false},
+  {nome:'portuguesa',  custo:null, ficha:false},
+  {nome:'margherita',  custo:null, ficha:false},
+];
+const TAMANHOS = {
+  pequena:  {rot:'pequena',    fatias:1, base:8.12,  baseRot:'base pequena (queijo + massa + caixa)', preco:39.90},
+  grande:   {rot:'grande',     fatias:2, base:13.58, baseRot:'base grande (queijo ×2 + massa + caixa)', preco:62.90},
+  familia:  {rot:'família',    fatias:3, base:19.84, baseRot:'base família (queijo ×3 + massa + caixa)', preco:79.90},
+  precinhoG:{rot:'precinho G', fatias:2, base:11.58, baseRot:'base precinho G (DERIVADO de grande)', preco:49.90},
+};
+const CORES=['#5DCAA5','#F3C96B','#E8A3C2'];
+const TAXA_IFOOD=0.20;
+let tam='grande', fat=[0,null,null], precoVenda=TAMANHOS[tam].preco, alvo=null;
+const fmt=v=>'R$ '+v.toFixed(2).replace('.',',');
+
+function desenha(){
+  const t=TAMANHOS[tam]; const n=t.fatias;
+  const svg=document.getElementById('pizzaSvg');
+  let paths='';
+  for(let i=0;i<n;i++){
+    const a0=-90+360/n*i, a1=-90+360/n*(i+1);
+    const x0=85+72*Math.cos(a0*Math.PI/180), y0=85+72*Math.sin(a0*Math.PI/180);
+    const x1=85+72*Math.cos(a1*Math.PI/180), y1=85+72*Math.sin(a1*Math.PI/180);
+    const s=fat[i]!=null?SABORES[fat[i]]:null;
+    const cor=s? (s.ficha?CORES[i%3]:'var(--ambar)') :'#E36A6A';
+    const d = n===1
+      ? `<circle class="fatia" data-i="0" cx="85" cy="85" r="72" fill="${cor}"/>`
+      : `<path class="fatia" data-i="${i}" d="M85,85 L${x0},${y0} A72,72 0 ${(360/n)>180?1:0} 1 ${x1},${y1} Z" fill="${cor}"/>`;
+    paths+=d;
+    const am=(a0+a1)/2, tx=85+44*Math.cos(am*Math.PI/180), ty=85+44*Math.sin(am*Math.PI/180);
+    if(s){ paths+=`<text x="${tx}" y="${ty-4}" font-size="10.5" font-weight="800" fill="#1b2430" text-anchor="middle">${s.ficha?fmt(s.custo):'a definir'}</text><text x="${tx}" y="${ty+9}" font-size="8.5" fill="#1b2430" text-anchor="middle">${s.nome}</text>`; }
+    else { paths+=`<text x="${tx}" y="${ty+2}" font-size="18" font-weight="800" fill="#fff" text-anchor="middle">+</text><text x="${tx}" y="${ty+16}" font-size="8.5" fill="#fff" text-anchor="middle">toque e escolha</text>`; }
+  }
+  let linhas='';
+  for(let i=1;i<n;i++){ const a=-90+360/n*i; linhas+=`<line x1="85" y1="85" x2="${85+72*Math.cos(a*Math.PI/180)}" y2="${85+72*Math.sin(a*Math.PI/180)}" stroke="#fff" stroke-width="3"/>`; }
+  svg.innerHTML=`<circle cx="85" cy="85" r="80" fill="#F7E1B5"/><circle cx="85" cy="85" r="72" fill="#FAEEDA"/>${paths}${linhas}`;
+  svg.querySelectorAll('.fatia').forEach(p=>p.onclick=()=>{alvo=+p.dataset.i; abreLista();});
+  conta();
+}
+function conta(){
+  const t=TAMANHOS[tam]; let total=t.base, pend=0, html='';
+  html+=`<div class="row"><span class="mut">${t.baseRot}</span><span>${fmt(t.base)}</span></div>`;
+  for(let i=0;i<t.fatias;i++){
+    const s=fat[i]!=null?SABORES[fat[i]]:null;
+    if(!s){ html+=`<div class="row" style="color:var(--coral-esc)"><span><b>${i+1}º sabor — escolher</b></span><span>—</span></div>`; pend++; }
+    else if(!s.ficha){ html+=`<div class="row"><span><b style="color:var(--ambar-esc)">${s.nome}</b> <span class="mut">· sem ficha — tocar cria</span></span><span style="color:var(--ambar-esc)">a definir</span></div>`; pend++; }
+    else { total+=s.custo; html+=`<div class="row"><span><b style="color:var(--indigo)">${s.nome}</b> <span class="mut">· 1 ocorrência</span></span><span>${fmt(s.custo)}</span></div>`; }
+  }
+  const suf=pend?` + ${pend} fatia(s)`:'';
+  html+=`<div class="row tot"><span>custo da pizza</span><span class="val">${fmt(total)}${suf}</span></div>`;
+  const sobraB=precoVenda-total, sobraI=precoVenda*(1-TAXA_IFOOD)-total;
+  html+=`<div class="row"><span class="mut">vendendo a <input class="preco-input num" id="preco" value="${precoVenda.toFixed(2).replace('.',',')}"> no balcão, sobra</span><span class="sobra-verde">~${fmt(sobraB)}${suf?' − fatias':''}</span></div>`;
+  html+=`<div class="row"><span class="mut">no iFood (taxa 20%)</span><span class="sobra-ambar">~${fmt(sobraI)}${suf?' − fatias':''}</span></div>`;
+  document.getElementById('conta').innerHTML=html;
+  const inp=document.getElementById('preco');
+  inp.onchange=()=>{ precoVenda=parseFloat(inp.value.replace('.','').replace(',','.'))||precoVenda; conta(); };
+}
+function abreLista(){
+  const box=document.getElementById('escolha'); box.hidden=false;
+  document.getElementById('fatiaAlvo').textContent=(alvo+1)+'ª';
+  const l=document.getElementById('listaSabores');
+  l.innerHTML=SABORES.map((s,ix)=>`<span class="sabor-chip ${s.ficha?'':'sem'}" data-ix="${ix}">${s.nome}${s.ficha?' · '+fmt(s.custo):' · sem ficha ⚠'}</span>`).join('');
+  l.querySelectorAll('.sabor-chip').forEach(c=>c.onclick=()=>{ fat[alvo]=+c.dataset.ix; box.hidden=true; desenha(); });
+}
+document.querySelectorAll('#tamanhos .chip').forEach(c=>c.onclick=()=>{
+  document.querySelectorAll('#tamanhos .chip').forEach(x=>x.classList.remove('on'));
+  c.classList.add('on'); tam=c.dataset.tam;
+  fat=Array(TAMANHOS[tam].fatias).fill(null); fat[0]=0;
+  precoVenda=TAMANHOS[tam].preco; document.getElementById('escolha').hidden=true;
+  desenha();
+});
+desenha();
+</script>
+</body>
+</html>

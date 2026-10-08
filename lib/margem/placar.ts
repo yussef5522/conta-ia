@@ -18,7 +18,7 @@
  * abatimento na sublinha — mostrar a bruta faria os três cartões não somarem, e *número sem
  * régua em tela de dinheiro é pior que ausência*.
  */
-import type { Casa } from './casa'
+import { COBERTURA_MINIMA, type Casa } from './casa'
 
 export type TomDoResultado = 'PAGOU' | 'EM_OBRA' | 'A_APURAR'
 
@@ -51,6 +51,7 @@ export interface Placar {
 }
 
 const pct = (n: number) => `${Math.round(n * 100)}%`
+const round2DoPlacar = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -66,7 +67,17 @@ function sublinhaDaSobra(casa: Casa): string {
   // ⛔ cobertura `null` (período sem venda) não vira "0% das vendas" — ausência não é zero
   if (cob != null) p.push(`sobra medida em ${pct(cob)} das vendas`)
   if (casa.complementos.custo > 0) {
-    p.push(`já descontados ${brl(casa.complementos.custo)} de complementos`)
+    p.push(`já abatidos ${brl(casa.complementos.custo)} de complementos`)
+  }
+  /**
+   * ⛔⛔ O PISO É DITO AQUI, na sublinha do número que ele afeta. Ocorrência de complemento
+   * sem ficha não entra no custo abatido — então o abatimento é o **mínimo**, e o número
+   * sem essa ressalva seria otimista justo no valor que decide se a casa pagou.
+   */
+  if (casa.complementos.ocorrenciasSemCusto > 0) {
+    p.push(
+      `${casa.complementos.ocorrenciasSemCusto} ocorrências ainda sem ficha — o abatimento acima é o mínimo, não o total`,
+    )
   }
   if (p.length === 0) return 'nenhuma venda com custo conhecido no período'
   return p.join(' · ')
@@ -76,18 +87,18 @@ export function montarPlacar(casa: Casa): Placar {
   const temPlano = casa.custoFixo != null && casa.custoFixo > 0
 
   const sobra: CartaoDoPlacar = {
-    rotulo: 'o que as vendas deixaram',
+    rotulo: 'O que as vendas deixaram',
     valor: casa.sobraLiquida,
     sublinha: sublinhaDaSobra(casa),
   }
 
   const cartaoCasa: CartaoDoPlacar = {
-    rotulo: 'a casa custou',
+    rotulo: 'A casa custou até aqui',
     valor: casa.custoFixo,
     // ⚠️ a composição dos chips vai na sublinha SEMPRE: o mesmo mês custa números diferentes
     // conforme o dono liga casa/banco/compromissos, e um total mudo aqui seria indefensável
     sublinha: temPlano
-      ? `${casa.composicao.texto} · ${casa.dias} dia${casa.dias > 1 ? 's' : ''}`
+      ? casa.composicao.texto
       : 'declare o que cada custo fixo deve custar pra eu dizer o resultado',
   }
 
@@ -99,21 +110,23 @@ export function montarPlacar(casa: Casa): Placar {
   const resultado: Placar['resultado'] = temPlano
     ? casa.veredito.estado === 'PAGA'
       ? {
-          rotulo: 'resultado',
+          // ⭐ o VEREDITO mora no rótulo (é o que o olho pega primeiro), do jeito que a
+          // referência escreve — não um "resultado" mudo com o número embaixo
+          rotulo: '✓ CASA PAGA — e sobrou',
           valor: casa.transbordo,
           tom: 'PAGOU',
-          sublinha: '✓ casa paga — daqui pra frente é lucro',
+          sublinha: 'daqui pra frente é lucro',
           ressalva: casa.veredito.ressalva,
         }
       : {
-          rotulo: 'resultado',
+          rotulo: 'FALTAM',
           valor: casa.falta,
           tom: 'EM_OBRA',
-          sublinha: 'ainda falta pra pagar a casa',
+          sublinha: 'pra pagar a casa do período',
           ressalva: casa.veredito.ressalva,
         }
     : {
-        rotulo: 'resultado',
+        rotulo: 'Resultado',
         valor: null,
         tom: 'A_APURAR',
         sublinha: 'sem o plano do mês não dá pra dizer se a casa se pagou',
@@ -155,6 +168,61 @@ export function montarPlacar(casa: Casa): Placar {
   return { sobra, casa: cartaoCasa, resultado, barra }
 }
 
+/* ═════════════════════ A LINHA DA COBERTURA (o pé do placar) ═════════════════════ */
+
+/** ⭐ um pedaço da frase; `forte` é o que a referência põe em `<b>` */
+export interface PedacoDaCobertura {
+  texto: string
+  forte?: boolean
+}
+
+const ddmmCurto = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+
+/**
+ * ⭐⭐ A LINHA DA COBERTURA — *"cobertura: **55% das unidades vendidas têm custo** · 49 na obra
+ * · 114 fora · acima de **80%** eu digo **o dia em que a casa se pagou**"*.
+ *
+ * ⛔⛔ ELA É O QUE IMPEDE O VEREDITO DE FICAR SECO. O cartão 3 pode dizer *"✓ casa paga"*; é
+ * esta linha, no pé do MESMO cartão, que diz sobre QUANTO do dado aquilo foi medido. Montá-la
+ * no JSX seria regra dentro de `value={...}` — *regra que mora na tela é regra que ninguém
+ * prova* (a lição do prefill do cardápio, 28/08). Aqui ela é PURA e executada em teste.
+ *
+ * ⚠️ Cobertura `null` (período sem venda) **não vira 0%**: a frase diz que não há o que medir.
+ * E o **meta vem da constante**, nunca digitado — número solto em tela vira a 2ª régua no dia
+ * em que o dono mudar o limiar.
+ */
+export function linhaDaCobertura(casa: Casa): PedacoDaCobertura[] {
+  const cob = casa.cobertura.pct
+  const p: PedacoDaCobertura[] = [{ texto: 'cobertura: ' }]
+
+  if (cob == null) {
+    p.push({ texto: 'nenhuma venda no período', forte: true })
+  } else {
+    p.push({ texto: `${pct(cob)} das unidades vendidas têm custo`, forte: true })
+    p.push({
+      texto: ` · ${casa.cobertura.produtosDentro} na obra · ${casa.cobertura.produtosFora} fora`,
+    })
+  }
+
+  p.push({ texto: ' · ' })
+
+  if (casa.placar.dia) {
+    p.push({ texto: `🏁 a casa se pagou no dia ${ddmmCurto(casa.placar.dia)}`, forte: true })
+  } else if (cob == null || cob < COBERTURA_MINIMA) {
+    // ⭐ a frase da referência, com o limiar da constante
+    p.push({ texto: 'acima de ' })
+    p.push({ texto: pct(COBERTURA_MINIMA), forte: true })
+    p.push({ texto: ' eu digo ' })
+    p.push({ texto: 'o dia em que a casa se pagou', forte: true })
+  } else {
+    // ⚠️ cobertura boa e ainda sem dia: o motivo é OUTRO (sem plano, ou a sobra não cobriu) —
+    // repetir a frase do limiar aqui mandaria o dono atacar a fila de fichas pelo motivo errado
+    p.push({ texto: casa.placar.porque ?? 'o dia em que a casa se pagou: a apurar' })
+  }
+
+  return p
+}
+
 /**
  * ⭐⭐ QUEM CARREGOU A CASA — a lista que substitui os tijolos.
  *
@@ -182,6 +250,13 @@ export interface ListaDeCarregadores {
   visiveis: Carregador[]
   /** ⭐ os que ficam atrás do "+N produtos · ver todos" — a lista expande, nada some */
   resto: Carregador[]
+  /**
+   * ⭐ A LINHA DO AGREGADO — *"+ 44 produtos · 28% · ver todos ▾"*, com barra própria.
+   *
+   * ⛔ Ela nasce AQUI e não na tela porque somar o resto é **aritmética de dinheiro**, e a
+   * tela não soma (o guard proíbe `.reduce` ali). `null` quando não há resto.
+   */
+  agregado: { quantos: number; sobraTotal: number; pctDaCasa: number | null; pctDaBarra: number } | null
   /** ⚠️ o rodapé âmbar: o que está FORA da obra e o que destrava a cobertura */
   rodape: { foraDaObra: number; saboresSemFicha: number; cobertura: number | null }
 }
@@ -228,9 +303,22 @@ export function montarCarregadores(casa: Casa, saboresSemFicha: number): ListaDe
   for (const p of planos) p.pctDaBarra = maior > 0 ? p.sobraTotal / maior : 0
   if (planos[0]) planos[0].rei = true
 
+  const resto = planos.slice(CARREGADORES_VISIVEIS)
+  const somaDoResto = resto.reduce((s, p) => s + p.sobraTotal, 0)
+
   return {
     visiveis: planos.slice(0, CARREGADORES_VISIVEIS),
-    resto: planos.slice(CARREGADORES_VISIVEIS),
+    resto,
+    agregado:
+      resto.length === 0
+        ? null
+        : {
+            quantos: resto.length,
+            sobraTotal: round2DoPlacar(somaDoResto),
+            pctDaCasa:
+              casa.custoFixo && casa.custoFixo > 0 ? somaDoResto / casa.custoFixo : null,
+            pctDaBarra: maior > 0 ? Math.min(1, somaDoResto / maior) : 0,
+          },
     rodape: {
       foraDaObra: casa.fora.length,
       saboresSemFicha,

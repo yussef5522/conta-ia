@@ -131,9 +131,12 @@ describe('⛔ UMA COMPOSIÇÃO, DOIS VIEWPORTS (REGRA 12)', () => {
    * então ali ele cede o lugar pro número da fatia e o custo fica na lista ao lado.
    */
   it('⭐ o custo só é escrito dentro da fatia quando CABE', () => {
+    // ⚠️ REAPONTADO (v3): a régua é a MESMA (*"só escreve quando cabe"*); o que mudou é a
+    // FORMA — virou ternário `n <= 4 ? (custo+nome) : (número da fatia)`, como a referência
+    // desenha. Procurar `n > 4` era procurar a escrita antiga, não a decisão.
     const bloco = blocoDa('PizzaEmFatias')
-    expect(bloco).toMatch(/n <= 4/)
-    expect(bloco).toMatch(/n > 4/)
+    expect(bloco).toMatch(/n <= 4 \? \(/)
+    expect(bloco).toMatch(/f\.indice \+ 1/)
   })
 })
 
@@ -158,10 +161,18 @@ describe('⛔⛔ A TELA NÃO CALCULA DINHEIRO — ela desenha o payload', () => 
     expect(tela).not.toMatch(/sobraLiquida\s*>=?\s*/)
   })
 
-  it('⭐ REGRA 4: o logo deriva do NOME pela mesma `caraDaReceita`, sem 2ª derivação', () => {
-    expect(tela).toContain('<LogoDaReceita nome={x.nome}')
-    // ⛔ `forcar` aqui seria a 2ª tradução de nome → cor/ícone
-    expect(tela).not.toMatch(/LogoDaReceita[^/]*forcar=/)
+  it('⭐ REGRA 4: a COR vem do payload, sem 2ª derivação de nome → cor', () => {
+    /**
+     * ⚠️⚠️ REAPONTADO (v3, com o motivo escrito): a referência visual desenha a **BOLINHA de
+     * 10px da família**, não o logo da receita — e o `LogoDaReceita` saiu da tela. A pergunta
+     * da REGRA 4 não mudou: *"quem traduz nome → cor?"*. A resposta continua sendo o
+     * SERVIDOR (`caraDaReceita` → `familia` no payload), e a tela só lê o campo.
+     *
+     * ⛔ Importar `caraDaReceita` aqui seria a 2ª tradução, e as duas divergiriam no 1º grupo
+     * novo do mapa — exatamente o que o guard antigo protegia por outro caminho.
+     */
+    expect(tela).toContain('var(--fam-${familia}-mid)')
+    expect(usosDe(tela, 'caraDaReceita')).toBe(0)
   })
 })
 
@@ -197,18 +208,34 @@ describe('⭐ A TELA DIZ A COMPOSIÇÃO DOS CHIPS, e o veredito nunca vem seco',
     expect(tela).toContain('{c.composicao.texto}')
   })
 
-  it('⛔⛔ o custo do complemento aparece NOMEADO na conta da casa', () => {
-    expect(tela).toContain('complementos')
-    expect(tela).toContain('ocorrenciasComCusto')
-    // ⚠️ e o PISO é dito: o custo é o mínimo, não o total
-    expect(tela).toContain('ocorrenciasSemCusto')
-    // ⚠️ a frase quebra em duas linhas no JSX — a âncora é o pedaço contíguo
-    expect(tela).toContain('custo acima é o mínimo, não o total')
+  it('⛔⛔ o custo do complemento aparece NOMEADO — agora na SUBLINHA do cartão 1', () => {
+    /**
+     * ⚠️⚠️ REAPONTADO (v3): a referência NÃO tem a "conta aberta" (sobra − complementos = …)
+     * embaixo dos cartões; ela põe o abatimento **na sublinha do cartão que ele afeta**
+     * (*"sobra medida em 55% das vendas · já abatidos R$ 9.256 de complementos"*). A régua é a
+     * mesma — *o complemento nunca é um abatimento mudo* — e quem escreve a frase virou a lib,
+     * que é onde ela dá pra EXECUTAR em teste.
+     */
+    const pl = semComentarios(ler(R('lib/margem/placar.ts')))
+    expect(pl).toContain('já abatidos')
+    expect(pl).toContain('de complementos')
+    // ⚠️ e o PISO é dito: o abatimento é o mínimo, não o total
+    expect(pl).toContain('ocorrenciasSemCusto')
+    expect(pl).toContain('é o mínimo, não o total')
   })
 
   it('⭐ a cobertura e o placar aparecem — o dia D nunca sozinho', () => {
-    expect(tela).toContain('cobertura')
-    expect(tela).toContain('{c.placar.porque}')
+    /**
+     * ⚠️ REAPONTADO (v3): a referência junta as duas coisas numa LINHA só no pé do placar
+     * (`.cobertura-line`), e quem a escreve é `linhaDaCobertura` — PURA e executada em teste.
+     * A pergunta é a mesma: *o dia D nunca aparece sem a cobertura ao lado, e a ausência dele
+     * é EXPLICADA.*
+     */
+    expect(usosDe(tela, 'linhaDaCobertura')).toBeGreaterThan(0)
+    const pl = semComentarios(ler(R('lib/margem/placar.ts')))
+    expect(pl).toContain('COBERTURA_MINIMA')
+    expect(pl).toContain('o dia em que a casa se pagou')
+    expect(pl).toContain('casa.placar.porque')
   })
 })
 
@@ -308,12 +335,20 @@ describe('⛔⛔ QUEM CARREGOU A CASA — a lista vem da lib, com o rodapé que 
     expect(bloco).toContain('fora da obra')
     expect(bloco).toContain('sabores sem ficha')
     expect(bloco).toContain('COBERTURA_MINIMA')
-    // ⛔ rodapé que cobra sem dar o caminho é aviso, não ferramenta
-    expect(bloco).toContain('ir pra fila das fichas')
+    /**
+     * ⛔ RODAPÉ QUE COBRA SEM DAR O CAMINHO É AVISO, NÃO FERRAMENTA — e o caminho mudou de
+     * endereço (reapontado em v3): a referência manda pra a **FILA DESTA PÁGINA** (`#fila`,
+     * o 6º cartão), que é onde o sabor sem ficha está listado por volume. O atalho pro
+     * cardápio continua logo abaixo, porque é lá que a ficha nasce.
+     */
+    expect(bloco).toContain('href="#fila"')
+    expect(bloco).toContain('estoque/cardapio')
   })
 
-  it('⭐ REGRA 4: o logo deriva do NOME pela mesma `caraDaReceita`', () => {
-    expect(blocoDa('QuemCarregouACasa')).toContain('<LogoDaReceita nome={x.nome}')
+  it('⭐ REGRA 4: a linha usa a BOLINHA da família que veio do payload', () => {
+    // ⚠️ REAPONTADO (v3): a referência desenha `.dot` de 10px, não o logo — ver o bloco acima
+    expect(blocoDa('LinhaDaCarga')).toContain('<Bolinha familia={x.familia} />')
+    expect(blocoDa('Bolinha')).toContain('var(--fam-${familia}-mid)')
   })
 })
 
@@ -324,8 +359,14 @@ describe('⛔⛔⛔ O MONTADOR É SÓ SIMULAÇÃO — nada grava, nada baixa', (
     expect(posts, 'um POST a mais aqui é uma gravação de pizza').toHaveLength(1)
     expect(bloco).toContain("acao: 'SEMEAR'")
     expect(bloco).toContain('margem/config')
-    // ⛔ nenhuma rota de baixa/venda/movimento é tocada pela bancada
-    expect(bloco).not.toMatch(/vendas|baixa|movimento|processar/)
+    /**
+     * ⛔ NENHUMA ROTA de baixa/venda/movimento é tocada pela bancada.
+     *
+     * ⚠️ REAPONTADO (v3): a régua passou a ser o CAMINHO DE ROTA, não a palavra — a própria
+     * dica do cartão diz *"nada grava, nada **baixa**"* (texto da referência), e o regex por
+     * palavra reprovava a frase honesta.
+     */
+    expect(bloco).not.toMatch(/\/(vendas|baixa|baixar|movimentos|processar)\b/)
   })
 
   it('⭐ a conta é a lib `montarPizza` — a tela não multiplica dose nem divide por fatia', () => {
@@ -337,25 +378,46 @@ describe('⛔⛔⛔ O MONTADOR É SÓ SIMULAÇÃO — nada grava, nada baixa', (
   })
 
   it('⛔ o custo PARCIAL é apresentado como PISO, nunca como o custo', () => {
+    /**
+     * ⚠️ REAPONTADO (v3): a referência diz o piso com o SUFIXO — *"R$ 17,42 **+ 1 fatia(s)**"*
+     * no total e *"~R$ 63,02 **− fatias**"* na sobra. A régua é a mesma (*o parcial nunca se
+     * passa pelo custo*); o que mudou é a forma que o dono aprovou.
+     */
     const bloco = blocoDa('MontadorDePizza')
     expect(bloco).toMatch(/pizza\.custoTotal == null/)
-    expect(bloco).toContain('pelo menos')
+    expect(bloco).toContain('fatia(s)')
+    expect(bloco).toContain('− fatias')
   })
 
   it('⭐⭐ o sabor SEM FICHA aparece com selo âmbar e leva pra criar a ficha', () => {
     const bloco = blocoDa('MontadorDePizza')
     // ⛔ esconder faria a bancada mentir sobre o cardápio e tirar da frente do dono a fila
     // que ele precisa atacar pra subir a cobertura
-    expect(bloco).toContain('sem ficha — criar')
+    // ⚠️ REAPONTADO (v3): o selo da referência é o chip TRACEJADO ÂMBAR com `sem ficha ⚠`
+    expect(bloco).toContain('sem ficha ⚠')
+    expect(bloco).toContain('border-dashed')
     expect(bloco).toContain('estoque/cardapio?sabor=')
     // ⚠️ e ele NÃO é escolhível como sabor: tocar abre a criação, não soma custo nenhum
     expect(bloco).toMatch(/s\.temFicha \? \(/)
   })
 
-  it('⭐ a busca de sabores usa a régua da casa (acento e ordem das palavras)', () => {
-    // ⛔ `includes` cru acha ZERO pra "calabresa" quando o nome está em maiúscula (08/09)
-    expect(blocoDa('MontadorDePizza')).toContain('filtrarPorBusca')
+  it('⚠️ INVERTIDO COM O MOTIVO: a referência lista os sabores em CHIPS, sem campo de busca', () => {
+    /**
+     * ⚠️⚠️ TESTE INVERTIDO, NÃO APAGADO. A versão de v2 exigia `filtrarPorBusca` no montador.
+     * A **referência aprovada pelo dono** lista os sabores como chips inline, **com ficha
+     * primeiro**, sem campo de busca — e a ordem dele foi explícita desde 10/09: *"se tua
+     * versão 'melhorou' algo do mock, desfaz — igual primeiro, melhoria só com meu pedido"*.
+     *
+     * ⭐ A METADE CERTA DO TESTE ANTIGO CONTINUA MORDENDO: se um dia a busca voltar (com o
+     * pedido dele), ela **não pode** ser `includes` cru — foi o `contains` case-sensitive que
+     * fez *"calabresa"* achar ZERO em 08/09.
+     */
+    const bloco = blocoDa('MontadorDePizza')
+    expect(bloco).not.toContain('filtrarPorBusca')
     expect(tela).not.toMatch(/\.toLowerCase\(\)\.includes\(/)
+    // ⭐ e a ORDEM (com ficha primeiro) continua sendo decisão da lib, nunca da tela
+    expect(bloco).not.toMatch(/\.sort\(/)
+    expect(usosDe(semComentarios(ler(R('lib/margem/montador.ts'))), 'ordenarSabores')).toBeGreaterThan(0)
   })
 
   it('⭐ trocar o tamanho RESETA as fatias — fatia órfã somaria um sabor que a tela não desenha', () => {
@@ -363,10 +425,13 @@ describe('⛔⛔⛔ O MONTADOR É SÓ SIMULAÇÃO — nada grava, nada baixa', (
   })
 
   it('⛔ o campo de preço usa o sanitizador da casa — digitar vírgula não pode zerar o número', () => {
-    const bloco = blocoDa('MontadorDePizza')
-    expect(bloco).toContain('sanitizarQtd')
-    expect(bloco).toContain('valorQtd')
-    expect(bloco).toContain('inputMode="decimal"')
+    // ⚠️ REAPONTADO (v3): o campo virou `CampoDePreco` (a referência o repete em cada linha de
+    // canal, e duas cópias do input divergiriam no 1º ajuste). A régua é a mesma.
+    const campo = blocoDa('CampoDePreco')
+    expect(campo).toContain('sanitizarQtd')
+    expect(campo).toContain('inputMode="decimal"')
+    expect(campo).toContain('w-[92px]')
+    expect(blocoDa('MontadorDePizza')).toContain('valorQtd')
   })
 
   it('⛔⛔ o GET do montador não semeia — ler não escreve (a régua de 08/09)', () => {

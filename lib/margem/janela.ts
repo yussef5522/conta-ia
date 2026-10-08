@@ -25,6 +25,15 @@ export interface JanelaDaMargem {
   /** quantos dias a janela cobre (inclusivo) */
   dias: number
   rotulo: string
+  /**
+   * ⭐ O NOME CURTO DO PERÍODO — *"outubro"*, *"hoje"*, *"7 dias"*.
+   *
+   * ⚠️ Ele existe porque a REFERÊNCIA VISUAL escreve o período em DOIS lugares com pesos
+   * diferentes: a sublinha do cabeçalho leva o `rotulo` inteiro (*"outubro (até 07/10)"*) e o
+   * título do placar leva só o nome (*"O placar de outubro"*). ⛔ Recortar o `rotulo` na tela
+   * seria a 2ª régua do nome do período, e ela divergiria no 1º formato novo.
+   */
+  rotuloCurto: string
 }
 
 const DIA = 86400_000
@@ -74,7 +83,16 @@ export function janelaDaMargem(
           ? `${rotuloDoMes(hoje.slice(0, 7), agora)} (até ${ddmm(ate)})`
           : `${ddmm(de)} a ${ddmm(ate)}`
 
-  return { periodo, de, ate, deUtc, ateUtc, dias, rotulo }
+  const rotuloCurto =
+    periodo === 'HOJE'
+      ? 'hoje'
+      : periodo === 'SEMANA'
+        ? '7 dias'
+        : periodo === 'MES'
+          ? rotuloDoMes(hoje.slice(0, 7), agora)
+          : `${ddmm(de)} a ${ddmm(ate)}`
+
+  return { periodo, de, ate, deUtc, ateUtc, dias, rotulo, rotuloCurto }
 }
 
 /**

@@ -1,36 +1,53 @@
 'use client'
 
 /**
- * ⭐⭐⭐ MARGEM & EQUILÍBRIO v3 — "QUEM PAGA A CASA" (07/10/2026). Visual v4, por TOKEN.
+ * ⭐⭐⭐ MARGEM & EQUILÍBRIO v3 — "QUEM PAGA A CASA", COPIADA DA REFERÊNCIA (07/10/2026).
  *
- * ⛔⛔ **A TELA NÃO CALCULA NADA DE DINHEIRO.** Sobra, tijolos, selos, cobertura, veredito e
- * placar vêm do payload (`lerMargem`). Derivar aqui seria a 2ª resposta pra *"quem paga a
- * casa?"*, e ela divergiria do aviso do sininho, que lê a MESMA lib. A tela **formata e
- * desenha** — inclusive a casa, que é SVG sobre as frações que o servidor mandou.
+ * ⛔⛔⛔ **A LEI VISUAL DESTA TELA É `docs/margem-referencia.html`**, construída e aprovada pelo
+ * dono. Layout, hierarquia, tamanhos de letra, espaçamentos, textos e comportamento são os
+ * DELE — **divergência da referência é DEFEITO**, não questão de gosto. O guard
+ * `__tests__/regras-ui/margem-bate-com-a-referencia.test.ts` LÊ o arquivo e compara: tom
+ * ajustado "no olho" fica vermelho apontando o valor que o arquivo manda. É o mesmo protocolo
+ * da Conciliação (10/09): *"enquanto o mock vivia numa pasta de downloads, «igual ao mock» era
+ * MEMÓRIA MINHA — e memória é exatamente o que falhou nas voltas anteriores."*
  *
- * ⛔ **ZERO HEX CRAVADO**: tudo por `var(--prod-*)` e `var(--fam-*)`, que invertem nos dois
- * temas. ⚠️ E nada de `bg-[var(--x)]/70` — no Tailwind 3 opacidade sobre valor arbitrário sai
- * **transparente** (a armadilha de 05/10).
+ * ⛔ **ZERO HEX CRAVADO**: os tokens genéricos do topo do CSS da referência estão mapeados 1:1
+ * pros tokens da casa (`--bg`→`--prod-bg`, `--surface-2`→`--prod-surface-1`,
+ * `--indigo`→`--fam-indigo-mid`, `--verde-esc`→`--fam-verde-ink`, `--text-3`→`--prod-muted`…),
+ * que invertem nos dois temas. ⚠️ E nada de `bg-[var(--x)]/70` — no Tailwind 3 opacidade sobre
+ * valor arbitrário sai **transparente** (a armadilha de 05/10).
  *
- * ⛔ **UMA composição, dois viewports** (REGRA 12): o grid empilha por `lg:`; não existe bloco
- * só-celular. Duas composições do mesmo dado divergiriam no 1º selo novo.
+ * ⛔⛔ **A TELA NÃO CALCULA NADA DE DINHEIRO.** Sobra, placar, barra, carregadores, cobertura,
+ * veredito e a conta da pizza vêm de lib PURA (`montarPlacar`, `montarCarregadores`,
+ * `linhaDaCobertura`, `montarPizza`) — a MESMA que o teste executa. Derivar aqui seria a 2ª
+ * resposta pra *"quem paga a casa?"*, e ela divergiria do aviso do sininho.
+ *
+ * ⛔ **UMA composição, dois viewports** (REGRA 12): o que muda entre 390px e 1280px é a
+ * LARGURA de elementos (os cartões do placar empilham, o nome da linha encolhe), nunca um
+ * bloco só-celular. Duas composições do mesmo dado divergiriam no 1º selo novo.
+ *
+ * ⚠️⚠️ **DUAS DIVERGÊNCIAS DELIBERADAS DA REFERÊNCIA, com o motivo escrito (e travadas em teste):**
+ *  (a) **o botão de tema 🌙/☀️ não vem.** Na referência ele existe pra o arquivo rodar sozinho
+ *      no navegador e demonstrar os dois temas; a casa já tem o tema dela (`:root`/`.dark` no
+ *      `globals.css`), e um segundo interruptor aqui seria **duas portas pra a mesma decisão**.
+ *  (b) **o bloco do relatório de complementos incompleto fica**, condicional. A referência
+ *      mostra o estado NORMAL (sem aviso); esconder o aviso de qualidade de dado porque o
+ *      exemplo não o tem seria trocar uma régua de honestidade por fidelidade de exemplo.
  */
 
 import { use, useCallback, useEffect, useState } from 'react'
-import {
-  AlertTriangle, ArrowRight, Flag, Home, Loader2, Sparkles, Trophy,
-} from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { AlertTriangle, Loader2 } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
-import { LogoDaReceita } from '@/components/estoque/logo-da-receita'
-import { EMOJI_DO_SELO, type AbaDaLiga } from '@/lib/margem/liga'
-import { montarPlacar, montarCarregadores, type TomDoResultado } from '@/lib/margem/placar'
+import { EMOJI_DO_SELO, type AbaDaLiga, type SeloDoVeredito } from '@/lib/margem/liga'
+import {
+  linhaDaCobertura, montarCarregadores, montarPlacar,
+  type Carregador, type TomDoResultado,
+} from '@/lib/margem/placar'
 import { montarPizza, type PizzaMontada, type SaborDisponivel } from '@/lib/margem/montador'
 import type { CatalogoDoMontador } from '@/lib/margem/leitura-montador'
 import type { TamanhoDePizza } from '@/lib/margem/tamanhos'
 import { sanitizarQtd, valorQtd } from '@/lib/stock/quantidade'
-import { filtrarPorBusca } from '@/lib/busca-texto'
 import { COBERTURA_MINIMA } from '@/lib/margem/casa'
 import type { PeriodoDaMargem } from '@/lib/margem/janela'
 import type { MargemDaTela } from '@/lib/margem/leitura'
@@ -45,7 +62,7 @@ const PERIODOS: { k: PeriodoDaMargem; r: string }[] = [
   { k: 'HOJE', r: 'hoje' },
   { k: 'SEMANA', r: '7 dias' },
   { k: 'MES', r: 'mês' },
-  { k: 'DATAS', r: 'datas' },
+  { k: 'DATAS', r: '📅 datas' },
 ]
 
 const ABAS: { k: AbaDaLiga; r: string }[] = [
@@ -53,6 +70,76 @@ const ABAS: { k: AbaDaLiga; r: string }[] = [
   { k: 'MARGEM', r: 'melhor margem' },
   { k: 'VENDIDOS', r: 'mais vendidos' },
 ]
+
+/* ═══════════════════════ as peças da referência, uma vez só ═══════════════════════ */
+
+/** `.card` — borda forte, raio 16, sombra, margem de 14px entre cartões */
+function Cartao({ children, id }: { children: React.ReactNode; id?: string }) {
+  return (
+    <section
+      id={id}
+      className="mb-[14px] overflow-hidden rounded-[16px] border"
+      style={{
+        background: 'var(--prod-surface)',
+        borderColor: 'var(--prod-line-strong)',
+        boxShadow: 'var(--prod-sombra)',
+      }}
+    >
+      {children}
+    </section>
+  )
+}
+
+/** `.card-head` — h2 15,5px/600 à esquerda, `.hint` 11,5px à direita */
+function CabecaDoCartao({ titulo, dica }: { titulo: string; dica?: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-[10px] px-[18px] pb-[8px] pt-[14px]">
+      <h2 className="text-[15.5px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
+        {titulo}
+      </h2>
+      {dica != null && (
+        <span className="text-[11.5px] tabular-nums" style={{ color: 'var(--prod-muted)' }}>
+          {dica}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** `.chip` / `.chip.on` — pílula 12,5px, e a ligada troca borda por fundo índigo */
+function Chip({
+  on, children, onClick, titulo,
+}: { on?: boolean; children: React.ReactNode; onClick?: () => void; titulo?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={titulo}
+      aria-pressed={on}
+      className={`rounded-full border px-[12px] py-[5px] text-[12.5px] ${on ? 'font-semibold' : ''}`}
+      style={
+        on
+          ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)', borderColor: 'transparent' }
+          : { background: 'var(--prod-surface)', color: 'var(--prod-secondary)', borderColor: 'var(--prod-line-strong)' }
+      }
+    >
+      {children}
+    </button>
+  )
+}
+
+/** `.dot` — a bolinha de 10px da família, a MESMA cor que o payload mandou */
+function Bolinha({ familia }: { familia: string }) {
+  return (
+    <span
+      className="h-[10px] w-[10px] flex-none rounded-full"
+      style={{ background: `var(--fam-${familia}-mid)` }}
+      aria-hidden
+    />
+  )
+}
+
+/* ══════════════════════════════════ a página ══════════════════════════════════ */
 
 export default function MargemPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: empresaId } = use(params)
@@ -65,7 +152,6 @@ export default function MargemPage({ params }: { params: Promise<{ id: string }>
   const [de, setDe] = useState('')
   const [ate, setAte] = useState('')
   const [abrirAgrupado, setAbrirAgrupado] = useState(false)
-  const [abrirFora, setAbrirFora] = useState(false)
 
   const carregar = useCallback(async () => {
     setEstado('CARREGANDO')
@@ -89,49 +175,40 @@ export default function MargemPage({ params }: { params: Promise<{ id: string }>
   }, [carregar])
 
   return (
-    <div className="space-y-4" style={{ background: 'var(--prod-bg)' }}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Home className="h-5 w-5" style={{ color: 'var(--prod-accent)' }} />
-          <h1 className="text-base font-semibold" style={{ color: 'var(--prod-primary)' }}>
+    <div className="mx-auto max-w-[860px] px-[16px] pb-[64px] pt-[20px]">
+      {/* ───────── CABEÇALHO (page-head da referência) ───────── */}
+      <div className="mb-[14px] flex flex-wrap items-end justify-between gap-[12px]">
+        <div>
+          <h1 className="text-[20px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
             Quem paga a casa
           </h1>
-          <span className="hidden text-xs lg:inline" style={{ color: 'var(--prod-muted)' }}>
-            {dados?.janela.rotulo ?? ''}
-          </span>
+          <p className="mt-[2px] text-[13px] tabular-nums" style={{ color: 'var(--prod-secondary)' }}>
+            {dados?.janela.rotulo ?? '…'}
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap gap-[6px]">
           {PERIODOS.map((p) => (
-            <button
-              key={p.k}
-              type="button"
-              onClick={() => setPeriodo(p.k)}
-              className="h-8 rounded-md px-2.5 text-xs font-medium"
-              style={
-                periodo === p.k
-                  ? { background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }
-                  : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }
-              }
-            >
+            <Chip key={p.k} on={periodo === p.k} onClick={() => setPeriodo(p.k)}>
               {p.r}
-            </button>
+              {periodo === p.k && p.k !== 'DATAS' ? ' ✓' : ''}
+            </Chip>
           ))}
           {periodo === 'DATAS' && (
             <span className="flex items-center gap-1">
-              <label className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+              <label className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
                 de
                 <input
                   type="date" value={de} onChange={(e) => setDe(e.target.value)}
-                  className="ml-1 h-8 rounded-md border px-1.5 text-xs"
-                  style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
+                  className="ml-1 rounded-[8px] border px-1.5 py-[3px] text-[12.5px]"
+                  style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
                 />
               </label>
-              <label className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+              <label className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
                 até
                 <input
                   type="date" value={ate} onChange={(e) => setAte(e.target.value)}
-                  className="ml-1 h-8 rounded-md border px-1.5 text-xs"
-                  style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
+                  className="ml-1 rounded-[8px] border px-1.5 py-[3px] text-[12.5px]"
+                  style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
                 />
               </label>
             </span>
@@ -140,24 +217,28 @@ export default function MargemPage({ params }: { params: Promise<{ id: string }>
       </div>
 
       {estado === 'CARREGANDO' && (
-        <Card><CardContent className="flex items-center gap-2 p-5 text-sm" style={{ color: 'var(--prod-muted)' }}>
-          <Loader2 className="h-4 w-4 animate-spin" /> lendo o período…
-        </CardContent></Card>
+        <Cartao>
+          <p className="flex items-center gap-[8px] px-[18px] py-5 text-[13px]" style={{ color: 'var(--prod-muted)' }}>
+            <Loader2 className="h-4 w-4 animate-spin" /> lendo o período…
+          </p>
+        </Cartao>
       )}
 
       {estado === 'FALHOU' && (
-        <Card><CardContent className="space-y-2 p-5">
-          <p className="text-sm font-medium" style={{ color: 'var(--fam-coral-ink)' }}>
-            Não consegui carregar: {erro}
-          </p>
-          <button
-            type="button" onClick={() => void carregar()}
-            className="h-8 rounded-md px-2.5 text-xs font-medium"
-            style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}
-          >
-            tentar de novo
-          </button>
-        </CardContent></Card>
+        <Cartao>
+          <div className="space-y-2 px-[18px] py-5">
+            <p className="text-[13px] font-medium" style={{ color: 'var(--fam-coral-ink)' }}>
+              Não consegui carregar: {erro}
+            </p>
+            <button
+              type="button" onClick={() => void carregar()}
+              className="rounded-[8px] px-2.5 py-1 text-[12.5px] font-medium"
+              style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}
+            >
+              tentar de novo
+            </button>
+          </div>
+        </Cartao>
       )}
 
       {estado === 'OK' && dados && (
@@ -168,12 +249,10 @@ export default function MargemPage({ params }: { params: Promise<{ id: string }>
             d={dados}
             abrirResto={abrirAgrupado}
             setAbrirResto={setAbrirAgrupado}
-            abrirFora={abrirFora}
-            setAbrirFora={setAbrirFora}
             empresaId={empresaId}
           />
-          <MontadorDePizza empresaId={empresaId} />
           <LigaCard d={dados} aba={aba} setAba={setAba} empresaId={empresaId} />
+          <MontadorDePizza empresaId={empresaId} />
           <FilaDeSabores d={dados} empresaId={empresaId} />
         </>
       )}
@@ -181,180 +260,190 @@ export default function MargemPage({ params }: { params: Promise<{ id: string }>
   )
 }
 
-/* ─────────────────────────── 1. A LINHA DE CHEGADA ─────────────────────────── */
+/* ═══════════════ 1 · A LINHA DE CHEGADA DO DIA ═══════════════ */
 
 /**
- * ⚠️ **SEM fundo escuro e SEM itálico** (ordem do dono). E **sem hora**: a venda chega
- * agregada por DIA (`data` é 15:00Z cravado) e o dia corrente fica vazio até a madrugada —
- * projetar `~HH:MM` sobre um total diário seria fabricar precisão. O cartão diz QUAL dia é.
+ * ⚠️ Mostra o ÚLTIMO DIA FECHADO, e a **ressalva é obrigatória** quando esse dia não é hoje:
+ * medido em prod, o relatório de 06/10 entrou às 03:48 do dia 07/10 — sem a frase o dono abre
+ * a tela à tarde e lê o dia de ontem como se fosse o de hoje.
+ *
+ * ⛔ A manchete vem PARTIDA da lib (`manchete.prefixo` + `manchete.destaque`): recortar a
+ * frase aqui pra pintar o valor de verde seria a 2ª régua da própria frase.
  */
 function LinhaDeChegadaCard({ d }: { d: MargemDaTela }) {
   const l = d.linhaDeChegada
-  const bateu = l.bateu
   return (
-    <Card style={{ background: 'var(--prod-surface)' }}>
-      <CardContent className="space-y-2.5 p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
-            <Flag className="h-3.5 w-3.5" style={{ color: 'var(--prod-accent)' }} />
-            a linha de chegada do dia
+    <Cartao>
+      <div className="flex flex-wrap items-start justify-between gap-[12px] px-[18px] pb-[8px] pt-[14px]">
+        <div className="min-w-0">
+          <p
+            className="text-[11.5px] font-semibold tracking-[0.06em]"
+            style={{ color: 'var(--prod-secondary)' }}
+          >
+            🏁 A LINHA DE CHEGADA{l.dia ? ` · ${l.ehHoje ? 'hoje' : ddmm(l.dia)}` : ''}
           </p>
-          {l.dia && (
-            <span className="text-[12.5px] font-semibold tabular-nums" style={{ color: 'var(--prod-primary)' }}>
-              {l.ehHoje ? 'hoje' : ddmm(l.dia)}
-            </span>
-          )}
+          <p className="mt-[4px] text-[21px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
+            {l.manchete.prefixo}
+            {l.manchete.destaque && (
+              <span className="tabular-nums" style={{ color: 'var(--fam-verde-ink)' }}>
+                {l.manchete.destaque}
+              </span>
+            )}
+          </p>
         </div>
+        <div className="text-right">
+          <p className="text-[11.5px]" style={{ color: 'var(--prod-secondary)' }}>casa do dia</p>
+          <p className="text-[19px] font-semibold tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+            {l.casaDoDia == null ? 'a apurar' : formatBRL(l.casaDoDia)}
+          </p>
+        </div>
+      </div>
 
-        {/* a barra: enche com a sobra do dia contra a casa do dia */}
-        <div className="relative h-7 w-full overflow-hidden rounded-lg" style={{ background: 'var(--prod-surface-1)' }}>
+      {/* `.trilho` 12px: índigo até a sobra do dia, a bandeirinha verde marca o 100% */}
+      {l.pct != null && (
+        <div
+          className="relative mx-[18px] mt-[6px] h-[12px] rounded-full border"
+          style={{ background: 'var(--prod-surface-1)', borderColor: 'var(--prod-line)' }}
+          role="img"
+          aria-label={`barra do dia: ${pct(l.pct)} da casa do dia`}
+        >
           <div
-            className="h-full rounded-lg transition-all"
-            style={{
-              width: `${Math.max(2, (l.pct ?? 0) * 100)}%`,
-              background: bateu ? 'var(--fam-verde-mid)' : 'var(--fam-indigo-mid)',
-            }}
+            className="absolute inset-y-0 left-0 rounded-full"
+            style={{ width: `${Math.max(2, l.pct * 100)}%`, background: 'var(--fam-indigo-mid)' }}
           />
-          {/* ⭐ a bandeirinha do equilíbrio fica no 100%, não no fim da barra */}
-          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[13px]" aria-hidden>
-            {bateu ? '🏁' : ''}
-          </span>
+          <span
+            className="absolute -top-[5px] right-[-1px] h-[22px] w-[3px] rounded-sm"
+            style={{ background: 'var(--fam-verde-ink)' }}
+            aria-hidden
+          />
         </div>
+      )}
 
-        <p className="text-[13px] font-medium" style={{ color: bateu ? 'var(--fam-verde-ink)' : 'var(--prod-primary)' }}>
-          {l.frase}
-        </p>
-        <p className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
-          casa do dia {l.casaDoDia == null ? 'a apurar' : formatBRL(l.casaDoDia)}
-          {l.sobra != null && ` · sobra do dia ${formatBRL(l.sobra)}`}
+      <div
+        className="flex flex-wrap justify-between gap-[8px] px-[18px] pb-[14px] pt-[8px] text-[12px] tabular-nums"
+        style={{ color: 'var(--prod-secondary)' }}
+      >
+        <span>
+          sobra do dia{' '}
+          <b style={{ color: 'var(--prod-primary)' }}>
+            {l.sobra == null ? 'a apurar' : formatBRL(l.sobra)}
+          </b>
           {l.unidades > 0 && ` · ${l.unidades} un`}
-        </p>
-        {/* ⚠️ a ressalva é obrigatória quando o dia mostrado não é hoje */}
-        {l.ressalva && (
-          <p className="text-[11.5px]" style={{ color: 'var(--prod-accent)' }}>{l.ressalva}</p>
+        </span>
+        {l.lucroDaquiPraFrente && (
+          <span className="font-semibold" style={{ color: 'var(--fam-verde-ink)' }}>
+            daqui pra frente cada venda é lucro
+          </span>
         )}
-      </CardContent>
-    </Card>
+      </div>
+
+      {l.ressalva && (
+        <p className="px-[18px] pb-[12px] text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+          {l.ressalva}
+        </p>
+      )}
+    </Cartao>
   )
 }
 
-/* ───────────────── 2. O PLACAR DA CASA (v2 — os tijolos SVG morreram) ───────────────── */
+/* ═══════════════ 2 · O PLACAR DO PERÍODO ═══════════════ */
 
 /**
- * ⛔⛔ A CASA DE TIJOLOS SVG MORREU AQUI (07/10, v2) — o dono reprovou por ILEGIBILIDADE, e a
- * prova em prod já tinha mostrado o custo estrutural dela: com a sobra em 152% da casa a pilha
- * estourava o telhado e os tijolos de cima se sobrepunham. **Três números e uma barra dizem o
- * mesmo em um olhar.**
+ * ⭐⭐ REGRA DE OURO: **cartão 1 − cartão 2 = cartão 3**, e isso é travado em teste — é o que
+ * torna o número defensável quando o dono soma na mão. É por isso que o 1º cartão mostra a
+ * sobra **LÍQUIDA** (já abatidos os complementos) e DIZ o abatimento na sublinha.
  *
- * ⭐ A tela NÃO calcula: `montarPlacar` é lib PURA e é a MESMA que o teste executa. A conta dos
- * três cartões FECHA na tela (`sobra − casa = resultado`), que é o que torna o número defensável.
+ * ⛔ A barra vem da lib com os dois pedaços somando 1 POR CONSTRUÇÃO — a tela não normaliza
+ * nem clampa, que foi exatamente como a antiga pilha de tijolos estourou o telhado.
  */
 function PlacarDaCasa({ d }: { d: MargemDaTela }) {
   const c = d.casa
   const p = montarPlacar(c)
+  const cobertura = linhaDaCobertura(c)
 
   return (
-    <Card style={{ background: 'var(--prod-surface)' }}>
-      <CardContent className="space-y-3 p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
-            o placar do período · {c.dias} dia{c.dias > 1 ? 's' : ''}
-          </p>
-          {/* ⛔ a tela DIZ a composição dos chips — o mesmo mês custa números diferentes */}
-          <span className="text-[11px]" style={{ color: 'var(--prod-accent)' }}>
-            {c.composicao.texto}
-          </span>
-        </div>
+    <Cartao>
+      <CabecaDoCartao
+        titulo={`O placar de ${d.janela.rotuloCurto}`}
+        dica={`custo fixo: ${c.composicao.texto}`}
+      />
 
-        {/* ───────── os 3 cartões — no celular empilham ───────── */}
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-          <CartaoDoPlacar c={p.sobra} />
-          <CartaoDoPlacar c={p.casa} />
-          <CartaoDoPlacar
-            c={p.resultado}
-            tom={p.resultado.tom}
-            ressalva={p.resultado.ressalva}
-            prefixo={p.resultado.tom === 'PAGOU' ? '+' : undefined}
-          />
-        </div>
+      {/* `.placar-grid` — 3 colunas; abaixo de 640px empilham (REGRA 12, composição única) */}
+      <div className="grid grid-cols-1 gap-[10px] px-[18px] pb-[12px] pt-[4px] sm:grid-cols-3">
+        <CartaoDoPlacar c={p.sobra} />
+        <CartaoDoPlacar c={p.casa} />
+        <CartaoDoPlacar
+          c={p.resultado}
+          tom={p.resultado.tom}
+          ressalva={p.resultado.ressalva}
+          prefixo={p.resultado.tom === 'PAGOU' ? '+' : undefined}
+        />
+      </div>
 
-        {/* ───────── a barra: índigo até a bandeira, verde no transbordo ───────── */}
-        {p.barra && (
-          <div className="space-y-1">
-            <div
-              className="flex h-7 w-full overflow-hidden rounded-md"
-              style={{ background: 'var(--prod-surface-1)' }}
-              role="img"
-              aria-label={
-                p.barra.bandeira
-                  ? `A casa foi paga e sobrou ${p.barra.rotuloTransbordo}`
-                  : `Pago ${p.barra.rotuloParcial}`
-              }
-            >
-              <div
-                className="flex items-center justify-end gap-1 px-1.5"
-                style={{ width: `${Math.max(2, p.barra.pago * 100)}%`, background: 'var(--fam-indigo-mid)' }}
-              >
-                {p.barra.rotuloParcial && (
-                  <span className="truncate text-[11px] font-medium" style={{ color: 'var(--prod-acao-ink)' }}>
-                    {p.barra.rotuloParcial}
-                  </span>
-                )}
-                {p.barra.bandeira && <span className="text-[12px] leading-none">🏁</span>}
-              </div>
-              {p.barra.transbordo > 0 && (
-                <div
-                  className="flex items-center px-1.5"
-                  style={{ width: `${p.barra.transbordo * 100}%`, background: 'var(--fam-verde-mid)' }}
-                >
-                  <span className="truncate text-[11px] font-medium" style={{ color: 'var(--prod-acao-ink)' }}>
-                    {p.barra.rotuloTransbordo}
-                  </span>
-                </div>
-              )}
-            </div>
-            <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-              🏁 = a casa paga · o verde depois dela é o que sobrou
-            </p>
+      {/* `.barra-casa` 16px — índigo = casa (até a 🏁), verde = transbordo, cinza = o que falta */}
+      {p.barra && (
+        <>
+          <div
+            className="mx-[18px] flex h-[16px] overflow-hidden rounded-full border"
+            style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}
+            role="img"
+            aria-label={
+              p.barra.bandeira
+                ? `a casa se enchendo: ${pct(p.barra.pago)} índigo até a bandeira, ${pct(p.barra.transbordo)} verde de lucro`
+                : `a casa se enchendo: ${p.barra.rotuloParcial}`
+            }
+          >
+            <div style={{ width: `${Math.max(2, p.barra.pago * 100)}%`, background: 'var(--fam-indigo-mid)' }} />
+            {p.barra.transbordo > 0 && (
+              <div style={{ width: `${p.barra.transbordo * 100}%`, background: 'var(--fam-verde-mid)' }} />
+            )}
           </div>
-        )}
 
-        {/* ───────── a conta, aberta — com o complemento NOMEADO ───────── */}
-        <dl className="space-y-1 text-[12.5px]">
-          <Conta rotulo="sobra dos produtos" valor={formatBRL(c.sobraTotal)} />
-          <Conta
-            rotulo={`− complementos (${c.complementos.ocorrenciasComCusto} ocorrências)`}
-            valor={`−${formatBRL(c.complementos.custo)}`}
-            tom="coral"
-          />
-          <Conta rotulo="= sobra que paga a casa" valor={formatBRL(c.sobraLiquida)} forte />
-          <Conta rotulo="a casa custa" valor={c.custoFixo == null ? 'a apurar' : formatBRL(c.custoFixo)} />
-        </dl>
-        {/* ⚠️ o custo do complemento é um PISO — a tela diz */}
-        {c.complementos.ocorrenciasSemCusto > 0 && (
-          <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-            ⚠️ {c.complementos.ocorrenciasSemCusto} ocorrências de complemento ainda sem ficha — o
-            custo acima é o mínimo, não o total
-          </p>
-        )}
+          <div
+            className="flex flex-wrap justify-between gap-[8px] px-[18px] pb-[14px] pt-[6px] text-[11.5px]"
+            style={{ color: 'var(--prod-secondary)' }}
+          >
+            <span className="font-semibold" style={{ color: 'var(--fam-indigo-mid)' }}>
+              a casa se enchendo
+            </span>
+            <span>🏁 a bandeira é 100% = casa paga</span>
+            {p.barra.bandeira ? (
+              <span className="font-semibold tabular-nums" style={{ color: 'var(--fam-verde-ink)' }}>
+                o verde é o lucro ({p.barra.rotuloTransbordo})
+              </span>
+            ) : (
+              <span className="tabular-nums" style={{ color: 'var(--prod-muted)' }}>
+                {p.barra.rotuloParcial} · o cinza é o que falta
+              </span>
+            )}
+          </div>
+        </>
+      )}
 
-        {/* ───────── o placar do dia D, gateado pela cobertura ───────── */}
-        <div className="rounded-md px-2.5 py-2" style={{ background: 'var(--prod-surface-1)' }}>
-          <p className="text-[12.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
-            {c.placar.dia
-              ? `🏁 a casa deste período se pagou no dia ${ddmm(c.placar.dia)}`
-              : 'o dia em que a casa se pagou: a apurar'}
-          </p>
-          {c.placar.porque && (
-            <p className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>{c.placar.porque}</p>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+      {/* `.cobertura-line` — o pé do placar: é ela que impede o veredito de ficar seco */}
+      <p
+        className="border-t px-[18px] py-[9px] text-[12px] tabular-nums"
+        style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
+      >
+        {cobertura.map((x, i) =>
+          x.forte ? (
+            <b key={i} style={{ color: 'var(--prod-primary)' }}>{x.texto}</b>
+          ) : (
+            <span key={i}>{x.texto}</span>
+          ),
+        )}
+      </p>
+    </Cartao>
   )
 }
 
-/** ⚠️ `valor` nulo vira **"a apurar"**, nunca R$ 0,00 — ausência de plano não é casa de graça */
+/**
+ * `.pcard` — lbl 12px/600 · val 26px/700 · sub 11px.
+ *
+ * ⚠️ `valor` nulo vira **"a apurar"**, nunca R$ 0,00 — ausência de plano não é casa de graça.
+ * ⛔⛔ E o veredito NUNCA aparece seco sobre dado parcial: a `ressalva` da cobertura vem com
+ * ele e a tela é obrigada a desenhá-la (o guard de v1 que não cai).
+ */
 function CartaoDoPlacar({
   c, tom, ressalva, prefixo,
 }: {
@@ -363,23 +452,38 @@ function CartaoDoPlacar({
   ressalva?: string | null
   prefixo?: string
 }) {
-  const fundo =
-    tom === 'PAGOU' ? 'var(--fam-verde-bg)' : tom === 'EM_OBRA' ? 'var(--prod-surface-1)' : 'var(--prod-surface-1)'
-  const tinta = tom === 'PAGOU' ? 'var(--fam-verde-ink)' : 'var(--prod-primary)'
+  const vencedor = tom === 'PAGOU'
+  const faltando = tom === 'EM_OBRA'
+  const fundo = vencedor
+    ? 'var(--fam-verde-bg)'
+    : faltando
+      ? 'var(--fam-ambar-bg)'
+      : 'var(--prod-surface-1)'
+  const tintaForte = vencedor
+    ? 'var(--fam-verde-ink)'
+    : faltando
+      ? 'var(--fam-ambar-ink)'
+      : 'var(--prod-primary)'
+  const tintaFraca = vencedor
+    ? 'var(--fam-verde-ink)'
+    : faltando
+      ? 'var(--fam-ambar-ink)'
+      : 'var(--prod-secondary)'
+
   return (
-    <div className="rounded-lg border px-3 py-2.5" style={{ background: fundo, borderColor: 'var(--prod-line)' }}>
-      <p className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
-        {c.rotulo}
-      </p>
-      <p className="text-[21px] font-semibold tabular-nums" style={{ color: tinta }}>
+    <div className="rounded-[12px] px-[15px] py-[13px]" style={{ background: fundo }}>
+      <p className="text-[12px] font-semibold" style={{ color: tintaFraca }}>{c.rotulo}</p>
+      <p
+        className="mt-[4px] text-[26px] font-bold tabular-nums tracking-[-0.01em]"
+        style={{ color: tintaForte }}
+      >
         {c.valor == null ? 'a apurar' : `${prefixo ?? ''}${formatBRL(c.valor)}`}
       </p>
-      <p className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
+      <p className="mt-[2px] text-[11px] leading-snug" style={{ color: vencedor || faltando ? tintaFraca : 'var(--prod-muted)' }}>
         {c.sublinha}
       </p>
-      {/* ⛔⛔ o veredito NUNCA aparece seco sobre dado parcial — o guard de v1 que não cai */}
       {ressalva && (
-        <p className="mt-1 text-[11px] leading-snug" style={{ color: 'var(--prod-accent)' }}>
+        <p className="mt-[4px] text-[11px] leading-snug" style={{ color: 'var(--fam-indigo-mid)' }}>
           {ressalva}
         </p>
       )}
@@ -387,123 +491,211 @@ function CartaoDoPlacar({
   )
 }
 
-/* ───────────────── 3. QUEM CARREGOU A CASA ───────────────── */
+/* ═══════════════ 3 · QUEM CARREGOU A CASA ═══════════════ */
 
 /**
- * ⭐ A lista que substituiu os tijolos: bolinha da família + nome + barra + "% da casa · R$ X".
- * ⚠️ A barra de cada linha é relativa ao MAIOR (não à casa): com a casa paga, metade das linhas
- * encostaria no fim e a comparação entre produtos — que é a pergunta desta lista — sumiria.
+ * ⚠️ A barra de cada linha é **RELATIVA AO MAIOR, nunca à casa**: com a casa paga, metade das
+ * linhas encostaria no fim e a comparação entre produtos — que é a pergunta desta lista —
+ * sumiria. O *"% da casa"* continua escrito ao lado, em número, e **pode passar de 100%**.
+ *
+ * ⭐ A cor da bolinha vem do `familia` do PAYLOAD, que o servidor derivou por `caraDaReceita`.
+ * Derivar aqui seria a 2ª tradução de nome → cor, e elas divergiriam no 1º grupo novo do mapa.
  */
 function QuemCarregouACasa({
-  d, abrirResto, setAbrirResto, abrirFora, setAbrirFora, empresaId,
+  d, abrirResto, setAbrirResto, empresaId,
 }: {
   d: MargemDaTela
   abrirResto: boolean
   setAbrirResto: (v: boolean) => void
-  abrirFora: boolean
-  setAbrirFora: (v: boolean) => void
   empresaId: string
 }) {
   const l = montarCarregadores(d.casa, d.saboresSemFicha.length)
   const linhas = abrirResto ? [...l.visiveis, ...l.resto] : l.visiveis
 
   return (
-    <Card style={{ background: 'var(--prod-surface)' }}>
-      <CardContent className="space-y-2 p-4">
-        <p className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
-          quem carregou a casa
+    <Cartao>
+      <CabecaDoCartao
+        titulo="Quem carregou a casa"
+        dica="% = quanto da casa cada um pagou · toque abre a ficha"
+      />
+
+      {linhas.length === 0 && (
+        <p className="px-[18px] pb-[14px] text-[13px]" style={{ color: 'var(--prod-muted)' }}>
+          nenhum produto com custo conhecido vendeu neste período
         </p>
+      )}
 
-        {linhas.length === 0 && (
-          <p className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
-            nenhum produto com custo conhecido vendeu neste período
-          </p>
-        )}
+      {linhas.map((x, i) => (
+        <LinhaDaCarga key={x.chave} x={x} primeira={i === 0} empresaId={empresaId} />
+      ))}
 
-        <ul className="space-y-1">
-          {linhas.map((x) => (
-            <li key={x.chave}>
-              <a
-                href={`/empresas/${empresaId}/estoque/cardapio/${encodeURIComponent(x.chave)}`}
-                className="flex items-center gap-2 rounded-md px-1.5 py-1 hover:underline"
-              >
-                <LogoDaReceita nome={x.nome} tamanho={32} />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-[12.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
-                      {x.rei ? '👑 ' : ''}{x.nome}
-                    </span>
-                    <span className="shrink-0 text-[11.5px] tabular-nums" style={{ color: 'var(--prod-secondary)' }}>
-                      {x.pctDaCasa == null ? '' : `${pct(x.pctDaCasa, 1)} da casa · `}
-                      {formatBRL(x.sobraTotal)}
-                    </span>
-                  </span>
-                  <span className="mt-0.5 flex h-1.5 w-full overflow-hidden rounded-full"
-                    style={{ background: 'var(--prod-surface-1)' }}>
-                    <span style={{ width: `${Math.max(2, x.pctDaBarra * 100)}%`, background: `var(--fam-${x.familia}-mid)` }} />
-                  </span>
-                </span>
-              </a>
-            </li>
-          ))}
-        </ul>
+      {/* a linha do agregado: ela EXPANDE — nada some atrás dela */}
+      {l.agregado && (
+        <button
+          type="button"
+          onClick={() => setAbrirResto(!abrirResto)}
+          aria-expanded={abrirResto}
+          className="flex w-full items-center gap-[10px] border-t px-[18px] py-[9px] text-left text-[13.5px] hover:bg-[var(--prod-surface-1)]"
+          style={{ borderColor: 'var(--prod-line)' }}
+        >
+          <span className="h-[10px] w-[10px] flex-none rounded-full" style={{ background: 'var(--prod-muted)' }} aria-hidden />
+          <span
+            className="w-[40%] min-w-0 truncate font-semibold min-[560px]:w-[200px] min-[560px]:min-w-[120px]"
+            style={{ color: 'var(--prod-secondary)' }}
+          >
+            {abrirResto ? 'mostrar só os 6 maiores' : `+ ${l.agregado.quantos} produtos`}
+          </span>
+          <span className="h-[10px] flex-1 overflow-hidden rounded-full" style={{ background: 'var(--prod-surface-1)' }}>
+            <span
+              className="block h-full rounded-full"
+              style={{ width: `${Math.max(2, l.agregado.pctDaBarra * 100)}%`, background: 'var(--prod-muted)' }}
+            />
+          </span>
+          <span
+            className="w-auto min-w-[96px] text-right tabular-nums min-[560px]:w-[132px]"
+            style={{ color: 'var(--prod-secondary)' }}
+          >
+            <b className="text-[13.5px]">{pct(l.agregado.pctDaCasa)}</b>{' '}
+            <span className="text-[12.5px]">· {abrirResto ? 'fechar ▴' : 'ver todos ▾'}</span>
+          </span>
+        </button>
+      )}
 
-        {l.resto.length > 0 && (
-          <button type="button" onClick={() => setAbrirResto(!abrirResto)} aria-expanded={abrirResto}
-            className="rounded-md border px-2 py-1 text-[11.5px]"
-            style={{ borderColor: 'var(--prod-line)', color: 'var(--prod-secondary)' }}>
-            {abrirResto ? 'mostrar só os 6 maiores' : `+${l.resto.length} produtos · ver todos`}
-          </button>
-        )}
-
-        {/* ───────── o rodapé âmbar: o que está fora e o que destrava a cobertura ───────── */}
-        <div className="rounded-md border px-2.5 py-2" style={{ borderColor: 'var(--fam-ambar-mid)' }}>
-          <p className="text-[12px] leading-snug" style={{ color: 'var(--fam-ambar-ink)' }}>
-            🪑 {l.rodape.foraDaObra} fora da obra · {l.rodape.saboresSemFicha} sabores sem ficha — criar
-            fichas sobe a cobertura ({pct(l.rodape.cobertura)} → meta {pct(COBERTURA_MINIMA)})
-          </p>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            <a href={`/empresas/${empresaId}/estoque/cardapio`}
-              className="rounded-md border px-2 py-0.5 text-[11.5px] hover:underline"
-              style={{ borderColor: 'var(--fam-ambar-mid)', color: 'var(--fam-ambar-ink)' }}>
-              ir pra fila das fichas <ArrowRight className="inline h-3 w-3" />
-            </a>
-            {d.casa.fora.length > 0 && (
-              <button type="button" onClick={() => setAbrirFora(!abrirFora)} aria-expanded={abrirFora}
-                className="rounded-md border px-2 py-0.5 text-[11.5px]"
-                style={{ borderColor: 'var(--prod-line)', color: 'var(--prod-secondary)' }}>
-                {abrirFora ? 'fechar' : 'ver quem está fora da obra'}
-              </button>
-            )}
-          </div>
-          {abrirFora && (
-            <ul className="mt-1.5 space-y-1">
-              {d.casa.fora.map((f) => (
-                <li key={f.chave} className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5
-                  rounded-md border border-dashed px-2 py-1.5"
-                  style={{ borderColor: 'var(--prod-line-strong)' }}>
-                  <a href={`/empresas/${empresaId}/estoque/cardapio/${encodeURIComponent(f.chave)}`}
-                    className="text-[12.5px] font-medium hover:underline" style={{ color: 'var(--prod-primary)' }}>
-                    {f.nome} <ArrowRight className="inline h-3 w-3" style={{ color: 'var(--prod-accent)' }} />
-                  </a>
-                  <span className="text-[11.5px] tabular-nums" style={{ color: 'var(--prod-muted)' }}>
-                    {f.unidades} un
-                  </span>
-                  <p className="w-full text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-                    {f.porque}
-                    {f.custoParcial != null && ` · já sei ${formatBRL(f.custoParcial)} do custo`}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+      {/* `.fila-foot` âmbar — o que está fora e o caminho que destrava a cobertura */}
+      <div
+        className="flex flex-wrap items-baseline justify-between gap-[10px] border-t px-[18px] py-[9px] text-[12px]"
+        style={{ borderColor: 'var(--prod-line)', background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}
+      >
+        <span>
+          🪑 <b>{l.rodape.foraDaObra} fora da obra</b> — vendem e o custo é desconhecido ·{' '}
+          <b>{l.rodape.saboresSemFicha} sabores sem ficha</b>
+        </span>
+        <a
+          href="#fila"
+          className="font-semibold hover:underline"
+          style={{ color: 'var(--fam-indigo-mid)' }}
+        >
+          criar fichas sobe a cobertura ({pct(l.rodape.cobertura)} → meta {pct(COBERTURA_MINIMA)}) →
+        </a>
+      </div>
+      {/* ⚠️ o link acima leva à fila DESTA página; a tela do cardápio é onde a ficha nasce */}
+      <p className="px-[18px] pb-[12px] text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+        <a href={`/empresas/${empresaId}/estoque/cardapio`} className="hover:underline">
+          ou abrir o cardápio pra criar as fichas →
+        </a>
+      </p>
+    </Cartao>
   )
 }
 
-/* ───────────────── 4. O MONTADOR DE PIZZA DE TESTE ───────────────── */
+/** `.carga-row` — dot · nome 200px · barra flex · valor 132px à direita */
+function LinhaDaCarga({
+  x, primeira, empresaId,
+}: { x: Carregador; primeira: boolean; empresaId: string }) {
+  return (
+    <a
+      href={`/empresas/${empresaId}/estoque/cardapio/${encodeURIComponent(x.chave)}`}
+      className={`flex items-center gap-[10px] px-[18px] py-[9px] text-[13.5px] hover:bg-[var(--prod-surface-1)] ${primeira ? '' : 'border-t'}`}
+      style={{ borderColor: 'var(--prod-line)' }}
+    >
+      <Bolinha familia={x.familia} />
+      <span
+        className="flex w-[40%] min-w-0 items-center gap-[6px] truncate font-semibold min-[560px]:w-[200px] min-[560px]:min-w-[120px]"
+        style={{ color: 'var(--prod-primary)' }}
+      >
+        {x.rei ? '👑 ' : ''}{x.nome}
+      </span>
+      <span className="h-[10px] flex-1 overflow-hidden rounded-full" style={{ background: 'var(--prod-surface-1)' }}>
+        <span
+          className="block h-full rounded-full"
+          style={{ width: `${Math.max(2, x.pctDaBarra * 100)}%`, background: `var(--fam-${x.familia}-mid)` }}
+        />
+      </span>
+      <span className="w-auto min-w-[96px] text-right tabular-nums min-[560px]:w-[132px]">
+        <b className="text-[13.5px]" style={{ color: 'var(--prod-primary)' }}>{pct(x.pctDaCasa)}</b>{' '}
+        <span className="text-[12.5px]" style={{ color: 'var(--prod-secondary)' }}>
+          · {formatBRL(x.sobraTotal)}
+        </span>
+      </span>
+    </a>
+  )
+}
+
+/* ═══════════════ 4 · A LIGA ═══════════════ */
+
+/** ⚠️ os selos cortam pela MEDIANA do período — a lib decide, a tela só pinta a pílula */
+const TOM_DO_SELO: Record<SeloDoVeredito, { bg: string; ink: string }> = {
+  ESTRELA: { bg: 'var(--fam-verde-bg)', ink: 'var(--fam-verde-ink)' },
+  BURRO_DE_CARGA: { bg: 'var(--fam-ambar-bg)', ink: 'var(--fam-ambar-ink)' },
+  JOIA_ESCONDIDA: { bg: 'var(--fam-indigo-bg)', ink: 'var(--fam-indigo-ink)' },
+  REPENSAR: { bg: 'var(--prod-surface-1)', ink: 'var(--prod-secondary)' },
+}
+
+function LigaCard({
+  d, aba, setAba, empresaId,
+}: { d: MargemDaTela; aba: AbaDaLiga; setAba: (a: AbaDaLiga) => void; empresaId: string }) {
+  const l = d.liga
+  return (
+    <Cartao>
+      <CabecaDoCartao titulo="🏆 A liga do período" dica="selo = veredito · tudo clicável → ficha" />
+
+      <div className="flex flex-wrap gap-[6px] px-[18px] pb-[8px]">
+        {ABAS.map((a) => (
+          <Chip key={a.k} on={aba === a.k} onClick={() => setAba(a.k)}>
+            {a.r}{aba === a.k ? ' ✓' : ''}
+          </Chip>
+        ))}
+      </div>
+
+      {l.cortes.sobra != null && (
+        <p className="px-[18px] pb-[8px] pt-[4px] text-[11.5px] tabular-nums" style={{ color: 'var(--prod-muted)' }}>
+          os selos cortam pela MEDIANA do período: sobra {formatBRL(l.cortes.sobra)} · {l.cortes.unidades} un
+        </p>
+      )}
+
+      {l.linhas.length === 0 ? (
+        <p className="px-[18px] pb-[16px] text-center text-[13px]" style={{ color: 'var(--prod-muted)' }}>
+          nenhum produto com custo conhecido neste período
+        </p>
+      ) : (
+        l.linhas.map((x) => (
+          <a
+            key={x.chave}
+            href={`/empresas/${empresaId}/estoque/cardapio/${encodeURIComponent(x.chave)}`}
+            className="flex items-center gap-[10px] border-t px-[18px] py-[9px] text-[13.5px] hover:bg-[var(--prod-surface-1)]"
+            style={{ borderColor: 'var(--prod-line)' }}
+          >
+            <span className="w-[22px] flex-none text-center text-[15px] tabular-nums" aria-hidden>
+              {x.medalha ? ['🥇', '🥈', '🥉'][x.medalha - 1] : (
+                <span style={{ color: 'var(--prod-muted)' }}>{x.posicao}</span>
+              )}
+            </span>
+            <Bolinha familia={x.familia} />
+            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-[7px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
+              <span className="truncate">{x.nome}</span>
+              <span
+                className="whitespace-nowrap rounded-full px-[8px] py-[2px] text-[10.5px] font-bold"
+                style={{ background: TOM_DO_SELO[x.selo].bg, color: TOM_DO_SELO[x.selo].ink }}
+              >
+                {EMOJI_DO_SELO[x.selo]} {x.frase}
+              </span>
+            </span>
+            <span className="min-w-[120px] text-right tabular-nums">
+              <b style={{ color: 'var(--fam-verde-ink)' }}>
+                {aba === 'VENDIDOS' ? `${x.unidades} un` : aba === 'MARGEM' ? pct(x.margemPct, 1) : formatBRL(x.sobraTotal)}
+              </b>
+              <span className="block text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                {formatBRL(x.sobraUn)}/un · {x.unidades} un · {pct(x.margemPct)}
+              </span>
+            </span>
+          </a>
+        ))
+      )}
+    </Cartao>
+  )
+}
+
+/* ═══════════════ 5 · MONTADOR DE PIZZA ═══════════════ */
 
 /**
  * ⭐⭐ A BANCADA — escolho o tamanho, toco na fatia, vejo o custo e a sobra por canal.
@@ -511,20 +703,22 @@ function QuemCarregouACasa({
  * ⛔⛔ **SÓ SIMULAÇÃO: nada grava, nada baixa estoque.** A garantia é de forma — o único POST
  * desta seção é o da CONFIG (semear canais / apontar a base), nunca uma gravação de pizza.
  *
- * ⭐ A conta é a lib PURA `montarPizza`, a mesma que o teste executa: a regra de 02/09 vale
- * aqui tanto quanto na baixa — **1 ocorrência = 1 explosão, SEM fator por tamanho**.
+ * ⭐ A conta é a lib PURA `montarPizza`, a mesma que o teste executa: **base do tamanho +
+ * Σ(1 ocorrência × ficha de cada sabor)** — a regra de 02/09, **SEM fator por tamanho**.
+ * Dividir pelo nº de fatias ressuscitaria o fator que morreu em 07/10, e o relatório de
+ * complementos (que é quem baixa o sabor de verdade) conta OCORRÊNCIA, nunca fração.
  *
- * ⚠️ O catálogo carrega sob demanda (abrir a seção) pra não pesar o 1º paint da tela.
+ * ⚠️ O catálogo é uma 2ª chamada (ele lê o cardápio inteiro e o ledger), mas carrega **junto
+ * com a tela**: na referência a bancada está ABERTA, e esconder atrás de um clique seria a
+ * "porta sem maçaneta" que esta casa já pagou nove vezes.
  */
 function MontadorDePizza({ empresaId }: { empresaId: string }) {
-  const [aberto, setAberto] = useState(false)
   const [cat, setCat] = useState<CatalogoDoMontador | null>(null)
-  const [estado, setEstado] = useState<'VAZIO' | 'CARREGANDO' | 'FALHOU' | 'OK'>('VAZIO')
+  const [estado, setEstado] = useState<'CARREGANDO' | 'FALHOU' | 'OK'>('CARREGANDO')
   const [erro, setErro] = useState('')
   const [tamanhoSel, setTamanhoSel] = useState<string | null>(null)
   const [escolhas, setEscolhas] = useState<(SaborDisponivel | null)[]>([])
   const [fatiaAberta, setFatiaAberta] = useState<number | null>(null)
-  const [busca, setBusca] = useState('')
   const [precoTxt, setPrecoTxt] = useState('')
   const [salvando, setSalvando] = useState(false)
 
@@ -549,8 +743,8 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
   }, [empresaId])
 
   useEffect(() => {
-    if (aberto && estado === 'VAZIO') void carregar()
-  }, [aberto, estado, carregar])
+    void carregar()
+  }, [carregar])
 
   async function semear() {
     setSalvando(true)
@@ -568,7 +762,6 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
       setErro(r.erro ?? 'não consegui semear a config')
       return
     }
-    setEstado('VAZIO')
     void carregar()
   }
 
@@ -590,244 +783,281 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
     setFatiaAberta(null)
   }
 
-  const saboresFiltrados = cat ? filtrarPorBusca(cat.sabores, busca, (s) => s.nome) : []
+  // ⭐ o sufixo do PISO: com fatia pendente o total é o mínimo, e a tela DIZ quantas faltam
+  const pendentes = pizza ? pizza.incompleto.filter((i) => i.motivo !== 'SEM_BASE').length : 0
+  const sufixo = pizza && pizza.custoTotal == null ? ` + ${pendentes} fatia(s)` : ''
 
   return (
-    <Card style={{ background: 'var(--prod-surface)' }}>
-      <CardContent className="space-y-3 p-4">
-        <button type="button" onClick={() => setAberto(!aberto)} aria-expanded={aberto}
-          className="flex w-full items-center justify-between gap-2 text-left">
-          <span>
-            <span className="block text-[13px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
-              🍕 montar uma pizza de teste
-            </span>
-            <span className="block text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
-              quanto custa e quanto sobra, por canal — só simulação, nada grava
-            </span>
-          </span>
-          <span className="text-[12px]" style={{ color: 'var(--prod-accent)' }}>
-            {aberto ? 'fechar' : 'abrir'}
-          </span>
-        </button>
+    <Cartao>
+      <CabecaDoCartao
+        titulo="🍕 Monte uma pizza e veja o custo"
+        dica="só simula — nada grava, nada baixa"
+      />
 
-        {aberto && estado === 'CARREGANDO' && (
-          <p className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>carregando a bancada…</p>
-        )}
+      {estado === 'CARREGANDO' && (
+        <p className="px-[18px] pb-[14px] text-[13px]" style={{ color: 'var(--prod-muted)' }}>
+          carregando a bancada…
+        </p>
+      )}
 
-        {aberto && estado === 'FALHOU' && (
-          <div className="space-y-1.5">
-            <p className="text-[12.5px]" style={{ color: 'var(--fam-coral-ink)' }}>{erro}</p>
-            <button type="button" onClick={() => void carregar()}
-              className="h-8 rounded-md px-2.5 text-xs font-medium"
-              style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
-              tentar de novo
-            </button>
+      {estado === 'FALHOU' && (
+        <div className="space-y-1.5 px-[18px] pb-[14px]">
+          <p className="text-[13px]" style={{ color: 'var(--fam-coral-ink)' }}>{erro}</p>
+          <button type="button" onClick={() => void carregar()}
+            className="rounded-[8px] px-2.5 py-1 text-[12.5px] font-medium"
+            style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
+            tentar de novo
+          </button>
+        </div>
+      )}
+
+      {estado === 'OK' && cat && (
+        <>
+          {/* ⚠️ o que falta, NOMEADO — bancada vazia sem motivo é indistinguível de quebrada */}
+          {cat.faltando.length > 0 && (
+            <div
+              className="mx-[18px] mb-2 space-y-1.5 rounded-[12px] px-2.5 py-2"
+              style={{ background: 'var(--fam-ambar-bg)' }}
+            >
+              {cat.faltando.map((f) => (
+                <p key={f.oQue} className="text-[11.5px] leading-snug" style={{ color: 'var(--fam-ambar-ink)' }}>
+                  {f.frase}
+                </p>
+              ))}
+              {cat.faltando.some((f) => f.oQue === 'canais' || f.oQue === 'sabores-por-tamanho') && (
+                <button type="button" disabled={salvando} onClick={() => void semear()}
+                  className="rounded-[8px] px-2 py-1 text-[11.5px] font-medium disabled:opacity-50"
+                  style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
+                  {salvando
+                    ? 'semeando…'
+                    : 'usar os padrões (balcão 0% · tele própria 0% · iFood 20% · pequena 1 · grande 2 · família 3)'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* os tamanhos, como chips (`.liga-tabs`) */}
+          <div className="flex flex-wrap gap-[6px] px-[18px] pb-[8px]">
+            {cat.tamanhos.map((t) => {
+              const pronto = t.sabores > 0 && t.base != null
+              return (
+                <Chip
+                  key={t.tamanho}
+                  on={t.tamanho === tamanhoSel}
+                  onClick={() => trocarTamanho(t)}
+                  titulo={pronto ? undefined : 'este tamanho ainda não tem base apontada'}
+                >
+                  {t.tamanho.toLowerCase()}
+                  {t.sabores > 0 && ` · ${t.sabores} sabor${t.sabores > 1 ? 'es' : ''}`}
+                  {!pronto && ' ⚠️'}
+                </Chip>
+              )
+            })}
           </div>
-        )}
+          {tamanho?.derivadoDe && (
+            <p className="px-[18px] pb-[8px] text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+              o nº de sabores veio de {tamanho.derivadoDe} (precinho segue o tamanho)
+            </p>
+          )}
 
-        {aberto && estado === 'OK' && cat && (
-          <div className="space-y-3">
-            {/* ⚠️ o que falta, NOMEADO — bancada vazia sem motivo é indistinguível de quebrada */}
-            {cat.faltando.length > 0 && (
-              <div className="space-y-1.5 rounded-md border px-2.5 py-2" style={{ borderColor: 'var(--fam-ambar-mid)' }}>
-                {cat.faltando.map((f) => (
-                  <p key={f.oQue} className="text-[11.5px] leading-snug" style={{ color: 'var(--fam-ambar-ink)' }}>
-                    {f.frase}
+          {pizza && (
+            <div className="flex flex-wrap items-center gap-[20px] px-[18px] pb-[16px] pt-[10px]">
+              <div className="w-[170px] flex-none">
+                <PizzaEmFatias
+                  pizza={pizza}
+                  aoTocar={(i) => setFatiaAberta(fatiaAberta === i ? null : i)}
+                  fatiaAberta={fatiaAberta}
+                />
+              </div>
+
+              {/* `.mont-conta` — 14px, rows justify-between, total com borda em cima */}
+              <div className="min-w-[250px] flex-1 text-[14px] tabular-nums">
+                <LinhaDaConta
+                  rotulo={tamanho?.base ? `base ${tamanho.tamanho.toLowerCase()} (${tamanho.base.nome})` : `base ${tamanho?.tamanho.toLowerCase() ?? ''}`}
+                  valor={pizza.custoBase == null ? 'a declarar' : formatBRL(pizza.custoBase)}
+                />
+                {pizza.fatias.map((f) => {
+                  if (f.sabor == null) {
+                    return (
+                      <div key={f.indice} className="flex justify-between gap-[10px] py-[3px]" style={{ color: 'var(--fam-coral-ink)' }}>
+                        <span><b>{f.indice + 1}º sabor — escolher</b></span>
+                        <span>—</span>
+                      </div>
+                    )
+                  }
+                  if (f.custo == null) {
+                    return (
+                      <div key={f.indice} className="flex justify-between gap-[10px] py-[3px]">
+                        <span>
+                          <b style={{ color: 'var(--fam-ambar-ink)' }}>{f.sabor.nome}</b>{' '}
+                          <span style={{ color: 'var(--prod-secondary)' }}>· sem ficha — tocar cria</span>
+                        </span>
+                        <span style={{ color: 'var(--fam-ambar-ink)' }}>a definir</span>
+                      </div>
+                    )
+                  }
+                  return (
+                    <div key={f.indice} className="flex justify-between gap-[10px] py-[3px]">
+                      <span>
+                        <b style={{ color: 'var(--fam-indigo-mid)' }}>{f.sabor.nome}</b>{' '}
+                        <span style={{ color: 'var(--prod-secondary)' }}>· 1 ocorrência</span>
+                      </span>
+                      <span style={{ color: 'var(--prod-primary)' }}>{formatBRL(f.custo)}</span>
+                    </div>
+                  )
+                })}
+
+                <div
+                  className="mt-[5px] flex justify-between gap-[10px] border-t pt-[7px] font-semibold"
+                  style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}
+                >
+                  <span>custo da pizza</span>
+                  <span className="text-[16px] font-bold">
+                    {pizza.custoTotal == null
+                      ? `${formatBRL(pizza.custoParcial)}${sufixo}`
+                      : formatBRL(pizza.custoTotal)}
+                  </span>
+                </div>
+
+                {/* o preço e a sobra por canal — a taxa incide no PREÇO, nunca na sobra */}
+                {pizza.canais.length === 0 ? (
+                  <div className="flex items-center gap-[6px] py-[3px]" style={{ color: 'var(--prod-secondary)' }}>
+                    <span>vendendo a</span>
+                    <CampoDePreco valor={precoTxt} aoMudar={setPrecoTxt} />
+                    <span className="text-[11.5px]" style={{ color: 'var(--fam-ambar-ink)' }}>
+                      — nenhum canal cadastrado, sem eles não dá pra dizer quanto sobra no iFood
+                    </span>
+                  </div>
+                ) : (
+                  pizza.canais.map((cn, i) => (
+                    <div key={cn.canal} className="flex items-center justify-between gap-[10px] py-[3px]">
+                      <span className="flex flex-wrap items-center gap-[6px]" style={{ color: 'var(--prod-secondary)' }}>
+                        {i === 0 ? (
+                          <>
+                            vendendo a <CampoDePreco valor={precoTxt} aoMudar={setPrecoTxt} /> no {cn.canal}, sobra
+                          </>
+                        ) : (
+                          <>
+                            no {cn.canal}
+                            {cn.taxaPct != null && cn.taxaPct > 0 && ` (taxa ${pct(cn.taxaPct)})`}
+                          </>
+                        )}
+                      </span>
+                      <span
+                        className={cn.taxaPct ? 'font-semibold' : 'text-[16px] font-bold'}
+                        style={{
+                          color:
+                            cn.sobra == null
+                              ? 'var(--prod-muted)'
+                              : cn.sobra < 0
+                                ? 'var(--fam-coral-ink)'
+                                : cn.taxaPct
+                                  ? 'var(--fam-ambar-ink)'
+                                  : 'var(--fam-verde-ink)',
+                        }}
+                      >
+                        {cn.sobra == null ? 'a apurar' : `~${formatBRL(cn.sobra)}`}
+                        {sufixo && cn.sobra != null ? ' − fatias' : ''}
+                      </span>
+                    </div>
+                  ))
+                )}
+
+                {pizza.incompleto.map((inc, k) => (
+                  <p key={`${inc.motivo}-${k}`} className="pt-[4px] text-[11.5px] leading-snug" style={{ color: 'var(--fam-ambar-ink)' }}>
+                    ⚠️ {inc.frase}
                   </p>
                 ))}
-                {cat.faltando.some((f) => f.oQue === 'canais' || f.oQue === 'sabores-por-tamanho') && (
-                  <button type="button" disabled={salvando} onClick={() => void semear()}
-                    className="h-7 rounded-md px-2 text-[11.5px] font-medium disabled:opacity-50"
-                    style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
-                    {salvando ? 'semeando…' : 'usar os padrões (balcão 0% · tele própria 0% · iFood 20% · pequena 1 · grande 2 · família 3)'}
-                  </button>
+                {pizza.canais.some((cn) => cn.porque) && (
+                  <p className="pt-[4px] text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                    {pizza.canais.find((cn) => cn.porque)!.porque}
+                  </p>
                 )}
               </div>
-            )}
-
-            {/* ───────── os tamanhos ───────── */}
-            <div className="flex flex-wrap gap-1.5">
-              {cat.tamanhos.map((t) => {
-                const on = t.tamanho === tamanhoSel
-                const pronto = t.sabores > 0 && t.base != null
-                return (
-                  <button key={t.tamanho} type="button" onClick={() => trocarTamanho(t)}
-                    className="rounded-md border px-2.5 py-1 text-[12px] font-medium"
-                    style={{
-                      background: on ? 'var(--prod-acao-bg)' : 'transparent',
-                      color: on ? 'var(--prod-acao-ink)' : 'var(--prod-secondary)',
-                      borderColor: pronto ? 'var(--prod-line)' : 'var(--fam-ambar-mid)',
-                    }}>
-                    {t.tamanho}
-                    {t.sabores > 0 && <span className="ml-1 opacity-70">· {t.sabores} sabor{t.sabores > 1 ? 'es' : ''}</span>}
-                    {!pronto && <span className="ml-1">⚠️</span>}
-                  </button>
-                )
-              })}
             </div>
-            {tamanho?.derivadoDe && (
-              <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-                o nº de sabores veio de {tamanho.derivadoDe} (precinho segue o tamanho)
+          )}
+
+          {/* `.escolha-sabor` — os sabores como chips, COM FICHA PRIMEIRO; sem ficha = âmbar */}
+          {fatiaAberta != null && pizza && (
+            <div className="px-[18px] pb-[14px]">
+              <p className="mb-[6px] text-[12px]" style={{ color: 'var(--prod-secondary)' }}>
+                escolher o sabor da fatia <b style={{ color: 'var(--prod-primary)' }}>{fatiaAberta + 1}ª</b>{' '}
+                (com ficha primeiro; âmbar = sem ficha, tocar cria):
               </p>
-            )}
-
-            {pizza && (
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[260px_1fr] lg:items-start">
-                {/* ───────── a pizza, em fatias ───────── */}
-                <div className="mx-auto w-full max-w-[260px]">
-                  <PizzaEmFatias
-                    pizza={pizza}
-                    aoTocar={(i) => setFatiaAberta(fatiaAberta === i ? null : i)}
-                    fatiaAberta={fatiaAberta}
-                  />
-                </div>
-
-                {/* ───────── a conta + os canais ───────── */}
-                <div className="space-y-2">
-                  <dl className="space-y-1 text-[12.5px]">
-                    <Conta
-                      rotulo={`base${tamanho?.base ? ` (${tamanho.base.nome})` : ''}`}
-                      valor={pizza.custoBase == null ? 'a declarar' : formatBRL(pizza.custoBase)}
-                    />
-                    <Conta
-                      rotulo={`+ ${pizza.fatias.length} sabor${pizza.fatias.length > 1 ? 'es' : ''} (1 ocorrência cada)`}
-                      valor={pizza.custoSabores == null ? 'a apurar' : formatBRL(pizza.custoSabores)}
-                    />
-                    <Conta
-                      rotulo="= custo da pizza"
-                      valor={pizza.custoTotal == null ? 'a apurar' : formatBRL(pizza.custoTotal)}
-                      forte
-                    />
-                  </dl>
-
-                  {/* ⛔ o parcial aparece como PISO, nunca como o custo */}
-                  {pizza.custoTotal == null && pizza.custoParcial > 0 && (
-                    <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-                      pelo menos {formatBRL(pizza.custoParcial)} — falta o resto pra fechar
-                    </p>
-                  )}
-                  {pizza.incompleto.map((i, k) => (
-                    <p key={`${i.motivo}-${k}`} className="text-[11.5px] leading-snug" style={{ color: 'var(--fam-ambar-ink)' }}>
-                      ⚠️ {i.frase}
-                    </p>
-                  ))}
-
-                  {/* ───────── o preço e a sobra por canal ───────── */}
-                  <div className="space-y-1.5 border-t pt-2" style={{ borderColor: 'var(--prod-line)' }}>
-                    <label className="block text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
-                      vendendo a
-                      <input
-                        value={precoTxt}
-                        onChange={(e) => setPrecoTxt(sanitizarQtd(e.target.value, 'KG'))}
-                        inputMode="decimal"
-                        placeholder="ex.: 89,90"
-                        className="ml-1.5 w-24 rounded-md border px-1.5 py-0.5 text-[12.5px] tabular-nums"
-                        style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }}
-                      />
-                    </label>
-                    {pizza.canais.length === 0 && (
-                      <p className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
-                        nenhum canal cadastrado — sem eles não dá pra dizer quanto sobra no iFood
-                      </p>
-                    )}
-                    <ul className="space-y-0.5">
-                      {pizza.canais.map((c) => (
-                        <li key={c.canal} className="flex items-baseline justify-between gap-2 text-[12px]">
-                          <span style={{ color: 'var(--prod-muted)' }}>
-                            sobra no {c.canal}
-                            {c.taxaValor != null && c.taxaValor > 0 && (
-                              <span className="opacity-70"> (o canal levou {formatBRL(c.taxaValor)})</span>
-                            )}
-                          </span>
-                          <span className="shrink-0 tabular-nums font-medium"
-                            style={{ color: c.sobra == null ? 'var(--prod-muted)' : c.sobra >= 0 ? 'var(--fam-verde-ink)' : 'var(--fam-coral-ink)' }}>
-                            {c.sobra == null ? 'a apurar' : formatBRL(c.sobra)}
-                            {c.margemPct != null && <span className="ml-1 opacity-70">{pct(c.margemPct)}</span>}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    {pizza.canais.some((c) => c.porque) && (
-                      <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-                        {pizza.canais.find((c) => c.porque)!.porque}
-                      </p>
-                    )}
-                  </div>
-                </div>
+              <div>
+                {cat.sabores.map((s) =>
+                  s.temFicha ? (
+                    <button
+                      key={s.fichaId}
+                      type="button"
+                      onClick={() => {
+                        setEscolhas((a) => { const b = [...a]; b[fatiaAberta] = s; return b })
+                        setFatiaAberta(null)
+                      }}
+                      className="mb-[6px] mr-[6px] inline-block rounded-full border px-[11px] py-[4px] text-[12.5px] hover:bg-[var(--fam-indigo-bg)]"
+                      style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
+                    >
+                      {s.nome}
+                      {s.custo == null ? ' · custo a apurar' : ` · ${formatBRL(s.custo)}`}
+                    </button>
+                  ) : (
+                    /* ⭐ sabor sem ficha NÃO é escondido: tocar nele é o atalho que sobe a cobertura */
+                    <a
+                      key={`sem:${s.nome}`}
+                      href={`/empresas/${empresaId}/estoque/cardapio?sabor=${encodeURIComponent(s.nome)}`}
+                      className="mb-[6px] mr-[6px] inline-block rounded-full border border-dashed px-[11px] py-[4px] text-[12.5px] hover:bg-[var(--fam-ambar-bg)]"
+                      style={{ borderColor: 'var(--fam-ambar-mid)', color: 'var(--fam-ambar-ink)' }}
+                    >
+                      {s.nome} · sem ficha ⚠
+                    </a>
+                  ),
+                )}
               </div>
-            )}
+            </div>
+          )}
+        </>
+      )}
+    </Cartao>
+  )
+}
 
-            {/* ───────── a lista de sabores da fatia tocada ───────── */}
-            {fatiaAberta != null && pizza && (
-              <div className="space-y-1.5 rounded-md border px-2.5 py-2" style={{ borderColor: 'var(--prod-line)' }}>
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="text-[12px] font-medium" style={{ color: 'var(--prod-primary)' }}>
-                    sabor da fatia {fatiaAberta + 1} de {pizza.fatias.length}
-                  </p>
-                  <input
-                    value={busca} onChange={(e) => setBusca(e.target.value)}
-                    placeholder="buscar sabor"
-                    aria-label="buscar sabor"
-                    className="w-40 rounded-md border px-1.5 py-0.5 text-[12px]"
-                    style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }}
-                  />
-                </div>
-                <ul className="max-h-60 space-y-0.5 overflow-y-auto">
-                  {saboresFiltrados.map((s) => (
-                    <li key={s.fichaId || `sem:${s.nome}`}>
-                      {s.temFicha ? (
-                        <button type="button"
-                          onClick={() => {
-                            setEscolhas((a) => { const b = [...a]; b[fatiaAberta] = s; return b })
-                            setFatiaAberta(null)
-                          }}
-                          className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left hover:underline">
-                          <LogoDaReceita nome={s.nome} tamanho={32} />
-                          <span className="min-w-0 flex-1 truncate text-[12px]" style={{ color: 'var(--prod-primary)' }}>
-                            {s.nome}
-                          </span>
-                          <span className="shrink-0 text-[11.5px] tabular-nums" style={{ color: 'var(--prod-secondary)' }}>
-                            {s.custo == null ? 'custo a apurar' : formatBRL(s.custo)}
-                          </span>
-                        </button>
-                      ) : (
-                        /* ⭐ sabor sem ficha NÃO é escondido: tocar nele é o atalho que sobe a cobertura */
-                        <a href={`/empresas/${empresaId}/estoque/cardapio?sabor=${encodeURIComponent(s.nome)}`}
-                          className="flex w-full items-center gap-2 rounded-md border border-dashed px-1.5 py-1 hover:underline"
-                          style={{ borderColor: 'var(--fam-ambar-mid)' }}>
-                          <LogoDaReceita nome={s.nome} tamanho={32} alerta={{ titulo: 'este sabor ainda não tem ficha' }} />
-                          <span className="min-w-0 flex-1 truncate text-[12px]" style={{ color: 'var(--fam-ambar-ink)' }}>
-                            {s.nome}
-                          </span>
-                          <span className="shrink-0 text-[11px]" style={{ color: 'var(--fam-ambar-ink)' }}>
-                            sem ficha — criar <ArrowRight className="inline h-3 w-3" />
-                          </span>
-                        </a>
-                      )}
-                    </li>
-                  ))}
-                  {saboresFiltrados.length === 0 && (
-                    <li className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
-                      nada com «{busca}» entre os {cat.sabores.length} sabores
-                    </li>
-                  )}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+/** `.preco-input` — 92px, negrito, alinhado à direita. ⛔ Sanitizador da casa: vírgula não zera */
+function CampoDePreco({ valor, aoMudar }: { valor: string; aoMudar: (v: string) => void }) {
+  return (
+    <input
+      value={valor}
+      onChange={(e) => aoMudar(sanitizarQtd(e.target.value, 'KG'))}
+      inputMode="decimal"
+      placeholder="89,90"
+      aria-label="preço de venda da pizza"
+      className="w-[92px] rounded-[8px] border px-2 py-[3px] text-right text-[14px] font-semibold tabular-nums"
+      style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }}
+    />
+  )
+}
+
+function LinhaDaConta({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div className="flex justify-between gap-[10px] py-[3px]">
+      <span style={{ color: 'var(--prod-secondary)' }}>{rotulo}</span>
+      <span style={{ color: 'var(--prod-primary)' }}>{valor}</span>
+    </div>
   )
 }
 
 /**
- * ⭐ A PIZZA EM FATIAS — SVG, fatia por setor circular, cada uma tocável.
+ * ⭐ A PIZZA EM FATIAS — SVG, uma fatia por setor circular, cada uma tocável.
  *
  * ⚠️ `viewBox` + `w-full`: no celular ela encolhe sem cortar (REGRA 12). E o custo só é escrito
  * dentro da fatia quando ela tem 3 ou menos vizinhas — com 6 fatias o número não caberia e
  * viraria rabisco; aí ele fica na lista ao lado.
+ *
+ * ⚠️ A cor roda em 3 famílias POR ÍNDICE (como na referência), não pela família do sabor: é
+ * isso que mantém duas fatias vizinhas distinguíveis mesmo quando os dois sabores são da
+ * mesma família. Fatia vazia = coral; sabor sem ficha = âmbar.
  */
+const CORES_DA_FATIA = ['--fam-verde-mid', '--fam-ambar-mid', '--fam-rosa-mid']
+
 function PizzaEmFatias({
   pizza, aoTocar, fatiaAberta,
 }: {
@@ -836,11 +1066,11 @@ function PizzaEmFatias({
   fatiaAberta: number | null
 }) {
   const n = pizza.fatias.length
-  const R = 46
+  const R = 42
   const C = 50
   if (n === 0) {
     return (
-      <div className="flex h-40 items-center justify-center rounded-md border border-dashed text-[11.5px]"
+      <div className="flex h-[140px] items-center justify-center rounded-[12px] border border-dashed p-2 text-center text-[11.5px]"
         style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-muted)' }}>
         declare quantos sabores este tamanho obriga
       </div>
@@ -859,34 +1089,44 @@ function PizzaEmFatias({
   }
   const meio = (i: number) => {
     const a = ((i + 0.5) / n) * 2 * Math.PI - Math.PI / 2
-    const r = n === 1 ? 0 : R * 0.58
+    const r = n === 1 ? 0 : R * 0.6
     return { x: C + r * Math.cos(a), y: C + r * Math.sin(a) }
   }
 
   return (
     <svg viewBox="0 0 100 100" className="w-full" role="img"
-      aria-label={`Pizza ${pizza.tamanho} com ${n} fatia${n > 1 ? 's' : ''}`}>
-      <circle cx={C} cy={C} r={R + 2.5} fill="var(--fam-ambar-bg)" stroke="var(--fam-ambar-mid)" strokeWidth="1" />
+      aria-label={`Pizza ${pizza.tamanho} dividida em ${n} fatia${n > 1 ? 's' : ''} clicáveis`}>
+      {/* a borda da pizza: anel externo e massa */}
+      <circle cx={C} cy={C} r={R + 5} fill="var(--fam-ambar-mid)" />
+      <circle cx={C} cy={C} r={R + 1} fill="var(--fam-ambar-bg)" />
       {pizza.fatias.map((f) => {
         const m = meio(f.indice)
         const vazia = f.sabor == null
+        const semFicha = f.sabor != null && f.custo == null
+        const cor = vazia
+          ? 'var(--fam-coral-mid)'
+          : semFicha
+            ? 'var(--fam-ambar-mid)'
+            : `var(${CORES_DA_FATIA[f.indice % CORES_DA_FATIA.length]})`
         return (
           <g key={f.indice} onClick={() => aoTocar(f.indice)} style={{ cursor: 'pointer' }}>
             <path
               d={setor(f.indice)}
-              fill={vazia ? 'var(--prod-surface-1)' : `var(--fam-${f.sabor!.familia}-mid)`}
+              fill={cor}
               stroke={fatiaAberta === f.indice ? 'var(--prod-acao-bg)' : 'var(--prod-surface)'}
-              strokeWidth={fatiaAberta === f.indice ? 2 : 1}
+              strokeWidth={fatiaAberta === f.indice ? 2.4 : 1.8}
             />
-            {n <= 4 && (
-              <text x={m.x} y={m.y} fontSize="5.5" textAnchor="middle"
-                fill={vazia ? 'var(--prod-muted)' : 'var(--prod-acao-ink)'}>
-                {vazia ? '+ sabor' : f.custo == null ? '?' : formatBRL(f.custo).replace(/\s/g, ' ')}
-              </text>
-            )}
-            {n > 4 && (
-              <text x={m.x} y={m.y} fontSize="6" textAnchor="middle"
-                fill={vazia ? 'var(--prod-muted)' : 'var(--prod-acao-ink)'}>
+            {n <= 4 ? (
+              <>
+                <text x={m.x} y={m.y - 1} fontSize="6" fontWeight="800" textAnchor="middle" fill="var(--prod-acao-ink)">
+                  {vazia ? '+' : semFicha ? 'a definir' : formatBRL(f.custo!)}
+                </text>
+                <text x={m.x} y={m.y + 6} fontSize="4.5" textAnchor="middle" fill="var(--prod-acao-ink)">
+                  {vazia ? 'toque e escolha' : f.sabor!.nome.slice(0, 16)}
+                </text>
+              </>
+            ) : (
+              <text x={m.x} y={m.y + 2} fontSize="6" fontWeight="800" textAnchor="middle" fill="var(--prod-acao-ink)">
                 {f.indice + 1}
               </text>
             )}
@@ -897,154 +1137,68 @@ function PizzaEmFatias({
   )
 }
 
-function Conta({ rotulo, valor, forte, tom }: { rotulo: string; valor: string; forte?: boolean; tom?: 'coral' }) {
-  return (
-    <div className="flex items-baseline justify-between gap-2">
-      <dt style={{ color: tom === 'coral' ? 'var(--fam-coral-ink)' : 'var(--prod-muted)' }}>{rotulo}</dt>
-      <dd className={`tabular-nums ${forte ? 'font-semibold' : ''}`}
-        style={{ color: forte ? 'var(--prod-primary)' : tom === 'coral' ? 'var(--fam-coral-ink)' : 'var(--prod-secondary)' }}>
-        {valor}
-      </dd>
-    </div>
-  )
-}
+/* ═══════════════ 6 · A FILA DOS SABORES SEM FICHA ═══════════════ */
 
-/* ─────────────────────────── 3. A LIGA ─────────────────────────── */
+function FilaDeSabores({ d, empresaId }: { d: MargemDaTela; empresaId: string }) {
+  const [tudo, setTudo] = useState(false)
+  if (d.saboresSemFicha.length === 0 && d.diasComRelatorioSuspeito.length === 0) return null
+  const VISIVEIS = 24
+  const lista = tudo ? d.saboresSemFicha : d.saboresSemFicha.slice(0, VISIVEIS)
+  const resto = d.saboresSemFicha.length - lista.length
 
-function LigaCard({
-  d, aba, setAba, empresaId,
-}: { d: MargemDaTela; aba: AbaDaLiga; setAba: (a: AbaDaLiga) => void; empresaId: string }) {
-  const l = d.liga
   return (
-    <Card style={{ background: 'var(--prod-surface)' }}>
-      <CardContent className="space-y-2 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
-            <Trophy className="h-3.5 w-3.5" style={{ color: 'var(--prod-accent)' }} />
-            a liga do período
-          </p>
-          <div className="flex gap-1">
-            {ABAS.map((a) => (
-              <button key={a.k} type="button" onClick={() => setAba(a.k)}
-                className="h-7 rounded-md px-2 text-[11.5px] font-medium"
-                style={aba === a.k
-                  ? { background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }
-                  : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}>
-                {a.r}
-              </button>
+    <Cartao id="fila">
+      {d.saboresSemFicha.length > 0 && (
+        <>
+          <CabecaDoCartao
+            titulo={`🧩 ${d.saboresSemFicha.length} sabores vendidos sem ficha`}
+            dica="cada ficha criada entra na obra e a cobertura sobe · maior volume primeiro"
+          />
+          <div className="flex flex-wrap gap-[6px] px-[18px] pb-[14px] pt-[6px]">
+            {lista.map((s) => (
+              <a
+                key={s.nomeSuitable}
+                href={`/empresas/${empresaId}/estoque/cardapio?sabor=${encodeURIComponent(s.nomeSuitable)}`}
+                className="rounded-full border border-dashed px-[11px] py-[4px] text-[12px] hover:bg-[var(--fam-ambar-bg)]"
+                style={{ borderColor: 'var(--fam-ambar-mid)', color: 'var(--fam-ambar-ink)' }}
+              >
+                <b className="tabular-nums">{s.ocorrencias}×</b> {s.nomeSuitable}
+              </a>
             ))}
+            {(resto > 0 || tudo) && (
+              <button
+                type="button"
+                onClick={() => setTudo(!tudo)}
+                aria-expanded={tudo}
+                className="rounded-full border border-dashed px-[11px] py-[4px] text-[12px]"
+                style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-secondary)' }}
+              >
+                {tudo ? 'mostrar menos ▴' : `… e mais ${resto} ▾`}
+              </button>
+            )}
           </div>
-        </div>
+        </>
+      )}
 
-        {l.cortes.sobra != null && (
-          <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-            os selos cortam pela MEDIANA do período: sobra {formatBRL(l.cortes.sobra)} · {l.cortes.unidades} un
+      {/* ⚠️ o aviso de QUALIDADE DE DADO: razão sabor/pizza impossível naquele dia */}
+      {d.diasComRelatorioSuspeito.length > 0 && (
+        <div
+          className="border-t px-[18px] py-[9px]"
+          style={{ borderColor: 'var(--prod-line)', background: 'var(--fam-coral-bg)' }}
+        >
+          <p className="flex items-center gap-1 text-[12px] font-semibold" style={{ color: 'var(--fam-coral-ink)' }}>
+            <AlertTriangle className="h-3.5 w-3.5" /> relatório de complementos possivelmente incompleto
           </p>
-        )}
-
-        {l.linhas.length === 0 ? (
-          <p className="py-4 text-center text-[13px]" style={{ color: 'var(--prod-muted)' }}>
-            nenhum produto com custo conhecido neste período
-          </p>
-        ) : (
-          <ul>
-            {l.linhas.map((x, i) => (
-              <li key={x.chave}
-                className="grid grid-cols-1 gap-x-3 gap-y-1 border-t px-1 py-2 lg:grid-cols-[1fr_190px_150px] lg:items-center"
-                style={{ borderColor: 'var(--prod-line)', background: i % 2 ? 'var(--prod-surface-1)' : undefined }}>
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="w-5 text-center text-[13px]" aria-hidden>
-                    {x.medalha ? ['🥇', '🥈', '🥉'][x.medalha - 1] : <span style={{ color: 'var(--prod-muted)' }}>{x.posicao}</span>}
-                  </span>
-                  {/* ⭐ REGRA 4: o logo deriva do NOME pela MESMA `caraDaReceita` que o
-                      servidor usou pro `familia`/`icone` do payload — passar `forcar` aqui
-                      seria uma 2ª derivação da mesma pergunta, e elas divergiriam no 1º
-                      grupo novo do mapa. */}
-                  <LogoDaReceita nome={x.nome} tamanho={32} />
-                  <div className="min-w-0">
-                    <a href={`/empresas/${empresaId}/estoque/cardapio/${encodeURIComponent(x.chave)}`}
-                      className="block truncate text-[13.5px] font-medium hover:underline"
-                      style={{ color: 'var(--prod-primary)' }}>
-                      {x.nome}
-                    </a>
-                    <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-                      {EMOJI_DO_SELO[x.selo]} {x.frase}
-                    </p>
-                  </div>
-                </div>
-                {/* a barra proporcional ao 1º da aba */}
-                <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: 'var(--prod-surface-1)' }}>
-                  <div className="h-full rounded-full"
-                    style={{ width: `${Math.max(2, x.barra * 100)}%`, background: `var(--fam-${x.familia}-mid)` }} />
-                </div>
-                <div className="text-[13px] tabular-nums lg:text-right">
-                  <span className="font-semibold" style={{ color: 'var(--prod-primary)' }}>
-                    {aba === 'VENDIDOS' ? `${x.unidades} un` : aba === 'MARGEM' ? pct(x.margemPct, 1) : formatBRL(x.sobraTotal)}
-                  </span>
-                  <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-                    {formatBRL(x.sobraUn)}/un · {x.unidades} un · {pct(x.margemPct, 0)}
-                  </p>
-                </div>
+          <ul className="mt-[2px] space-y-0.5">
+            {d.diasComRelatorioSuspeito.map((x) => (
+              <li key={x.dia} className="text-[11.5px]" style={{ color: 'var(--fam-coral-ink)' }}>
+                {ddmm(x.dia)}: {x.pizzas} pizzas × {x.sabores} sabores no relatório — toda pizza
+                obriga ao menos 1 sabor
               </li>
             ))}
           </ul>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-/* ─────────────────────────── 8. A FILA DE SABORES ─────────────────────────── */
-
-function FilaDeSabores({ d, empresaId }: { d: MargemDaTela; empresaId: string }) {
-  if (d.saboresSemFicha.length === 0 && d.diasComRelatorioSuspeito.length === 0) return null
-  return (
-    <Card style={{ background: 'var(--prod-surface)' }}>
-      <CardContent className="space-y-2 p-4">
-        {d.saboresSemFicha.length > 0 && (
-          <>
-            <p className="text-[12.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
-              🧩 {d.saboresSemFicha.length} sabores vendidos sem ficha
-            </p>
-            <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-              cada um que ganhar ficha entra na obra e a cobertura sobe
-            </p>
-            <ul className="flex flex-wrap gap-1.5">
-              {d.saboresSemFicha.slice(0, 24).map((s) => (
-                <li key={s.nomeSuitable}>
-                  <a href={`/empresas/${empresaId}/estoque/cardapio?sabor=${encodeURIComponent(s.nomeSuitable)}`}
-                    className="flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11.5px] hover:underline"
-                    style={{ borderColor: 'var(--fam-ambar-mid)', color: 'var(--fam-ambar-ink)' }}>
-                    <span className="tabular-nums">{s.ocorrencias}×</span> {s.nomeSuitable}
-                  </a>
-                </li>
-              ))}
-            </ul>
-            {d.saboresSemFicha.length > 24 && (
-              <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-                e mais {d.saboresSemFicha.length - 24} — os de maior volume aparecem primeiro
-              </p>
-            )}
-          </>
-        )}
-
-        {/* ⚠️ o aviso de QUALIDADE DE DADO (item 1 do dono): razão sabor/pizza impossível */}
-        {d.diasComRelatorioSuspeito.length > 0 && (
-          <div className="rounded-md border px-2 py-1.5" style={{ borderColor: 'var(--fam-coral-mid)' }}>
-            <p className="flex items-center gap-1 text-[12px] font-medium" style={{ color: 'var(--fam-coral-ink)' }}>
-              <AlertTriangle className="h-3.5 w-3.5" /> relatório de complementos possivelmente incompleto
-            </p>
-            <ul className="mt-0.5 space-y-0.5">
-              {d.diasComRelatorioSuspeito.map((x) => (
-                <li key={x.dia} className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
-                  {ddmm(x.dia)}: {x.pizzas} pizzas × {x.sabores} sabores no relatório — toda pizza
-                  obriga ao menos 1 sabor
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+        </div>
+      )}
+    </Cartao>
   )
 }

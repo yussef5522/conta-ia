@@ -46,6 +46,13 @@ export interface SobraNoCanal {
   margemPct: number | null
   /** ⚠️ o que o canal levou, NOMEADO: sem isso o dono vê a sobra cair e não sabe por quê */
   taxaValor: number | null
+  /**
+   * ⭐ A TAXA do canal, pra a tela escrever *"no iFood (taxa 20%)"* como a referência manda.
+   *
+   * ⛔ `null` = **a declarar**, e isso NÃO é 0%: taxa ausente faria a sobra sair maior que a
+   * real justo no canal em que ela é menor. A `sobra` já vem `null` nesse caso.
+   */
+  taxaPct: number | null
   porque: string | null
 }
 
@@ -63,10 +70,10 @@ export function sobraNoCanal(
   canal: CanalDeVenda,
 ): SobraNoCanal {
   if (preco == null) {
-    return { canal: canal.nome, sobra: null, margemPct: null, taxaValor: null, porque: 'sem preço declarado' }
+    return { canal: canal.nome, sobra: null, margemPct: null, taxaValor: null, taxaPct: canal.taxaPct, porque: 'sem preço declarado' }
   }
   if (custo == null) {
-    return { canal: canal.nome, sobra: null, margemPct: null, taxaValor: null, porque: 'custo a apurar' }
+    return { canal: canal.nome, sobra: null, margemPct: null, taxaValor: null, taxaPct: canal.taxaPct, porque: 'custo a apurar' }
   }
   if (canal.taxaPct == null) {
     return {
@@ -74,6 +81,7 @@ export function sobraNoCanal(
       sobra: null,
       margemPct: null,
       taxaValor: null,
+      taxaPct: null,
       porque: 'a taxa deste canal ainda não foi declarada',
     }
   }
@@ -86,6 +94,7 @@ export function sobraNoCanal(
     // líquido do canal — senão o mesmo produto teria duas margens "certas"
     margemPct: preco > 0 ? sobra / preco : null,
     taxaValor,
+    taxaPct: canal.taxaPct,
     porque: null,
   }
 }

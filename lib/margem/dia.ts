@@ -52,8 +52,24 @@ export interface LinhaDeChegada {
   sobrouDepois: number | null
   /** quanto faltou (só quando não bateu) */
   faltou: number | null
-  /** a frase do cartão — nunca um número mudo */
+  /** a frase do cartão — nunca um número mudo. É `manchete.prefixo + manchete.destaque`. */
   frase: string
+  /**
+   * ⭐ A MANCHETE PARTIDA, pra a tela pintar o valor em VERDE sem recortar string.
+   *
+   * ⛔ A referência visual escreve *"06/10 pagou a casa do dia e ainda sobrou **R$ 1.323,51**"*
+   * com o valor destacado. Partir a frase na TELA (um `split(' sobrou ')`) seria uma 2ª régua
+   * da própria frase, e ela quebraria no 1º texto novo. Quem parte é quem escreve.
+   */
+  manchete: { prefixo: string; destaque: string | null }
+  /**
+   * ⭐ O RODAPÉ DA DIREITA: *"daqui pra frente cada venda é lucro"*.
+   *
+   * ⚠️ Ele saiu do fim da `frase` porque a referência o põe em OUTRO lugar do cartão (o pé,
+   * ao lado da sobra do dia) e com OUTRO peso. É a mesma informação, no lugar que o dono
+   * aprovou.
+   */
+  lucroDaquiPraFrente: boolean
   /** ⚠️ a ressalva quando o dia mostrado não é hoje: senão o dono lê um dia velho como atual */
   ressalva: string | null
 }
@@ -81,6 +97,8 @@ export function linhaDeChegada(
       dia: null, ehHoje: false, sobra: null, unidades: 0, casaDoDia, pct: null,
       bateu: false, sobrouDepois: null, faltou: null,
       frase: 'nenhum dia com venda no período',
+      manchete: { prefixo: 'nenhum dia com venda no período', destaque: null },
+      lucroDaquiPraFrente: false,
       ressalva: null,
     }
   }
@@ -91,15 +109,28 @@ export function linhaDeChegada(
   // ⛔ sem custo fixo declarado não existe linha de chegada — e a frase DIZ o que falta,
   // nunca mostra 0% nem inventa uma meta
   if (casaDoDia == null || casaDoDia <= 0) {
+    const semPlano = `${ddmm(ultimo.dia)} sobrou ${brl(sobra)} — declare o plano dos custos fixos pra eu saber o tamanho da casa do dia`
     return {
       dia: ultimo.dia, ehHoje, sobra, unidades: ultimo.unidades, casaDoDia: null, pct: null,
       bateu: false, sobrouDepois: null, faltou: null,
-      frase: `${ddmm(ultimo.dia)} sobrou ${brl(sobra)} — declare o plano dos custos fixos pra eu saber o tamanho da casa do dia`,
+      frase: semPlano,
+      manchete: { prefixo: semPlano, destaque: null },
+      lucroDaquiPraFrente: false,
       ressalva: ehHoje ? null : ressalvaDoDia(ultimo.dia, hoje),
     }
   }
 
   const bateu = sobra >= casaDoDia
+  // ⭐ a manchete é a FONTE da `frase`: uma escrita só, duas formas (partida e corrida)
+  const manchete = bateu
+    ? {
+        prefixo: `${ddmm(ultimo.dia)} pagou a casa do dia e ainda sobrou `,
+        destaque: brl(sobra - casaDoDia),
+      }
+    : {
+        prefixo: `${ddmm(ultimo.dia)} sobrou ${brl(sobra)} · ${((sobra / casaDoDia) * 100).toFixed(0)}% da casa do dia · faltou ${brl(casaDoDia - sobra)}`,
+        destaque: null,
+      }
   return {
     dia: ultimo.dia,
     ehHoje,
@@ -110,9 +141,9 @@ export function linhaDeChegada(
     bateu,
     sobrouDepois: bateu ? round2(sobra - casaDoDia) : null,
     faltou: bateu ? null : round2(casaDoDia - sobra),
-    frase: bateu
-      ? `${ddmm(ultimo.dia)} pagou a casa do dia e ainda sobrou ${brl(sobra - casaDoDia)} — daqui pra frente cada venda é lucro`
-      : `${ddmm(ultimo.dia)} sobrou ${brl(sobra)} · ${((sobra / casaDoDia) * 100).toFixed(0)}% da casa do dia · faltou ${brl(casaDoDia - sobra)}`,
+    frase: `${manchete.prefixo}${manchete.destaque ?? ''}`,
+    manchete,
+    lucroDaquiPraFrente: bateu,
     ressalva: ehHoje ? null : ressalvaDoDia(ultimo.dia, hoje),
   }
 }

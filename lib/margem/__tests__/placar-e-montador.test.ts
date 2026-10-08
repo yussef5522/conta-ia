@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { montarCasa, COBERTURA_MINIMA } from '../casa'
 import { sobrasDoPeriodo, type LinhaParaSobra } from '../sobra'
-import { montarPlacar, montarCarregadores, CARREGADORES_VISIVEIS } from '../placar'
+import { montarPlacar, montarCarregadores, linhaDaCobertura, CARREGADORES_VISIVEIS } from '../placar'
 import { sobraNoCanal, ordenarCanais, CANAIS_SEMEADOS, TAXA_MAXIMA, type CanalDeVenda } from '../canais'
 import { saboresDoTamanho, montarTamanhos, SABORES_SEMEADOS, normalizarTamanho } from '../tamanhos'
 import { montarPizza, ordenarSabores, type SaborDisponivel } from '../montador'
@@ -79,7 +79,9 @@ describe('⛔⛔ O PLACAR — a conta dos 3 cartões FECHA na tela', () => {
   it('⭐ a sublinha da sobra DIZ a cobertura e o abatimento dos complementos', () => {
     const p = montarPlacar(casaDe({ custoFixo: 20_000, comp: 9_255.55 }))
     expect(p.sobra.sublinha).toMatch(/sobra medida em \d+% das vendas/)
-    expect(p.sobra.sublinha).toContain('já descontados')
+    // ⚠️ REAPONTADO (v3): a palavra é a da REFERÊNCIA — *"já abatidos R$ 9.256 de
+    // complementos"*. O texto da tela é lei do dono, inclusive no verbo.
+    expect(p.sobra.sublinha).toContain('já abatidos')
   })
 
   it('⚠️ cobertura `null` (período sem venda) não vira "0% das vendas"', () => {
@@ -420,5 +422,121 @@ describe('⛔⛔⛔ O MONTADOR — 1 OCORRÊNCIA = 1 EXPLOSÃO, SEM FATOR (a reg
       sabor('CCC', 2),
     ])
     expect(l.map((s) => s.nome)).toEqual(['AAA', 'CCC', 'BBB', 'ZZZ'])
+  })
+})
+
+/* ═══════════ A LINHA DA COBERTURA (o pé do placar, v3 — a referência) ═══════════ */
+
+describe('⛔⛔ A LINHA DA COBERTURA — é ela que impede o veredito de ficar seco', () => {
+  const texto = (casa: ReturnType<typeof casaDe>) =>
+    linhaDaCobertura(casa).map((x) => x.texto).join('')
+
+  it('⭐ ela diz a cobertura, quantos estão na obra e quantos estão fora', () => {
+    const casa = casaDe({ custoFixo: 20_000, comp: 9_255.55 })
+    const t = texto(casa)
+    expect(t).toContain('cobertura: ')
+    expect(t).toContain('das unidades vendidas têm custo')
+    expect(t).toContain(`${casa.cobertura.produtosDentro} na obra`)
+    expect(t).toContain(`${casa.cobertura.produtosFora} fora`)
+  })
+
+  it('⛔⛔ cobertura ABAIXO do mínimo: ela diz o LIMIAR e o que ele destrava', () => {
+    const casa = casaDe({
+      custoFixo: 20_000,
+      linhas: [...PROD, linha({ chave: 'f:x', nome: 'XIS COMPLETO', vendasQtd: 470, custoUnitario: null, componentesSemCusto: 1 })],
+    })
+    expect(casa.cobertura.pct!).toBeLessThan(COBERTURA_MINIMA)
+    const t = texto(casa)
+    // ⚠️ o limiar vem da CONSTANTE, nunca digitado: número solto em tela vira a 2ª régua
+    expect(t).toContain(`acima de ${Math.round(COBERTURA_MINIMA * 100)}%`)
+    expect(t).toContain('eu digo o dia em que a casa se pagou')
+    // ⛔ e o que é FORTE é a cobertura e o limiar — o que o olho tem que pegar
+    const fortes = linhaDaCobertura(casa).filter((x) => x.forte).map((x) => x.texto)
+    expect(fortes.some((x) => x.includes('das unidades vendidas têm custo'))).toBe(true)
+    expect(fortes).toContain(`${Math.round(COBERTURA_MINIMA * 100)}%`)
+  })
+
+  it('⭐ com o DIA do placar conhecido, a linha NOMEIA o dia (e não repete o limiar)', () => {
+    const casa = casaDe({ custoFixo: 20_000 })
+    expect(casa.cobertura.pct).toBe(1)
+    const comDia = { ...casa, placar: { dia: '2026-10-03', porque: null } }
+    const t = linhaDaCobertura(comDia).map((x) => x.texto).join('')
+    expect(t).toContain('a casa se pagou no dia 03/10')
+    expect(t).not.toContain('acima de')
+  })
+
+  it('⛔⛔ cobertura boa e ainda SEM dia: o motivo é o do placar, não o do limiar', () => {
+    // ⚠️ repetir a frase do limiar aqui mandaria o dono atacar a fila de fichas pelo motivo
+    // errado — a cobertura dele já está acima do mínimo
+    const casa = casaDe({ custoFixo: 10_000_000 })
+    expect(casa.cobertura.pct).toBe(1)
+    expect(casa.placar.dia).toBeNull()
+    const t = texto(casa)
+    expect(t).toContain(casa.placar.porque!)
+    expect(t).not.toContain('acima de')
+  })
+
+  it('⛔ período SEM VENDA não vira "0% de cobertura" — ausência não é zero', () => {
+    const t = texto(casaDe({ custoFixo: 20_000, linhas: [] }))
+    expect(t).toContain('nenhuma venda no período')
+    expect(t).not.toContain('0% das unidades')
+  })
+})
+
+/* ═══════════ O AGREGADO DOS CARREGADORES (a linha "+N produtos", v3) ═══════════ */
+
+describe('⭐ O AGREGADO — a tela NÃO soma, quem soma é a lib', () => {
+  const muitos = [
+    ...PROD,
+    ...Array.from({ length: 9 }, (_, i) =>
+      linha({ chave: `f:p${i}`, nome: `PEQUENO ${i}`, vendasQtd: 2, precoUsado: 30, custoUnitario: 10 }),
+    ),
+  ]
+
+  it('⭐ ele carrega quantos, a soma, o % da casa e a barra relativa ao MAIOR', () => {
+    const casa = casaDe({ custoFixo: 20_000, linhas: muitos })
+    const l = montarCarregadores(casa, 0)
+    expect(l.visiveis).toHaveLength(CARREGADORES_VISIVEIS)
+    expect(l.agregado).not.toBeNull()
+    expect(l.agregado!.quantos).toBe(l.resto.length)
+    // ⛔ a soma do agregado é EXATAMENTE a soma do resto — senão a linha mentiria o tamanho
+    const soma = l.resto.reduce((s, x) => s + x.sobraTotal, 0)
+    expect(l.agregado!.sobraTotal).toBeCloseTo(soma, 2)
+    expect(l.agregado!.pctDaCasa!).toBeCloseTo(soma / casa.custoFixo!, 4)
+    expect(l.agregado!.pctDaBarra).toBeGreaterThan(0)
+    expect(l.agregado!.pctDaBarra).toBeLessThanOrEqual(1)
+  })
+
+  it('⛔ sem resto não existe agregado — botão que não faz nada é ruído', () => {
+    expect(montarCarregadores(casaDe({ custoFixo: 20_000 }), 0).agregado).toBeNull()
+  })
+
+  it('⛔ sem plano declarado o % do agregado é `null`, nunca 0%', () => {
+    const l = montarCarregadores(casaDe({ custoFixo: null, linhas: muitos }), 0)
+    expect(l.agregado!.pctDaCasa).toBeNull()
+  })
+})
+
+/* ═══════════ A TAXA DO CANAL VIAJA PRA A TELA (v3 — "no iFood (taxa 20%)") ═══════════ */
+
+describe('⭐ A TAXA DO CANAL — a tela escreve o número que a config declarou', () => {
+  it('⭐ a taxa chega na saída, pra a tela dizer "(taxa 20%)" sem digitar o 20', () => {
+    const ifood: CanalDeVenda = { id: 'c1', nome: 'iFood', taxaPct: 0.2, ativo: true }
+    const r = sobraNoCanal(89.9, 26.88, ifood)
+    expect(r.taxaPct).toBe(0.2)
+    expect(r.sobra).toBeCloseTo(89.9 * 0.8 - 26.88, 2)
+  })
+
+  it('⛔⛔ taxa "a declarar" chega como `null` — e NUNCA como 0%', () => {
+    const r = sobraNoCanal(89.9, 26.88, { id: 'c2', nome: 'novo', taxaPct: null, ativo: true })
+    expect(r.taxaPct).toBeNull()
+    expect(r.sobra).toBeNull()
+    expect(r.porque).toContain('não foi declarada')
+  })
+
+  it('⭐ sem preço/custo a taxa continua VISÍVEL — ela é a config, não o resultado', () => {
+    const ifood: CanalDeVenda = { id: 'c1', nome: 'iFood', taxaPct: 0.2, ativo: true }
+    expect(sobraNoCanal(null, 26.88, ifood).taxaPct).toBe(0.2)
+    expect(sobraNoCanal(89.9, null, ifood).taxaPct).toBe(0.2)
   })
 })
