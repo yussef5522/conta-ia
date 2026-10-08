@@ -2270,6 +2270,128 @@ A **página do empréstimo fica como está** (pergunta do CONTRATO: a #2 tem ví
 ```
 Varredura das 353 parcelas: **5 com pagamento de mês diferente do vencimento** — 3 do FLEXIBLE (o caso) e 2 atrasos legítimos da Caixa.
 
+## ⭐⭐⭐ QUEM PAGA A CASA v3 — A REFERÊNCIA VISUAL VIROU LEI, E O GUARD LÊ O ARQUIVO (07/10/2026)
+
+**A ordem do dono:** *"o arquivo `docs/margem-referencia.html` é a LEI VISUAL desta tela, construído e aprovado por mim. A tela em prod deve ficar IGUAL a ele — layout, hierarquia, tamanhos de letra, cores, espaçamentos, textos e comportamento. **Divergência visual da referência = defeito.**"*
+
+**⚠️⚠️ E O ARQUIVO NÃO ESTAVA NO CAMINHO QUE ELE DEU** — estava em `~/Downloads/margem-referencia.html`. **É a cicatriz de 10/09 pela segunda vez** (o mock da Conciliação). Copiado pra `docs/`, que é onde ele espera e **onde o guard lê**.
+
+**⭐⭐ A JOGADA QUE FECHA A CLASSE É A MESMA DE 10/09: a referência ENTROU NO REPO.** Enquanto ela vivia numa pasta de downloads, *"igual à referência"* era **memória minha** — e memória é exatamente o que falhou nas três voltas da Conciliação. Versionada, ela é **dado**: `__tests__/regras-ui/margem-bate-com-a-referencia.test.ts` **ABRE o arquivo** e compara os **28 tokens do `:root{}`**, as **15 hierarquias de letra** e as **12 medidas** extraídas do CSS, as **6 seções na ordem**, as frases, e o **`<script>` como especificação do montador**.
+
+**⭐⭐ TODA ASSERÇÃO DE FRASE É DE DOIS LADOS:** a frase tem que existir **na REFERÊNCIA** *e* **no CÓDIGO**. Se eu inventar uma frase, o lado da referência fica vermelho; se o código andar, o lado do código fica vermelho. ⛔ Uma asserção que só olhasse o código me deixaria escrever qualquer coisa e chamar de *"o que o dono aprovou"* — e o auto-teste do detector prova os dois sentidos (o `Combo Caçula` do exemplo existe na referência e **não pode** estar no código, porque seria dado inventado).
+
+### ⭐ O MAPA 1:1 DOS TOKENS — por PAPEL, nunca por hex
+
+O comentário do próprio arquivo manda: *"onde houver token genérico abaixo, mapear 1:1 para o token da casa"*. `--bg`→`--prod-bg` · `--surface-2`→**`--prod-surface-1`** (⚠️ o `--prod-surface-2` da casa é OUTRA coisa) · `--border`→`--prod-line` · `--text-3`→`--prod-muted` · `--indigo`→`--fam-indigo-mid` · `--indigo-50`→`--fam-indigo-bg` · `--verde-esc`/`--verde-900`→`--fam-verde-ink` · idem ambar/coral/rosa/azul · `--shadow`→`--prod-sombra`.
+
+⚠️ **O par NÃO é por VALOR:** `--verde` da referência é `#1D9E75` e o `--fam-verde-mid` da casa é `#0f9d58` — tons diferentes do MESMO verde, e o da casa é o que **inverte nos dois temas** junto com o resto do sistema. Cravar o hex da referência seria trocar a paleta da casa pela do arquivo de exemplo. **O guard exige que todo token do `:root{}` tenha par declarado** (token novo na referência fica vermelho) e que **a tela não pinte por token FORA dessa paleta** — com `--prod-acao-bg`/`--prod-acao-ink` como as **duas exceções nomeadas** (a referência crava `#fff` no texto de dentro da fatia; a casa tem o par "tinta sobre fundo forte", que inverte). **ZERO hex na tela.**
+
+**⛔⛔ E OS ESPAÇAMENTOS VIRARAM px LITERAL** — `gap-2.5` **é** 10px e `pt-3.5` **é** 14px, certos, mas obrigam tradução mental, e **foi tradução mental que produziu as duas versões erradas da Conciliação** (10/09). Agora é `gap-[10px]`, `px-[18px]`, `py-[9px]`, `text-[26px]`: o número que está no arquivo, escrito igual. O guard **extrai** os valores do CSS da referência e cobra cada um.
+
+### O QUE MUDOU NA TELA, seção por seção
+
+| # | a referência manda | o que a tela tinha |
+|---|---|---|
+| **cabeçalho** | h1 **20px**/600 + sublinha 13px com o período · chips em **pílula** (12,5px, 5/12px, a ligada com fundo índigo) | h1 `text-base`, período inline, botões quadrados |
+| **1 linha de chegada** | manchete **21px** com o valor em VERDE · *casa do dia* à direita (19px) · trilho de **12px** com a bandeirinha marcando o **100%** · *"daqui pra frente cada venda é lucro"* no pé | barra de 28px com a bandeira dentro, frase embaixo |
+| **2 placar** | 3 cartões (lbl 12px/600 · **val 26px/700** · sub 11px), o 3º em verde/âmbar · **UMA** barra de 16px · legenda de 3 spans · **a linha da COBERTURA** no pé | a mesma ideia + uma "conta aberta" e um box do dia D que a referência substitui |
+| **3 quem carregou** | **bolinha de 10px** da família · nome 200px · barra flex · valor 132px · o agregado como LINHA que expande · rodapé âmbar | `LogoDaReceita` de 32px, botão separado, lista de "fora" expansível |
+| **4 liga** | medalha 22px · bolinha · **selo em pílula** (10,5px/700, cor por veredito) · valor 120px com `.det` | grid com logo + barra |
+| **5 montador** | **sempre aberto** · pizza de 170px · conta de 14px com o total em borda-em-cima · preço editável de **92px** · sabores em **chips** | colapsável, grid de 260px, lista com busca |
+| **6 fila** | chips tracejados âmbar + *"… e mais N ▾"* que expande | chips + nota de texto |
+
+### ⭐⭐ AS FRASES DE DINHEIRO FORAM PRA LIB — porque é lá que elas dão pra EXECUTAR
+
+- **`janela.rotuloCurto`** (*"outubro"*): a referência escreve o período em DOIS lugares com pesos diferentes (a sublinha leva *"outubro (até 07/10)"*, o título do placar leva *"O placar de outubro"*). ⛔ Recortar o `rotulo` na tela seria a 2ª régua do nome do período.
+- **`dia.manchete`** PARTIDA (`prefixo` + `destaque`): a referência destaca o valor em verde. ⛔ Um `split(' sobrou ')` na tela seria a 2ª régua da própria frase — **quem parte é quem escreve**, e um teste exige `prefixo + destaque === frase` ao caractere. O *"daqui pra frente cada venda é lucro"* saiu do fim da frase e virou **`lucroDaquiPraFrente`**, porque a referência o põe em outro lugar do cartão (e grudado na manchete ele apareceria **duas vezes**).
+- **`linhaDaCobertura(casa)`** PURA: *"cobertura: **55% das unidades vendidas têm custo** · 49 na obra · 114 fora · acima de **80%** eu digo **o dia em que a casa se pagou**"*. ⛔⛔ **É ELA que impede o veredito de ficar seco** — o cartão 3 pode dizer *"✓ CASA PAGA"*; é esta linha, no pé do MESMO cartão, que diz sobre QUANTO do dado aquilo foi medido. ⚠️ O **limiar vem da constante**, nunca digitado; cobertura `null` **não vira 0%**; e **cobertura boa ainda sem dia usa o motivo do PLACAR**, não o do limiar — repetir a frase do limiar ali mandaria o dono atacar a fila de fichas pelo motivo errado.
+- **O veredito mora no RÓTULO** (*"✓ CASA PAGA — e sobrou"* / *"FALTAM"*), como a referência escreve — é o que o olho pega primeiro, em vez de um *"resultado"* mudo com o número embaixo.
+- **O PISO do complemento entrou na sublinha do cartão 1**: *"já abatidos R$ 9.255,55 de complementos · 1272 ocorrências ainda sem ficha — o abatimento acima é o mínimo, não o total"*. ⚠️ A referência não tem a "conta aberta" embaixo dos cartões; ela põe o abatimento **na sublinha do número que ele afeta**. A régua de honestidade não se perdeu — mudou de casa, e agora mora onde dá pra testar.
+- **`montarCarregadores().agregado`**: a linha *"+ 43 produtos · 34,8% · ver todos ▾"* com barra própria. ⛔ Nasce na LIB porque somar o resto é **aritmética de dinheiro**, e o guard proíbe `.reduce` na tela.
+- **`SobraNoCanal.taxaPct`**: pra a tela escrever *"no iFood (taxa 20%)"* **sem digitar o 20** — ele vem da config de canais, editável com rastro. ⛔ `null` = *a declarar*, e isso **não é 0%**.
+
+### ⚠️⚠️ DUAS DIVERGÊNCIAS DELIBERADAS, DECLARADAS E TRAVADAS EM TESTE
+
+1. **O botão de tema 🌙/☀️ NÃO vem.** Na referência ele existe pra o arquivo rodar sozinho no navegador e demonstrar os dois temas; **a casa já tem o tema dela** (`:root`/`.dark` no `globals.css`), e um segundo interruptor aqui seria **duas portas pra a mesma decisão**. O guard exige a ausência **e** que o motivo esteja escrito no arquivo da tela.
+2. **O bloco do relatório de complementos incompleto FICA**, condicional. A referência mostra o estado NORMAL (sem aviso); esconder o aviso de qualidade de dado porque o exemplo não o tem seria **trocar uma régua de honestidade por fidelidade de exemplo**.
+
+### ⚠️⚠️ REGRA 11 — 13 DEFEITOS REPOSTOS, E OS DOIS PRIMEIROS VIERAM VERDES
+
+| defeito reposto | vermelhos |
+|---|---|
+| **um CARTÃO sai da lista de render** | ⛔ **VERDE** → depois do aperto: **2** |
+| **a ORDEM de dois cartões trocada** | ⛔ **VERDE** → depois do aperto: **1** |
+| hex cravado (o roxo da referência na mão) | 2 |
+| o 26px do placar ajustado "no olho" pra 24px | 1 |
+| a linha da COBERTURA sai do placar | 1 |
+| o FATOR por tamanho volta (dividir pelo nº de fatias) | 7 |
+| a âncora `#fila` some (o rodapé cobra sem dar o caminho) | 2 |
+| a RESSALVA do veredito arrancada do cartão | 1 |
+| a FRASE da referência trocada (*"já abatidos"* → *"já descontados"*) | 2 |
+| token FORA da paleta da referência | 1 |
+| o botão de tema vem pra prod | 1 |
+| a tela derivando a cor por conta própria | 1 |
+| a taxa do iFood digitada na tela | 1 |
+
+**⛔⛔ OS DOIS PRIMEIROS SÃO A "MENÇÃO, NÃO USO" OUTRA VEZ, e o furo é instrutivo:** eu procurava as 6 âncoras **no arquivo inteiro**. Arrancar `<MontadorDePizza />` da lista de render deixou a suíte **VERDE**, porque a `function MontadorDePizza` e todos os textos dela continuavam no arquivo; trocar a ORDEM passou pela mesma razão. ***Guard que lê o arquivo aprova o componente que ninguém desenha.*** O que morde é ler a **LISTA DE RENDER** (o JSX que roda quando o payload chega) e exigir ali os 6, na ordem do arquivo do dono — e **a ordem da lista do guard é conferida contra a ordem das seções NA REFERÊNCIA**, então se o dono reordenar o arquivo é esse teste que fica vermelho primeiro.
+
+**⚠️ 4 GUARDS DE v2 REAPONTADOS com o motivo escrito, nenhum afrouxado:** o do `LogoDaReceita` (a referência desenha a BOLINHA — a pergunta da REGRA 4 não mudou: *quem traduz nome → cor?* é o SERVIDOR, e o guard passou a **proibir** a tela de importar `caraDaReceita`) · o do complemento (mudou da "conta aberta" pra a sublinha, e passou a ser conferido na LIB, onde EXECUTA) · o do `placar.porque` (virou `linhaDaCobertura`) · o do rodapé (o caminho mudou de endereço: `#fila`, a fila DESTA página). **E 2 testes invertidos:** *"já descontados"* → *"já abatidos"* (o verbo é o da referência) e o da **busca de sabores**, que a referência não tem — ⭐ com a metade certa travada num `expect` próprio (*se a busca voltar, com o pedido dele, ela não pode ser `includes` cru*).
+
+⚠️ **E a régua do "só escreve quando cabe"** no `/vendas|baixa|movimento|processar/` do montador virou **caminho de ROTA**, não palavra: a própria dica do cartão diz *"nada grava, nada **baixa**"* — texto da referência —, e o regex por palavra reprovava a frase honesta.
+
+### PROVADO EM PROD, NAVEGANDO, NOS DOIS VIEWPORTS — seção por seção contra o arquivo
+
+```
+CELULAR 200 em 603ms · DESKTOP 200 em 175ms · chunk desta tela 68 KB
+✓ 1 LINHA DE CHEGADA 8/8 · ✓ 2 PLACAR 18/18 · ✓ 3 QUEM CARREGOU 12/12
+✓ 4 LIGA 12/12 · ✓ 5 MONTADOR 18/18 · ✓ 6 FILA 6/6   ⭐ as 6 COMPLETAS nos dois
+⛔ hex de cor no chunk DESTA tela: 0 · ✓ os 24 tokens nos DOIS mapas do CSS
+✓ as 15 hierarquias de letra e as 12 medidas da referência no bundle
+⛔ o botão de tema: NÃO VEIO ✓
+
+O PLACAR
+  [O que as vendas deixaram] R$ 57.231,78
+       sobra medida em 55% das vendas · já abatidos R$ 9.255,55 de complementos ·
+       1272 ocorrências ainda sem ficha — o abatimento acima é o mínimo, não o total
+  [A casa custou até aqui]   R$ 43.599,36 · casa + banco + compromissos
+  [✓ CASA PAGA — e sobrou]  +R$ 13.632,42 · daqui pra frente é lucro
+       ressalva: é o que dá pra medir: 55% do que você vendeu tem custo conhecido,
+                 e 114 produtos estão fora da obra
+  ⛔ cartão1 − cartão2 = cartão3 → ⭐ FECHA
+  BARRA índigo 76,2% + verde 23,8% = 100,0% ⭐ SOMA 100 · bandeira true · +31%
+  COBERTURA: cobertura: **55% das unidades vendidas têm custo** · 49 na obra ·
+             114 fora · acima de **80%** eu digo **o dia em que a casa se pagou**
+
+QUEM CARREGOU  ⛔ Σ(carregadores) R$ 66.487,33 == sobra bruta R$ 66.487,33 → ⭐ FECHA
+  👑 Combo Caçula 44,5% da casa · R$ 19.408,50 · barra 100%
+     PIZZA FAMILIA 45CM 25,4% · PIZZA GRANDE PRECINHO 18,0% · …
+     [cinza] + 43 produtos · 34,8% · R$ 15.183,95 · barra 78% · ver todos ▾
+
+O MONTADOR  canais balcão 0% · tele própria 0% · iFood 20%
+  GRANDE(2✓) · GRANDE PRECINHO(2←GRANDE✓) · PEQUENA(1 SEM BASE) · FAMILIA(3 SEM BASE)
+  61 sabores (50 com ficha · 11 âmbar) · ⭐ o clique na fatia existe no bundle
+  trocar o tamanho REDESENHA: GRANDE→2 · GRANDE PRECINHO→2 · PEQUENA→1
+  GRANDE de ENTREVERO + FILE COM BACON · base R$ 11,58 + sabores R$ 27,20 = R$ 38,78
+    sem preço    → balcão a apurar · iFood (taxa 20%) a apurar
+    a R$ 89,90   → balcão ~R$ 51,12 · iFood (taxa 20%) ~R$ 33,14
+    a R$ 99,90   → balcão ~R$ 61,12 · iFood (taxa 20%) ~R$ 41,14
+  ⭐ o preço RECALCULA a sobra de cada canal
+
+canais 3→3 · regras 3→3 · bases 2→2 · avisos 27→27  ⭐ ZERO ESCRITA
+```
+
+**926 arquivos · 12.200 verdes · TS 0 · migration NENHUMA · deploy 4/4 (`gQDoEjKb6u5Q_Nh9XNzpZ`) · Δ bundle −8 KB.** ⛔ **Zero escrita em dado de prod.**
+
+⚠️ **O CHECKLIST DO DONO, item por item:** os 6 cartões presentes e na ordem ✓ (provado na **lista de render**, não no arquivo) · o placar fecha ✓ · a barra soma 100 ✓ · as fatias respondem ao clique ✓ (o handler no bundle + a conta mudando com as escolhas e com o tamanho) · o preço recalcula ✓ (as três linhas são a MESMA pizza).
+
+⚠️ **UMA SONDA MINHA DEU FALSO VERDE NO MEIO DA REGRA 11** — eu grepava `"Tests  N failed"` na saída do vitest e a linha vem com ANSI; os 5 primeiros defeitos "passaram" com saída vazia. *Sonda errada dá um verde tão convincente quanto um vermelho* (a cicatriz do `$G` de 23/09, em roupa nova). Refeita gravando em arquivo e limpando o ANSI — e foi só então que os dois VERDES de verdade apareceram.
+
+📋 **FICA PRO DONO:**
+1. **Abrir a tela no celular e no computador, nos dois temas, com a referência aberta ao lado** — a prova mede o que prod serve (zero hex, os tokens nos dois mapas, as 15 letras e as 12 medidas), mas **o olho é dele**. ⚠️ Screenshot indisponível (a extensão do Chrome está desligada nesta sessão).
+2. ⚠️ **TODAS as bolinhas dos carregadores saem AZUIS** no dado de hoje — as 6 linhas visíveis são pizza/prato, e o `caraDaReceita` manda todas pra a família `azul`. A referência de exemplo mostra rosa e índigo porque os nomes dela caem em famílias diferentes. **Não é defeito do v3** (a cor vem da fonte única), mas a bolinha perde o poder de distinguir — se ele quiser, o caminho é o mapa do `caraDaReceita`, não a tela.
+3. ⚠️ **A busca de sabores NÃO existe mais no montador** (a referência não tem): são **61 chips**, com os 50 de ficha primeiro e os 11 âmbar depois, e eles só aparecem **depois de tocar numa fatia**. Se a parede incomodar, a busca volta com a palavra dele.
+4. **Carregadas de v2:** conferir as 2 bases que eu apontei e apontar as de **PEQUENA** e **FAMILIA** (hoje a bancada diz *"a apurar"* nelas, de propósito) · ⛔⛔ **a massa falta em TODAS as fichas de pizza grande** (o CASO A de 02/10 — enquanto estiver assim, o custo da base sai subestimado em qualquer escolha; receita é decisão dele desde 17/08) · a % do iFood em 20% · a ficha de margem por produto (lib pronta, tela não) · o editor de dose ao vivo · o clique no sabor em qualquer lugar.
+
 ## ⭐⭐⭐ QUEM PAGA A CASA v2 — O PLACAR NO LUGAR DOS TIJOLOS + O MONTADOR (07/10/2026)
 
 **O dono reprovou a casa de tijolos SVG: ILEGÍVEL.** *"Mesmas contas/portas de v1 — só a APRESENTAÇÃO muda + as peças que faltavam."*
