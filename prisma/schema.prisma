@@ -5210,6 +5210,20 @@ model StockBaseDoTamanho {
   @@map("stock_base_do_tamanho")
 }
 
+model StockDoseADeclarar {
+  id          String   @id @default(cuid())
+  companyId   String
+  fichaId     String
+  itemId      String
+  motivo      String
+  criadoPorId String?
+  criadoEm    DateTime @default(now())
+
+  @@unique([companyId, fichaId, itemId])
+  @@index([companyId, fichaId])
+  @@map("stock_dose_a_declarar")
+}
+
 model CustoFixoChips {
   id           String   @id @default(cuid())
   companyId    String
