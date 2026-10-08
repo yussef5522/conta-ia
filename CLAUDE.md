@@ -2270,6 +2270,118 @@ A **página do empréstimo fica como está** (pergunta do CONTRATO: a #2 tem ví
 ```
 Varredura das 353 parcelas: **5 com pagamento de mês diferente do vencimento** — 3 do FLEXIBLE (o caso) e 2 atrasos legítimos da Caixa.
 
+## ⭐⭐⭐ IMPORTAR VENDAS — A CENTRAL v1 (08/10/2026): A REFERÊNCIA É A LEI, E O Σ DO ARQUIVO PASSA A EXISTIR
+
+**Ordem do dono:** *"`docs/importar-referencia.html` é a LEI visual e de comportamento desta tela (mesmo protocolo da margem). A tela de importar de hoje (só dropzone) RENASCE como esta central. RETRATO ANTES DA 1ª LINHA — o desenho se curva ao retrato; divergência vira pergunta no relatório, nunca invenção."*
+
+### ⭐⭐ O RETRATO VEIO PRIMEIRO, E ELE MUDOU O DESENHO DUAS VEZES
+
+| pergunta do item 0 | o que o dado disse |
+|---|---|
+| onde o import de PRODUTOS grava, com meta/quem/quando? | `stock_venda_import` (meta = linhas+unidades, autor, hora) + `stock_venda_linha`. **Meta bate com as linhas em 12 de 12 conferidos** |
+| onde o de COMPLEMENTOS grava? | **só as linhas**, com `importId` SINTÉTICO (`comp-<companyId>-<data>`) — **sem tabela de import, logo sem autor e sem hora** |
+| re-importar um dia: substitui ou duplica? | **SUBSTITUI** (`deleteMany` + `createMany` por dia) |
+| **o Σ DO ARQUIVO é guardado?** | ⛔ **NÃO, em lugar nenhum.** O Σ em R$ só existia DERIVADO das linhas — ou seja, **o Σ GRAVADO**, nunca o do ARQUIVO |
+
+**⭐ E o retrato mudou duas decisões:** (a) a conferência *"Σ arquivo × Σ gravado"* comparava **um número com ELE MESMO** — circular, verde sempre, o invariante de 28/08 em roupa nova; (b) a régua da razão sabores/pizza **já tinha dono** (ela alimentava o aviso do juiz), então foi **extraída** em vez de reescrita.
+
+**⚠️ E UMA DIVERGÊNCIA DO PEDIDO, REPORTADA EM VEZ DE INVENTADA:** o desenho fala de *"par por data detectada no arquivo"* — **o relatório do Suitable NÃO TRAZ DATA NENHUMA** (conferido: zero ocorrência). Quem informa é o dono na tela. O par da dropzone é pela **data INFORMADA**, lida do banco.
+
+### ⭐⭐ O Σ DO ARQUIVO AGORA É GUARDADO — e a honestidade sobre o que ele vale
+
+`stock_venda_arquivo` (CREATE-only, 5 CHECKs de FORMA + unique por `dia+relatorio`) guarda **nome do arquivo, Σ declarado, autor e hora**, pelos **dois** imports, por uma **porta única** (`registrarArquivoDoImport`), **fail-soft e DEPOIS do commit** (o padrão commit+ponte: o dado de venda já está gravado, e um problema no registro não pode derrubar um import legítimo).
+
+**⚠️⚠️ E EU PRECISO SER HONESTO SOBRE A COMPARAÇÃO: no INSTANTE do import, Σ do arquivo == Σ gravado POR CONSTRUÇÃO** (o `gravarVenda` escreve todas as linhas parseadas). Comparar ali seria o invariante circular de novo. ⭐ **O valor dela é NO TEMPO, e a pergunta é outra:** ***"o arquivo declarado pra este dia ainda explica as linhas que estão gravadas?"*** — e ela FALHA quando um **lançamento manual** reescreve o dia, quando um re-import é interrompido no meio, quando um import de **PERÍODO** cai sobre um dia, ou quando alguém apaga linhas por fora. ⛔ Hoje, em todos esses casos, **ninguém notaria** — o dia continuaria dizendo *"completo ✓"*.
+
+**⭐ E ELA CONSERTA UM DEFEITO MEDIDO:** o `upsert` do `stock_venda_import` **não mexe em `criadoPorId`/`criadoEm`**, então *"quem · hora"* mostrava o **PRIMEIRO** import do dia. A linha nova é reescrita a cada import → conta a verdade do arquivo que está VALENDO. **E os COMPLEMENTOS ganham autor e hora que nunca tiveram.**
+
+⛔ **`somaValor` é NULLABLE de propósito:** **34% das linhas do relatório de complementos valem R$ 0,00** (sabor incluso no preço), então o Σ em R$ dele não confere nada — quem confere complemento é a **CONTAGEM de ocorrências**. ⚠️ `NULL` significa *"este relatório não declara valor"*, nunca *"somava zero"*.
+
+### ⭐⭐ A TELA: A CENTRAL ENTRA, A ABA "PROCESSADOS" MORRE
+
+A central é a **aba de entrada**; `Importar dia`, `Complementos` (prateleira) e `Lançamento manual` continuam. ⛔ **"Processados" morreu** porque a central é **estritamente mais rica** no que ela mostrava (dia · selo · un · R$ · arquivos · razão · quem · hora · Σ · N sem destino) **e tem as mesmas portas** — duas listas dos mesmos dias seriam duas vitrines do mesmo dado, a doença que esta casa paga desde *"uma vitrine, um confirmar"* (14/09).
+
+⚠️⚠️ **E O LINK ANTIGO NÃO VIRA TELA ERRADA:** o histórico do item linka pra `?aba=processados#dia-YYYY-MM-DD` desde 08/09 → **`processados` cai na central**, que carrega `id={`dia-${d.dia}`}` em cada linha. ***Link velho em print, e-mail ou histórico não pode virar 404 silencioso.***
+
+**⚠️ DIVERGÊNCIA DECLARADA DA REFERÊNCIA (realocação, não invenção):** o **reprocessar** (estorna as baixas e refaz com o mapa de hoje) nasceu na aba aposentada e o arquivo do dono não o tem. ***Remoção sem realocação é perda*** → ele mudou de casa pra a conferência, com o motivo escrito no arquivo e teste dos **dois lados** (a referência NÃO tem · a tela TEM · o motivo está escrito). ⛔ E ele **não é** o *"substituir o dia"*: aquele RE-IMPORTA o arquivo; este refaz a BAIXA das linhas já gravadas.
+
+**⭐ O MÊS CORRENTE DO BRASIL TEM UM DONO: A ROTA.** A tela nasce **sem mês** e não manda `?mes=` na 1ª carga — calcular *"o mês de hoje"* no cliente seria a segunda régua, e as duas divergiriam **na virada do mês**, que é quando o dono mais confere.
+
+### ⭐⭐ CAMADA 3 — O SININHO, COM A RÉGUA DA TELA
+
+`IMPORT_DE_VENDA_TORTO` na rodada dos produtores. ⭐⭐ **O veredito sai de `lerCentralDeImport` → `vereditoDoDia`, a MESMA função que desenha o selo** — o produtor **traduz** o veredito, nunca o decide; uma régua própria faria o sininho gritar sobre um dia que a tela mostra verde.
+
+- **O GATE DAS 10h DO BRASIL**, e ele tem causa medida: o import acontece **de noite** (23h41 · 23h58 · 00h12 na referência). Às 3h o produtor fala de **anteontem pra trás**; quando o dono abre o sininho às 10h30, **ontem entra**. Sem isso ele gritaria às 3h sobre um arquivo que entra às 8h — e resolveria na rodada seguinte: ruído diário.
+- **A CONSEQUÊNCIA VAI NA FRASE:** *"As pizzas de 04/10 não baixaram sabor do estoque: saíram 389 pizzas e o relatório de SABORES não entrou — calabresa, frango e queijo continuam no sistema como se ninguém tivesse usado."* ⛔ *"O dia está incompleto"* não diz o que o dono perde.
+- **ANTI-SPAM por `origem+alvo`** (3 rodadas = 1 aviso) · **o arquivo que entra RESOLVE** o aviso · **o dia de HOJE nunca entra** (ainda está vendendo).
+
+### ⛔⛔ O GUARD ABRE O ARQUIVO — e a REGRA 11 reprovou TRÊS reposições minhas
+
+`importar-bate-com-a-referencia` compara **tokens 1:1 por PAPEL (zero hex)** · as **3 medidas do celular lidas do `@media` do arquivo** · as peças na **LISTA DE RENDER**, na ordem dele · as frases **nos dois lados** · e os **3 gestos** do bloco de `<script>` (com a busca obrigada a ser a `casaBusca` da casa).
+
+**REGRA 11 — 8 defeitos repostos no guard da tela, 8 vermelhos** (a dropzone saindo da lista · hex cravado · a coluna estreita de volta · a medida do celular · a busca por `includes` cru · o substituir-o-dia · a nota do sininho · a dupla deixando de empilhar). **E 6 no produtor, 6 vermelhos.** ⚠️ **TRÊS VIERAM VERDES:**
+
+1. **tirar UMA das 3 medidas do celular** — o guard exigia só o PREFIXO `max-[700px]:` e sobravam duas. Apertado pros **três números que o arquivo declara** (`padding:16px 14px 56px`).
+2. **o fuso do produtor às 23h** — as duas versões (com e sem o desconto de 3h) dão o **mesmo dia por coincidência aritmética**. O caso que **isola** é **9h da manhã**: com o fuso certo o gate ainda não passou; lendo o UTC cru o relógio marca 12h e **o dia de ontem é cobrado às 9h**.
+3. **a lista `SELOS_QUE_PEDEM_ACAO`** — trocá-la por `false` deixou tudo verde: **quem barra o dia completo é a FRASE** (`fraseDoDiaTorto` devolve `null`). A lista fica como **cinto sobre suspensório**, com a medição escrita no comentário, e nasceu o **teste do PAR** (todo selo da lista tem frase; selo fora dela não tem). ***Comentário que promete ser a trava sem ser a trava é pior que comentário nenhum.***
+
+### ⛔⛔⛔ E O DETECTOR COMPARTILHADO TINHA UM BUG QUE CEGAVA **QUALQUER** GUARD
+
+Em `semComentarios` (`__tests__/regras-ui/_leitura-de-fonte.ts`), o regex de comentário JSX era `\{\s*\/\*[\s\S]*?\*\/\s*\}` — lazy, mas o fim exigia o fecha-comentário **seguido de `}`**. Num arquivo onde um bloco abre com `{` e a primeira coisa dentro dele é um comentário de bloco (o caso trivial de `}) {` + JSDoc de variável), o match **não parava no fechamento dele**: corria até o primeiro comentário JSX de verdade lá embaixo e **engolia tudo no meio**.
+
+**MEDIDO: ele comeu 4.431 caracteres da central** — levando o container (`max-w-[1440px]`), as medidas do celular e a `casaBusca` junto. O guard passou a **acusar peças que ESTAVAM na tela**, e seria **cego** a qualquer defeito naquele trecho. ***Detector com um lugar só é força; detector com um lugar só e um furo é cegueira em todos os guards de uma vez.*** A cura é dizer na FORMA o que um comentário de bloco é, pra o match não poder atravessar o fechamento.
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU DOIS DEFEITOS QUE TESTE NENHUM PEGARIA
+
+**1. O DETALHE DO DIA PERDIA TODOS OS SABORES.** Ele dizia `sabores: 0 nomes · 0 ocorrências` num dia que a central mostra com *"2 arquivos · razão 5,4 sabores/pizza"*. **É a cicatriz de 14/09 renascida:** `stock_venda_complemento_linha` grava o dia às **00:00:00.000Z** e `stock_venda_linha` às **12:00:00** (e sem o `Z` isso depende do fuso do PROCESSO). **Comparar o instante EXATO acerta um writer e erra o outro, em silêncio** — a aba Produtos vinha cheia e a de Sabores vazia, que é um estado **plausível** (*"o relatório não entrou"*) sobre um dia em que ele entrou. Fix: leitura por **FAIXA do dia**; e o registrador do Σ ganhou o **`Z` explícito**. ⚠️ Em dev (fuso −3) a reposição come **os dois** — a comparação exata também é dependente de fuso.
+
+**2. O DIA QUE AINDA ESTÁ VENDENDO APARECIA COMO BURACO CORAL.** O dia de HOJE vinha como *"sem importação ✗ · dia de venda sem arquivo nenhum"*, **às 20h**, e a cozinha importa às 23h. A referência é explícita: o alerta é de *"ontem pra trás"*. O `hoje` entra por **PARÂMETRO** e quem o decide é a **ROTA** (o mesmo desconto de 3h do mês default) — relógio dentro da função seria a segunda régua, divergindo exatamente na virada do dia.
+
+**⚠️ E A SONDA DA PROVA TEVE 3 ATRIBUIÇÕES ERRADAS, corrigidas antes de virarem conclusão:** os rótulos dos **4 selos** e os da coluna **DESTINO** vêm de libs do **SERVIDOR** e chegam prontos no payload — procurá-los no bundle estático dá **falso vermelho sobre tela correta** (a cicatriz de 20/09); os **24 hex** do chunk são da **PÁGINA** de vendas (o azul da marca, pré-existente), e ***achado não atribuível não é achado***; e a **base do `body`** é o tamanho da página, não hierarquia de elemento.
+
+### PROVADO EM PROD, NOS DOIS VIEWPORTS (REGRA 12)
+
+```
+celular 200 em 268ms · desktop 200 em 143ms · chunk desta tela 74 KB
+  ✓ as 7 peças da referência, frase por frase, nos dois
+  ✓ 20 tokens nos DOIS mapas do CSS · ✓ as 8 hierarquias de letra · ✓ teto 1440 · ✓ corte de 700
+  ⛔ hex desconhecido no chunk: 0 (os 2 são o azul da marca, da página)
+
+A CENTRAL (outubro): 8 dias · COMPLETO 7 · SEM_IMPORTACAO 1 · buracos 0 ⭐ (hoje não é buraco)
+   07/10  completo ✓   431 un · R$ 15.207,36 · 2 arq · cristian fortes · razão 5,4 sabores/pizza
+   06/10  completo ✓   515 un · R$ 15.873,77 · 2 arq · marcyelle · razão 11,4
+   04/10  completo ✓   652 un · R$ 26.099,81 · 2 arq · marcyelle · 44 sem destino
+   Σ gravado "a apurar (o arquivo não declarou)" em todos — honesto: o Σ começa a ser
+   guardado DAQUI PRA FRENTE, e os dias antigos dizem isso em vez de comparar consigo mesmos
+
+O DETALHE DE 07/10: 84 linhas · 431 un · R$ 15.207,36 · 28 sem destino
+   ⭐ sabores: 75 nomes · 318 ocorrências · 41 sem ficha   (antes do fix: 0 · 0 · 0)
+   ⛔ GUARD DA TELA: Σ(linhas) == Σ do dia → ✓ BATE
+   CAÇULA BOX XIS 33 · R$ 2.639,67 · baixou ficha ✓
+   PIZZA GRANDE PRECINHO 38 · R$ 2.157,35 · baixou base + sabores ✓
+   🍕 CALABRESA 63× com ficha ✓ · COCA COLA 2L 33× com ficha ✓ · CHOCOLATE PRETO 18× SEM ficha
+
+O SININHO (preview com rollback): gate das 10h já passou · 0 gravados · 0 recusados
+   · calado 08/10: ainda dentro do gate — o arquivo pode entrar hoje
+REGRA 13: 6/6 INSERTs tortos recusados pela constraint certa · 3/3 legítimos aceitos
+   (incluindo somaValor NULL) · unique por dia+relatório recusa a 2ª linha (23505)
+   ⭐ CONTRAFACTUAL medido no banco: a forma INGÊNUA sobre NULL devolve NULL → o CHECK PASSARIA
+arquivos 0→0 · linhas 2773→2773 · comp 2717→2717 · movimentos 6680→6680 · avisos 28→28
+⭐ ZERO ESCRITA
+```
+
+**931 arquivos · 12.287 verdes · TS 0 · migration CREATE-only (1 CREATE TABLE, 5 CHECKs, 1 unique, 1 índice) · `pg_dump pre-central-import-20261008-175248.dump` (8.646.414 bytes, tamanho conferido) · deploys 4/4 (`jkeOj31t7mBpCSQyZCJhK`, `Uq_RrbIgS0G3uCuXCLLy8`, `DaMZBuGk7Gj8DjwcLAr3a`) · Δ bundle +20 KB.**
+
+**⚠️ 2 GUARDS REAPONTADOS com o motivo escrito, nenhum afrouxado:** o do *"GRANDE é tamanho vazado"* (a lista fechada **mudou de dono** pra `razao-sabor-pizza.ts`, que a central e a margem agora compartilham — e o guard passou a exigir que a margem **consuma** o dono); e o da **maçaneta da revisão**, que quebrou **com a tela certa** (a lista de dias de PRODUTOS vivia na aba aposentada) — reapontado pra a central e **mais forte**, porque passou a exigir que o deep-link antigo tenha destino.
+
+**⚠️ E UMA ASSERÇÃO MINHA FOI CORRIGIDA PELO CÓDIGO:** eu esperava que às 23h de SP o gate *"ainda não tivesse passado"*. Passou — o gate é das 10h **daquele dia**.
+
+📋 **O QUE FICA PRO DONO:**
+1. **Abrir a central no celular e no computador, nos 2 temas, com a referência ao lado.** A prova mede o que prod serve (frases, tokens nos dois mapas, letras, medidas); **o olho é dele**. ⚠️ Screenshot indisponível (extensão do Chrome desligada).
+2. **O Σ DO ARQUIVO SÓ EXISTE DO PRÓXIMO IMPORT EM DIANTE** — e é honesto: os 8 dias de outubro dizem *"Σ gravado (o arquivo não declarou)"* em vez de comparar um número com ele mesmo. O primeiro import novo já grava nome, Σ, autor e hora.
+3. ⚠️ **41 sabores SEM FICHA em 07/10** (de 75 nomes) — o maior é `CHOCOLATE PRETO` 18×. Cada um é um nome que vendeu e **não baixou estoque**; o detalhe oferece *"criar agora →"* em cada.
+4. 📋 **O "substituir o dia" leva ao fluxo de upload com a data posta** — e o import de fato SUBSTITUI, com preview do plano. **O diff cheio ("o que muda · o que estorna" lado a lado antes do clique) NÃO foi construído** — fica nomeado em vez de disfarçado.
+
 ## 🍕 BASES DE PIZZA — NORMALIZAÇÃO COM PREVIEW (08/10/2026, **O PREVIEW ESTÁ NA MESA, NADA GRAVADO**)
 
 **Executa a decisão do dono de 07/10:** *"SIM, normalizar — receita é lei, preview antes de gravar"*. Problema medido: **11 fichas de base pro mesmo cardápio**, massa em UMA, caixa faltando em várias → custo subestimado → margens 79-93% infladas envenenando a casa e a liga.
