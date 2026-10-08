@@ -2270,6 +2270,76 @@ A **página do empréstimo fica como está** (pergunta do CONTRATO: a #2 tem ví
 ```
 Varredura das 353 parcelas: **5 com pagamento de mês diferente do vencimento** — 3 do FLEXIBLE (o caso) e 2 atrasos legítimos da Caixa.
 
+## 🍕 BASES DE PIZZA — NORMALIZAÇÃO COM PREVIEW (08/10/2026, **O PREVIEW ESTÁ NA MESA, NADA GRAVADO**)
+
+**Executa a decisão do dono de 07/10:** *"SIM, normalizar — receita é lei, preview antes de gravar"*. Problema medido: **11 fichas de base pro mesmo cardápio**, massa em UMA, caixa faltando em várias → custo subestimado → margens 79-93% infladas envenenando a casa e a liga.
+
+**⭐⭐ A COMPOSIÇÃO É DECLARAÇÃO, NUNCA MEDIÇÃO** (`lib/margem/bases-canonicas.ts`, pura): PEQUENA = massa×1 + queijo×1 + caixa 25 · GRANDE = ×2 + caixa 35 · FAMÍLIA = ×3 + caixa 45; **PRECINHO DERIVA** do tamanho. ⭐ E a derivação está **confirmada pelo dado**, não suposta: `GRANDE PRECINHO` já usa a caixa de 35 e `PIZZA FAMILIA PRECINHO` a de 45 — **zero indício de caixa/queijo diferente no precinho**, então não há o que perguntar.
+
+**⛔⛔ O MOLHO NÃO ENTRA NA COMPOSIÇÃO — vira pendência DECLARADA.** `stock_dose_a_declarar` (CREATE-only, 3 CHECKs de forma + único por ficha+item), a ficha DIZ *"falta declarar a dose"* acima da receita, com o botão que leva ao editor. ⚠️ A razão é de dinheiro: o molho custa **R$ 6,22/UN** e passam **~3.035 pizzas/mês** — uma dose chutada de 0,1 a 0,2 move o custo em **R$ 1.880 a R$ 3.760 por mês** e **sai plausível**, então ninguém desconfia. ⭐ E ela **se resolve pelo FATO**: o leitor esconde a pendência cujo item já virou componente — ninguém precisa lembrar de apagar a linha.
+
+### ⛔⛔⛔ O PREVIEW ACHOU UM DEFEITO MEU NO PIOR LUGAR POSSÍVEL — o «Combo Caçula»
+
+A 1ª régua era *"base é feita só de massa/queijo/caixa — proteína dentro é produto pronto"*, **estrutural e não pelo nome** (`Pizza (Aiq)` é base e não diz tamanho; `PIZZA CALABRESA CONGELADA` diz PIZZA e não é). Ela separou os 11 corretamente… **e engoliu o Combo Caçula** (2 queijo + caixa 35 + **3 massa** + **caixa 25**), classificando-o como base de PEQUENA: **a proposta DESTRUIRIA a receita dele, de R$ 15,18 pra R$ 6,94 — no produto de MAIOR faturamento do cardápio (R$ 30.707 em 30 dias).**
+
+⭐ **"Só massa/queijo/caixa" é NECESSÁRIO, não SUFICIENTE.** Duas travas fecham, cada uma saindo da própria declaração do dono: **(1) UM TIPO de caixa** — base é de um tamanho; caixa de 25 **e** de 35 na mesma ficha é combo que atravessa dois tamanhos (⚠️ a **MESMA** caixa 2× continua passando: é combo do mesmo tamanho, e o `multiplicador` trata, como em `PROMO 2 PIZZAS GRANDES`); **(2) massa == queijo** quando os dois existem — a canônica é sempre N:N, e 3 massas pra 2 queijos é razão que nenhum tamanho tem.
+
+⚠️ **E o quase-base passou a ser REPORTADO mesmo sem "PIZZA" no nome** — era o caso do Combo. Calar sobre ele esconderia justamente a linha que a 1ª régua quase destruiu.
+
+### ⚠️⚠️ A PREMISSA DO ITEM 2 CAIU NA MEDIÇÃO: **não existe duplicata de grafia**
+
+O pedido assumia *"'PIZZA GRANDE 35CM' × 'Pizza Grande (35cm)' → UMA base canônica, órfã aposentada"*. **Medido:** os 13 nomes de pizza do PDV têm **13 preços praticados distintos** — `PIZZA GRANDE 35CM` **R$ 104,93** × `Pizza Grande (35cm)` **R$ 124,98** × `PIZZA GRANDE PROMO` R$ 59,99 × `Pizza (Aiq)` R$ 126,16. ⛔ **São pontos de preço (balcão/app/promo), não grafias do mesmo produto** — e fundir as fichas faria a margem virar **média ponderada**, escondendo justamente o `PIZZA GRANDE PRECINHO`, que é o de margem mais apertada (75%) **e o de maior volume (1.134 un)**. **Nenhuma ficha se funde; nenhuma órfã é aposentada.** A régua da duplicata é **MESMO PREÇO**, nunca nome parecido — e ela fica no preview pro dia em que dois nomes de fato coincidirem.
+
+### ⛔ ZERO CONTA NOVA — o custo proposto sai da PORTA ÚNICA
+
+`custoDaComposicao` **remenda uma CÓPIA do `ctx`** e chama o MESMO `explodirReceita` que a baixa de venda usa. ⚠️ Somar `qtd × custoMedio` na mão aqui faria o preview prometer um custo e a baixa executar outro na primeira borda (componente que é ficha, intermediário que baixa o pack). ⭐ E `resolverItensDaBase` é o **dono único** de *"qual item é a caixa de 35"* — o preview E o juiz chamam ELE; duas resoluções divergiriam no dia em que o dono renomear uma caixa, e aí o preview proporia a composição certa enquanto o juiz acusaria a mesma ficha de incompleta.
+
+### ⭐⭐ O GUARD DO DONO VIROU INVARIANTE — B1/B2, e ele JÁ ESTÁ VERMELHO EM PROD
+
+*"Ficha de TAMANHO sem massa+queijo+caixa = vermelho (molho isento)"*. **B1 (erro)** · **B2 (aviso)** quando os itens canônicos não se resolvem — ⚠️ B2 existe porque *"não consegui conferir"* e *"está tudo certo"* são coisas diferentes, e silêncio lido como saúde é o que o E10 já pagou. ⛔ O universo é só a base **APONTADA** pelo dono: varrer o cardápio faria o juiz decidir o que é base, justo o que a classificação PERGUNTA em vez de assumir.
+
+```
+B1: 2 · B2: 0   ← rodado em prod AGORA, antes de qualquer gravação
+  a base «PIZZA GRANDE 35CM» está sem massa — o custo sai subestimado e a margem vem inflada
+  a base «PIZZA GRANDE PRECINHO» está sem caixa — idem
+```
+⭐ **É o red-then-green ao vivo:** o juiz está vermelho porque o defeito EXISTE; ele vai a zero quando a normalização for aplicada.
+
+### O PREVIEW EM PROD (janela 08/09 → 08/10, 30 dias) — **11 bases, 2.456 pizzas**
+
+```
+PEQUENA   PIZZA PEQUENA 25CM      falta massa          6,40 → 6,94   +0,54   214 un  → +115,56
+GRANDE    PIZZA GRANDE PRECINHO   falta CAIXA          9,92 → 12,66  +2,74  1134 un  → +3.107,16
+          PIZZA GRANDE 35CM       falta massa         11,58 → 12,66  +1,08   207 un  → +223,56
+          GRANDE PRECINHO         falta massa         11,58 → 12,66  +1,08   189 un  → +204,12
+          PROMO 2 PIZZAS GRANDES  falta massa ⚠️ 2×   23,16 → 25,32  +2,16   159 un  → +343,44
+          Pizza (Aiq)             falta caixa ⚠️       9,92 → 12,66  +2,74    16 un  → +43,84
+          Pizza Grande (35cm)     massa + caixa        8,84 → 12,66  +3,82     2 un  → +7,64
+          PIZZA GRANDE PROMO      massa + caixa        8,84 → 12,66  +3,82     1 un  → +3,82
+FAMILIA   PIZZA FAMILIA 45CM      falta massa         17,74 → 19,36  +1,62   307 un  → +497,34
+          PIZZA FAMILIA PRECINHO  falta massa         17,74 → 19,36  +1,62   227 un  → +367,74
+          Pizza Família (45cm)    massa + caixa       13,26 → 19,36  +6,10     0 un  → +0,00
+                                                      ⛔ Δ NO PERÍODO: +R$ 4.914,22
+RECUSADAS: Combo Caçula (combo, não base) · PIZZA CALABRESA CONGELADA · PIZZA FRANGO CATUPIRY
+           CONGELADA (produto pronto com sabor embutido)
+MARGEM: PRECINHO 80,7% → 75,4% · FAMILIA 45CM 85,3% → 83,9% · Pizza (Aiq) 92,1% → 90,0%
+```
+⚠️ **Os R$ 4.914,22 são o que SAI da sobra** que a casa e a liga leem — a margem deixa de vir inflada. **2 linhas pedem confirmação** (`PROMO 2 PIZZAS GRANDES`, porque são 2 pizzas e a proposta é 2× a canônica; `Pizza (Aiq)`, porque o nome não diz o tamanho e a evidência é a composição atual).
+
+**⚠️ REGRA 11 — 6 defeitos repostos, e o 1º VEIO VERDE:** o caso do Combo viola **as DUAS** travas, então removendo a da caixa a de baixo segurava — *reposição que não reproduz o defeito é um verde de graça*, a 7ª vez nesta casa. Ganhou o caso que **ISOLA**: combo **balanceado** (2 massa + 2 queijo + caixa 35 + caixa 25). Com ele, os 6 mordem. ⚠️ **E um teste pegou um buraco real:** `\bGRANDE\b` **não casa `GRANDES`** — o `PROMO 2 PIZZAS GRANDES` acertava GRANDE **por acidente**, pelo ramo da caixa.
+
+**⚠️ REGRA 13 — os 3 CHECKs provados contra Postgres:** 5 de 5 INSERTs tortos recusados **pela constraint certa** (fichaId vazio · só espaço · itemId vazio · motivo vazio · só espaço), o legítimo entrou, a 2ª pendência igual foi recusada pelo índice único, **zero escrita líquida**.
+
+**EXTRA (palavra do dono): busca `casaBusca` nos chips de sabor** — 61 chips eram parede. ⚠️ Filtra a **MESMA lista** que o montador desenha (fonte própria divergiria) e o vazio **DIZ o recorte** (*"nenhum dos 61 sabores casa com «x»"*) — *"nenhum sabor"* se leria como "o cardápio não tem sabor".
+
+**PROVADO EM PROD, nos DOIS viewports:** margem 200 · 18 chunks · 858 KB, com `buscar sabor` · `nenhum dos` · `casa com` nos dois; a rota do produto **200** devolvendo o campo `dosesADeclarar`. **928 arquivos · 12.237 verdes · TS 0 · migration ADITIVA PURA (1 CREATE TABLE, 3 CHECKs, 1 índice único, zero ALTER) · `pg_dump pre-bases-pizza-20261008-004400.dump` (8.577.707 bytes, tamanho conferido) · deploy 4/4 (`1AOLUWt_WJuMAgwYg1QhC`) · Δ bundle +0 KB.**
+
+**⛔⛔ ZERO ESCRITA EM DADO DE PROD, com a contabilidade:** `doses=0 · bases=2 (as que já existiam) · versões=280 · componentes=715 · movimentos=6.610` — nenhuma ficha versionada, nenhum movimento. **A gravação espera o OK no chat.**
+
+⚠️ **ERRO MEU NO CAMINHO:** rodei `git checkout -- prisma/schema.prisma` (o reflexo do swap-postgres) num arquivo com o model novo **não-commitado** e apaguei o trabalho — é a cicatriz de 14/09 (*"reposição se desfaz com `cp` de backup, nunca com git"*) em roupa nova. E a **crase na mensagem de commit** virou substituição de comando no zsh pela segunda vez (29/09), comendo `"PROMO 2 PIZZAS GRANDES"` do texto; corrigido com `--amend`.
+
+📋 **ACHADO À PARTE, FORA DO ESCOPO, E É GRANDE:** **«PIZZA GRANDE CALABRESA OU MUSSARELA OU FRANGO BLACK FRIDAY» — 566 unidades, R$ 17.244,16 em 30 dias, SEM DESTINO no mapa do PDV.** É o **2º maior volume de pizza do cardápio** e **não baixa estoque nenhum**. Não é base (é promoção com sabor no nome), então não entra nesta normalização — mas é a maior lacuna de cobertura que o retrato achou.
+
 ## ⭐⭐ QUEM PAGA A CASA v3.1 — A LEI DE LAYOUT: LARGURA CHEIA + DUPLAS (08/10/2026)
 
 **O dono substituiu `docs/margem-referencia.html` pela v3.1** (o rodapé do arquivo diz a versão). A mudança é **SÓ DE LAYOUT**, e nasceu comentada no CSS dele como **"LEI DE LAYOUT"**:
