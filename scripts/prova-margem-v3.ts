@@ -14,13 +14,13 @@
  * pedaços SEM acento quando dá, e a comparação tolera as duas formas.
  */
 import { prisma } from '@/lib/db'
-import { readFileSync } from 'node:fs'
 import { signToken } from '@/lib/auth'
 import { exigirEmpresaNesteBanco } from '@/lib/scripts/prova-banco'
 import { lerMargem } from '@/lib/margem/leitura'
 import { lerMontador } from '@/lib/margem/leitura-montador'
 import { montarPlacar, montarCarregadores, linhaDaCobertura } from '@/lib/margem/placar'
 import { montarPizza } from '@/lib/margem/montador'
+import { lerReferenciaVisual } from '@/lib/margem/referencia'
 
 const CO = process.env.PROVA_COMPANY_ID ?? 'cmq17yapb00gnrndlh33sctbo'
 const CEL = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'
@@ -90,7 +90,14 @@ async function main() {
 
   /* ═════════════ 2. SEÇÃO POR SEÇÃO, CONTRA O ARQUIVO DO DONO ═════════════ */
   console.log('\n═══ 2. OS 6 CARTÕES DA REFERÊNCIA — seção por seção')
-  const ref = readFileSync('docs/margem-referencia.html', 'utf8')
+  /**
+   * ⭐⭐ A MESMA PORTA DE LEITURA DO GUARD. ⛔ Na 1ª rodada da v3.1 a sonda tinha a própria
+   * cópia do regex de medidas e acusou *"FALTAM 1024"* sobre uma tela CORRETA — o corte do
+   * `@media` entrando como se fosse largura de elemento. Duas réguas pro mesmo arquivo e uma
+   * delas mente, e é sempre a que ninguém reconsertou.
+   */
+  const REF = lerReferenciaVisual()
+  const ref = REF.html
   /** ⭐ cada peça é conferida nos DOIS lados: na REFERÊNCIA e no BUNDLE que prod serve */
   const SECOES: { secao: string; pecas: string[] }[] = [
     { secao: '1 · LINHA DE CHEGADA', pecas: ['A LINHA DE CHEGADA', 'casa do dia', 'sobra do dia', 'daqui pra frente cada venda'] },
@@ -122,12 +129,12 @@ async function main() {
   const soNoClaro = usados.filter((t) => css.split(`${t}:`).length - 1 < 2)
   console.log(`  ${soNoClaro.length === 0 ? '✓' : '⛔'} os ${usados.length} tokens da tela nos DOIS mapas do CSS${soNoClaro.length ? ` — SÓ NO CLARO: ${soNoClaro.join(' ')}` : ''}`)
 
-  const cssRef = ref.slice(ref.indexOf('<style>'), ref.indexOf('</style>'))
-  const letras = [...new Set([...cssRef.matchAll(/font-size:\s*([\d.]+)px/g)].map((m) => m[1]))]
+  const cssRef = REF.css
+  const letras = REF.letras
   const semLetra = letras.filter((t) => !chunk['CELULAR 390'].includes(`text-[${t}px]`))
   console.log(`  ${semLetra.length === 0 ? '✓' : '⛔'} as ${letras.length} hierarquias de letra da referência no bundle${semLetra.length ? ` — FALTAM ${semLetra.join(' ')}` : ''}`)
 
-  const medidas = [...new Set([...cssRef.matchAll(/(?:^|[^-a-z])(?:width|height|min-width):\s*([\d.]+)px/g)].map((m) => m[1]))]
+  const medidas = REF.medidas
   const semMedida = medidas.filter((t) => !chunk['CELULAR 390'].includes(`[${t}px]`))
   console.log(`  ${semMedida.length === 0 ? '✓' : '⛔'} as ${medidas.length} medidas da referência no bundle${semMedida.length ? ` — FALTAM ${semMedida.join(' ')}` : ''}`)
   console.log(`  ⛔ o botão de tema da referência em prod: ${chunk['CELULAR 390'].includes('theme-btn') ? 'VEIO (2ª porta do tema!)' : 'NÃO VEIO ✓ (a casa tem o dela)'}`)

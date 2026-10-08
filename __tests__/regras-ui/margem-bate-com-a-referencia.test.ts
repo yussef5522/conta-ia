@@ -24,20 +24,22 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { semComentarios, usosDe } from './_leitura-de-fonte'
+import { lerReferenciaVisual } from '@/lib/margem/referencia'
 
 const R = (p: string) => resolve(process.cwd(), p)
 const ler = (p: string) => readFileSync(p, 'utf8')
 
-const REFERENCIA = ler(R('docs/margem-referencia.html'))
-const CSS_DA_REFERENCIA = REFERENCIA.slice(
-  REFERENCIA.indexOf('<style>'),
-  REFERENCIA.indexOf('</style>'),
-)
-/** ⚠️ o `<script>` da referência É A ESPECIFICAÇÃO do comportamento do montador */
-const SCRIPT_DA_REFERENCIA = REFERENCIA.slice(
-  REFERENCIA.indexOf('<script>'),
-  REFERENCIA.lastIndexOf('</script>'),
-)
+/**
+ * ⭐⭐ A PORTA ÚNICA DE LEITURA DA REFERÊNCIA — a MESMA que a sonda da prova em prod usa.
+ *
+ * ⛔ Ela existe porque o guard e a sonda extraíam as medidas com duas cópias do mesmo regex, e
+ * na v3.1 eu consertei a do guard e deixei a da sonda atrás: a prova acusou *"FALTAM 1024"*
+ * sobre uma tela correta. **Duas réguas pro mesmo arquivo e uma delas mente.**
+ */
+const REF = lerReferenciaVisual()
+const REFERENCIA = REF.html
+const CSS_DA_REFERENCIA = REF.css
+const SCRIPT_DA_REFERENCIA = REF.script
 
 const TELA = semComentarios(ler(R('app/(dashboard)/empresas/[id]/margem/page.tsx')))
 /** ⭐ as frases de dinheiro moram nas LIBS (quem escreve a frase é quem decide o número) */
@@ -154,10 +156,8 @@ const TOKENS_EXTRA_PERMITIDOS = new Set(['--prod-acao-bg', '--prod-acao-ink'])
 
 describe('⛔⛔ OS TOKENS — mapeados 1:1, e nos DOIS temas', () => {
   it('⭐ todo token do `:root{}` da referência tem par declarado no mapa', () => {
-    const topo = CSS_DA_REFERENCIA.slice(0, CSS_DA_REFERENCIA.indexOf('@media'))
-    const naReferencia = [...topo.matchAll(/(--[a-z0-9-]+):\s*#[0-9A-Fa-f]{3,8}/g)].map((m) => m[1])
-    expect(naReferencia.length, 'o bloco de tokens da referência não foi lido').toBeGreaterThan(20)
-    for (const t of naReferencia) {
+    expect(REF.tokens.length, 'o bloco de tokens da referência não foi lido').toBeGreaterThan(20)
+    for (const t of REF.tokens) {
       expect(
         MAPA_DE_TOKENS[t],
         `a referência declara ${t} e o mapa 1:1 não diz pra qual token da casa ele vai`,
@@ -207,26 +207,14 @@ describe('⛔⛔ OS TOKENS — mapeados 1:1, e nos DOIS temas', () => {
 
 describe('⛔⛔ AS MEDIDAS SÃO px LITERAL — tradução mental produziu as versões erradas (10/09)', () => {
   it('⭐ toda hierarquia de letra da referência aparece como `text-[Npx]` na tela', () => {
-    const tamanhos = [...new Set([...CSS_DA_REFERENCIA.matchAll(/font-size:\s*([\d.]+)px/g)].map((m) => m[1]))]
-    expect(tamanhos.length, 'os tamanhos de letra da referência não foram lidos').toBeGreaterThan(10)
-    const faltando = tamanhos.filter((t) => !TELA.includes(`text-[${t}px]`))
+    expect(REF.letras.length, 'os tamanhos de letra da referência não foram lidos').toBeGreaterThan(10)
+    const faltando = REF.letras.filter((t) => !TELA.includes(`text-[${t}px]`))
     expect(faltando, `tamanhos da referência que a tela não usa: ${faltando.join(', ')}`).toHaveLength(0)
   })
 
   it('⭐ toda largura/altura declarada na referência aparece literal na tela', () => {
-    /**
-     * ⚠️ O `[^-a-z(]` NÃO é preciosismo de regex: sem excluir o `(`, o `min-width:1024px` do
-     * `@media` entrava como se fosse medida de ELEMENTO e cobrava um `[1024px]` literal numa
-     * tela que expressa aquele corte como `lg:` (o alias do Tailwind). **Breakpoint e medida
-     * de elemento são duas coisas** — e cada uma tem o seu teste logo abaixo.
-     */
-    const medidas = [
-      ...new Set(
-        [...CSS_DA_REFERENCIA.matchAll(/(?:^|[^-a-z(])(?:width|height|min-width):\s*([\d.]+)px/g)].map(
-          (m) => m[1],
-        ),
-      ),
-    ]
+    // ⚠️ a separação entre BREAKPOINT e medida de ELEMENTO mora no leitor único, com o motivo
+    const medidas = REF.medidas
     expect(medidas.length, 'as medidas da referência não foram lidas').toBeGreaterThan(8)
     const faltando = medidas.filter((t) => !TELA.includes(`[${t}px]`))
     expect(faltando, `medidas da referência ausentes da tela: ${faltando.join(', ')}`).toHaveLength(0)
@@ -287,9 +275,7 @@ describe('⛔⛔ AS MEDIDAS SÃO px LITERAL — tradução mental produziu as ve
      * o dono escolheu fora da escala (700 e 560) o número vai LITERAL, como o arquivo escreve.
      */
     const ALIAS: Record<string, string> = { '640': 'sm:', '768': 'md:', '1024': 'lg:', '1280': 'xl:' }
-    const cortes = [
-      ...new Set([...CSS_DA_REFERENCIA.matchAll(/@media\s*\((?:min|max)-width:\s*([\d.]+)px\)/g)].map((m) => m[1])),
-    ]
+    const cortes = REF.cortes
     expect(cortes.length, 'os breakpoints da referência não foram lidos').toBeGreaterThan(2)
     for (const c of cortes) {
       const ok = ALIAS[c] ? TELA.includes(ALIAS[c]) : TELA.includes(`[${c}px]`)
@@ -555,6 +541,40 @@ describe('⚠️⚠️ AS DUAS DIVERGÊNCIAS DELIBERADAS — declaradas, não es
 })
 
 /* ═════════════════ 7. AUTO-TESTE DO DETECTOR (senão ele passa por cegueira) ═════════════════ */
+
+describe('⭐ AUTO-TESTE DO LEITOR — a régua única não pode voltar a confundir as coisas', () => {
+  /**
+   * ⛔⛔ ESTE BLOCO NASCEU DO VERMELHO REAL DA v3.1: a sonda da prova em prod acusou *"FALTAM
+   * 1024"* sobre uma tela CORRETA, porque ela tinha a própria cópia do regex e o
+   * `min-width:1024px` do `@media` entrava como se fosse largura de ELEMENTO. Agora a leitura
+   * tem um dono só — e é aqui que ela prova que separa as duas coisas.
+   */
+  it('⛔⛔ BREAKPOINT não é medida de ELEMENTO, e vice-versa', () => {
+    // 1024 e 700 são CORTES (vivem dentro de `@media (...)`)
+    expect(REF.cortes).toContain('1024')
+    expect(REF.cortes).toContain('700')
+    expect(REF.medidas, 'o corte do @media entrou como largura de elemento').not.toContain('1024')
+    expect(REF.medidas).not.toContain('700')
+    // 170 (a pizza) e 132 (a coluna do valor) são MEDIDAS de elemento
+    expect(REF.medidas).toContain('170')
+    expect(REF.medidas).toContain('132')
+    expect(REF.cortes).not.toContain('170')
+  })
+
+  it('⛔ o teto do container NÃO é medida de elemento (`max-width` fica de fora)', () => {
+    expect(REF.css).toContain('max-width:1440px')
+    expect(REF.medidas, 'o max-width do container entrou como largura de elemento').not.toContain('1440')
+  })
+
+  it('⭐ o leitor devolve as 4 listas cheias — arquivo mudo seria falso verde pra tudo', () => {
+    expect(REF.tokens.length).toBeGreaterThan(20)
+    expect(REF.letras.length).toBeGreaterThan(10)
+    expect(REF.medidas.length).toBeGreaterThan(8)
+    expect(REF.cortes.length).toBeGreaterThan(2)
+    expect(REF.script).toContain('TAMANHOS')
+    expect(REF.css).toContain('LEI DE LAYOUT')
+  })
+})
 
 describe('⭐ AUTO-TESTE — o detector morde de verdade', () => {
   it('⛔ a asserção de dois lados reprova frase que não está na referência', () => {
