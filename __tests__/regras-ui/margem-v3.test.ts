@@ -25,6 +25,19 @@ const LEITURA = R('lib/margem/leitura.ts')
 const ler = (p: string) => readFileSync(p, 'utf8')
 const tela = semComentarios(ler(TELA))
 
+/**
+ * ⭐ fatia o bloco de UM componente da tela — a asserção morde onde a régua vive, em vez de
+ * no arquivo inteiro. ⛔ Janela de distância já produziu falso vermelho E falso verde nesta
+ * casa (o rastro em 12/09, o menu do PF em 13/09): o que delimita é a função SEGUINTE.
+ */
+function blocoDa(nome: string): string {
+  const i = tela.indexOf(`function ${nome}(`)
+  expect(i, `componente ${nome} não existe na tela`).toBeGreaterThan(-1)
+  const resto = tela.slice(i + 1)
+  const j = resto.indexOf('\nfunction ')
+  return j === -1 ? resto : resto.slice(0, j)
+}
+
 describe('⛔⛔ ZERO HEX CRAVADO — a tela pinta por TOKEN, nos dois temas', () => {
   it('⛔ nenhuma cor literal no arquivo da tela', () => {
     // ⚠️ `#` de âncora/hash não conta — o que morde é cor hexadecimal de 3 ou 6 dígitos
@@ -78,34 +91,49 @@ describe('⛔ UMA COMPOSIÇÃO, DOIS VIEWPORTS (REGRA 12)', () => {
     expect(soCel + soDesk, 'duas composições do mesmo dado divergem no 1º selo novo').toBe(0)
   })
 
-  it('⭐ a casa é SVG com viewBox + largura 100% — é o que a faz legível em 390px', () => {
-    const i = tela.indexOf('function CasaDeTijolos')
-    const bloco = tela.slice(i, tela.indexOf('function Conta'))
+  /**
+   * ⚠️ REAPONTADO EM 07/10 (v2) — ele olhava o SVG da CASA DE TIJOLOS, que **morreu** (o dono
+   * reprovou por ilegibilidade). A pergunta não mudou — *"o desenho encolhe no celular sem
+   * cortar?"* — e o único SVG que sobrou é a PIZZA do montador. ⛔ É a razão de existir da
+   * REGRA 3: grep não distingue "refatorei" de "quebrei".
+   */
+  it('⭐ a pizza é SVG com viewBox + largura 100% — é o que a faz legível em 390px', () => {
+    const bloco = blocoDa('PizzaEmFatias')
     expect(bloco).toContain('viewBox=')
     expect(bloco).toMatch(/className="w-full"/)
     // ⛔ largura fixa em px no SVG quebraria no celular
     expect(bloco).not.toMatch(/<svg[^>]*width="\d/)
   })
 
-  it('⛔⛔ a pilha de tijolos NUNCA estoura o telhado (a sobreposição de 07/10)', () => {
-    const i = tela.indexOf('function CasaDeTijolos')
-    const bloco = tela.slice(i, tela.indexOf('function Conta'))
-    // ⭐ a altura de cada tijolo é a fatia DELE vezes a altura PAGA — nunca vezes H cru:
-    // com a sobra passando do custo fixo, `× H` fazia a pilha passar do telhado e o
-    // `Math.max(0, y)` empilhava os de cima um sobre o outro.
-    expect(bloco).toMatch(/t\.pctDaSobra \* alturaPaga/)
-    expect(bloco).not.toMatch(/t\.pctDaSobra \* H/)
-    // ⚠️ e `alturaPaga` tem que ser calculada ANTES do laço que empilha
-    expect(bloco.indexOf('const alturaPaga')).toBeLessThan(bloco.indexOf('c.tijolos.map'))
+  /**
+   * ⚠️⚠️ TESTE REAPONTADO, COM O MOTIVO ESCRITO (07/10, v2). Ele travava a pilha de tijolos
+   * contra a sobreposição do telhado — e **os tijolos SVG morreram**. A régua que sobreviveu é
+   * a mesma pergunta num desenho mais simples: *"o que foi pago não pode passar do total da
+   * barra"* — e ela agora mora em `montarPlacar`, PURA e testada (`pago + transbordo = 1`).
+   *
+   * ⛔ O que o guard de TELA afirma é que ela **não tem clamp próprio**: se ela normalizasse
+   * por conta, nasceria a 2ª régua do desenho, que é exatamente como a pilha estourou.
+   */
+  it('⛔⛔ a BARRA vem da lib — a tela não normaliza nem clampa por conta própria', () => {
+    const bloco = blocoDa('PlacarDaCasa')
+    expect(bloco).toContain('p.barra.pago')
+    expect(bloco).toContain('p.barra.transbordo')
+    expect(bloco).toContain('p.barra.bandeira')
+    // ⛔ nenhum Math.min/max sobre a largura da barra na tela
+    expect(bloco).not.toMatch(/Math\.min\([^)]*barra/)
+    // ⚠️ e nada de `* H` (o jeito antigo, que fazia a pilha passar do telhado)
+    expect(bloco).not.toMatch(/pctDaSobra \* H/)
   })
 
-  it('⭐ o rótulo do tijolo só é desenhado quando CABE — senão vaza do tijolo', () => {
-    const i = tela.indexOf('function CasaDeTijolos')
-    const bloco = tela.slice(i, tela.indexOf('function Conta'))
-    // ⚠️ dois degraus (26px e 12px) + o truncamento do nome
-    expect(bloco).toMatch(/h >= 26/)
-    expect(bloco).toMatch(/h >= 12/)
-    expect(bloco).toMatch(/slice\(0, 2[0-9]\)/)
+  /**
+   * ⚠️ REAPONTADO (v2): era o rótulo dentro do TIJOLO; agora é o custo dentro da FATIA. A
+   * pergunta é a mesma — *"só escreve quando cabe"* — e com 6 fatias o valor viraria rabisco,
+   * então ali ele cede o lugar pro número da fatia e o custo fica na lista ao lado.
+   */
+  it('⭐ o custo só é escrito dentro da fatia quando CABE', () => {
+    const bloco = blocoDa('PizzaEmFatias')
+    expect(bloco).toMatch(/n <= 4/)
+    expect(bloco).toMatch(/n > 4/)
   })
 })
 
@@ -121,8 +149,11 @@ describe('⛔⛔ A TELA NÃO CALCULA DINHEIRO — ela desenha o payload', () => 
   })
 
   it('⭐ a tela usa o VEREDITO e a RESSALVA do servidor, nunca compara por conta própria', () => {
-    expect(usosDe(tela, 'veredito')).toBeGreaterThan(1)
-    expect(tela).toContain('{c.veredito.ressalva}')
+    // ⚠️ REAPONTADO (v2): a ressalva mudou de casa — ela viaja no `montarPlacar` e é desenhada
+    // pelo cartão de resultado. A régua é a MESMA: a tela não pode mostrar "pagou" seco.
+    expect(usosDe(tela, 'montarPlacar')).toBeGreaterThan(0)
+    expect(tela).toContain('ressalva={p.resultado.ressalva}')
+    expect(blocoDa('CartaoDoPlacar')).toContain('{ressalva}')
     // ⛔ comparar sobra com custo fixo aqui seria a 2ª régua do "pagou"
     expect(tela).not.toMatch(/sobraLiquida\s*>=?\s*/)
   })
@@ -216,5 +247,197 @@ describe('⛔⛔ O MOTOR NÃO PODE VOLTAR A ESCONDER O COMPLEMENTO NEM A CRAVAR 
     expect(l).toContain('NAO_SAO_SABOR')
     expect(l).toMatch(/'GRANDE'/)
     expect(usosDe(l, 'ehSaborDeVerdade')).toBeGreaterThan(1)
+  })
+})
+
+/* ═══════════════════════════ OS GUARDS DO v2 (07/10/2026) ═══════════════════════════ */
+
+describe('⛔⛔⛔ A CASA DE TIJOLOS SVG MORREU — e não pode ressuscitar', () => {
+  /**
+   * ⛔ O dono reprovou por ILEGIBILIDADE. E ela não volta "porque já estava pronta" — é a
+   * mesma razão por que o `GruposSugeridos` foi APAGADO em 23/09 em vez de escondido:
+   * enquanto o componente existe no arquivo, alguém religa.
+   */
+  it('⛔ nenhum telhado, nenhuma parede, nenhum tijolo empilhado na tela', () => {
+    expect(tela).not.toContain('function CasaDeTijolos')
+    expect(tela).not.toContain('TELHADO')
+    expect(tela).not.toContain('polygon')
+    // ⚠️ e o empilhamento (o `y -= h` que clampava em 0) não existe mais
+    expect(tela).not.toMatch(/y -= h/)
+  })
+
+  it('⭐ no lugar dele: 3 cartões + a barra, e os três cartões vêm da MESMA lib', () => {
+    const bloco = blocoDa('PlacarDaCasa')
+    expect(bloco).toContain('montarPlacar')
+    expect(bloco).toContain('c={p.sobra}')
+    expect(bloco).toContain('c={p.casa}')
+    expect(bloco).toContain('c={p.resultado}')
+    // ⚠️ no celular os cartões EMPILHAM (REGRA 12) — uma composição só, o CSS escolhe
+    expect(bloco).toMatch(/grid-cols-1[^"]*sm:grid-cols-3/)
+  })
+
+  it('⭐ a barra tem a bandeira e o verde do transbordo', () => {
+    const bloco = blocoDa('PlacarDaCasa')
+    expect(bloco).toContain('🏁')
+    expect(bloco).toContain('--fam-verde-mid')
+    expect(bloco).toContain('rotuloTransbordo')
+  })
+
+  it('⛔⛔ "a apurar" NUNCA vira R$ 0,00 no cartão', () => {
+    const bloco = blocoDa('CartaoDoPlacar')
+    expect(bloco).toMatch(/c\.valor == null \? 'a apurar'/)
+  })
+})
+
+describe('⛔⛔ QUEM CARREGOU A CASA — a lista vem da lib, com o rodapé que destrava a cobertura', () => {
+  it('⭐ a tela chama `montarCarregadores` e não ordena nem soma por conta', () => {
+    const bloco = blocoDa('QuemCarregouACasa')
+    expect(bloco).toContain('montarCarregadores')
+    expect(bloco).not.toMatch(/\.sort\(/)
+    expect(bloco).not.toMatch(/\.reduce\(/)
+  })
+
+  it('⭐ o "+N produtos · ver todos" EXPANDE — nada some atrás dele', () => {
+    const bloco = blocoDa('QuemCarregouACasa')
+    expect(bloco).toContain('ver todos')
+    expect(bloco).toMatch(/abrirResto \? \[\.\.\.l\.visiveis, \.\.\.l\.resto\]/)
+  })
+
+  it('⛔ o rodapé âmbar diz a cobertura, a meta, e LEVA pra fila das fichas', () => {
+    const bloco = blocoDa('QuemCarregouACasa')
+    expect(bloco).toContain('fora da obra')
+    expect(bloco).toContain('sabores sem ficha')
+    expect(bloco).toContain('COBERTURA_MINIMA')
+    // ⛔ rodapé que cobra sem dar o caminho é aviso, não ferramenta
+    expect(bloco).toContain('ir pra fila das fichas')
+  })
+
+  it('⭐ REGRA 4: o logo deriva do NOME pela mesma `caraDaReceita`', () => {
+    expect(blocoDa('QuemCarregouACasa')).toContain('<LogoDaReceita nome={x.nome}')
+  })
+})
+
+describe('⛔⛔⛔ O MONTADOR É SÓ SIMULAÇÃO — nada grava, nada baixa', () => {
+  it('⛔⛔ o único POST da seção é o da CONFIG, e ele manda uma ação de config', () => {
+    const bloco = blocoDa('MontadorDePizza')
+    const posts = [...bloco.matchAll(/method: 'POST'/g)]
+    expect(posts, 'um POST a mais aqui é uma gravação de pizza').toHaveLength(1)
+    expect(bloco).toContain("acao: 'SEMEAR'")
+    expect(bloco).toContain('margem/config')
+    // ⛔ nenhuma rota de baixa/venda/movimento é tocada pela bancada
+    expect(bloco).not.toMatch(/vendas|baixa|movimento|processar/)
+  })
+
+  it('⭐ a conta é a lib `montarPizza` — a tela não multiplica dose nem divide por fatia', () => {
+    const bloco = blocoDa('MontadorDePizza')
+    expect(bloco).toContain('montarPizza')
+    // ⛔⛔ dividir pelo nº de fatias seria ressuscitar o FATOR por tamanho (morto em 07/10)
+    expect(bloco).not.toMatch(/\/ (n|fatias\.length|pizza\.fatias\.length)/)
+    expect(bloco).not.toMatch(/custo \* /)
+  })
+
+  it('⛔ o custo PARCIAL é apresentado como PISO, nunca como o custo', () => {
+    const bloco = blocoDa('MontadorDePizza')
+    expect(bloco).toMatch(/pizza\.custoTotal == null/)
+    expect(bloco).toContain('pelo menos')
+  })
+
+  it('⭐⭐ o sabor SEM FICHA aparece com selo âmbar e leva pra criar a ficha', () => {
+    const bloco = blocoDa('MontadorDePizza')
+    // ⛔ esconder faria a bancada mentir sobre o cardápio e tirar da frente do dono a fila
+    // que ele precisa atacar pra subir a cobertura
+    expect(bloco).toContain('sem ficha — criar')
+    expect(bloco).toContain('estoque/cardapio?sabor=')
+    // ⚠️ e ele NÃO é escolhível como sabor: tocar abre a criação, não soma custo nenhum
+    expect(bloco).toMatch(/s\.temFicha \? \(/)
+  })
+
+  it('⭐ a busca de sabores usa a régua da casa (acento e ordem das palavras)', () => {
+    // ⛔ `includes` cru acha ZERO pra "calabresa" quando o nome está em maiúscula (08/09)
+    expect(blocoDa('MontadorDePizza')).toContain('filtrarPorBusca')
+    expect(tela).not.toMatch(/\.toLowerCase\(\)\.includes\(/)
+  })
+
+  it('⭐ trocar o tamanho RESETA as fatias — fatia órfã somaria um sabor que a tela não desenha', () => {
+    expect(blocoDa('MontadorDePizza')).toMatch(/function trocarTamanho[\s\S]*setEscolhas\(/)
+  })
+
+  it('⛔ o campo de preço usa o sanitizador da casa — digitar vírgula não pode zerar o número', () => {
+    const bloco = blocoDa('MontadorDePizza')
+    expect(bloco).toContain('sanitizarQtd')
+    expect(bloco).toContain('valorQtd')
+    expect(bloco).toContain('inputMode="decimal"')
+  })
+
+  it('⛔⛔ o GET do montador não semeia — ler não escreve (a régua de 08/09)', () => {
+    const rota = semComentarios(ler(R('app/api/empresas/[id]/margem/montador/route.ts')))
+    expect(rota).toContain("requirePermission('transaction.view')")
+    expect(rota).not.toMatch(/create|upsert|update|delete/)
+  })
+
+  it('⛔ escrever config exige `stock.manage`, ler a bancada exige `transaction.view`', () => {
+    const cfg = semComentarios(ler(R('app/api/empresas/[id]/margem/config/route.ts')))
+    expect(cfg).toContain("requirePermission('stock.manage')")
+    // ⛔ a recusa de domínio vira 422 com `code`, nunca 500 mudo (a cicatriz de 20/09)
+    expect(cfg).toContain('ConfigDaMargemError')
+    expect(cfg).toContain('status: 422')
+    expect(cfg).toContain('code: e.code')
+  })
+})
+
+describe('⛔⛔ A LEITURA DO MONTADOR — o buraco que a minha própria reposição expôs', () => {
+  /**
+   * ⚠️⚠️ ESTE BLOCO NASCEU DE UM FURO DO GUARD, achado na REGRA 11 (07/10): eu repus o defeito
+   * *"o sabor sem ficha não entra na lista"* **na LEITURA** e a suíte ficou VERDE — porque os
+   * guards de cima olham a TELA, e a tela continuava com o ramo âmbar pronto pra desenhar uma
+   * lista que nunca chegaria. ***Guard que testa a vitrine aprova a prateleira vazia.***
+   */
+  const leitura = semComentarios(ler(R('lib/margem/leitura-montador.ts')))
+
+  it('⭐⭐ o sabor do PDV SEM FICHA é empurrado pra lista, com `temFicha: false`', () => {
+    expect(usosDe(leitura, 'mapComp')).toBeGreaterThan(1)
+    expect(leitura).toContain('temFicha: false')
+    // ⛔ nenhum `continue` incondicional no laço — foi exatamente a forma do defeito reposto
+    expect(leitura).not.toMatch(/\n\s{4}continue\n/)
+    // ⭐ e quem decide o que é sabor é a régua única, nunca um filtro próprio
+    expect(usosDe(leitura, 'ehSaborDeVerdade')).toBeGreaterThan(0)
+  })
+
+  it('⛔⛔ o custo sai da porta única `explodir` + `custoMedioPorItem` — zero conta nova', () => {
+    expect(usosDe(leitura, 'explodir')).toBeGreaterThan(0)
+    expect(usosDe(leitura, 'custoMedioPorItem')).toBeGreaterThan(0)
+    // ⛔ nenhuma dose multiplicada aqui: a multiplicação mora dentro de `explodirReceita`
+    expect(leitura).not.toMatch(/qtdPlanejada/)
+  })
+
+  it('⛔ custo PARCIAL nunca vira o custo da ficha — falta uma folha, devolve `null`', () => {
+    const bloco = leitura.slice(leitura.indexOf('export function custoDeUmaFicha'))
+    expect(bloco).toMatch(/if \(c == null\) return null/)
+  })
+
+  it('⚠️ ficha apontada como base e depois arquivada: o custo vem `null`, não 0', () => {
+    expect(leitura).toMatch(/fichas\.some\(\(f\) => f\.id === b\.fichaId\) \? custoDeUmaFicha/)
+  })
+
+  it('⭐ e a escrita de config tem CHOKE-POINT único, com rastro em todo gesto', () => {
+    const cfg = semComentarios(ler(R('lib/margem/config.ts')))
+    expect(cfg).toContain('export async function aplicarConfigDaMargem')
+    // ⛔ todo ramo grava o autor: número de dinheiro sem autor é o que ninguém explica depois
+    const gestos = ['CANAL_TAXA', 'CANAL_NOVO', 'REGRA_SABORES', 'BASE_TAMANHO']
+    for (const g of gestos) expect(cfg, `o gesto ${g} precisa existir`).toContain(`case '${g}'`)
+    expect((cfg.match(/criadoPorId/g) ?? []).length).toBeGreaterThanOrEqual(gestos.length)
+    // ⚠️ REGRA 8: canal e ficha resolvidos por ID **dentro da empresa**
+    expect(cfg).toMatch(/findFirst\(\{ where: \{ id: gesto\.canalId, companyId \} \}\)/)
+    expect(cfg).toMatch(/findFirst\(\{ where: \{ id: gesto\.fichaId, companyId \} \}\)/)
+  })
+
+  it('⛔⛔ o SEED só roda quando está VAZIO — nunca sobrescreve a edição do dono', () => {
+    const cfg = semComentarios(ler(R('lib/margem/config.ts')))
+    expect(cfg).toMatch(/if \(canais === 0\)/)
+    expect(cfg).toMatch(/if \(regras === 0\)/)
+    // ⚠️ e a BASE não é semeada: em prod o tamanho GRANDE tem 4 candidatos com fichas
+    // diferentes, e a diferença entre elas é a massa
+    const s = cfg.slice(cfg.indexOf('async function semear'), cfg.indexOf('export async function aplicarConfig'))
+    expect(s).not.toContain('stockBaseDoTamanho')
   })
 })

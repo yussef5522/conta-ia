@@ -5186,6 +5186,30 @@ model StockRegraSaboresTamanho {
   @@map("stock_regra_sabores_tamanho")
 }
 
+/// ⭐⭐ QUAL FICHA É A BASE DE UM TAMANHO DE PIZZA (massa + queijo + caixa).
+///
+/// ⚠️ ESCOLHA DO DONO, nunca deduzida: medido em prod, o tamanho GRANDE tem QUATRO candidatos
+/// no PDV com fichas DIFERENTES — e a diferença entre `Pizza Grande (35cm)` (2 × porção de
+/// queijo, SEM massa) e `PIZZA GRANDE PRECINHO` (2 × queijo + 2 × metade de massa) é justamente
+/// a massa. Eleger uma por heurística somaria a base errada em silêncio.
+///
+/// ⛔ Tabela separada da `StockRegraSaboresTamanho` porque migration de estoque é CREATE-only
+/// (ALTER é proibido pelo guard de isolamento) e porque são duas declarações com donos
+/// diferentes: nº de sabores é regra de CARDÁPIO; a base é RECEITA.
+model StockBaseDoTamanho {
+  id           String   @id @default(cuid())
+  companyId    String
+  tamanho      String
+  fichaId      String
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @default(now()) @updatedAt
+
+  @@unique([companyId, tamanho])
+  @@index([companyId, fichaId])
+  @@map("stock_base_do_tamanho")
+}
+
 model CustoFixoChips {
   id           String   @id @default(cuid())
   companyId    String
