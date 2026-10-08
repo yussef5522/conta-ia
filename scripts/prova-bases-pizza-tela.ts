@@ -40,7 +40,13 @@ async function bundleDaPagina(url: string, ua: string, cookie: string) {
 
 async function main() {
   await exigirEmpresaNesteBanco(prisma, EMPRESA)
-  const u = await prisma.user.findFirstOrThrow({ where: { email: 'admin@contaia.com.br' }, select: { id: true, name: true, email: true } })
+  // ⚠️ o usuário é o DONO DESTA empresa, resolvido pelo papel — não um admin qualquer:
+  //    foi um 403 que me ensinou que "logado" não é "tem permissão nesta empresa"
+  const papel = await prisma.userCompanyRole.findFirstOrThrow({
+    where: { companyId: EMPRESA },
+    select: { user: { select: { id: true, name: true, email: true } } },
+  })
+  const u = papel.user
   const token = await signToken({ sub: u.id, email: u.email, name: u.name ?? 'Dono', role: 'USER' })
   const cookie = `auth_token=${token}; current_empresa_id=${EMPRESA}`
 
@@ -64,7 +70,9 @@ async function main() {
   }
 
   // ⭐ a rota do produto do cardápio tem que devolver o campo novo (contrato, não promessa)
-  const chave = 'ficha:cmtxfkc2w0001mz3gt41bf7'
+  // ⚠️ a chave é RESOLVIDA do banco: chutar id por sufixo é o que me deu 403/404 antes
+  const base = await prisma.stockBaseDoTamanho.findFirstOrThrow({ where: { companyId: EMPRESA } })
+  const chave = `ficha:${base.fichaId}`
   const r = await fetch(`${BASE}/api/empresas/${EMPRESA}/estoque/cardapio/${encodeURIComponent(chave)}`, {
     headers: { cookie, 'user-agent': DESKTOP },
   })
