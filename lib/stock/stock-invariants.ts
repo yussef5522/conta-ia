@@ -16,6 +16,7 @@ import { checkSaidaInvariants } from './saida-invariants'
 import { checkContagemInvariants } from './contagem-invariants'
 import { checkNfeInvariants } from './nfe-invariants'
 import { checkPonteInvariants } from './ponte-invariants'
+import { checkBaseInvariants } from '@/lib/margem/base-invariants'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -212,6 +213,10 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
   // F4 (29/08) mede contra o COMBINADO vigente, não contra as duplicatas cruas do XML —
   // renegociação pós-nota é legítima, e a régua velha acusaria toda uma como erro.
   fails.push(...(await checkPonteInvariants(db, now)))
+  // B1/B2 (08/10) — a base de pizza APONTADA pelo dono tem que ter massa + queijo + caixa.
+  // Custo subestimado é silencioso: a margem SOBE e a casa parece mais paga do que está —
+  // o estado que viveu meses na Caçula (a massa em UMA das 11 fichas de base).
+  fails.push(...(await checkBaseInvariants(db)))
 
   return fails
 }

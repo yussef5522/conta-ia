@@ -139,6 +139,59 @@ function acharItem(itens: { id: string; nome: string }[], frag: string): { id: s
   return achados.length === 1 ? { id: achados[0].id, nome: achados[0].nome } : null
 }
 
+export interface ItensResolvidos {
+  achados: {
+    massa: { id: string; nome: string } | null
+    queijo: { id: string; nome: string } | null
+    caixa: Partial<Record<TamanhoCanonico, { id: string; nome: string }>>
+    molho: { id: string; nome: string } | null
+  }
+  /** `null` quando os 5 obrigatórios (massa + queijo + 3 caixas) foram resolvidos */
+  bloqueio: string | null
+  itens: ItensDaBase | null
+}
+
+/**
+ * ⭐⭐ A RESOLUÇÃO DOS ITENS CANÔNICOS TEM UM DONO SÓ — o preview E o invariante do juiz
+ * chamam ESTA. ⛔ Duas resoluções divergiriam no dia em que o dono renomear uma caixa: o
+ * preview proporia a composição certa e o juiz acusaria a mesma ficha de estar incompleta,
+ * ou o contrário. É a lição do B1 aplicada a "qual item é a caixa de 35".
+ */
+export function resolverItensDaBase(itensRaw: { id: string; nome: string }[]): ItensResolvidos {
+  const massa = acharItem(itensRaw, 'metade de bolinha massa')
+  const queijo = acharItem(itensRaw, 'queijo 135')
+  const caixa: Partial<Record<TamanhoCanonico, { id: string; nome: string }>> = {
+    PEQUENA: acharItem(itensRaw, 'CAIXA P/ PIZZA 25') ?? undefined,
+    GRANDE: acharItem(itensRaw, 'CAIXA P/ PIZZA 35') ?? undefined,
+    FAMILIA: acharItem(itensRaw, 'CAIXA P/ PIZZA 45') ?? undefined,
+  }
+  const molho = acharItem(itensRaw, 'MOLHO TOMATE PIZZA')
+
+  const faltam: string[] = []
+  if (!massa) faltam.push('a metade de bolinha de massa')
+  if (!queijo) faltam.push('a porção de queijo 135g')
+  for (const t of ['PEQUENA', 'GRANDE', 'FAMILIA'] as const) if (!caixa[t]) faltam.push(`a caixa de ${t}`)
+
+  const achados = { massa, queijo, caixa, molho }
+  if (faltam.length || !massa || !queijo) {
+    return {
+      achados,
+      bloqueio: `não achei (ou achei mais de um candidato pra) ${faltam.join(' · ')} — sem isso a composição canônica não tem como ser montada`,
+      itens: null,
+    }
+  }
+  return {
+    achados,
+    bloqueio: null,
+    itens: {
+      massa: massa.id,
+      queijo: queijo.id,
+      caixa: { PEQUENA: caixa.PEQUENA!.id, GRANDE: caixa.GRANDE!.id, FAMILIA: caixa.FAMILIA!.id },
+      molho: molho?.id ?? null,
+    },
+  }
+}
+
 export async function previewNormalizacao(
   companyId: string,
   opts: { dias?: number; agora?: Date } = {},
@@ -157,23 +210,10 @@ export async function previewNormalizacao(
   ])
   const nomeItem = new Map(itensRaw.map((i) => [i.id, i.nome]))
 
-  // ─────────── os ITENS canônicos, resolvidos e DECLARADOS ───────────
-  const massa = acharItem(itensRaw, 'metade de bolinha massa')
-  const queijo = acharItem(itensRaw, 'queijo 135')
-  const caixa: Partial<Record<TamanhoCanonico, { id: string; nome: string }>> = {
-    PEQUENA: acharItem(itensRaw, 'CAIXA P/ PIZZA 25') ?? undefined,
-    GRANDE: acharItem(itensRaw, 'CAIXA P/ PIZZA 35') ?? undefined,
-    FAMILIA: acharItem(itensRaw, 'CAIXA P/ PIZZA 45') ?? undefined,
-  }
-  const molho = acharItem(itensRaw, 'MOLHO TOMATE PIZZA')
-
-  const faltam: string[] = []
-  if (!massa) faltam.push('a metade de bolinha de massa')
-  if (!queijo) faltam.push('a porção de queijo 135g')
-  for (const t of ['PEQUENA', 'GRANDE', 'FAMILIA'] as const) if (!caixa[t]) faltam.push(`a caixa de ${t}`)
-  const bloqueio = faltam.length
-    ? `não achei (ou achei mais de um candidato pra) ${faltam.join(' · ')} — sem isso a composição canônica não tem como ser montada`
-    : null
+  // ─────────── os ITENS canônicos, pelo resolvedor ÚNICO (REGRA 4) ───────────
+  const resolvidos = resolverItensDaBase(itensRaw)
+  const { massa, queijo, caixa, molho } = resolvidos.achados
+  const bloqueio = resolvidos.bloqueio
 
   const janela = { de: ISO(desde), ate: ISO(agora), dias }
   const vazio: PreviewDaNormalizacao = {
@@ -184,14 +224,8 @@ export async function previewNormalizacao(
     recusadas: [],
     totais: { bases: 0, jaNormalizadas: 0, unidades: 0, deltaNoPeriodo: 0, pedemConfirmacao: 0 },
   }
-  if (bloqueio || !massa || !queijo) return vazio
-
-  const itens: ItensDaBase = {
-    massa: massa.id,
-    queijo: queijo.id,
-    caixa: { PEQUENA: caixa.PEQUENA!.id, GRANDE: caixa.GRANDE!.id, FAMILIA: caixa.FAMILIA!.id },
-    molho: molho?.id ?? null,
-  }
+  if (bloqueio || !resolvidos.itens) return vazio
+  const itens: ItensDaBase = resolvidos.itens
 
   // ─────────── vendas da janela, por nome do PDV ───────────
   const vendas = await db.stockVendaLinha.groupBy({
@@ -223,17 +257,27 @@ export async function previewNormalizacao(
     }))
 
     if (!ehBaseDeTamanho(atualComp, itens)) {
-      // ⚠️ só reporta o que TEM cara de pizza — senão a lista de recusadas seria o cardápio todo
-      if (/PIZZA|PRECINHO/i.test(nome)) {
-        const forasteiros = atualComp
-          .filter((c) => c.itemId !== itens.massa && c.itemId !== itens.queijo && !Object.values(itens.caixa).includes(c.itemId))
-          .map((c) => nomeItem.get(c.itemId) ?? c.itemId)
+      const forasteiros = atualComp
+        .filter(
+          (c) => c.itemId !== itens.massa && c.itemId !== itens.queijo && !Object.values(itens.caixa).includes(c.itemId),
+        )
+        .map((c) => nomeItem.get(c.itemId) ?? c.itemId)
+      /**
+       * ⭐⭐ O QUASE-BASE É SEMPRE REPORTADO, mesmo sem "PIZZA" no nome — é o caso do
+       * **«Combo Caçula»**, que tem SÓ massa/queijo/caixa e foi recusado pelas travas extra
+       * (duas caixas de tamanhos diferentes · 3 massas pra 2 queijos). ⛔ Calar sobre ele
+       * esconderia justamente a linha que a 1ª versão desta régua quase destruiu.
+       */
+      const quaseBase = atualComp.length > 0 && forasteiros.length === 0
+      if (quaseBase || /PIZZA|PRECINHO/i.test(nome)) {
         recusadas.push({
           fichaId: f.id,
           nome,
-          porque: atualComp.length
-            ? `não é base de tamanho: a composição tem ${forasteiros.join(', ')} — é produto pronto com sabor embutido`
-            : 'a ficha não tem componente nenhum',
+          porque: !atualComp.length
+            ? 'a ficha não tem componente nenhum'
+            : quaseBase
+              ? 'usa só massa/queijo/caixa MAS não tem a forma de uma base: ou tem caixa de dois tamanhos, ou a massa não bate com o queijo — é combo, não base'
+              : `não é base de tamanho: a composição tem ${forasteiros.join(', ')} — é produto pronto com sabor embutido`,
         })
       }
       continue

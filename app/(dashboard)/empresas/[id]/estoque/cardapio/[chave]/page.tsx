@@ -43,6 +43,8 @@ interface Detalhe {
   podeFazer: number | null; gargalo: { nome: string; rendeAte: number; emFalta: boolean } | null
   custoParcial: number; faltamCusto: string[]
   loteBase: number | null; validadeDias: number | null; versaoAtual: number | null
+  /** ⭐ 08/10 — a dose que o DONO precisa declarar (hoje o molho das bases de pizza) */
+  dosesADeclarar?: { itemId: string; nome: string; motivo: string }[]
 }
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
@@ -295,6 +297,35 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
               else setAvisoVinculo(null)
             }} />
         </CardContent></Card>
+      )}
+
+      {/* ⭐⭐ A DOSE A DECLARAR — a ficha DIZ o que falta, em vez de o sistema inventar.
+          ⛔ Fica ACIMA da receita de propósito: é trabalho pendente, não nota de pé de página.
+          ⚠️ Some sozinha quando o item virar componente (o leitor esconde pelo FATO). */}
+      {!editandoFicha && (det.dosesADeclarar?.length ?? 0) > 0 && (
+        <Card className="overflow-hidden border-amber-300">
+          <div className="border-b border-amber-200 bg-amber-50/70 px-3 py-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-amber-800">
+              falta declarar a dose — a receita está incompleta de propósito
+            </p>
+          </div>
+          <div className="px-3 py-2">
+            {det.dosesADeclarar!.map((d) => (
+              <div key={d.itemId} className="flex flex-wrap items-baseline gap-x-2 py-1 text-[13px]">
+                <b className="text-slate-800">{d.nome}</b>
+                <span className="text-slate-500">· a declarar</span>
+                <span className="text-xs text-slate-400">{d.motivo}</span>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setEditandoFicha(true)}
+              className="mt-1 rounded-md border border-amber-400 px-2 py-1 text-xs text-amber-800 hover:bg-amber-50"
+            >
+              declarar a dose na receita →
+            </button>
+          </div>
+        </Card>
       )}
 
       {/* RECEITA + status de cada componente (o fluxo encadeado) */}

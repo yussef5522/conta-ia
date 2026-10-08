@@ -36,6 +36,7 @@
  */
 
 import { use, useCallback, useEffect, useState } from 'react'
+import { casaBusca } from '@/lib/busca-texto'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
@@ -752,6 +753,12 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
   const [tamanhoSel, setTamanhoSel] = useState<string | null>(null)
   const [escolhas, setEscolhas] = useState<(SaborDisponivel | null)[]>([])
   const [fatiaAberta, setFatiaAberta] = useState<number | null>(null)
+  /** ⭐ EXTRA de 07/10 (palavra do dono): 61 chips de sabor viraram parede. A régua é a
+   *  `casaBusca` da casa — palavra em qualquer ordem, sem caixa e sem acento (a cicatriz de
+   *  08/09, em que `contains` case-sensitive achava ZERO em prod e funcionava em dev). */
+  const [buscaSabor, setBuscaSabor] = useState('')
+  // ⚠️ deriva da MESMA lista que o montador usa — filtro com fonte própria divergiria
+  const saboresFiltrados = (cat?.sabores ?? []).filter((s) => casaBusca(s.nome, buscaSabor))
   const [precoTxt, setPrecoTxt] = useState('')
   const [salvando, setSalvando] = useState(false)
 
@@ -1017,8 +1024,24 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
                 escolher o sabor da fatia <b style={{ color: 'var(--prod-primary)' }}>{fatiaAberta + 1}ª</b>{' '}
                 (com ficha primeiro; âmbar = sem ficha, tocar cria):
               </p>
+              {/* ⭐ a busca: 61 chips são parede. ⛔ Filtra a MESMA lista que a tela desenha
+                  (nunca uma 2ª consulta) e o vazio DIZ o recorte — "nenhum sabor" sobre uma
+                  busca sem resultado se leria como "o cardápio não tem sabor". */}
+              <input
+                value={buscaSabor}
+                onChange={(e) => setBuscaSabor(e.target.value)}
+                placeholder="buscar sabor (calabresa, file bacon…)"
+                aria-label="buscar sabor"
+                className="mb-[8px] w-full max-w-[320px] rounded-[10px] border px-[10px] py-[6px] text-[12.5px]"
+                style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
+              />
               <div>
-                {cat.sabores.map((s) =>
+                {saboresFiltrados.length === 0 && (
+                  <p className="pb-[4px] text-[12px]" style={{ color: 'var(--prod-muted)' }}>
+                    nenhum dos {cat.sabores.length} sabores casa com «{buscaSabor}»
+                  </p>
+                )}
+                {saboresFiltrados.map((s) =>
                   s.temFicha ? (
                     <button
                       key={s.fichaId}

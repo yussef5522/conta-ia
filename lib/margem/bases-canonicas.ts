@@ -64,19 +64,49 @@ const normaliza = (s: string) =>
  *
  * ⛔ Classificar pelo NOME erraria nos dois sentidos: `Pizza (Aiq)` é base e não diz tamanho
  * nenhum; `PIZZA CALABRESA CONGELADA` diz PIZZA e não é base. A composição não mente.
+ *
+ * ⛔⛔⛔ E "SÓ MASSA/QUEIJO/CAIXA" É NECESSÁRIO, **NÃO SUFICIENTE** — o preview em prod provou
+ * isso no pior lugar possível. O **«Combo Caçula»** (2 queijo + caixa 35 + 3 massa + caixa 25,
+ * R$ 30.707 de faturamento em 30 dias, o maior do cardápio) passou pela régua de cima e foi
+ * classificado como base de PEQUENA: a proposta **destruiria a receita dele**, de R$ 15,18 pra
+ * R$ 6,94. Duas travas estruturais fecham isso, e cada uma sai da declaração do dono:
+ *
+ *  1. **UM TIPO DE CAIXA.** Base é de UM tamanho; caixa de 25 **e** de 35 na mesma ficha é um
+ *     combo que atravessa dois tamanhos. ⚠️ Repare que `PROMO 2 PIZZAS GRANDES` (2 × caixa 35)
+ *     continua passando — é a MESMA caixa duas vezes, que é combo do mesmo tamanho e o
+ *     `multiplicador` trata.
+ *  2. **MASSA E QUEIJO NA MESMA QUANTIDADE.** A canônica é sempre N:N (1/1 · 2/2 · 3/3). O
+ *     Combo pede 3 massas pra 2 queijos — razão que nenhum tamanho tem.
  */
 export function ehBaseDeTamanho(componentes: readonly ComponenteDaFicha[], itens: ItensDaBase): boolean {
   if (componentes.length === 0) return false
   const permitidos = new Set<string>([itens.massa, itens.queijo, ...Object.values(itens.caixa)])
-  return componentes.every((c) => permitidos.has(c.itemId))
+  if (!componentes.every((c) => permitidos.has(c.itemId))) return false
+
+  const soma = (itemId: string) =>
+    componentes.filter((c) => c.itemId === itemId).reduce((s, c) => s + c.qtdPlanejada, 0)
+
+  // 1. um TIPO de caixa só (a mesma caixa 2× é combo do mesmo tamanho, e isso passa)
+  const tiposDeCaixa = Object.values(itens.caixa).filter((id) => soma(id) > 0)
+  if (tiposDeCaixa.length > 1) return false
+
+  // 2. massa e queijo, quando os dois existem, vêm na MESMA quantidade
+  const m = soma(itens.massa)
+  const q = soma(itens.queijo)
+  if (m > 0 && q > 0 && m !== q) return false
+
+  return true
 }
 
 /** ⚠️ lista FECHADA de palavras de tamanho — inferir de qualquer palavra faria `PIZZA GRANDE
  *  CALABRESA` virar um tamanho, a mesma trava das variações de preço em `tamanhos.ts` */
 const PALAVRA_DO_TAMANHO: readonly [RegExp, TamanhoCanonico][] = [
-  [/\bFAMILIA\b/, 'FAMILIA'],
-  [/\bGRANDE\b/, 'GRANDE'],
-  [/\bPEQUENA\b/, 'PEQUENA'],
+  // ⚠️ o `S?` do plural não é detalhe: `PROMO 2 PIZZAS GRANDES` tem a palavra no PLURAL, e
+  //    `\bGRANDE\b` **não casa** `GRANDES`. Sem ele o nome caía no ramo da evidência e acertava
+  //    GRANDE **por acidente** (pela caixa) — um teste pegou isso.
+  [/\bFAMILIAS?\b/, 'FAMILIA'],
+  [/\bGRANDES?\b/, 'GRANDE'],
+  [/\bPEQUENAS?\b/, 'PEQUENA'],
 ]
 
 export interface ClassificacaoDaBase {

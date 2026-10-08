@@ -12,6 +12,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { saldosDaEmpresa } from '../saldo'
+import { dosesADeclararDaFicha } from '@/lib/margem/aplicar-normalizacao'
 import { hubCardapio, type LinhaCardapio } from './hub'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -60,6 +61,15 @@ export interface DetalheProduto {
   loteBase: number | null
   validadeDias: number | null
   versaoAtual: number | null
+  /**
+   * ⭐ A DOSE QUE FALTA DECLARAR (08/10) — hoje o MOLHO das bases de pizza.
+   *
+   * ⛔ A ficha DIZ que falta em vez de o sistema inventar a quantidade: molho a R$ 6,22/UN
+   * em ~3.035 pizzas/mês, uma dose chutada muda o custo em milhares por mês e **sai
+   * plausível**. ⚠️ A pendência se resolve pelo FATO (o item virar componente), nunca por
+   * alguém lembrar de apagar a linha.
+   */
+  dosesADeclarar: { itemId: string; nome: string; motivo: string }[]
 }
 
 /** Chave do hub: `ficha:<id>` | `item:<id>` | `nome:<nomeSuitable>`. */
@@ -125,11 +135,11 @@ export async function detalheProduto(
 
   if (linha.destinoTipo !== 'FICHA' || !linha.fichaId) {
     // revenda e "sem destino" não têm receita — a tela mostra o caminho de mapear/criar.
-    return { linha, componentes: [], podeFazer: null, gargalo: null, custoParcial: 0, faltamCusto: [], loteBase: null, validadeDias: null, versaoAtual: null }
+    return { linha, componentes: [], podeFazer: null, gargalo: null, custoParcial: 0, faltamCusto: [], loteBase: null, validadeDias: null, versaoAtual: null, dosesADeclarar: [] }
   }
 
   const ficha = await db.stockFicha.findFirst({ where: { id: linha.fichaId, companyId }, select: { id: true, versaoAtual: true } })
-  if (!ficha) return { linha, componentes: [], podeFazer: null, gargalo: null, custoParcial: 0, faltamCusto: [], loteBase: null, validadeDias: null, versaoAtual: null }
+  if (!ficha) return { linha, componentes: [], podeFazer: null, gargalo: null, custoParcial: 0, faltamCusto: [], loteBase: null, validadeDias: null, versaoAtual: null, dosesADeclarar: [] }
 
   const versao = await db.stockFichaVersao.findFirst({ where: { companyId, fichaId: ficha.id, versao: ficha.versaoAtual } })
   const comps = versao
@@ -195,5 +205,8 @@ export async function detalheProduto(
   const custoParcial = round2(componentes.reduce((t, c) => t + (c.subtotal ?? 0), 0))
   const faltamCusto = componentes.filter((c) => c.custoMedio == null).map((c) => c.nome)
 
-  return { linha, componentes, podeFazer, gargalo, custoParcial, faltamCusto, loteBase: versao?.loteBase ?? null, validadeDias: versao?.validadeDias ?? null, versaoAtual: ficha.versaoAtual }
+  // ⚠️ a pendência de dose vem do leitor ÚNICO, que esconde sozinho o que já virou componente
+  const dosesADeclarar = await dosesADeclararDaFicha(companyId, ficha.id, db as PrismaClient)
+
+  return { linha, componentes, podeFazer, gargalo, custoParcial, faltamCusto, loteBase: versao?.loteBase ?? null, validadeDias: versao?.validadeDias ?? null, versaoAtual: ficha.versaoAtual, dosesADeclarar }
 }
