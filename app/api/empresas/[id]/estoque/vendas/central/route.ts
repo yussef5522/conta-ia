@@ -26,5 +26,11 @@ export async function GET(request: NextRequest, { params }: Params) {
     return NextResponse.json({ erro: 'mês inválido — esperado YYYY-MM' }, { status: 400 })
   }
 
-  return NextResponse.json(await lerCentralDeImport(companyId, mes, prisma))
+  /**
+   * ⭐ O DIA DE HOJE sai DAQUI, do mesmo `agora` que decide o mês default — um desconto de 3h,
+   * um lugar. ⛔ É ele que impede o dia que ainda está vendendo de aparecer como buraco coral.
+   */
+  return NextResponse.json(
+    await lerCentralDeImport(companyId, mes, prisma, agora.toISOString().slice(0, 10)),
+  )
 }

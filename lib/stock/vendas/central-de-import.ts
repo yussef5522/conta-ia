@@ -100,6 +100,18 @@ export async function lerCentralDeImport(
   companyId: string,
   mes: string,
   db: PrismaClient = defaultPrisma,
+  /**
+   * ⭐⭐ O DIA DE HOJE (`YYYY-MM-DD`, no Brasil) — e ele vem por PARÂMETRO, nunca do relógio
+   * dentro desta função: quem decide "que dia é hoje no Brasil" é a ROTA, que já faz esse
+   * desconto pro mês default. Duas respostas pra mesma pergunta divergiriam exatamente na
+   * virada do dia, que é quando o dono importa.
+   *
+   * ⛔ E ele existe por causa de uma coisa que a prova em prod mostrou: **o dia de HOJE
+   * aparecia como BURACO CORAL** (*"dia de venda sem arquivo nenhum"*) às 20h, quando a cozinha
+   * importa às 23h. A referência é explícita — o alerta é de *"ontem pra trás"* — e cobrar
+   * import de um dia que ainda está vendendo é cobrar o impossível.
+   */
+  hoje?: string,
 ): Promise<CentralDeImport> {
   const [ano, m] = mes.split('-').map(Number)
   const de = new Date(Date.UTC(ano, m - 1, 1))
@@ -256,8 +268,11 @@ export async function lerCentralDeImport(
         ocorrenciasSabores: a.ocorrencias,
         semDestino: a.semDestino,
       },
-      // ⭐ buraco = é dia de venda pelo calendário E não tem import de produtos
-      buraco: !temProdutos && diasDeVenda.has(dia),
+      /**
+       * ⭐ buraco = é dia de venda pelo calendário · não tem import de produtos · **e já acabou**.
+       * ⛔ O terceiro termo é o que separa "o dono esqueceu" de "o dia ainda está rodando".
+       */
+      buraco: !temProdutos && diasDeVenda.has(dia) && (!hoje || dia < hoje),
     }
   })
 

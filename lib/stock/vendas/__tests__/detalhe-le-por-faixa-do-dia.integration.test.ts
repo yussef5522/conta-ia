@@ -86,3 +86,46 @@ describe('⛔⛔ as DUAS convenções de hora do módulo, no mesmo dia', () => {
     expect(d.totais.bateComODia, 'o guard Σ(linhas)==Σ do dia tem que fechar no vazio').toBe(true)
   })
 })
+
+/**
+ * ⛔⛔ O DIA QUE AINDA ESTÁ VENDENDO NÃO É BURACO (08/10/2026) — achado pela prova em prod.
+ *
+ * A prova mostrou **o dia de HOJE** na central como *"sem importação ✗ · dia de venda sem
+ * arquivo nenhum"*, pintado de coral, **às 20h** — e a cozinha importa às 23h. A referência é
+ * explícita: o alerta do buraco é de *"ontem pra trás"*.
+ *
+ * ⚠️ E `hoje` é PARÂMETRO: quem sabe que dia é hoje no Brasil é a rota (o mesmo desconto de 3h
+ * que escolhe o mês default). Relógio dentro da função seria a segunda régua da mesma pergunta.
+ */
+describe('⛔⛔ o buraco é de ONTEM pra trás', () => {
+  const MES = '2025-10'
+  const porDia = async (d: string) => {
+    await prisma.vendaDiaria.create({
+      data: {
+        companyId, dataCompetencia: new Date(`${d}T12:00:00.000Z`),
+        dataCompetenciaFim: new Date(`${d}T12:00:00.000Z`),
+        meio: 'DINHEIRO', valorLiquido: 500, tipo: 'VENDA',
+      },
+    })
+  }
+
+  afterEach(async () => {
+    await prisma.vendaDiaria.deleteMany({ where: { companyId } })
+  })
+
+  it('⭐ dia de venda sem import ONTEM é buraco; HOJE não é', async () => {
+    const { lerCentralDeImport } = await import('../central-de-import')
+    await porDia('2025-10-06') // ontem
+    await porDia('2025-10-07') // "hoje"
+    const c = await lerCentralDeImport(companyId, MES, prisma, '2025-10-07')
+    expect(c.buracos, 'o dia que ainda está vendendo virou buraco coral').toEqual(['2025-10-06'])
+  })
+
+  it('⛔ sem `hoje`, tudo volta a ser buraco — é o estado que a prova em prod pegou', async () => {
+    const { lerCentralDeImport } = await import('../central-de-import')
+    await porDia('2025-10-06')
+    await porDia('2025-10-07')
+    const c = await lerCentralDeImport(companyId, MES, prisma)
+    expect(c.buracos.sort()).toEqual(['2025-10-06', '2025-10-07'])
+  })
+})
