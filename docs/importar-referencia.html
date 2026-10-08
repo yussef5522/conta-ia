@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Importar vendas — REFERÊNCIA VISUAL OFICIAL v1 (aprovada pelo dono)</title>
+<style>
+/* ==========================================================================
+   CAIXAOS · "IMPORTAR VENDAS — A CENTRAL" — REFERÊNCIA VISUAL OFICIAL v1
+   Este arquivo é a LEI do visual e do comportamento. A tela em prod deve
+   ficar IGUAL a isto, nos dois temas e nos dois viewports (390px e 1280px+).
+   Tokens genéricos abaixo mapeiam 1:1 pros tokens da casa (mesma tabela da
+   margem-referencia). Emoji/unicode = ícone equivalente da casa.
+   INTERATIVO: abrir/fechar dia, abas Produtos|Sabores e a busca FUNCIONAM
+   aqui — o bloco de script no fim é a especificação do comportamento.
+   ========================================================================== */
+
+:root{
+  --bg:#F8FAFC; --surface:#FFFFFF; --surface-2:#F1F5F9;
+  --border:#E2E8F0; --border-strong:#CBD5E1;
+  --text:#0F172A; --text-2:#475569; --text-3:#94A3B8;
+  --indigo:#534AB7; --indigo-50:#EEEDFE; --indigo-900:#26215C;
+  --verde:#1D9E75; --verde-esc:#0F6E56; --verde-50:#E1F5EE; --verde-900:#04342C;
+  --ambar:#E9A23B; --ambar-esc:#854F0B; --ambar-50:#FAEEDA; --ambar-900:#412402;
+  --coral:#E05B5B; --coral-esc:#A32D2D; --coral-50:#FCEBEB; --coral-900:#501313;
+  --radius:12px; --radius-lg:16px;
+  --shadow:0 1px 2px rgba(15,23,42,.05);
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+}
+:root:not([data-theme="light"]) { color-scheme: light dark; }
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#16151D; --surface:#1E1D27; --surface-2:#262430;
+    --border:#2E2C3A; --border-strong:#3A3749;
+    --text:#F1F5F9; --text-2:#A9A6B8; --text-3:#6E6A80;
+    --indigo-50:#2A2750; --verde-50:#113228; --ambar-50:#3A2B12; --coral-50:#3A1A1A;
+    --indigo-900:#C9C5F4; --verde-900:#9FE8CF; --ambar-900:#F3D9A8; --coral-900:#F4B9B9;
+    --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16151D; --surface:#1E1D27; --surface-2:#262430;
+  --border:#2E2C3A; --border-strong:#3A3749;
+  --text:#F1F5F9; --text-2:#A9A6B8; --text-3:#6E6A80;
+  --indigo-50:#2A2750; --verde-50:#113228; --ambar-50:#3A2B12; --coral-50:#3A1A1A;
+  --indigo-900:#C9C5F4; --verde-900:#9FE8CF; --ambar-900:#F3D9A8; --coral-900:#F4B9B9;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+}
+
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--text); font-family:var(--font); font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased}
+/* LEI DE LAYOUT (a mesma da margem): largura útil do dashboard, teto 1440,
+   NUNCA coluna estreita centralizada com vazio dos dois lados. */
+.wrap{max-width:1440px; margin:0 auto; padding:22px 28px 64px}
+@media (max-width:700px){ .wrap{padding:16px 14px 56px} }
+.num{font-variant-numeric:tabular-nums}
+[role=button],button{cursor:pointer}
+
+.page-head{display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+.page-head h1{margin:0; font-size:20px; font-weight:600}
+.page-head .sub{margin:2px 0 0; font-size:13px; color:var(--text-2)}
+.chip{font-size:12.5px; padding:5px 12px; border-radius:999px; border:1px solid var(--border-strong); color:var(--text-2); background:var(--surface)}
+.chip.on{background:var(--indigo-50); color:var(--indigo-900); border-color:transparent; font-weight:600}
+.theme-btn{border:1px solid var(--border-strong); background:var(--surface); border-radius:999px; padding:5px 12px; font-size:12.5px; color:var(--text-2)}
+
+.card{background:var(--surface); border:1px solid var(--border-strong); border-radius:var(--radius-lg); box-shadow:var(--shadow); overflow:hidden; margin-bottom:14px}
+
+/* ---------- 1 · DROPZONE DUPLA ---------- */
+.drop-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px}
+@media (max-width:700px){ .drop-grid{grid-template-columns:1fr} }
+.drop{border:1.5px dashed var(--border-strong); border-radius:var(--radius-lg); padding:18px 14px; text-align:center; background:var(--surface)}
+.drop .tt{margin:0; font-size:13.5px; font-weight:600}
+.drop .dd{margin:3px 0 0; font-size:11.5px; color:var(--text-3)}
+.drop.ok{border-style:solid; border-color:var(--verde); background:var(--verde-50)}
+.drop.ok .tt{color:var(--verde-900)} .drop.ok .dd{color:var(--verde-esc)}
+/* ESTADO "SÓ METADE" — a 1ª camada do aviso: soltou produtos sem sabores,
+   a dupla reage NA HORA (antes de gravar virar problema). */
+.drop.falta{border-color:var(--ambar); background:var(--ambar-50)}
+.drop.falta .tt{color:var(--ambar-900)} .drop.falta .dd{color:var(--ambar-esc); font-weight:600}
+
+/* ---------- 2 · ALERTA DO BURACO ---------- */
+.alerta{display:flex; align-items:center; gap:10px; background:var(--coral-50); border-radius:var(--radius); padding:12px 15px; margin-bottom:12px}
+.alerta p{margin:0; font-size:13px; color:var(--coral-900); flex:1}
+.alerta .cta{font-size:12.5px; color:var(--coral-esc); font-weight:700; white-space:nowrap}
+
+/* ---------- 3 · LISTA DE DIAS ---------- */
+.dias-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:13px 16px 8px; flex-wrap:wrap}
+.dias-head h2{margin:0; font-size:15.5px; font-weight:600}
+.hint{font-size:11.5px; color:var(--text-3)}
+.dia{border-top:1px solid var(--border)}
+.dia-row{display:flex; align-items:center; gap:10px; padding:11px 16px; font-size:13.5px}
+.dia-row:hover{background:var(--surface-2)}
+.dia-data{font-weight:700; width:52px; flex:none}
+.selo{font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; white-space:nowrap}
+.selo.ok{background:var(--verde-50); color:var(--verde-900)}
+.selo.inc{background:var(--ambar-50); color:var(--ambar-900)}
+.selo.sem-sabor{background:var(--coral-50); color:var(--coral-900)}
+.selo.sem-import{background:var(--surface); border:1px solid var(--coral); color:var(--coral-esc)}
+.dia-meta{flex:1; color:var(--text-2); min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis}
+.dia-quem{font-size:11.5px; color:var(--text-3); white-space:nowrap}
+.dia.buraco .dia-row{background:var(--coral-50)}
+.dia.buraco .dia-data,.dia.buraco .dia-meta{color:var(--coral-900)}
+.chev{color:var(--text-3)}
+
+/* conferência (dia aberto) */
+.conf{padding:2px 16px 12px; font-size:12.5px; background:var(--surface-2)}
+.conf .l{display:flex; justify-content:space-between; gap:10px; padding:3px 0; color:var(--text-2); flex-wrap:wrap}
+.conf .ok{color:var(--verde-esc); font-weight:600}
+.conf .warn{color:var(--ambar-esc); font-weight:600}
+.conf .acts{display:flex; gap:14px; padding-top:7px; flex-wrap:wrap}
+.conf .acts span{font-size:12px; color:var(--indigo); font-weight:600}
+
+/* ---------- 4 · DETALHE DO DIA (abas Produtos | Sabores) ---------- */
+.det-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:13px 16px 8px; flex-wrap:wrap}
+.det-head .tt{margin:0; font-size:15.5px; font-weight:600}
+.det-head .sub{margin:2px 0 0; font-size:12px; color:var(--text-2)}
+.busca{display:flex; align-items:center; gap:6px; border:1px solid var(--border-strong); border-radius:999px; padding:5px 12px; font-size:12.5px; color:var(--text-2); background:var(--surface)}
+.busca input{border:0; outline:0; background:transparent; font:inherit; color:var(--text); width:170px}
+.abas{display:flex; gap:6px; padding:0 16px 10px; flex-wrap:wrap}
+.thead{display:grid; gap:8px; padding:8px 16px; border-top:1px solid var(--border-strong); font-size:11px; color:var(--text-3); font-weight:700; letter-spacing:.03em}
+.trow{display:grid; gap:8px; padding:9px 16px; border-top:1px solid var(--border); font-size:13px; align-items:center}
+.trow:nth-child(even){background:var(--surface-2)}
+.trow .nm{font-weight:600; overflow:hidden; white-space:nowrap; text-overflow:ellipsis}
+.cols-prod{grid-template-columns:minmax(0,2fr) .6fr .9fr 1.3fr}
+.cols-sab{grid-template-columns:minmax(0,2fr) .6fr 1.5fr}
+.t-right{text-align:right}
+.dest-ok{color:var(--verde-esc); font-size:12px; text-align:right}
+.dest-warn{color:var(--ambar-esc); font-size:12px; font-weight:600; text-align:right}
+.dest-warn a{color:var(--indigo); text-decoration:none}
+.trow.warn{background:var(--ambar-50)}
+.trow.warn .nm{color:var(--ambar-900)}
+.tfoot{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:10px 16px; border-top:1px solid var(--border-strong); background:var(--surface-2); font-size:12.5px}
+.tfoot .bate{color:var(--verde-esc); font-weight:700}
+.vermais{padding:7px 16px; border-top:1px solid var(--border); text-align:center; font-size:12px; color:var(--text-3)}
+
+.nota-sino{margin:4px 2px 0; font-size:11.5px; color:var(--text-3)}
+footer{margin-top:26px; font-size:11.5px; color:var(--text-3); text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===================== CABEÇALHO ===================== -->
+  <div class="page-head">
+    <div>
+      <h1>Importar vendas</h1>
+      <p class="sub">do Suitable — e a memória do que já entrou</p>
+    </div>
+    <div style="display:flex; gap:6px; align-items:center;">
+      <span class="chip num" data-bind="mesNavegavel">‹ outubro ›</span>
+      <button class="theme-btn" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">🌙/☀️</button>
+    </div>
+  </div>
+
+  <!-- ===================== 1 · DROPZONE DUPLA ===================== -->
+  <!-- Dois alvos, SEMPRE em par. Estados por alvo: vazio (tracejado) ·
+       ok (verde, "entrou: nome do arquivo · N linhas") · falta (âmbar).
+       CAMADA 1 DO AVISO: ao soltar SÓ produtos, o alvo de complementos
+       vira .falta NA HORA com a frase abaixo — antes de o dono sair da
+       tela. data-bind: estadoUpload (par por data detectada no arquivo). -->
+  <div class="drop-grid">
+    <div class="drop ok" role="button">
+      <p class="tt">📄 Relatório de Produtos — entrou ✓</p>
+      <p class="dd num" data-bind="arquivoProdutos">Relatorio_de_Produtos_-_Agrupado.xls · 07/10 · 214 linhas</p>
+    </div>
+    <div class="drop falta" role="button">
+      <p class="tt">🍕 Relatório de Complementos</p>
+      <p class="dd">falta o de SABORES de 07/10 — sem ele, as pizzas vendem sem baixar sabor do estoque</p>
+    </div>
+  </div>
+
+  <!-- ===================== 2 · ALERTA DO BURACO ===================== -->
+  <!-- Aparece quando existe dia de venda sem importação (ontem pra trás).
+       CAMADA 3: o mesmo detector gera aviso no SININHO (setor estoque,
+       língua do balcão, anti-spam padrão) na manhã seguinte. -->
+  <div class="alerta" role="button">
+    <span style="font-size:18px">📅</span>
+    <p><b>03/10 ficou sem importação</b> — dia de venda sem arquivo: estoque e "Quem paga a casa" estão cegos pra esse dia.</p>
+    <span class="cta">importar este dia →</span>
+  </div>
+
+  <!-- ===================== 3 · DIAS IMPORTADOS ===================== -->
+  <!-- Fonte: os imports que JÁ EXISTEM (investigar: meta do import de
+       produtos + stock_venda_complemento_linha por data/importId/quem).
+       SELOS (a régua, determinística):
+         completo ✓        → produtos ok E razão sabores/pizza ≥ 1
+         complementos ⚠    → produtos ok E 0 < razão < 1 (incompleto)
+         sabores ✗         → vendeu pizza E ZERO ocorrências de sabor
+         sem importação ✗  → dia de venda sem arquivo nenhum
+       Clique na linha abre a CONFERÊNCIA; "ver as linhas" abre o DETALHE. -->
+  <section class="card" aria-label="Dias importados">
+    <div class="dias-head">
+      <h2>Dias importados</h2>
+      <span class="hint">toque no dia pra abrir a conferência · os selos contam a saúde de cada dia</span>
+    </div>
+
+    <!-- dia ABERTO (06/10) -->
+    <div class="dia" data-dia="0610">
+      <div class="dia-row" role="button" onclick="tgl('conf-0610', this)">
+        <span class="dia-data num">06/10</span>
+        <span class="selo ok">completo ✓</span>
+        <span class="dia-meta num">1.240 un · R$ 18.743,90 · 2 arquivos · razão 2,6 sabores/pizza</span>
+        <span class="dia-quem">marcyelle · 23h41</span>
+        <span class="chev">▴</span>
+      </div>
+      <div class="conf" id="conf-0610">
+        <div class="l num"><span>Σ do arquivo × Σ gravado</span><span class="ok">R$ 18.743,90 = R$ 18.743,90 ✓ bate ao centavo</span></div>
+        <div class="l num"><span>produtos 214 linhas · complementos 612 ocorrências</span><span>razão 2,6 sabores/pizza · normal</span></div>
+        <div class="l"><span class="warn">⚠ 3 produtos novos sem destino — venderam e não baixaram estoque</span><span style="color:var(--indigo); font-weight:600">mapear →</span></div>
+        <div class="acts">
+          <span role="button" onclick="document.getElementById('detalhe').scrollIntoView({behavior:'smooth'})">ver as 214 linhas →</span>
+          <span role="button">substituir o dia (re-importar com preview) →</span>
+          <span role="button">CSV ↓</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAMADA 2: o selo âmbar do incompleto (a razão < 1) -->
+    <div class="dia">
+      <div class="dia-row" role="button" onclick="tgl('conf-0510', this)">
+        <span class="dia-data num">05/10</span>
+        <span class="selo inc">complementos incompletos ⚠</span>
+        <span class="dia-meta num">1.102 un · R$ 16.221,40 · razão 0,4 sabor/pizza — entrou pouco sabor</span>
+        <span class="dia-quem">marcyelle · 23h58</span>
+        <span class="chev">▾</span>
+      </div>
+      <div class="conf" id="conf-0510" hidden>
+        <div class="l num"><span>Σ do arquivo × Σ gravado</span><span class="ok">bate ✓</span></div>
+        <div class="l"><span class="warn">⚠ 412 pizzas × só 171 ocorrências de sabor — o relatório de complementos veio pela metade</span><span style="color:var(--indigo); font-weight:600">reimportar os complementos →</span></div>
+      </div>
+    </div>
+
+    <!-- O CASO DA TUA PERGUNTA: produtos entraram, sabores ZERO -->
+    <div class="dia">
+      <div class="dia-row" role="button" onclick="tgl('conf-0410', this)">
+        <span class="dia-data num">04/10</span>
+        <span class="selo sem-sabor">sabores não importados ✗</span>
+        <span class="dia-meta num">1.415 un · R$ 21.009,12 · vendeu 389 pizzas e ZERO sabores entraram</span>
+        <span class="dia-quem">Yussef · 00h12</span>
+        <span class="chev">▾</span>
+      </div>
+      <div class="conf" id="conf-0410" hidden>
+        <div class="l"><span class="warn">⚠ as pizzas do dia não baixaram calabresa/frango/queijo do estoque — é buraco de ervilha nascendo</span><span style="color:var(--indigo); font-weight:600">importar os sabores de 04/10 →</span></div>
+      </div>
+    </div>
+
+    <!-- buraco total -->
+    <div class="dia buraco">
+      <div class="dia-row" role="button">
+        <span class="dia-data num">03/10</span>
+        <span class="selo sem-import">sem importação ✗</span>
+        <span class="dia-meta">dia de venda sem arquivo nenhum</span>
+        <span class="cta" style="font-size:12px; color:var(--coral-esc); font-weight:700">importar este dia →</span>
+      </div>
+    </div>
+
+    <div class="dia">
+      <div class="dia-row" role="button" onclick="tgl('conf-0210', this)">
+        <span class="dia-data num">02/10</span>
+        <span class="selo ok">completo ✓</span>
+        <span class="dia-meta num">1.387 un · R$ 20.114,55 · 2 arquivos · razão 2,4</span>
+        <span class="dia-quem">marcyelle · 23h37</span>
+        <span class="chev">▾</span>
+      </div>
+      <div class="conf" id="conf-0210" hidden>
+        <div class="l num"><span>Σ do arquivo × Σ gravado</span><span class="ok">bate ✓</span></div>
+      </div>
+    </div>
+    <div class="vermais">ver o mês inteiro ▾</div>
+  </section>
+  <p class="nota-sino">🔔 camada 3: dia que amanhece torto (sem importação · sem sabores · incompleto) = aviso no sininho às 10h, setor estoque, língua do balcão, anti-spam padrão — uma causa, um alarme.</p>
+
+  <!-- ===================== 4 · DETALHE DO DIA (abre pelo "ver as linhas") ===================== -->
+  <!-- Abas Produtos | Sabores · busca (em prod: casaBusca da casa, que acha
+       "agua"→"Água") · ordenado por VALOR · coluna DESTINO = o que a baixa
+       fez no estoque (lê do motor existente, nunca recalcula):
+       baixou ficha ✓ · baixou base + sabores ✓ · baixou revenda ✓ ·
+       SEM DESTINO ⚠ [mapear →]. Rodapé: Σ(linhas) == Σ do arquivo (guard).
+       Nome de SABOR clicável: com ficha → abre · sem ficha → cria (regra
+       da casa). -->
+  <section class="card" id="detalhe" aria-label="Detalhe da importação de 06/10">
+    <div class="det-head">
+      <div>
+        <p class="tt">Importação de 06/10 <span class="selo ok" style="margin-left:4px">completo ✓</span></p>
+        <p class="sub">marcyelle · 23h41 · 2 arquivos</p>
+      </div>
+      <label class="busca">🔎 <input id="q" placeholder="buscar produto ou sabor…" oninput="filtra()"></label>
+    </div>
+    <div class="abas">
+      <span class="chip on" id="tab-prod" role="button" onclick="aba('prod')">Produtos · 214 linhas</span>
+      <span class="chip" id="tab-sab" role="button" onclick="aba('sab')">Sabores · 612 ocorrências</span>
+    </div>
+
+    <!-- ABA PRODUTOS -->
+    <div id="pane-prod">
+      <div class="thead cols-prod"><span>PRODUTO</span><span class="t-right">UN</span><span class="t-right">VALOR</span><span class="t-right">DESTINO NO ESTOQUE</span></div>
+      <div class="trow cols-prod num" role="button"><span class="nm">👑 COMBO CAÇULA</span><span class="t-right">42</span><span class="t-right">R$ 1.889,58</span><span class="dest-ok">baixou ficha ✓</span></div>
+      <div class="trow cols-prod num" role="button"><span class="nm">PIZZA GRANDE 35CM</span><span class="t-right">31</span><span class="t-right">R$ 2.418,69</span><span class="dest-ok">baixou base + sabores ✓</span></div>
+      <div class="trow cols-prod num warn" role="button"><span class="nm">⚠ TORTA ALEMÃ FATIA</span><span class="t-right">6</span><span class="t-right">R$ 89,40</span><span class="dest-warn">sem destino — <a href="#">mapear →</a></span></div>
+      <div class="trow cols-prod num" role="button"><span class="nm">XIS SALADA</span><span class="t-right">28</span><span class="t-right">R$ 924,00</span><span class="dest-ok">baixou ficha ✓</span></div>
+      <div class="trow cols-prod num" role="button"><span class="nm">COCA COLA 2L</span><span class="t-right">19</span><span class="t-right">R$ 285,00</span><span class="dest-ok">baixou revenda ✓</span></div>
+      <div class="trow cols-prod num" role="button"><span class="nm">PRATO ALAMINUTA</span><span class="t-right">17</span><span class="t-right">R$ 509,15</span><span class="dest-ok">baixou ficha ✓</span></div>
+      <div class="trow cols-prod num warn" role="button"><span class="nm">⚠ PUDIM FATIA</span><span class="t-right">4</span><span class="t-right">R$ 39,60</span><span class="dest-warn">sem destino — <a href="#">mapear →</a></span></div>
+      <div class="trow cols-prod num" role="button"><span class="nm">MINI FRITAS</span><span class="t-right">22</span><span class="t-right">R$ 219,78</span><span class="dest-ok">baixou ficha ✓</span></div>
+      <div class="vermais">… mais 206 linhas (ordenadas por valor · a busca filtra tudo)</div>
+      <div class="tfoot num">
+        <span style="color:var(--text-2)">Σ das linhas <b style="color:var(--text)">1.240 un · R$ 18.743,90</b></span>
+        <span class="bate">= Σ do arquivo ✓ bate ao centavo</span>
+        <span style="color:var(--text-2)">3 sem destino · <span style="color:var(--indigo); font-weight:600">CSV ↓</span></span>
+      </div>
+    </div>
+
+    <!-- ABA SABORES -->
+    <div id="pane-sab" hidden>
+      <div class="thead cols-sab"><span>SABOR</span><span class="t-right">VEZES</span><span class="t-right">FICHA</span></div>
+      <div class="trow cols-sab num" role="button"><span class="nm" style="color:var(--indigo); text-decoration:underline">CALABRESA</span><span class="t-right">76</span><span class="dest-ok">com ficha · baixou ✓</span></div>
+      <div class="trow cols-sab num" role="button"><span class="nm" style="color:var(--indigo); text-decoration:underline">FRANGO C/ CATUPIRY</span><span class="t-right">58</span><span class="dest-ok">com ficha · baixou ✓</span></div>
+      <div class="trow cols-sab num warn" role="button"><span class="nm" style="color:var(--ambar-esc); text-decoration:underline">⚠ 4 QUEIJOS</span><span class="t-right">23</span><span class="dest-warn">sem ficha — <a href="#">criar agora →</a></span></div>
+      <div class="trow cols-sab num" role="button"><span class="nm" style="color:var(--indigo); text-decoration:underline">PORTUGUESA</span><span class="t-right">21</span><span class="dest-ok">com ficha · baixou ✓</span></div>
+      <div class="trow cols-sab num warn" role="button"><span class="nm" style="color:var(--ambar-esc); text-decoration:underline">⚠ CHOCOLATE PRETO</span><span class="t-right">18</span><span class="dest-warn">sem ficha — <a href="#">criar agora →</a></span></div>
+      <div class="trow cols-sab num" role="button"><span class="nm" style="color:var(--indigo); text-decoration:underline">BACON</span><span class="t-right">15</span><span class="dest-ok">com ficha · baixou ✓</span></div>
+      <div class="vermais">… todas as ocorrências do dia, por volume · clique no nome: com ficha abre, sem ficha cria (regra da casa)</div>
+      <div class="tfoot num">
+        <span style="color:var(--text-2)">Σ das ocorrências <b style="color:var(--text)">612</b> · 54 sem ficha</span>
+        <span class="bate">= Σ do arquivo ✓</span>
+        <span style="color:var(--indigo); font-weight:600">CSV ↓</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>REFERÊNCIA VISUAL OFICIAL v1 · Importar vendas — a central · aprovada pelo dono em 08/10/2026 · a tela em prod deve ser IGUAL a isto (2 temas × 2 viewports)</footer>
+</div>
+
+<script>
+/* ===== comportamento de referência (vanilla) =====
+   Em prod: mesmos gestos, dados reais pelas portas existentes. */
+function tgl(id, row){
+  const el=document.getElementById(id);
+  el.hidden=!el.hidden;
+  row.querySelector('.chev').textContent = el.hidden ? '▾' : '▴';
+}
+function aba(q){
+  const prod = q==='prod';
+  document.getElementById('pane-prod').hidden=!prod;
+  document.getElementById('pane-sab').hidden=prod;
+  document.getElementById('tab-prod').classList.toggle('on',prod);
+  document.getElementById('tab-sab').classList.toggle('on',!prod);
+  filtra();
+}
+function filtra(){
+  const q=(document.getElementById('q').value||'').toLowerCase();
+  document.querySelectorAll('#detalhe .trow').forEach(r=>{
+    r.hidden = q!=='' && !r.textContent.toLowerCase().includes(q);
+  });
+}
+</script>
+</body>
+</html>
