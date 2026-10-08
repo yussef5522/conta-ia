@@ -30,7 +30,7 @@ interface Caso {
 const CASOS: Caso[] = [
   {
     nome: 'tamanho em minúscula (o CHECK de FORMA)',
-    sql: `INSERT INTO stock_base_do_tamanho (id, "companyId", tamanho, "fichaId") VALUES ('p1', $1, 'grande', 'f1')`,
+    sql: `INSERT INTO stock_base_do_tamanho (id, "companyId", tamanho, "fichaId") VALUES ('p1', $1, 'zzprova minuscula', 'f1')`,
     esperado: 'chk_base_tamanho_forma',
   },
   {
@@ -40,12 +40,12 @@ const CASOS: Caso[] = [
   },
   {
     nome: 'ficha vazia (base fantasma)',
-    sql: `INSERT INTO stock_base_do_tamanho (id, "companyId", tamanho, "fichaId") VALUES ('p3', $1, 'GRANDE', '  ')`,
+    sql: `INSERT INTO stock_base_do_tamanho (id, "companyId", tamanho, "fichaId") VALUES ('p3', $1, 'ZZPROVA', '  ')`,
     esperado: 'chk_base_ficha',
   },
   {
     nome: 'o MESMO tamanho duas vezes (dois custos pra mesma pizza)',
-    sql: `INSERT INTO stock_base_do_tamanho (id, "companyId", tamanho, "fichaId") VALUES ('p4', $1, 'GRANDE', 'f1'), ('p5', $1, 'GRANDE', 'f2')`,
+    sql: `INSERT INTO stock_base_do_tamanho (id, "companyId", tamanho, "fichaId") VALUES ('p4', $1, 'ZZPROVA', 'f1'), ('p5', $1, 'ZZPROVA', 'f2')`,
     // ⚠️ MEDIDO em prod: pra violação de UNIQUE em raw query o Prisma devolve o código
     // `23505` com a CHAVE, e **não** o nome do índice. A chave identifica qual régua mordeu
     // tão bem quanto o nome — procurar o nome aqui era asserção sobre uma mensagem que não
@@ -53,13 +53,13 @@ const CASOS: Caso[] = [
     esperado: '23505:("companyId", tamanho)',
   },
   {
-    nome: 'LEGÍTIMO: GRANDE apontando pra uma ficha',
-    sql: `INSERT INTO stock_base_do_tamanho (id, "companyId", tamanho, "fichaId") VALUES ('p6', $1, 'GRANDE', 'f1')`,
+    nome: 'LEGÍTIMO: um tamanho apontando pra uma ficha',
+    sql: `INSERT INTO stock_base_do_tamanho (id, "companyId", tamanho, "fichaId") VALUES ('p6', $1, 'ZZPROVA', 'f1')`,
     esperado: 'aceita',
   },
   {
-    nome: 'LEGÍTIMO: tamanho novo com espaço no meio (GRANDE PRECINHO)',
-    sql: `INSERT INTO stock_base_do_tamanho (id, "companyId", tamanho, "fichaId") VALUES ('p7', $1, 'GRANDE PRECINHO', 'f2')`,
+    nome: 'LEGÍTIMO: tamanho novo com espaço no meio',
+    sql: `INSERT INTO stock_base_do_tamanho (id, "companyId", tamanho, "fichaId") VALUES ('p7', $1, 'ZZPROVA COM ESPACO', 'f2')`,
     esperado: 'aceita',
   },
 ]
@@ -111,6 +111,12 @@ async function main() {
     `SELECT (length(trim('grande')) > 0) AS ingenuo,
             ('grande' = upper('grande') AND length(trim('grande')) > 0) AS nosso`,
   )
+  /**
+   * ⚠️ OS TAMANHOS DA PROVA SÃO INÉDITOS (`ZZPROVA…`) DE PROPÓSITO. A 1ª versão usava
+   * 'GRANDE', e no minuto em que o dono apontou a base do GRANDE a prova passou a sair **4 de
+   * 6** — recusada pelo UNIQUE, que é a régua funcionando. ***Prova que muda de veredito com o
+   * dado não prova nada sobre o CHECK.***
+   */
   console.log(`\n  CONTRAFACTUAL do CHECK de forma com 'grande':`)
   console.log(`     ingênuo (só length) aceita? ${ingenuo}  ⛔ e aí 'grande' ≠ 'GRANDE' seriam duas bases`)
   console.log(`     o nosso (com upper)  aceita? ${nosso}  ⭐ RECUSA`)
