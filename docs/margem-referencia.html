@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Quem paga a casa — REFERÊNCIA VISUAL OFICIAL (aprovada pelo dono)</title>
+<title>Quem paga a casa — REFERÊNCIA VISUAL OFICIAL v3.1 (aprovada pelo dono)</title>
 <style>
 /* ==========================================================================
    CAIXAOS · "QUEM PAGA A CASA" — REFERÊNCIA VISUAL OFICIAL v3
@@ -64,7 +64,19 @@ body{
   font-family:var(--font); font-size:14px; line-height:1.45;
   -webkit-font-smoothing:antialiased;
 }
-.wrap{max-width:860px; margin:0 auto; padding:20px 16px 64px}
+/* LEI DE LAYOUT: a tela ocupa a largura útil do conteúdo do
+   dashboard (ao lado da sidebar), como as telas profissionais —
+   NUNCA uma coluna estreita centralizada com vazio dos dois
+   lados. Teto 1440px só pra monitores gigantes. */
+.wrap{max-width:1440px; margin:0 auto; padding:22px 28px 64px}
+@media (max-width:700px){ .wrap{padding:16px 14px 56px} }
+/* DUPLAS: em tela larga, dois cartões lado a lado pra usar a
+   largura com conteúdo (não com linha esticada). */
+.duo{margin-bottom:14px}
+@media (min-width:1024px){
+  .duo{display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start}
+  .duo .card{margin-bottom:0}
+}
 .num{font-variant-numeric:tabular-nums}
 a,[role=button]{cursor:pointer}
 
@@ -265,7 +277,9 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
     </div>
   </section>
 
-  <!-- ===================== 3 · QUEM CARREGOU A CASA ===================== -->
+  <!-- ===================== 3+4 · DUPLA: QUEM CARREGOU | A LIGA (lado a lado em ≥1024px) ===================== -->
+  <div class="duo">
+  <!-- 3 · QUEM CARREGOU A CASA -->
   <!-- Barra RELATIVA AO MAIOR (nunca à casa). % da casa vai no número, pode passar de 100. Top 6 + agrupado. Toda linha clicável → ficha. -->
   <section class="card" aria-label="Quem carregou a casa">
     <div class="card-head">
@@ -314,7 +328,7 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
     </div>
   </section>
 
-  <!-- ===================== 4 · A LIGA ===================== -->
+  <!-- 4 · A LIGA -->
   <section class="card" aria-label="A liga do período">
     <div class="card-head">
       <h2>🏆 A liga do mês</h2>
@@ -358,7 +372,11 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
     </div>
   </section>
 
-  <!-- ===================== 5 · MONTADOR DE PIZZA ===================== -->
+  </div><!-- /duo 3+4 -->
+
+  <!-- ===================== 5+6 · DUPLA: MONTADOR | FILA (lado a lado em ≥1024px) ===================== -->
+  <div class="duo">
+  <!-- 5 · MONTADOR DE PIZZA -->
   <!-- INTERATIVO nesta referência: trocar tamanho redesenha as fatias; clicar fatia abre a lista; preço editável recalcula. Conta = base(tamanho) + Σ(1 ocorrência × ficha do sabor) — regra 02/09, SEM fator. -->
   <section class="card" aria-label="Monte uma pizza e veja o custo">
     <div class="card-head">
@@ -381,7 +399,7 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
     </div>
   </section>
 
-  <!-- ===================== 6 · FILA DOS SABORES SEM FICHA ===================== -->
+  <!-- 6 · FILA DOS SABORES SEM FICHA -->
   <section class="card" id="fila" aria-label="Sabores vendidos sem ficha">
     <div class="card-head">
       <h2>🧩 95 sabores vendidos sem ficha</h2>
@@ -401,7 +419,9 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
     </div>
   </section>
 
-  <footer>REFERÊNCIA VISUAL OFICIAL · aprovada pelo dono em 07/10/2026 · a tela em prod deve ser IGUAL a isto (2 temas × 2 viewports)</footer>
+  </div><!-- /duo 5+6 -->
+
+  <footer>REFERÊNCIA VISUAL OFICIAL v3.1 (largura cheia + duplas) · aprovada pelo dono em 07/10/2026 · a tela em prod deve ser IGUAL a isto (2 temas × 2 viewports)</footer>
 </div>
 
 <script>

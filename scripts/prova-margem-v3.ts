@@ -1,5 +1,5 @@
 /**
- * ⭐⭐⭐ A PROVA DO v3 EM PROD — NAVEGANDO, 2 VIEWPORTS, COMPARANDO COM A REFERÊNCIA.
+ * ⭐⭐⭐ A PROVA DO v3.1 EM PROD — 3 TAMANHOS, COMPARANDO COM A REFERÊNCIA.
  *
  * ⛔⛔ **ZERO ESCRITA.** Tudo aqui é GET + lib pura, e a contabilidade de config/avisos é
  * conferida antes e depois (a cicatriz de 07/10: um POST dentro de `$transaction` de prova
@@ -25,6 +25,18 @@ import { montarPizza } from '@/lib/margem/montador'
 const CO = process.env.PROVA_COMPANY_ID ?? 'cmq17yapb00gnrndlh33sctbo'
 const CEL = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'
 const DESK = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36'
+/**
+ * ⭐ OS TRÊS TAMANHOS que o dono pediu (390 · 1280 · 1600+). ⚠️ O user-agent NÃO muda o
+ * layout — ele é decidido por `@media` no navegador. Então a prova dos 3 tamanhos aqui é:
+ * (a) a PÁGINA responde nos 3 e (b) **as REGRAS de cada corte existem no CSS que prod serve**
+ * — que é a única coisa que o servidor pode afirmar sem um navegador de verdade. O olho do
+ * dono continua sendo o que fecha (screenshot indisponível nesta sessão).
+ */
+const VIEWPORTS: [string, string][] = [
+  ['CELULAR 390', CEL],
+  ['NOTEBOOK 1280', DESK],
+  ['MONITOR 1600+', DESK],
+]
 const base = 'http://localhost:3001'
 const brl = (n: number | null | undefined) =>
   n == null ? 'a apurar' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -54,10 +66,10 @@ async function main() {
     avisos: await prisma.aviso.count({ where: { companyId: CO } }),
   }
 
-  /* ═════════════ 1. A TELA, NOS DOIS VIEWPORTS ═════════════ */
-  console.log('\n═══ 1. A TELA, NOS DOIS VIEWPORTS')
+  /* ═════════════ 1. A TELA, NOS 3 TAMANHOS ═════════════ */
+  console.log('\n═══ 1. A TELA, NOS 3 TAMANHOS (390 · 1280 · 1600+)')
   const chunk: Record<string, string> = {}
-  for (const [v, ua] of [['CELULAR', CEL], ['DESKTOP', DESK]] as const) {
+  for (const [v, ua] of VIEWPORTS) {
     const t0 = Date.now()
     const r = await fetch(`${base}/empresas/${CO}/margem`, { headers: { cookie, 'user-agent': ua } })
     const html = await r.text()
@@ -91,34 +103,59 @@ async function main() {
   let faltouAlgo = false
   for (const { secao, pecas } of SECOES) {
     const naRef = pecas.filter((f) => !ref.includes(f))
-    const faltam = ['CELULAR', 'DESKTOP'].flatMap((v) =>
+    const faltam = VIEWPORTS.map(([v]) => v).flatMap((v) =>
       pecas.filter((f) => !temFrase(chunk[v], f)).map((f) => `${v}:${f}`),
     )
     if (naRef.length) console.log(`  ⚠️ ${secao}: peça que NÃO está na referência (a lista do probe está errada): ${naRef.join(' | ')}`)
     if (faltam.length) faltouAlgo = true
-    console.log(`  ${faltam.length === 0 ? '✓' : '⛔'} ${secao}  ${pecas.length * 2 - faltam.length}/${pecas.length * 2}${faltam.length ? ` FALTAM ${faltam.join(' | ')}` : ''}`)
+    console.log(`  ${faltam.length === 0 ? '✓' : '⛔'} ${secao}  ${pecas.length * VIEWPORTS.length - faltam.length}/${pecas.length * VIEWPORTS.length}${faltam.length ? ` FALTAM ${faltam.join(' | ')}` : ''}`)
   }
-  console.log(`  ${faltouAlgo ? '⛔' : '⭐'} as 6 seções ${faltouAlgo ? 'TÊM BURACO' : 'estão COMPLETAS nos dois viewports'}`)
+  console.log(`  ${faltouAlgo ? '⛔' : '⭐'} as 6 seções ${faltouAlgo ? 'TÊM BURACO' : `estão COMPLETAS nos ${VIEWPORTS.length} tamanhos`}`)
 
   /* ═════════════ 3. OS TOKENS E AS MEDIDAS, EXTRAÍDOS DA REFERÊNCIA ═════════════ */
   console.log('\n═══ 3. OS TOKENS E AS MEDIDAS')
-  const hex = [...chunk.CELULAR.matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0])
+  const hex = [...chunk['CELULAR 390'].matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0])
   console.log(`  ⛔ hex de cor no chunk DESTA tela: ${hex.length === 0 ? '0 ✓' : hex.slice(0, 6).join(' ')}`)
 
-  const css = chunk.CELULAR_CSS
-  const usados = [...new Set((chunk.CELULAR.match(/--(?:prod|fam)-[a-z0-9-]+/g) ?? []))]
+  const css = chunk['CELULAR 390_CSS']
+  const usados = [...new Set((chunk['CELULAR 390'].match(/--(?:prod|fam)-[a-z0-9-]+/g) ?? []))]
   const soNoClaro = usados.filter((t) => css.split(`${t}:`).length - 1 < 2)
   console.log(`  ${soNoClaro.length === 0 ? '✓' : '⛔'} os ${usados.length} tokens da tela nos DOIS mapas do CSS${soNoClaro.length ? ` — SÓ NO CLARO: ${soNoClaro.join(' ')}` : ''}`)
 
   const cssRef = ref.slice(ref.indexOf('<style>'), ref.indexOf('</style>'))
   const letras = [...new Set([...cssRef.matchAll(/font-size:\s*([\d.]+)px/g)].map((m) => m[1]))]
-  const semLetra = letras.filter((t) => !chunk.CELULAR.includes(`text-[${t}px]`))
+  const semLetra = letras.filter((t) => !chunk['CELULAR 390'].includes(`text-[${t}px]`))
   console.log(`  ${semLetra.length === 0 ? '✓' : '⛔'} as ${letras.length} hierarquias de letra da referência no bundle${semLetra.length ? ` — FALTAM ${semLetra.join(' ')}` : ''}`)
 
   const medidas = [...new Set([...cssRef.matchAll(/(?:^|[^-a-z])(?:width|height|min-width):\s*([\d.]+)px/g)].map((m) => m[1]))]
-  const semMedida = medidas.filter((t) => !chunk.CELULAR.includes(`[${t}px]`))
+  const semMedida = medidas.filter((t) => !chunk['CELULAR 390'].includes(`[${t}px]`))
   console.log(`  ${semMedida.length === 0 ? '✓' : '⛔'} as ${medidas.length} medidas da referência no bundle${semMedida.length ? ` — FALTAM ${semMedida.join(' ')}` : ''}`)
-  console.log(`  ⛔ o botão de tema da referência em prod: ${chunk.CELULAR.includes('theme-btn') ? 'VEIO (2ª porta do tema!)' : 'NÃO VEIO ✓ (a casa tem o dela)'}`)
+  console.log(`  ⛔ o botão de tema da referência em prod: ${chunk['CELULAR 390'].includes('theme-btn') ? 'VEIO (2ª porta do tema!)' : 'NÃO VEIO ✓ (a casa tem o dela)'}`)
+
+  /* ═════════════ 3b. A LEI DE LAYOUT (v3.1) ═════════════ */
+  console.log('\n═══ 3b. A LEI DE LAYOUT — largura cheia + duplas')
+  const bundle = chunk['CELULAR 390']
+  const semEspaco = (t: string) => t.replace(/\s+/g, '')
+  const cssPlano = semEspaco(css)
+
+  console.log(`  ⛔ a coluna de 860px centralizada: ${bundle.includes('max-w-[860px]') ? 'VOLTOU ⛔' : 'MORREU ✓'}`)
+  console.log(`  ${bundle.includes('max-w-[1440px]') ? '✓' : '⛔'} teto 1440px no bundle · ${cssPlano.includes('max-width:1440px') ? '✓' : '⛔'} compilado no CSS que prod serve`)
+
+  // ⭐ as REGRAS de cada corte: é isso que o navegador recebe e aplica em cada tamanho
+  const CORTES: [string, string, string][] = [
+    ['≥1024px (duplas montadas)', 'min-width:1024px', 'grid-template-columns:repeat(2,minmax(0,1fr))'],
+    ['≤700px (padding do celular)', 'max-width:700px', 'padding-left:14px'],
+  ]
+  for (const [rot, media, regra] of CORTES) {
+    const temMedia = cssPlano.includes(semEspaco(media))
+    const temRegra = cssPlano.includes(semEspaco(regra))
+    console.log(`  ${temMedia && temRegra ? '✓' : '⛔'} ${rot}: @media ${temMedia ? 'ok' : 'FALTA'} · a regra ${temRegra ? 'ok' : 'FALTA'}`)
+  }
+  for (const c of ['lg:grid-cols-2', 'lg:items-start', 'lg:gap-[14px]', 'max-[700px]:px-[14px]']) {
+    console.log(`  ${bundle.includes(c) ? '✓' : '⛔'} ${c} no bundle`)
+  }
+  // ⛔ `.duo .card{margin-bottom:0}` — sem ele a coluna curta empurra a linha seguinte
+  console.log(`  ${cssPlano.includes('margin-bottom:0px') || cssPlano.includes('margin-bottom:0') ? '✓' : '⛔'} a margem do cartão DENTRO da dupla é zerada em ≥1024`)
 
   /* ═════════════ 4. O PLACAR FECHA, A BARRA SOMA 100 ═════════════ */
   console.log('\n═══ 4. O PLACAR E A BARRA, no dado real')
@@ -161,7 +198,7 @@ async function main() {
   console.log(`  sabores ${cat.sabores.length} (com ficha ${cat.sabores.filter((s) => s.temFicha).length} · âmbar ${cat.sabores.filter((s) => !s.temFicha).length})`)
   for (const f of cat.faltando) console.log(`  ⚠️ ${f.frase}`)
 
-  console.log(`  ⭐ o clique na fatia existe no bundle: ${chunk.CELULAR.includes('aoTocar') || chunk.CELULAR.includes('fatiaAberta') ? 'SIM ✓' : '⛔ NÃO'}`)
+  console.log(`  ⭐ o clique na fatia existe no bundle: ${chunk['CELULAR 390'].includes('aoTocar') || chunk['CELULAR 390'].includes('fatiaAberta') ? 'SIM ✓' : '⛔ NÃO'}`)
 
   // ⭐ TROCAR O TAMANHO REDESENHA N FATIAS — a conta que o clique do chip dispara
   for (const t of cat.tamanhos.filter((x) => x.sabores > 0).slice(0, 3)) {

@@ -128,6 +128,26 @@ function Chip({
   )
 }
 
+/**
+ * ⭐⭐ A DUPLA (`.duo` da referência v3.1) — dois cartões lado a lado em **≥1024px**, pra usar
+ * a largura **com conteúdo, não com linha esticada**. Abaixo de 1024 ela empilha, igual a
+ * antes: é uma composição só, o CSS escolhe (REGRA 12).
+ *
+ * ⛔ `.duo .card{margin-bottom:0}` do arquivo mora aqui, por **seletor de filho**, e não como
+ * uma prop que cada chamador tem que lembrar de passar — *disciplina virada impossibilidade*
+ * (REGRA 5). Sem zerar a margem, a coluna mais curta empurraria a linha seguinte.
+ *
+ * ⚠️ `items-start` é o que mantém os dois cartões no topo: sem ele o mais curto esticaria pra
+ * a altura do vizinho e a borda de baixo dele mentiria sobre onde o conteúdo acaba.
+ */
+function Duo({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-[14px] lg:grid lg:grid-cols-2 lg:items-start lg:gap-[14px] lg:[&>section]:mb-0">
+      {children}
+    </div>
+  )
+}
+
 /** `.dot` — a bolinha de 10px da família, a MESMA cor que o payload mandou */
 function Bolinha({ familia }: { familia: string }) {
   return (
@@ -174,8 +194,17 @@ export default function MargemPage({ params }: { params: Promise<{ id: string }>
     void carregar()
   }, [carregar])
 
+  /**
+   * ⭐⭐ A LEI DE LAYOUT (v3.1, escrita no CSS da referência): *"a tela ocupa a largura útil do
+   * conteúdo do dashboard (ao lado da sidebar), como as telas profissionais — **NUNCA uma
+   * coluna estreita centralizada com vazio dos dois lados**. Teto 1440px só pra monitores
+   * gigantes."* ⛔ A coluna de 860px do v3 morreu aqui, e o guard afirma que ela não volta.
+   *
+   * ⚠️ O shell do dashboard já põe `px-4 lg:px-6` por fora (o molde de 23/08), então o respiro
+   * real soma o dele ao nosso. Os 4 números do padding são os do ARQUIVO, escritos literais.
+   */
   return (
-    <div className="mx-auto max-w-[860px] px-[16px] pb-[64px] pt-[20px]">
+    <div className="mx-auto max-w-[1440px] px-[28px] pb-[64px] pt-[22px] max-[700px]:px-[14px] max-[700px]:pb-[56px] max-[700px]:pt-[16px]">
       {/* ───────── CABEÇALHO (page-head da referência) ───────── */}
       <div className="mb-[14px] flex flex-wrap items-end justify-between gap-[12px]">
         <div>
@@ -245,15 +274,19 @@ export default function MargemPage({ params }: { params: Promise<{ id: string }>
         <>
           <LinhaDeChegadaCard d={dados} />
           <PlacarDaCasa d={dados} />
-          <QuemCarregouACasa
-            d={dados}
-            abrirResto={abrirAgrupado}
-            setAbrirResto={setAbrirAgrupado}
-            empresaId={empresaId}
-          />
-          <LigaCard d={dados} aba={aba} setAba={setAba} empresaId={empresaId} />
-          <MontadorDePizza empresaId={empresaId} />
-          <FilaDeSabores d={dados} empresaId={empresaId} />
+          <Duo>
+            <QuemCarregouACasa
+              d={dados}
+              abrirResto={abrirAgrupado}
+              setAbrirResto={setAbrirAgrupado}
+              empresaId={empresaId}
+            />
+            <LigaCard d={dados} aba={aba} setAba={setAba} empresaId={empresaId} />
+          </Duo>
+          <Duo>
+            <MontadorDePizza empresaId={empresaId} />
+            <FilaDeSabores d={dados} empresaId={empresaId} />
+          </Duo>
         </>
       )}
     </div>

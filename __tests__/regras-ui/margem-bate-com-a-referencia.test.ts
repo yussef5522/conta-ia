@@ -74,6 +74,25 @@ function blocoDa(nome: string): string {
   return j === -1 ? resto : resto.slice(0, j)
 }
 
+/**
+ * ⭐⭐ A LISTA DE RENDER — o JSX que roda quando o payload chega.
+ *
+ * ⛔ É ELA que o guard dos 6 cartões tem que ler, não o arquivo: a REGRA 11 mostrou que
+ * arrancar `<MontadorDePizza />` da lista deixava a suíte VERDE, porque a `function` e todos
+ * os textos dela continuavam no arquivo.
+ *
+ * ⚠️ O fim é o `</>` do fragmento, NUNCA o primeiro `</div>` — com as DUPLAS da v3.1 o
+ * primeiro `</div>` é o fechamento de uma `<Duo>`, e cortar ali esconderia metade dos cartões
+ * (o guard passaria a aprovar uma tela com 4 dos 6).
+ */
+function listaDeRender(): string {
+  const i = TELA.indexOf("estado === 'OK' && dados && (")
+  expect(i, 'a lista de render da tela não foi achada').toBeGreaterThan(-1)
+  const fim = TELA.indexOf('</>', i)
+  expect(fim, 'a lista de render não fecha com um fragmento').toBeGreaterThan(i)
+  return TELA.slice(i, fim)
+}
+
 function frase(texto: string) {
   expect(cru(REFERENCIA), `"${texto}" NÃO está na referência — eu inventei a frase`).toContain(
     cru(texto),
@@ -195,9 +214,15 @@ describe('⛔⛔ AS MEDIDAS SÃO px LITERAL — tradução mental produziu as ve
   })
 
   it('⭐ toda largura/altura declarada na referência aparece literal na tela', () => {
+    /**
+     * ⚠️ O `[^-a-z(]` NÃO é preciosismo de regex: sem excluir o `(`, o `min-width:1024px` do
+     * `@media` entrava como se fosse medida de ELEMENTO e cobrava um `[1024px]` literal numa
+     * tela que expressa aquele corte como `lg:` (o alias do Tailwind). **Breakpoint e medida
+     * de elemento são duas coisas** — e cada uma tem o seu teste logo abaixo.
+     */
     const medidas = [
       ...new Set(
-        [...CSS_DA_REFERENCIA.matchAll(/(?:^|[^-a-z])(?:width|height|min-width):\s*([\d.]+)px/g)].map(
+        [...CSS_DA_REFERENCIA.matchAll(/(?:^|[^-a-z(])(?:width|height|min-width):\s*([\d.]+)px/g)].map(
           (m) => m[1],
         ),
       ),
@@ -207,13 +232,69 @@ describe('⛔⛔ AS MEDIDAS SÃO px LITERAL — tradução mental produziu as ve
     expect(faltando, `medidas da referência ausentes da tela: ${faltando.join(', ')}`).toHaveLength(0)
   })
 
-  it('⭐ o `.wrap` de 860px e o raio de 16/12/8 vieram do arquivo', () => {
-    expect(CSS_DA_REFERENCIA).toContain('max-width:860px')
-    expect(TELA).toContain('max-w-[860px]')
-    expect(CSS_DA_REFERENCIA).toContain('--radius:12px')
-    expect(CSS_DA_REFERENCIA).toContain('--radius-lg:16px')
-    expect(TELA).toContain('rounded-[16px]')
-    expect(TELA).toContain('rounded-[12px]')
+  /* ═══════ A LEI DE LAYOUT (v3.1) — o container e as duplas ═══════ */
+
+  /**
+   * ⭐⭐ A LEI, escrita no CSS da própria referência: *"a tela ocupa a largura útil do conteúdo
+   * do dashboard (ao lado da sidebar), como as telas profissionais — **NUNCA uma coluna
+   * estreita centralizada com vazio dos dois lados**. Teto 1440px só pra monitores gigantes."*
+   */
+  it('⛔⛔ O CONTAINER: teto 1440px e o padding do arquivo — a coluna de 860px MORREU', () => {
+    expect(CSS_DA_REFERENCIA).toContain('max-width:1440px')
+    expect(CSS_DA_REFERENCIA).toContain('padding:22px 28px 64px')
+    expect(CSS_DA_REFERENCIA).toContain('padding:16px 14px 56px')
+    // ⛔ a lei em palavras tem que continuar no arquivo: se ela sair, a régua perdeu o dono
+    expect(CSS_DA_REFERENCIA).toContain('LEI DE LAYOUT')
+
+    expect(TELA).toContain('max-w-[1440px]')
+    // ⛔⛔ a coluna estreita centralizada não pode voltar — foi o que o dono mandou matar
+    expect(TELA, 'a coluna de 860px voltou — é exatamente o que a v3.1 mata').not.toContain('max-w-[860px]')
+    // ⚠️ os 4 números do padding, LITERAIS (o 10/09: o número que está no arquivo, escrito igual)
+    for (const n of ['22px', '28px', '64px', '16px', '14px', '56px']) {
+      expect(TELA, `o padding do container precisa do ${n} literal`).toContain(`[${n}]`)
+    }
+  })
+
+  it('⛔⛔ AS DUPLAS: (quem carregou | a liga) e (montador | fila) lado a lado em ≥1024px', () => {
+    // ⭐ a referência declara a dupla no CSS e a usa DUAS vezes no HTML
+    expect(CSS_DA_REFERENCIA).toContain('grid-template-columns:1fr 1fr')
+    expect(CSS_DA_REFERENCIA).toContain('align-items:start')
+    expect([...REFERENCIA.matchAll(/class="duo"/g)], 'a referência tem DUAS duplas').toHaveLength(2)
+
+    const render = listaDeRender()
+    expect([...render.matchAll(/<Duo>/g)], 'a tela precisa das DUAS duplas').toHaveLength(2)
+    // ⭐ e cada dupla carrega o PAR que o arquivo nomeia, nessa ordem
+    expect(render).toMatch(/<Duo>[\s\S]*?QuemCarregouACasa[\s\S]*?LigaCard[\s\S]*?<\/Duo>/)
+    expect(render).toMatch(/<Duo>[\s\S]*?MontadorDePizza[\s\S]*?FilaDeSabores[\s\S]*?<\/Duo>/)
+
+    const duo = blocoDa('Duo')
+    expect(duo).toContain('lg:grid-cols-2')
+    expect(duo).toContain('lg:items-start')
+    expect(duo).toContain('lg:gap-[14px]')
+    /**
+     * ⛔ `.duo .card{margin-bottom:0}` — a referência zera a margem do cartão DENTRO da dupla,
+     * senão a coluna mais curta empurra a linha seguinte. ⭐ Aqui isso mora num lugar só (a
+     * própria dupla, por seletor de filho), e não como uma prop que cada chamador tem que
+     * lembrar de passar: **disciplina virada impossibilidade** (REGRA 5).
+     */
+    expect(CSS_DA_REFERENCIA).toContain('.duo .card{margin-bottom:0}')
+    expect(duo).toMatch(/lg:\[&>section\]:mb-0/)
+  })
+
+  it('⭐ os BREAKPOINTS do arquivo estão expressos na tela — alias ou literal', () => {
+    /**
+     * ⚠️ O Tailwind já tem apelido pros cortes padrão (`sm:`=640, `lg:`=1024). Pros cortes que
+     * o dono escolheu fora da escala (700 e 560) o número vai LITERAL, como o arquivo escreve.
+     */
+    const ALIAS: Record<string, string> = { '640': 'sm:', '768': 'md:', '1024': 'lg:', '1280': 'xl:' }
+    const cortes = [
+      ...new Set([...CSS_DA_REFERENCIA.matchAll(/@media\s*\((?:min|max)-width:\s*([\d.]+)px\)/g)].map((m) => m[1])),
+    ]
+    expect(cortes.length, 'os breakpoints da referência não foram lidos').toBeGreaterThan(2)
+    for (const c of cortes) {
+      const ok = ALIAS[c] ? TELA.includes(ALIAS[c]) : TELA.includes(`[${c}px]`)
+      expect(ok, `o corte de ${c}px da referência não aparece na tela`).toBe(true)
+    }
   })
 
   it('⛔ o respiro de 18px do cartão e o 9px das linhas são literais', () => {
@@ -246,12 +327,7 @@ describe('⛔⛔⛔ OS 6 CARTÕES DA REFERÊNCIA — RENDERIZADOS e NA ORDEM', (
     { texto: 'sabores vendidos sem ficha', componente: 'FilaDeSabores' },
   ]
 
-  /** a lista de render: o que a tela desenha quando o payload chegou */
-  const listaDeRender = (() => {
-    const i = TELA.indexOf("estado === 'OK' && dados && (")
-    expect(i, 'a lista de render da tela não foi achada').toBeGreaterThan(-1)
-    return TELA.slice(i, TELA.indexOf('</div>', i))
-  })()
+  const render = listaDeRender()
 
   it('⭐ as 6 âncoras existem na REFERÊNCIA (senão a lista está errada, não a tela)', () => {
     for (const a of ANCORAS) expect(cru(REFERENCIA), `âncora "${a.texto}"`).toContain(cru(a.texto))
@@ -269,14 +345,14 @@ describe('⛔⛔⛔ OS 6 CARTÕES DA REFERÊNCIA — RENDERIZADOS e NA ORDEM', (
   it('⛔⛔ os 6 estão na LISTA DE RENDER — componente definido e não desenhado é o mesmo que ausente', () => {
     for (const a of ANCORAS) {
       expect(
-        listaDeRender,
+        render,
         `<${a.componente} /> não é desenhado — ele existe no arquivo e ninguém o renderiza`,
       ).toContain(`<${a.componente}`)
     }
   })
 
   it('⛔⛔ a ORDEM de render é a ORDEM da referência', () => {
-    const pos = ANCORAS.map((a) => listaDeRender.indexOf(`<${a.componente}`))
+    const pos = ANCORAS.map((a) => render.indexOf(`<${a.componente}`))
     for (let i = 1; i < pos.length; i++) {
       expect(
         pos[i],
