@@ -2270,6 +2270,93 @@ A **página do empréstimo fica como está** (pergunta do CONTRATO: a #2 tem ví
 ```
 Varredura das 353 parcelas: **5 com pagamento de mês diferente do vencimento** — 3 do FLEXIBLE (o caso) e 2 atrasos legítimos da Caixa.
 
+## ⭐⭐⭐ QUEM PAGA A CASA — A TELA DE MARGEM EM PROD (07/10/2026)
+
+**Ordem do dono:** *"linha de chegada + casa de tijolos + liga + ficha de margem. Visual v4, tokens, 2 temas, 2 viewports. **ZERO conta nova:** custo = `explodirReceita`/ledger, vendas/preços = PDV, custo fixo = Custos Fixos RESPEITANDO os chips ligados (dizendo a composição na tela); cascata «a apurar» honesta — **nenhum número inventado, NUNCA**."*
+
+### ⭐⭐ O MOTOR NÃO CALCULA NADA DE NOVO — ELE TRADUZ
+
+`lerMargem` é **orquestrador**: uma passada de `hubCardapio` (que já é o dono do custo por produto, saído de `explodir` com qtd=1) + `lerCustosFixos` (a composição dos chips do dono) + o ledger dos complementos. ⛔ Uma fórmula de margem própria aqui faria a tela mostrar um custo que a baixa não executa — a doença dos 7 detectores de par, agora em dinheiro de produto.
+
+**⭐ A TELA NÃO CALCULA DINHEIRO**, e o guard afirma isso: nenhum `reduce` sobre sobra, nenhuma subtração de custo fixo, nenhum `>=` comparando sobra com casa. Ela desenha o `veredito` que o servidor assina. ⛔ Sem isso haveria duas réguas do *"pagou"* e elas divergiriam no primeiro caso de borda — que é exatamente onde a casa transborda.
+
+### ⛔⛔⛔ O CUSTO DOS COMPLEMENTOS ABATE A CASA, E ELE VIRA O VEREDITO
+
+Medido em prod: **R$ 9.255,55 em 7 dias** (R$ 35.700,53 em 30) de ocorrência de complemento estavam **fora da margem de todo produto** — a pizza mostrava 84% onde o real é 66%. Ele entra como **LINHA NOMEADA que abate a casa**, nunca atribuído a tijolo nenhum: ⚠️ **o relatório não diz de qual produto cada ocorrência é**, então ratear seria inventar a atribuição. Atribuição TEMPORAL (por dia) é honesta — a data existe — e é o que alimenta o acumulado do placar.
+
+⭐ **Isso preserva o guard do dono** (`Σ(tijolos) == sobra BRUTA == Σ da aba`) e dá à casa a régua certa: quem decide *"pagou"* é a **sobra LÍQUIDA**. ⚠️ E o piso é dito na tela — *"N ocorrências ainda sem ficha: o custo acima é o mínimo, não o total"*.
+
+### ⛔⛔ O VEREDITO NUNCA VEM SECO (o defeito que a prova em prod pegou na 1ª volta)
+
+A casa anunciava **"✓ PAGA — transbordou R$ 13.689,75"** enquanto o placar se recusava a nomear o dia dizendo *"só 55% do que você vendeu tem custo conhecido"* — **dois pesos na mesma tela**. `veredito: {estado, confiavel, ressalva}` tornou impossível um "PAGA" seco sobre dado parcial: hoje a tela diz *"PAGA — é o que dá pra medir: 55% do que você vendeu tem custo conhecido, e 114 produtos estão fora da obra"*.
+
+⛔ **O placar do dia D é GATEADO em 80% de cobertura** (sugestão do dono, aceita): abaixo disso ele **diz a cobertura** em vez de cravar um dia que a próxima ficha mudaria. E a **cobertura é por UNIDADES VENDIDAS, nunca por nº de produtos** — 49 de 163 produtos têm custo, mas são os de maior giro: contar produto daria 30% e assustaria sem razão.
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU A PILHA DE TIJOLOS ESTOURANDO O TELHADO
+
+A área do tijolo dividia pelo **CUSTO FIXO** quando havia plano. Com a casa paga — que é o caso de outubro, **sobra 66.487,33 contra casa 43.599,36 = 152%** — a Σ das áreas dava **1,52**, a pilha passava do telhado e o `Math.max(0, y)` da tela **empilhava os tijolos de cima um sobre o outro**. ***Área que não soma 1 não é proporcional: é o guard do dono quebrado justamente no mês que fechou bem.***
+
+⭐ **São DOIS números com papéis diferentes, e o nome do campo já dizia isso:** `pctDaSobra` é a **ÁREA** (fatia da sobra, Σ = 1 por construção) e `pctDaCasa` é o **RÓTULO** (*"este produto pagou 44,5% da casa"*, e **pode** passar de 100%, que é informação boa). Quem decide a altura TOTAL da pilha é o `pctPago`, já clampado em 1; o transbordo é faixa própria. **1 teste INVERTIDO com o motivo escrito** — ele afirmava a conta do rótulo na posição da área.
+
+### ⛔⛔ OS AVISOS NO SININHO — E A RÉGUA DELES SAIU DO PRODUTOR
+
+Três produtores (sobra negativa **vermelho** com a conta na frase · margem que despencou ≥8 pontos **âmbar** · relatório de complementos incompleto, o item 1 do dono, citando o DIA). ⛔ **Nada inline** (a lei de 04/10); o produtor entra na rodada das 3h **depois do estoque**, e **"uma causa, um alarme"**: quem já tem o vermelho da sobra negativa não ganha o âmbar da queda.
+
+**⚠️⚠️ E A PROVA EM PROD MOSTROU QUE A RÉGUA NUNCA TINHA RODADO.** Com o dado real e o gate do dia 10 aberto na sonda, o produtor avaliou **18 produtos e devolveu ZERO avisos — todos por razão legítima** (volume abaixo do mínimo num dos dois meses). Ou seja: o caminho que **MONTA a frase** não tinha sido exercido nem em teste nem em produção, e a única coisa que dava pra conferir sobre ele era a **MENÇÃO** do símbolo no arquivo — *"menção, não uso"*, pela 12ª vez nesta casa.
+
+⭐ A régua saiu pra **`lib/margem/regua-dos-avisos.ts`, PURA**, e ganhou **13 testes que a EXECUTAM** com os números de prod: a conta inteira na frase, o mínimo de volume, o gate do mês parcial, o degrau de 8 pontos, a supressão, o dia citado, e **os três tipos passando pela `exigirLinguaDoBalcao`** (a recusa ali seria o aviso morrendo no `registrarAviso` em prod, calado). O produtor virou **casca** que lê a MESMA `lerMargem` da tela e grava pela porta única.
+
+### ⛔ O FATOR POR TAMANHO MORREU DO SPRINT INTEIRO (decisão do dono)
+
+*"1 ocorrência = 1 explosão, SEM fator — nem na baixa nem no custo. A oscilação 0,37–7,03 sabores/pizza NÃO entra na conta de ninguém."* ⭐ Ela virou **AVISO de qualidade de dado** nos dias de razão **< 1**, que é o único valor **impossível** (toda pizza obriga ao menos um sabor) — a oscilação para cima é a vida real, e usá-la de fator seria inventar. **Guard varre os 6 arquivos do motor: nenhum pode multiplicar por fator de tamanho.**
+
+### ⚠️ TRÊS ERROS DE SONDA, OS TRÊS DA MESMA FAMÍLIA
+
+A prova em prod acusou, na 1ª passada, coisas que **não eram defeito de prod**: **(a)** `tijolo.sobra` e `cobertura × 100` — os campos reais são `sobraTotal` e `cobertura.pct`, e eu **chutei em vez de ler**, imprimindo `NaN` com cara de motor quebrado; **(b)** o hex cravado — minha sonda somou **os 81 chunks da página**, incluindo o shell, onde o `#185FA5` ainda vive em 49 arquivos (é a cicatriz de 06/10, repetida); **(c)** o CSS — procurei em `/_next/static/css/` e neste Next os arquivos ficam em `/_next/static/chunks/*.css`, então **os 10 tokens apareceram como "0 declarações"** e a sonda ainda imprimiu *"✓ conferidos"* na linha seguinte, **contradizendo a si mesma**. ***Sonda errada dá um vermelho tão convincente quanto um defeito real*** — e sonda que se contradiz é pior, porque convida a escolher a metade conveniente.
+
+⚠️ **E o `pg_dump` saiu com 0 BYTES na primeira tentativa**, de novo. A causa, agora medida: **a senha do `DATABASE_URL` é percent-encoded**, e o `.pgpass` precisa dela **decodificada e com `:` escapado**. Fica registrado junto da regra de sempre: ***`pg_dump` só conta depois de conferir o TAMANHO***.
+
+### PROVADO EM PROD, NAVEGANDO, NOS DOIS VIEWPORTS (REGRA 12)
+
+```
+CELULAR 200 em 235ms · DESKTOP 200 em 51ms · chunk desta tela 61 KB
+  ✓ 8/8 peças nos dois · ⛔ hex de cor no chunk DESTA tela: 0
+  ✓ os 10 tokens declarados nos DOIS mapas do CSS (:root e .dark)
+
+A ROTA, período por período
+  HOJE    casa R$ 6.228,48 · sobra 0 · EM_OBRA · "nenhuma venda no período"
+  SEMANA  casa R$ 43.599,36 · composição "casa + banco + compromissos"
+          sobra bruta 66.487,33 − complementos 9.255,55 = líquida 57.231,78
+          PAGA · confiável FALSE · "é o que dá pra medir: 55% do que você
+          vendeu tem custo conhecido, e 114 produtos estão fora da obra"
+          placar: — · "acima de 80% eu digo o dia em que a casa se pagou"
+  MES     idêntico (outubro tem 7 dias corridos)
+
+OS GUARDS DO DONO, no dado real
+  ⛔ Σ(tijolos) 66.487,33 × sobra 66.487,33 × Σ da aba 66.487,33 → ⭐ FECHA
+  ⛔⛔ Σ(área dos tijolos) = 100,00% → a pilha não estoura o telhado
+  área ∝ contribuição ✓ · ordem decrescente nos visíveis ✓
+  líquida == bruta − complementos ✓ · produto na obra sem custo: 0 ✓
+  cobertura por UNIDADES 54,9% · dentro 49 · fora 114
+  Combo Caçula R$ 19.408,50 · área 29,2% · pagou 44,5% da casa · 285 un
+
+OS AVISOS, em preview com ROLLBACK
+  gate fechado (dia 7): 0 gravados · 1 calado ("o mês não tem corpo")
+  gate aberto (sonda +8d): 0 gravados · 18 calados, todos por volume
+  ⭐ avisos na tabela 27 → 27 (ZERO ESCRITA)
+```
+
+**924 arquivos · 12.082 verdes · TS 0 · migration NENHUMA nesta leva · `pg_dump pre-margem-tela-20261007-170153.dump` (8.538.489 bytes, tamanho conferido) · deploys 4/4 (`sEmPX7XLi1oOVgc-C_8vK`, `ByY7ck-aVCHZkEbt42nER`, `fmxAVhKAsxZiMhl9tIc8g`) · Δ bundle +28 KB.** ⛔ **Zero escrita em dado de prod** — a prova é a contabilidade de avisos antes/depois em cada rodada.
+
+**REGRA 11 — 12 defeitos repostos:** hex cravado · opacidade sobre token (`bg-[var(--x)]/70`) · produtor sem chamador · *"pagou"* pela sobra bruta · fator de tamanho de volta no motor · o denominador da área de volta no custo fixo · a tela de volta no `× H` cru · token só no mapa claro · sem a supressão *"uma causa, um alarme"* (**1**) · sem o mínimo de unidades (**1**) · `toFixed` no lugar do `formatBRL` (**1**) · sem o gate do mês parcial (**6**) · o produtor digitando o número do gate (**1**).
+
+⚠️ **E o `Intl` pôs ESPAÇO NÃO-QUEBRÁVEL depois do "R$"**, então a asserção com espaço comum **nunca casava** — o teste compara com o **mesmo formatador** da frase, nunca com literal (a cicatriz de 24/09, em teste novo).
+
+📋 **FICA PRO DONO — e três coisas dependem de resposta dele:**
+1. **A COBERTURA É 55% e o placar não nomeia o dia.** O que destrava é ficha: **95 sabores vendidos sem ficha** e **114 produtos fora da obra**. Cada ficha nova sobe a cobertura e aproxima o dia D.
+2. **BLOQUEADOS pelas duas lacunas que vieram em branco:** os **4 números de sabores por tamanho** (`pequena __ · grande __ · família __ · precinho __`) — sem eles não há montador de pizza (item 7) nem preview de normalização das bases (item 3, cuja dose depende do N) — e a **% do iFood** (balcão e tele-entrega própria já estão em 0%).
+3. **Item 4 (ficha de margem por produto) tem a lib pronta** (`montarFichaDeMargem`, com embalagem em linha própria e *"quantos pagam a casa"*) **e nenhuma tela** — é a porta sem maçaneta, e fica nomeada em vez de disfarçada. O **editor de dose ao vivo** (item 5) e o **clique no sabor em qualquer lugar** (item 8) também não subiram; hoje a fila de sabores leva ao cardápio com o nome carregado.
+
 ## ⛔⛔⛔ A CONTAGEM É A ÂNCORA — ELA SEMPRE ENTRA, PRA QUALQUER ITEM (05-06/10/2026)
 
 **Lei geral do dono, e ela SUBSTITUI a recusa de 22/09:** *"Toda contagem lançada ENTRA, sem exceção de estado do item: saldo positivo, zero ou NEGATIVO (qtd e/ou R$). (…) **Nenhum caminho termina em recusa.**"* É a régua dos líderes (SAP/Oracle/NetSuite): **a contagem física é a âncora dos registros** — o sistema cria o ajuste de CORREÇÃO, o saldo vira o contado, e negativo vira **investigação**, nunca bloqueio.
