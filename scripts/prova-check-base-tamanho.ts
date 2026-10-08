@@ -46,7 +46,11 @@ const CASOS: Caso[] = [
   {
     nome: 'o MESMO tamanho duas vezes (dois custos pra mesma pizza)',
     sql: `INSERT INTO stock_base_do_tamanho (id, "companyId", tamanho, "fichaId") VALUES ('p4', $1, 'GRANDE', 'f1'), ('p5', $1, 'GRANDE', 'f2')`,
-    esperado: 'stock_base_do_tamanho_key',
+    // ⚠️ MEDIDO em prod: pra violação de UNIQUE em raw query o Prisma devolve o código
+    // `23505` com a CHAVE, e **não** o nome do índice. A chave identifica qual régua mordeu
+    // tão bem quanto o nome — procurar o nome aqui era asserção sobre uma mensagem que não
+    // existe, e foi o que fez esta prova sair 5 de 6 na 1ª rodada.
+    esperado: '23505:("companyId", tamanho)',
   },
   {
     nome: 'LEGÍTIMO: GRANDE apontando pra uma ficha',
@@ -79,7 +83,15 @@ async function main() {
       const msg = e instanceof Error ? e.message : String(e)
       if (msg === 'ROLLBACK_PROPOSITAL') recusadoPor = null
       // ⚠️ só o NOME da constraint conta: "deu erro" não prova qual régua mordeu
-      else recusadoPor = CASOS.map((x) => x.esperado).find((n) => n !== 'aceita' && msg.includes(n)) ?? `outro: ${msg.slice(0, 90)}`
+      else {
+        const alvos = CASOS.map((x) => x.esperado).filter((n) => n !== 'aceita')
+        recusadoPor =
+          alvos.find((n) => {
+            if (!n.startsWith('23505:')) return msg.includes(n)
+            // ⭐ unique: o código do Postgres + a chave violada
+            return msg.includes('23505') && msg.includes(n.slice('23505:'.length))
+          }) ?? `outro: ${msg.replace(/\s+/g, ' ').slice(0, 110)}`
+      }
     }
 
     const passou = c.esperado === 'aceita' ? recusadoPor === null : recusadoPor === c.esperado

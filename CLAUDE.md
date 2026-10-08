@@ -2270,6 +2270,138 @@ A **página do empréstimo fica como está** (pergunta do CONTRATO: a #2 tem ví
 ```
 Varredura das 353 parcelas: **5 com pagamento de mês diferente do vencimento** — 3 do FLEXIBLE (o caso) e 2 atrasos legítimos da Caixa.
 
+## ⭐⭐⭐ QUEM PAGA A CASA v2 — O PLACAR NO LUGAR DOS TIJOLOS + O MONTADOR (07/10/2026)
+
+**O dono reprovou a casa de tijolos SVG: ILEGÍVEL.** *"Mesmas contas/portas de v1 — só a APRESENTAÇÃO muda + as peças que faltavam."*
+
+### ⛔⛔⛔ A CASA DE TIJOLOS MORREU — e a prova em prod já tinha mostrado o custo dela
+
+Além da ilegibilidade, aquele desenho tinha um defeito estrutural que o v1 consertou de manhã: com a sobra em **152% da casa** a pilha estourava o telhado e os tijolos de cima **se sobrepunham** no clamp. ***Um desenho que precisa de 8 retângulos empilhados pra dizer "a casa se pagou e sobrou" está respondendo a pergunta de forma caríssima.***
+
+⛔ Ela não foi escondida: **o componente foi APAGADO**, e o guard afirma que não há `polygon`, nem `TELHADO`, nem o `y -= h`. É a mesma régua do `GruposSugeridos` em 23/09 — *enquanto o componente existe no arquivo, alguém religa*.
+
+### ⭐⭐ O PLACAR: 3 CARTÕES E A CONTA QUE FECHA NA TELA
+
+`o que as vendas deixaram` · `a casa custou` · `resultado`. ⭐ **`cartão 1 − cartão 2 = cartão 3`, e isso é travado em teste** — é o que torna o número defensável quando o dono soma na mão. ⚠️ É por isso que o 1º cartão mostra a sobra **LÍQUIDA** (já abatidos os complementos) e **DIZ o abatimento na sublinha**: mostrar a bruta faria os três não somarem, e *número sem régua em tela de dinheiro é pior que ausência*.
+
+⛔⛔ **A RESSALVA DO VEREDITO HERDA NO CARTÃO DE RESULTADO** — o guard de v1 que não cai. Com cobertura abaixo de 80% a tela é **proibida** de mostrar um "✓ CASA PAGA" seco; hoje ela diz *"✓ casa paga — daqui pra frente é lucro"* com *"é o que dá pra medir: 55% do que você vendeu tem custo conhecido, e 114 produtos estão fora da obra"* embaixo.
+
+**⭐ A BARRA: índigo até a 🏁, verde depois.** Os dois pedaços são frações do comprimento total e **SOMAM 1 por construção** — sem isso a tela teria que normalizar por conta própria, que é exatamente como a pilha de tijolos estourou. Medido em prod: **pago 76,2% + transbordo 23,8% = 100,0%**, com o rótulo **+31%**. ⚠️ Sem plano declarado a barra **nem existe**: desenhar 0% afirmaria que nada foi pago de uma casa que não tem valor.
+
+### ⭐⭐ QUEM CARREGOU A CASA — e a barra da linha é relativa ao MAIOR
+
+Lista com bolinha da família, nome, barra e *"N% da casa · R$ X"*, 👑 no 1º, **top 6 + "+N produtos · ver todos" que EXPANDE**.
+
+⛔⛔ **A BARRA DE CADA LINHA É RELATIVA AO MAIOR, NUNCA À CASA.** Com a casa paga, dividir pela casa faria metade das linhas encostar no fim da barra e **a comparação entre produtos — que é a pergunta desta lista — sumiria**. O *"% da casa"* continua escrito ao lado, em número, e **pode passar de 100%** (o Combo pagou 44,5% sozinho).
+
+⭐ **O tijolo AGRUPADO deixou de existir:** aqui a lista expande de verdade, então os 43 pequenos voltam a ser linhas. **O guard do dono sobrevive inteiro** — `Σ(carregadores) == sobra BRUTA`, medido em prod ao centavo.
+
+⚠️ **O rodapé âmbar LEVA pra fila** (*"🪑 114 fora da obra · 95 sabores sem ficha — criar fichas sobe a cobertura (55% → meta 80%)"*): rodapé que cobra sem dar o caminho é aviso, não ferramenta.
+
+### ⭐⭐⭐ O MONTADOR — 1 OCORRÊNCIA = 1 EXPLOSÃO, CONFERIDO NA MÃO EM PROD
+
+Chips de tamanho → pizza SVG em N fatias → toco na fatia → lista de sabores (com ficha primeiro) → conta ao vivo `base + Σ(1 ocorrência × ficha de cada sabor)` + sobra por canal.
+
+**⭐ A CONTA BATE AO CENTAVO CONTRA `explodirReceita`, FOLHA POR FOLHA** (o red-then-green que o dono pediu):
+```
+base "PIZZA GRANDE 35CM"  R$ 11,58   2 × porçao queijo 135g @ 4,42 + 1 × CAIXA 35cm
+FILE COM BACON            R$ 13,18   1 × porcao coxao 80g @ 8,50 + 1 × porcao bacon 80g @ 4,68
+CALABRESA                 R$  2,12   1 × porcao de calabresa 100g @ 2,12
+⛔ Σ NA MÃO R$ 26,88 × o montador R$ 26,88 → ⭐ BATE
+```
+⛔⛔ **E O CONTRAFACTUAL DO FATOR QUE MORREU:** dividir por nº de fatias daria **R$ 16,49** — **R$ 7,65 a menos numa pizza só**. A regra de 02/09 vale aqui tanto quanto na baixa, porque **o relatório de complementos, que é quem desconta o sabor de verdade, conta OCORRÊNCIA, nunca fração**. O guard tem o caso e a REGRA 11 mediu **7 vermelhos** com o fator reposto.
+
+**⛔⛔ SÓ SIMULAÇÃO, e a garantia é de FORMA:** `montarPizza` é lib pura que não conhece `prisma`; o **único POST da seção é o da CONFIG**, e o guard conta as ocorrências de `method: 'POST'` exigindo exatamente uma. ⚠️ O catálogo carrega **sob demanda** (abrir a seção), pra não pesar o 1º paint.
+
+**⭐ O SABOR SEM FICHA ENTRA COM SELO ÂMBAR e leva pra criar a ficha** — 11 deles em prod. Esconder faria a bancada mentir sobre o cardápio e **tirar da frente do dono justamente a fila que sobe a cobertura**.
+
+### ⭐ OS CANAIS — a taxa incide no PREÇO, e "a declarar" nunca é 0%
+
+`balcão 0% · tele-entrega própria 0% · iFood 20%`, editáveis, com rastro. ⚠️ **Tele própria é 0% como DECLARAÇÃO, não ausência**: o entregador é custo à parte (sai no custo fixo), e descontá-lo aqui contaria o mesmo custo duas vezes. ⛔ A taxa é **FRAÇÃO** (0,2), a mesma convenção da `margem.pct` — e o CHECK recusa ≥ 1, porque `20` no lugar de `0,2` faria o canal levar 20× o preço.
+
+**⛔ Taxa `null` é "a declarar", NUNCA 0%:** 0% afirma que o canal é de graça e a sobra sairia maior que a real **justamente no canal em que ela é menor**. Medido em prod: a mesma grande de R$ 89,90 sobra **R$ 63,02 (70,1%)** no balcão e **R$ 45,04 (50,1%)** no iFood — o app leva **R$ 17,98**.
+
+### ⭐⭐ OS TAMANHOS — "PRECINHO SEGUE O TAMANHO" É REGRA QUE DERIVA, NÃO CÓPIA
+
+`pequena=1 · grande=2 · família=3`, e **`GRANDE PRECINHO` não ganha linha repetindo o 2** — ele **deriva**, e a linha própria só existe se o dono quiser outro número (aí ela ganha). ⛔ Duplicar os cinco no seed faria o dono mudar o `GRANDE` e o precinho **ficar atrás, calado, com a pizza desenhada errada**. Provado em prod: *"GRANDE PRECINHO: 2 sabores (DERIVADO de GRANDE)"*.
+
+⚠️ **A lista de variações é FECHADA** (`PRECINHO`, `PROMO`): inferir "variação" de qualquer palavra a mais faria `GRANDE CALABRESA` herdar o 2 e virar um tamanho — a mesma trava dos qualificadores de bebida (14/09). ⛔ E tamanho desconhecido devolve `null`: o montador **não desenha fatia nenhuma** e pede a declaração, porque chutar 1 faria uma família de 3 entrar no sistema como 1.
+
+### ⛔⛔ A BASE DO TAMANHO É ESCOLHA DO DONO — e o dado é que decide isso
+
+Migration **CREATE-only** `stock_base_do_tamanho` (ALTER é proibido pelo isolamento, e a tabela de sabores de ontem está certa no que ela faz). ⚠️ **Tabela separada porque são duas declarações com donos diferentes:** nº de sabores é regra de **CARDÁPIO** (e deriva pro precinho); a base é **RECEITA**, e muda quando a ficha muda.
+
+**⭐⭐ E A ESCOLHA NÃO PODE SER DEDUZIDA — medido em prod, o GRANDE tem SEIS candidatos, com custos de R$ 8,84 a R$ 23,16:**
+```
+GRANDE PRECINHO        R$ 11,58   CAIXA 35cm + 2 × queijo
+PIZZA GRANDE 35CM      R$ 11,58   2 × queijo + CAIXA 35cm      ← a apontada (é o nome que o PDV vende)
+PROMO 2 PIZZAS GRANDES R$ 23,16   4 × queijo + 2 × CAIXA
+Pizza Grande (35cm)    R$  8,84   2 × queijo
+PIZZA GRANDE PROMO     R$  8,84   2 × queijo
+PIZZA GRANDE PRECINHO  R$  9,92   2 × queijo + 2 × metade de massa
+```
+⛔⛔ **NENHUMA DAS SEIS TEM MASSA + QUEIJO + CAIXA JUNTOS** — é o CASO A de 02/10 (*"10 das 12 fichas de pizza não pedem a metade de massa, 1.329 pizzas vendidas"*) medido de novo, agora com o custo de cada opção. **Eleger uma por heurística somaria a base errada em silêncio**, e a diferença entre elas é justamente a massa.
+
+### ⚠️ TRÊS ERROS MEUS, OS TRÊS PEGOS PELA REGRA 11 OU PELA PROVA
+
+1. **⚠️⚠️ UM FURO DO MEU PRÓPRIO GUARD.** Repus o defeito *"o sabor sem ficha não entra na lista"* **na LEITURA** e a suíte ficou **VERDE** — porque os guards olhavam a **TELA**, e a tela continuava com o ramo âmbar pronto pra desenhar uma lista que nunca chegaria. ***Guard que testa a vitrine aprova a prateleira vazia.*** Nasceu o bloco que cobre `lib/margem/leitura-montador.ts`, e ali o defeito dá vermelho.
+2. **A reposição do FATOR não mordeu na 1ª tentativa** — eu dividi o campo `custo` da FATIA, e a soma usa `f.sabor.custo`. **Reposição que não reproduz o defeito é um verde de graça** (a 6ª vez nesta casa); no lugar certo, 7 vermelhos.
+3. **Três erros de SONDA, todos da mesma família (ler em vez de supor):** `tamanho` do `LogoDaReceita` é união fechada `32|38|48` e eu chutei 26/22; `alerta` é `{titulo}`, não boolean; `sanitizarQtd` tem 2 argumentos. E na prova em prod, a peça *"1 ocorrência cada"* apareceu como ausente porque **o minificador escapa `ê` como `\xea`** (`ocorr\xeancia`) — a cicatriz do `Sa\xeddas:` de 15/09.
+
+⚠️ **E a prova do CHECK saiu 5 de 6 na 1ª rodada por asserção minha sobre uma mensagem que não existe:** pra violação de UNIQUE em raw query o Prisma devolve **`23505` com a CHAVE**, não o nome do índice. A chave identifica qual régua mordeu tão bem quanto o nome.
+
+### PROVADO EM PROD, NAVEGANDO, NOS DOIS VIEWPORTS (REGRA 12)
+
+```
+CELULAR 200 em 90ms · DESKTOP 200 em 39ms · chunk desta tela
+  ✓ 12/12 peças nos dois · ⛔ hex no chunk DESTA tela: 0
+  ✓ os tokens novos nos DOIS mapas do CSS · ⛔ os tijolos SVG: MORRERAM
+
+O PLACAR (outubro, 7 dias)
+  o que as vendas deixaram  R$ 57.231,78  "sobra medida em 55% das vendas ·
+                                           já descontados R$ 9.255,55 de complementos"
+  a casa custou             R$ 43.599,36  "casa + banco + compromissos · 7 dias"
+  resultado                +R$ 13.632,42  "✓ casa paga — daqui pra frente é lucro"
+                                          + a ressalva da cobertura
+  ⛔ a conta dos 3 cartões FECHA ✓     BARRA 76,2% + 23,8% = 100,0% · +31% · 🏁
+
+QUEM CARREGOU (6 visíveis · 43 atrás do "+N")
+  👑 Combo Caçula          44,5% da casa · R$ 19.408,50 · barra 100%
+     PIZZA FAMILIA 45CM    25,4% · R$ 11.074,32 · barra 57%
+     PIZZA GRANDE PRECINHO 18,0% · R$  7.839,26 · barra 40%
+  ⛔ Σ(carregadores) R$ 66.487,33 == sobra bruta R$ 66.487,33 → ⭐ FECHA
+
+A BANCADA
+  canais: balcão 0% · tele-entrega própria 0% · iFood 20%
+  GRANDE(2✓) · GRANDE PRECINHO(2←GRANDE✓) · PEQUENA(1 SEM BASE) · FAMILIA(3 SEM BASE)
+  61 sabores (50 com ficha · 11 com selo âmbar)
+  ⭐ GRANDE de FILE COM BACON + CALABRESA = R$ 26,88 · a R$ 89,90:
+       balcão R$ 63,02 (70,1%) · iFood R$ 45,04 (50,1%)
+  ⭐ FAMILIA sem base: custoTotal "a apurar" (parcial R$ 17,42 como PISO) e
+       a sobra por canal "a apurar" nos três — nunca otimista
+
+REGRA 13 — os CHECKs contra Postgres: ⭐ 6 de 6 · ZERO ESCRITA
+  tamanho minúsculo → chk_base_tamanho_forma · vazio → idem · ficha vazia →
+  chk_base_ficha · tamanho repetido → 23505 na chave ("companyId", tamanho)
+  CONTRAFACTUAL: o CHECK ingênuo (só length) ACEITA 'grande' → e aí 'grande'
+  e 'GRANDE' seriam duas bases. O nosso (com upper) RECUSA.
+```
+
+**925 arquivos · 12.149 verdes · TS 0 · migration CREATE-only (1 CREATE TABLE, 2 CHECKs, 1 unique) · `pg_dump pre-margem-v2-20261007-223402.dump` (8.569.850 bytes, tamanho conferido) · deploy 4/4 (`SwOg54Cu-581jXq1Da-uP`) · Δ bundle +124 KB.**
+
+**REGRA 11 — 9 defeitos repostos:** a casa de tijolos ressuscitando (**4**) · o fator de volta na soma (**7**) · o rodapé perdendo o caminho pra fila (**1**) · o sabor sem ficha escondido na LEITURA (**1**) · a config aceitando `transaction.view` (**1**) · a barra com clamp próprio na tela (**1**) · o seed sobrescrevendo a edição do dono (**1**) · a config resolvendo canal sem `companyId` (**1**).
+
+⚠️ **4 GUARDS DE v1 REAPONTADOS, com o motivo escrito, nenhum afrouxado:** o SVG (era a casa, agora é a pizza) · a pilha de tijolos (virou *"a BARRA vem da lib, a tela não clampa"*) · o rótulo do tijolo (virou *"o custo só entra na fatia quando cabe"*) · e a ressalva do veredito (mudou de casa, mas a régua é a mesma). *Grep não distingue "refatorei" de "quebrei"* — é a razão de existir da REGRA 3.
+
+⚠️⚠️ **ESCRITA EM PROD DECLARADA (autorizada pelo item 4 do pedido):** foram semeados **3 canais** e **3 tamanhos**, e **eu apontei 2 bases** (`GRANDE → PIZZA GRANDE 35CM` e `GRANDE PRECINHO → PIZZA GRANDE PRECINHO`) pela rota real, **com rastro**, pra provar o montador ponta a ponta. ⛔ **As duas são palpite MEU e o dono troca em 1 clique** — a tabela dos 6 candidatos está acima, e **nenhum deles tem massa + queijo + caixa juntos**.
+
+📋 **FICA PRO DONO:**
+1. **Conferir as 2 bases que eu apontei** e apontar as de **PEQUENA** e **FAMILIA** (hoje a bancada diz *"a apurar"* nelas, de propósito).
+2. ⛔⛔ **A MASSA FALTA EM TODAS AS FICHAS DE PIZZA GRANDE** — o CASO A de 02/10, agora com o custo medido de cada candidata. Enquanto estiver assim, **o custo da base sai subestimado em qualquer escolha**. Receita é decisão dele desde 17/08; eu não toco.
+3. **A % do iFood está em 20%** (o número que ele deu) — editável na bancada.
+4. **O que destrava o placar do dia D continua sendo ficha:** 95 sabores sem ficha e 114 produtos fora da obra, com a cobertura em 55% contra a meta de 80%. O montador agora é um caminho pra isso: tocar num sabor âmbar leva direto à criação.
+5. **Carregadas de v1:** a ficha de margem por produto (item 4 do v1 — lib pronta, tela não) · o editor de dose ao vivo · o clique no sabor em qualquer lugar.
+
 ## ⭐⭐⭐ QUEM PAGA A CASA — A TELA DE MARGEM EM PROD (07/10/2026)
 
 **Ordem do dono:** *"linha de chegada + casa de tijolos + liga + ficha de margem. Visual v4, tokens, 2 temas, 2 viewports. **ZERO conta nova:** custo = `explodirReceita`/ledger, vendas/preços = PDV, custo fixo = Custos Fixos RESPEITANDO os chips ligados (dizendo a composição na tela); cascata «a apurar» honesta — **nenhum número inventado, NUNCA**."*
