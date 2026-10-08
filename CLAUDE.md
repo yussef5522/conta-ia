@@ -2270,6 +2270,85 @@ A **página do empréstimo fica como está** (pergunta do CONTRATO: a #2 tem ví
 ```
 Varredura das 353 parcelas: **5 com pagamento de mês diferente do vencimento** — 3 do FLEXIBLE (o caso) e 2 atrasos legítimos da Caixa.
 
+## ⭐⭐ QUEM PAGA A CASA v3.1 — A LEI DE LAYOUT: LARGURA CHEIA + DUPLAS (08/10/2026)
+
+**O dono substituiu `docs/margem-referencia.html` pela v3.1** (o rodapé do arquivo diz a versão). A mudança é **SÓ DE LAYOUT**, e nasceu comentada no CSS dele como **"LEI DE LAYOUT"**:
+
+> *"a tela ocupa a largura útil do conteúdo do dashboard (ao lado da sidebar), como as telas profissionais — **NUNCA uma coluna estreita centralizada com vazio dos dois lados**. Teto 1440px só pra monitores gigantes."*
+
+**⚠️⚠️ E O ARQUIVO NOVO TAMBÉM NÃO ESTAVA EM `docs/` — estava em `~/Downloads`. TERCEIRA VEZ a mesma cicatriz** (o mock da Conciliação em 10/09, a referência v3 em 07/10, esta agora). Copiado e versionado. ⭐ *O protocolo que sobrevive a isso é o guard LER o arquivo versionado: o diff conta a história sozinho.*
+
+**⭐⭐⭐ E O RED-THEN-GREEN VEIO DE GRAÇA, COMO O DONO PREVIU.** Porque o guard **abre o arquivo** em vez de descrever o visual em palavras, bastou a referência nova entrar no repo pra ele acusar **2 vermelhos contra a tela velha**, sem eu escrever uma linha: *"`max-width:860px` não está no CSS"* e *"medidas da referência ausentes da tela: 1024"*. ***É o pagamento do protocolo de 10/09:*** com o mock versionado, *"igual à referência"* deixou de ser memória minha e virou **dado que diverge e grita**.
+
+### O QUE MUDOU — e nada além disso
+
+| # | a lei | como ficou |
+|---|---|---|
+| **1 CONTAINER** | largura útil do conteúdo, teto **1440px**, padding **22/28px** (16/14 no celular) | `max-w-[860px]` **morreu** → `max-w-[1440px] px-[28px] pt-[22px] pb-[64px]` + `max-[700px]:` com 14/16/56 |
+| **2 DUPLAS ≥1024px** | (Quem carregou \| A liga) e (Montador \| Fila) lado a lado · grid `1fr 1fr` · gap 14 · `align-items:start` | componente `<Duo>` com `lg:grid lg:grid-cols-2 lg:items-start lg:gap-[14px]`; abaixo de 1024 **empilha igual antes** |
+| **3 nada mais** | tokens, frases, medidas de letra, conta e comportamento **idênticos à v3** | nenhuma lib tocada, nenhuma frase mudada, Δ bundle **+0 KB** |
+
+**⛔ `.duo .card{margin-bottom:0}` MORA NO SELETOR DE FILHO DA PRÓPRIA DUPLA** (`lg:[&>section]:mb-0`), não numa prop que cada chamador tem que lembrar de passar — **REGRA 5: disciplina virada impossibilidade**. Sem zerar a margem, a coluna mais curta empurraria a linha seguinte. ⚠️ E o `items-start` é o que mantém os dois cartões no topo: sem ele o mais curto esticaria até a altura do vizinho e a **borda de baixo dele mentiria sobre onde o conteúdo acaba**.
+
+⚠️ **O montador na meia-largura cabe sem composição nova:** o `.mont-wrap` da referência já tem `flex-wrap`, e `170 (svg) + 20 (gap) + 250 (conta mínima) = 440px` entra na metade de 1024 em diante. **Uma composição, três tamanhos** (REGRA 12) — o que muda é a LARGURA dos elementos, nunca um bloco só-celular.
+
+⚠️ **E o shell do dashboard já põe `px-4 lg:px-6` por fora** (o molde de 23/08), então o respiro lateral real soma o dele aos nossos 28px. Os 4 números do padding são os do ARQUIVO, escritos literais; se o dono quiser exatamente 28, a saída é deixar o molde do shell mandar (é o que todas as outras telas fazem) — **é decisão dele, e está registrada em vez de resolvida por conta própria**.
+
+### ⛔⛔ O GUARD APRENDEU A DIFERENÇA ENTRE BREAKPOINT E MEDIDA DE ELEMENTO
+
+A extração de medidas pegava `(?:^|[^-a-z])…width:Npx`, e com a v3.1 o **`min-width:1024px` do `@media`** passou a entrar **como se fosse largura de elemento** — cobrando um `[1024px]` literal numa tela que expressa aquele corte como `lg:`, o alias do Tailwind. ⭐ **Breakpoint e medida de elemento são duas coisas**, e cada uma ganhou leitor próprio: as medidas excluem o que vem depois de `(`, e os cortes têm teste próprio (alias pros padrão `sm:`/`lg:`, **literal** pros que o dono escolheu fora da escala — 700 e 560).
+
+**⚠️⚠️ E A LISTA DE RENDER DO GUARD PASSOU A TERMINAR NO `</>` DO FRAGMENTO, nunca no primeiro `</div>`:** com as duplas, aquele `</div>` é o fechamento de uma `<Duo>` — cortar ali faria o guard **aprovar uma tela com 4 dos 6 cartões**. Achado antes de morder, mas é a mesma família do teto de leitura que esconde o item (o `take: 50` do fermento, o `take: 200` da ordem do ano 202).
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU DUAS CÓPIAS DA MESMA RÉGUA — ENTRE O TESTE E A PROVA
+
+A 1ª rodada acusou **"as 13 medidas da referência no bundle — FALTAM 1024"** sobre uma tela **CORRETA**. A causa: o guard e a sonda extraíam as medidas com **duas cópias do mesmo regex**, eu consertei a do guard e **deixei a da sonda atrás**.
+
+***É a doença que esta casa mais paga, agora num par novo: o TESTE e a PROVA.*** Duas réguas pro mesmo arquivo e uma delas mente — **e é sempre a que ninguém reconsertou**. ⚠️ Pior: a mentira aqui é do tipo que **desacredita a tela certa**, que é como se aprende a ignorar a prova.
+
+**⭐ `lib/margem/referencia.ts` é a PORTA ÚNICA de leitura** — devolve `html`, `css`, `script`, `tokens`, `letras`, `medidas` (de ELEMENTO) e `cortes` (os `@media`); o guard e a sonda importam ELE. O `[^-a-z(]` tem o motivo escrito no arquivo: sem o `-`, o `max-width:1440px` do container entra como largura de elemento; sem o `(`, o corte do `@media` entra também.
+
+**⭐ E O LEITOR GANHOU AUTO-TESTE, nascido do próprio vermelho:** 1024 e 700 são **cortes** e não medidas · 170 e 132 são **medidas** e não cortes · o **1440** do container fica fora das medidas · e as 4 listas vêm cheias (arquivo mudo seria **falso verde pra tudo**).
+
+### ⚠️ REGRA 11 — 7 DEFEITOS REPOSTOS, 7 VERMELHOS
+
+| defeito reposto | vermelhos |
+|---|---|
+| **a coluna de 860px centralizada VOLTA** (o defeito que a v3.1 mata) | **2** |
+| as DUPLAS somem (os 4 cartões voltam empilhados) | 1 |
+| a dupla deixa de ser grid de 2 colunas em ≥1024 | 1 |
+| o `margin-bottom:0` do cartão dentro da dupla cai | 1 |
+| o `align-items:start` cai (o cartão curto estica) | 1 |
+| o padding do CELULAR (o corte de 700px) é removido | 2 |
+| a ORDEM dentro da dupla trocada (a liga antes de quem carregou) | 2 |
+
+### PROVADO EM PROD, NOS 3 TAMANHOS
+
+```
+CELULAR 390 200/286ms · NOTEBOOK 1280 200/167ms · MONITOR 1600+ 200/159ms
+✓ 1 LINHA 12/12 · ✓ 2 PLACAR 27/27 · ✓ 3 QUEM CARREGOU 18/18
+✓ 4 LIGA 18/18 · ✓ 5 MONTADOR 27/27 · ✓ 6 FILA 9/9  ⭐ as 6 COMPLETAS nos 3
+
+A LEI DE LAYOUT
+  ⛔ a coluna de 860px centralizada: MORREU ✓
+  ✓ teto 1440px no bundle · ✓ compilado no CSS que prod serve
+  ✓ ≥1024px (duplas montadas): @media ok · a regra ok
+  ✓ ≤700px (padding do celular): @media ok · a regra ok
+  ✓ lg:grid-cols-2 · ✓ lg:items-start · ✓ lg:gap-[14px] · ✓ max-[700px]:px-[14px]
+  ✓ a margem do cartão DENTRO da dupla é zerada em ≥1024
+  ⛔ hex no chunk DESTA tela: 0 · ✓ 24 tokens nos DOIS mapas · ✓ 15 letras · ✓ 12 medidas
+
+A CONTA, intacta: cartão1 − cartão2 = cartão3 ⭐ FECHA · BARRA 87,1% + 12,9% = 100,0% ⭐
+  Σ(carregadores) R$ 66.487,33 == sobra bruta ⭐ FECHA
+canais 3→3 · regras 3→3 · bases 2→2 · avisos 27→27  ⭐ ZERO ESCRITA
+```
+
+⚠️ **O dono mexeu no plano de custo fixo no meio da prova** — a casa foi de R$ 43.599,36 pra **R$ 49.827,84** entre duas rodadas, e o placar **continuou fechando** com a barra somando 100 (transbordo 31% → 15%). É o motor vivo, não ruído.
+
+**926 arquivos · 12.205 verdes · TS 0 · migration NENHUMA · deploys 4/4 (`OEjJ-FduXoZtuGupn2H8_`, `ZP30eqXhQ_MDGef75FR_E`) · Δ bundle +0 KB.** ⛔ **Zero escrita em dado de prod.**
+
+📋 **FICA PRO DONO:** **abrir nos 3 tamanhos e nos 2 temas, com a referência ao lado.** ⚠️ A prova afirma que as REGRAS de cada corte estão no CSS que prod serve (`@media` + a regra compilada) e que as classes estão no bundle — **o servidor não tem navegador, então quem vê as duplas montadas é ele**. Screenshot indisponível (extensão do Chrome desligada). As pendências de v3/v2 seguem as mesmas: as bolinhas todas azuis (é o mapa do `caraDaReceita`, não a tela) · a busca de sabores que a referência não tem · as bases de PEQUENA e FAMILIA · ⛔⛔ a massa faltando nas fichas de pizza grande.
+
 ## ⭐⭐⭐ QUEM PAGA A CASA v3 — A REFERÊNCIA VISUAL VIROU LEI, E O GUARD LÊ O ARQUIVO (07/10/2026)
 
 **A ordem do dono:** *"o arquivo `docs/margem-referencia.html` é a LEI VISUAL desta tela, construído e aprovado por mim. A tela em prod deve ficar IGUAL a ele — layout, hierarquia, tamanhos de letra, cores, espaçamentos, textos e comportamento. **Divergência visual da referência = defeito.**"*
