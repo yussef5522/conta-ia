@@ -19,17 +19,32 @@ import { fmtPedido, pilulaDoPedido } from '@/lib/stock/producao/pedido-na-tela'
 import { trilhoDaOrdem } from '@/lib/stock/producao/trilho-da-ordem'
 import { fraseDeQuemProduziu } from '@/lib/stock/producao/quem-produziu'
 import { LogoDaReceita } from '@/components/estoque/logo-da-receita'
+import { PainelDeConferencia } from '@/components/estoque/painel-de-conferencia'
+import { SeloDaConferencia } from '@/components/estoque/selo-da-conferencia'
+import { usePermissoes } from '@/lib/hooks/use-permissoes'
 import { formatarQtd } from '@/lib/stock/quantidade'
 import { formatBRL } from '@/lib/format/money'
 import { Card, CardContent } from '@/components/ui/card'
 import { EtapasDaOrdem } from '@/components/estoque/etapas-da-ordem'
-import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, X, Tag } from 'lucide-react'
+import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, X, Tag, Pencil } from 'lucide-react'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 import { avisoDeEtapasAbertas } from '@/lib/stock/producao/aviso-etapas-abertas'
 
 interface Linha { itemId: string; nome: string; unidade: string; unidadeControle: string; porLote: number; qtdPlanejada: number; qtdSeparada: number; qtdConsumida: number; saldoDisponivel: number; custoMedio: number | null; fichaIdComponente: string | null }
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null; versaoFicha: number; fichaId: string }
-interface Conclusao { id: string; qtdGerada: number; colaboradorNome: string | null; rendimento: number; custoLoteReal: number; custoUnitarioReal: number | null; validadeAte: string | null; parcial: boolean; criadoEm: string }
+/**
+ * ⭐ O CARIMBO vem do SERVIDOR, derivado da tabela de conferência — a tela nunca o deduz.
+ * ⚠️ `null` só acontece se a rota ficar atrás num deploy; o leitor devolve AGUARDANDO pra
+ * quem não tem linha.
+ */
+interface CarimboDaConclusao {
+  estado: 'AGUARDANDO_CONFERENCIA' | 'CONFERIDA' | 'CORRIGIDA_E_CONFERIDA'
+  conferidoPorNome: string | null
+  corrigiuDe: number | null
+  motivoDaCorrecao: string | null
+}
+
+interface Conclusao { id: string; qtdGerada: number; colaboradorNome: string | null; rendimento: number; custoLoteReal: number; custoUnitarioReal: number | null; validadeAte: string | null; parcial: boolean; criadoEm: string; conferencia: CarimboDaConclusao | null }
 interface Colaborador { id: string; nome: string }
 interface EtapaAbertaNaTela { nome: string; executorNome: string | null }
 
@@ -51,6 +66,13 @@ const fam = (f: string) => ({ bg: `var(--fam-${f}-bg)`, mid: `var(--fam-${f}-mid
 
 export default function OrdemDetalhePage({ params }: { params: Promise<{ id: string; ordemId: string }> }) {
   const { id, ordemId } = use(params)
+  /** ⚠️ REGRA 9 — hooks NO TOPO: esta tela tem early-returns (`ordem === undefined`/`null`),
+   *  e hook depois deles muda a contagem entre renders e derruba o cliente (mordeu 21/08 nesta
+   *  MESMA página, com o `useMemo` do escalaAviso). */
+  const { pode: podePerm, carregando: carregandoPerm } = usePermissoes(id)
+  /** ⭐ qual conclusão PASSADA está com o painel de correção aberto (item 3) */
+  const [corrigindo, setCorrigindo] = useState<string | null>(null)
+  const [feitoConf, setFeitoConf] = useState<string | null>(null)
   const [ordem, setOrdem] = useState<Ordem | null | undefined>(undefined)
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [sep, setSep] = useState<Record<string, string>>({}) // qtd separada editável (PLANEJADA)
@@ -709,15 +731,66 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
         <div>
           <h2 className="mb-2 text-sm font-semibold text-[var(--prod-primary)]">Conclusões ({conclusoes.length})</h2>
           <div className="space-y-2">
-            {conclusoes.map((c) => (
-              <Card key={c.id}><CardContent className="flex items-center justify-between gap-3 p-4">
+            {conclusoes.map((c) => {
+              const conf = c.conferencia
+              /**
+               * ⭐⭐⭐ A PORTA GERAL DA CORREÇÃO (item 3, 09/10) — **caso a caso, nunca em lote.**
+               *
+               * **Ordem do dono:** *"é o caminho pra eu finalmente corrigir as 2 ordens de
+               * 22.864 e o 320% da NATHALIA — eu decidindo na tela, com preview e rastro."*
+               *
+               * ⛔ Só aparece pra quem GERENCIA (a trava de verdade é o servidor: `stock.manage`
+               * + PIN + a regra dos quatro olhos; isto aqui é só não oferecer o que levaria 403).
+               * ⚠️ E só na conclusão que **ainda não tem carimbo**: a já conferida é recusada
+               * pelo motor (`JA_CONFERIDA`) porque o carimbo é único por conclusão — oferecer o
+               * botão ali seria mandar o dono clicar pra levar um "não".
+               */
+              const podeCorrigir =
+                !carregandoPerm && podePerm('stock.manage') &&
+                (conf == null || conf.estado === 'AGUARDANDO_CONFERENCIA')
+              const abertoAqui = corrigindo === c.id
+              return (
+              <Card key={c.id}><CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-[var(--prod-primary)]">{num(c.qtdGerada)} {ordem.unidadeProduzido} {c.parcial && <span className="text-[11px] font-normal text-[var(--fam-ambar-ink)]">(parcial)</span>}</p>
                   <p className="text-xs text-[var(--prod-muted)]">rendimento {num(c.rendimento)}/receita · custo {c.custoUnitarioReal == null ? '—' : formatBRL(c.custoUnitarioReal)}/un{c.colaboradorNome ? ` · ${c.colaboradorNome}` : ''}{c.validadeAte ? ` · val ${fmtDia(c.validadeAte)}` : ''}</p>
+                  {/* ⭐ O SELO (item 2c) na página da ordem — a MESMA leitura da lista de concluídas */}
+                  {conf && <SeloDaConferencia c={conf} unidade={ordem.unidadeProduzido} />}
                 </div>
-                <a href={`/empresas/${id}/estoque/producao/conclusoes/${c.id}/etiqueta`} className="inline-flex items-center gap-1 rounded-lg border border-[var(--prod-line-strong)] px-3 py-1.5 text-xs text-[var(--prod-secondary)] hover:bg-[var(--prod-surface-1)]"><Tag className="h-3.5 w-3.5" /> etiqueta</a>
+                <div className="flex shrink-0 items-center gap-2">
+                  {podeCorrigir && !abertoAqui && (
+                    <button type="button" onClick={() => { setCorrigindo(c.id); setFeitoConf(null) }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--prod-line-strong)] px-3 py-1.5 text-xs text-[var(--prod-primary)] hover:bg-[var(--prod-surface-1)]">
+                      <Pencil className="h-3.5 w-3.5" /> corrigir
+                    </button>
+                  )}
+                  <a href={`/empresas/${id}/estoque/producao/conclusoes/${c.id}/etiqueta`} className="inline-flex items-center gap-1 rounded-lg border border-[var(--prod-line-strong)] px-3 py-1.5 text-xs text-[var(--prod-secondary)] hover:bg-[var(--prod-surface-1)]"><Tag className="h-3.5 w-3.5" /> etiqueta</a>
+                </div>
+                </div>
+
+                {abertoAqui && (
+                  /** ⛔ O MESMO painel da «Conferência do dia» — extraído, nunca copiado */
+                  <PainelDeConferencia
+                    id={id}
+                    alvo={{
+                      conclusaoId: c.id,
+                      produto: ordem.nomeProduzido,
+                      unidade: ordem.unidadeProduzido,
+                      declarado: c.qtdGerada,
+                      declaradoTxt: num(c.qtdGerada),
+                    }}
+                    somenteCorrigir
+                    onFeito={(frase) => { setFeitoConf(frase); setCorrigindo(null); void carregar() }}
+                    onFechar={() => setCorrigindo(null)}
+                  />
+                )}
               </CardContent></Card>
-            ))}
+              )
+            })}
+            {feitoConf && (
+              <p className="rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--fam-verde-bg)', color: 'var(--fam-verde-ink)' }}>{feitoConf}</p>
+            )}
           </div>
         </div>
       )}

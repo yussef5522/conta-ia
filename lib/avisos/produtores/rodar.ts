@@ -16,6 +16,7 @@ import { produzirAvisosDeEstoque } from './estoque'
 import { produzirAvisosDeFinanceiro } from './financeiro'
 import { produzirAvisosDeMargem } from './margem'
 import { produzirAvisosDeImportDeVenda } from './import-de-venda'
+import { produzirAvisosDeConferencia } from './conferencia'
 import { montarSemanaVerde } from '../semana-verde'
 import { registrarAviso, avisosAbertos } from '../central'
 
@@ -133,6 +134,22 @@ export async function rodarProdutoresDeAviso(agora: Date = new Date()): Promise<
       r.reabertos += iv.reabertos
       r.resolvidos += iv.resolvidos
       for (const x of iv.recusados) r.recusados.push({ empresa: e.name, ...x })
+      /**
+       * ⭐⭐ A CONFERÊNCIA PARADA (09/10, item 2d) — setor `gerencia`, invisível pro tablet.
+       *
+       * ⛔ Entra DEPOIS da produção de propósito, e o motivo é o inverso do de cima: o aviso do
+       * FISCAL (*"declarou mais do que o material dava"*) nasce lá e fala da RECEITA; este fala
+       * do GESTO QUE FALTA. Eles **não se suprimem** — suprimir deixaria um lote impossível sem
+       * ninguém sendo cobrado de olhar —, mas a ordem mantém o fiscal falando primeiro, que é
+       * quem o gerente vai ler antes de carimbar.
+       *
+       * ⚠️ Empresa sem conclusão parada devolve zero e não grava nada.
+       */
+      const cf = await produzirAvisosDeConferencia(e.id, agora)
+      r.gravados += cf.gravados
+      r.reabertos += cf.reabertos
+      r.resolvidos += cf.resolvidos
+      for (const x of cf.recusados) r.recusados.push({ empresa: e.name, ...x })
       if (await verdeDaSemana(e.id, agora)) r.verdesSemanais++
     } catch (err) {
       // ⛔ uma empresa com problema não derruba a rodada das outras nem o juiz

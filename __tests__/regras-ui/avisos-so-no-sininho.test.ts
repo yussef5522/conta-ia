@@ -238,7 +238,18 @@ describe('⛔⛔ 3. o fiscal no lugar certo — ordem · sininho · pontinho', (
     expect(h, 'nenhuma divisão de fiscal na tela').not.toMatch(/permitido|pctFisico|TETO_FISICO/)
     const rota = semComentario(ler('app/api/empresas/[id]/estoque/producao/ordens/route.ts'))
     expect(rota).toMatch(/fiscalDeOrdens\(/)
-    expect(rota, 'só o booleano viaja').toMatch(/fiscalImpossivel: fiscal\.get\(c\.ordemId\)\?\.impossivel \?\? false/)
+    /**
+     * ⚠️⚠️ **ESTE GUARD QUEBROU COM A TELA CERTA em 09/10, e foi REAPONTADO, não afrouxado.**
+     * Ele ancorava no LITERAL `fiscal.get(c.ordemId)?.impossivel ?? false` — e o item 4a do dono
+     * (*"uma causa, um alarme no pontinho"*) trocou a leitura crua pela régua `pontinhoVale`,
+     * que SUPRIME o impossível cuja ficha já está na fila de conversão. *Grep não distingue
+     * "refatorei" de "quebrei"* — é a razão de existir da REGRA 3.
+     * ⭐ A pergunta não mudou (*só o booleano viaja*) e ficou MAIS FORTE: além de exigir que a
+     * rota passe pela régua, ela proíbe a leitura CRUA de volta — que é o que o guard irmão
+     * (`pontinho-uma-causa-um-alarme`) já cobra do outro lado.
+     */
+    expect(rota, 'o booleano sai da régua única da supressão').toMatch(/pontinhoVale\(/)
+    expect(rota, 'e não da leitura crua do impossível').not.toMatch(/fiscalImpossivel:\s*fiscal\.get\([^)]*\)\?\.impossivel/)
     expect(rota, 'e o número NÃO viaja (senão alguém o desenha e a pílula volta)').not.toMatch(/permitido:/)
   })
 

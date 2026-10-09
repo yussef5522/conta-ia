@@ -24,8 +24,41 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { consumidoPorOrdem } from './ordens'
 import { eficienciaDaOrdem, type FiscalDoDeclarado } from './eficiencia-da-ordem'
+import { fichasParaConverter } from './fichas-para-converter'
 
 type Db = PrismaClient | Prisma.TransactionClient
+
+/**
+ * ⭐⭐ "UMA CAUSA, UM ALARME" — AS FICHAS CUJO % MEDIDO NÃO É RENDIMENTO (09/10/2026).
+ *
+ * **Ordem do dono (item 4a):** *"aplicar a MESMA supressão «uma causa, um alarme» do sininho —
+ * 73 das 90 linhas com pontinho são ficha com lote na unidade errada, já avisadas na fila de
+ * conversão; o pontinho ali é ruído que ensina a ignorar o fiscal."*
+ *
+ * ⛔⛔ **ESTA FUNÇÃO SAIU DE DENTRO DO PRODUTOR DE AVISOS, não foi copiada.** Lá ela era um
+ * helper privado (`fichasComLoteTorto`) que o sininho usava desde 04/10. Copiar as 2 linhas
+ * daria **duas respostas pra «esta ficha mede rendimento?»** — e elas divergiriam no primeiro
+ * ajuste da régua do M5, com o sininho calado e o pontinho aceso (ou o contrário). É a lição
+ * do B1 aplicada a um `Set`.
+ *
+ * ⚠️ Ali o `permitido` não mede lançamento, **mede a ficha quebrada** (é o CHEDDAR que *"permite
+ * ~0,152 e declarou 2"*). A fila de conversão já diz o que fazer; o pontinho em cima mandaria o
+ * dono conferir a mão da cozinha por um defeito de cadastro.
+ */
+export async function fichasComLoteTorto(companyId: string, db: Db = defaultPrisma): Promise<Set<string>> {
+  const fila = await fichasParaConverter(companyId, db)
+  return new Set(fila.pendentes.map((f) => f.fichaId))
+}
+
+/**
+ * ⭐ O pontinho vale a pena? `true` só quando o impossível tem **causa própria**.
+ *
+ * ⚠️ PURA de propósito: a decisão dá pra provar sem banco, e o red-then-green da REGRA 11
+ * pega quem tirar a supressão.
+ */
+export function pontinhoVale(f: Pick<FiscalDoLote, 'impossivel' | 'fichaId'>, loteTorto: ReadonlySet<string>): boolean {
+  return f.impossivel && !loteTorto.has(f.fichaId)
+}
 
 export interface FiscalDoLote extends FiscalDoDeclarado {
   ordemId: string

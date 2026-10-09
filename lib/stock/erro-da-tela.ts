@@ -28,6 +28,8 @@ import { GrandezaImplausivelError } from './producao/conclusao'
 // ⭐ 04/10 — o assistente de conversão KG→UN: a recusa mais importante dele é a 2ª conversão
 // ("já foi convertida enquanto você decidia"), e ela PRECISA chegar ao dono com a frase inteira.
 import { ConversaoError } from './producao/aplicar-conversao'
+import { ConferenciaError } from './producao/conferencia'
+import { PinError } from './producao/pin'
 
 export interface RespostaDeErro {
   erro: string
@@ -55,6 +57,13 @@ const DE_DOMINIO = [
   ContagemError, MovementInvalidError, ItensManuaisError, EntradaManualError,
   PonteError, RecusaError, ReunitizarError, SaidaError, VendaMapError,
   GrandezaImplausivelError, ConversaoError,
+  /**
+   * ⭐ 09/10 — a conferência do gerente. ⛔ `ConferenciaError` e `PinError` TÊM mensagem pro
+   * dono (nomeiam a regra dos quatro olhos, dizem quem já conferiu, pedem o motivo); sem
+   * entrar aqui, elas escapariam como **500 sem corpo** e a tela diria "não consegui" sobre
+   * uma recusa que ela sabe explicar — o defeito de 16/09, que custou um dia de import parado.
+   */
+  ConferenciaError, PinError,
 ] as const
 
 export function ehErroDeDominio(e: unknown): e is Error {
@@ -159,6 +168,20 @@ export function respostaDeErroDoEstoque(e: unknown, ctx?: { empresaId?: string; 
       erro: e.message, code: 'RESIDUO_AO_CRUZAR_O_ZERO', status: 409,
       residuo: e.culpado.residuo, item: e.culpado.nome,
     }
+  }
+
+  /**
+   * ⛔⛔ A REGRA DOS QUATRO OLHOS É **422, NÃO 409** — e a diferença importa. 409 nesta casa
+   * significa *"é PERGUNTA, reenvie confirmando"* (o freio, a grandeza, o resíduo). Aqui NÃO
+   * existe confirmar: quem declarou **não confere**, ponto. Dar 409 faria a tela oferecer um
+   * "confirmar assim mesmo" que não existe — e um botão que não funciona é pior que nenhum.
+   */
+  if (e instanceof ConferenciaError && code === 'CONFERENTE_IGUAL_DECLARANTE') {
+    return { erro: e.message, code, status: 422 }
+  }
+  /** ⚠️ já conferida é 409: não é erro de quem tocou, é o mundo ter mudado embaixo dele */
+  if (e instanceof ConferenciaError && code === 'JA_CONFERIDA') {
+    return { erro: e.message, code, status: 409 }
   }
 
   if (e instanceof MovementInvalidError && ctx?.empresaId) {

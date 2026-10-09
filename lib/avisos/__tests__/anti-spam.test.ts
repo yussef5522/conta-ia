@@ -233,9 +233,16 @@ describe('⛔⛔ LEI: quem não pode ver financeiro não vê aviso de financeiro
     expect(setoresVisiveis(['transaction.view'])).toEqual(['financeiro', 'sistema'])
   })
 
+  /**
+   * ⚠️ **ESTA LISTA CRESCEU EM 09/10 e a asserção foi ATUALIZADA com o motivo escrito:** entrou
+   * o setor `gerencia` (o aviso da conferência parada, item 2d). Ele exige `stock.manage`, que
+   * o dono tem — e é exatamente isso que o teste passa a afirmar.
+   * ⭐ A metade que importa continua intacta logo acima: o **OPERADOR_ESTOQUE não vê `gerencia`**,
+   * porque foi ele quem declarou o lote.
+   */
   it('⭐ o dono (lista concreta de chaves, como no banco) vê tudo', () => {
     const dono = ['stock.view', 'stock.operate', 'stock.manage', 'transaction.view', 'transaction.update']
-    expect(setoresVisiveis(dono)).toEqual(['producao', 'estoque', 'financeiro', 'sistema'])
+    expect(setoresVisiveis(dono)).toEqual(['producao', 'estoque', 'gerencia', 'financeiro', 'sistema'])
   })
 
   /** ⚠️ wildcard do RBAC continua valendo (`stock.*` cobre `stock.view`) */

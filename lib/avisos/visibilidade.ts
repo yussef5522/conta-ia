@@ -23,6 +23,13 @@ import { SETORES, type Setor } from './tipos'
 const CHAVE_DO_SETOR: Record<Setor, string[]> = {
   producao: ['stock.view'],
   estoque: ['stock.view'],
+  /**
+   * ⛔⛔ **A FRONTEIRA DA CONFERÊNCIA DE QUATRO OLHOS (09/10): `stock.manage`, nunca `view`.**
+   * O aviso de conclusão parada mora aqui porque `producao` é visível pro tablet — e quem
+   * declarou o lote não pode ser cobrado de conferir o próprio número. É a MESMA fronteira do
+   * GET da fila (que entrou em `LEITURA_SENSIVEL` porque o veredito do fiscal é cola de prova).
+   */
+  gerencia: ['stock.manage'],
   financeiro: ['transaction.view'],
   /**
    * ⚠️ `sistema` (certificado vencendo, cron parado, o verde semanal) não é de módulo nenhum:

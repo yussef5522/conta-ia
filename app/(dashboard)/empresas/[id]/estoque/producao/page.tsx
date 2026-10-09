@@ -22,6 +22,9 @@ import { formatBRL } from '@/lib/format/money'
 import { formatarDuracao } from '@/lib/format/duracao'
 import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
 import { LogoDaReceita } from '@/components/estoque/logo-da-receita'
+import { SeloDaConferencia } from '@/components/estoque/selo-da-conferencia'
+import { ConferenciaDoDia } from '@/components/estoque/conferencia-do-dia'
+import { usePermissoes } from '@/lib/hooks/use-permissoes'
 /**
  * ⭐⭐ O PEDIDO NA TELA e a pílula "% do pedido" têm DONO ÚNICO (05/10) — a tela não arredonda
  * nem divide por conta própria. Quatro telas mostram pedido; quatro `Math.round` divergiriam.
@@ -45,7 +48,14 @@ interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnita
    * ⚠️ Vem do SERVIDOR calculado — a tela não divide nada. Se ela derivasse, seria a 2ª régua
    * do fiscal, e ela discordaria do sininho e da página da ordem no 1º ajuste de teto.
    */
-  fiscalImpossivel: boolean }
+  fiscalImpossivel: boolean
+  /**
+   * ⭐ O SELO DA CONFERÊNCIA (item 2c) — vem do SERVIDOR, derivado da tabela de carimbo.
+   * ⚠️ `null` nunca acontece na prática (o leitor devolve AGUARDANDO pra quem não tem linha),
+   * mas o tipo o admite pra a tela não quebrar se a rota ficar atrás num deploy.
+   */
+  conferencia: { estado: 'AGUARDANDO_CONFERENCIA' | 'CONFERIDA' | 'CORRIGIDA_E_CONFERIDA'
+    conferidoPorNome: string | null; corrigiuDe: number | null; motivoDaCorrecao: string | null } | null }
 
 // ⭐ PALETA APROVADA NO MOCKUP (01/09/2026). Cor SÓ com significado — status, desvio,
 // dinheiro parado. Texto sobre fundo colorido usa o tom escuro da MESMA família, nunca
@@ -78,7 +88,13 @@ const PILL: Record<string, { bg: string; tx: string }> = {
   CONCLUIDA: { bg: C.verdeBg, tx: C.verdeTx },
   CANCELADA: { bg: C.vermelhoBg, tx: C.vermelhoTx },
 }
-const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
+/**
+ * ⚠️ **O `brl` LOCAL MORREU (09/10, item 4b).** Ele era uma SEGUNDA formatação de dinheiro na
+ * MESMA tela que já usava `formatBRL` — a saída era idêntica (mesma config do `Intl`), e é
+ * justamente isso que torna duas implementações perigosas: elas concordam até o dia em que
+ * alguém ajusta uma. ⭐ `formatBRL` é a porta da casa; o `?? '—'` virou o ternário no chamador,
+ * porque **ausência não é R$ 0,00**.
+ */
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
 const ESTADO: Record<string, { label: string; cls: string }> = {
@@ -198,6 +214,10 @@ function dataPorExtenso(iso: string): string {
 
 export default function ProducaoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  /** ⚠️ REGRA 9 — hook NO TOPO, nunca perto de onde é usado: a tela tem early-returns
+   *  (`ordens === undefined` / `null`), e hook depois deles muda a contagem entre renders
+   *  e derruba o cliente com "Rendered more hooks" (mordeu 2×: 21/08 e 25/08). */
+  const { pode: podePerm, carregando: carregandoPerm } = usePermissoes(id)
   const [ordens, setOrdens] = useState<Ordem[] | null | undefined>(undefined)
   const [sugestoes, setSugestoes] = useState<Sugestao[]>([])
   /**
@@ -468,6 +488,15 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
         </section>
       )}
 
+      {/* ──────────────────────────────────────────────────────────────────────
+          ⭐⭐⭐ CONFERÊNCIA DO DIA — quatro olhos, SÓ pra gerência (09/10).
+          ⛔ O gate é do PAYLOAD (a rota exige `stock.manage`): o componente não desenha
+             nada por não ter dado. É o que impede o veredito do fiscal de viajar no JSON
+             até o tablet da cozinha — a cola de prova que a lei de 05/10 fechou.
+          ─────────────────────────────────────────────────────────────────────── */}
+      <ConferenciaDoDia id={id} podeGerenciar={podePerm('stock.manage')} carregandoPerm={carregandoPerm}
+        onMudou={() => void carregar()} />
+
       {ordens.length === 0 && !novo ? (
         <div className="flex flex-col items-center gap-2 rounded-xl p-10 text-center"
           style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
@@ -539,7 +568,7 @@ function Secao({ titulo, ordens, id }: { titulo: string; ordens: Ordem[]; id: st
               const e = ESTADO[o.estado] ?? { label: o.estado, cls: 'bg-slate-100 text-slate-600' }
               return (
                 <tr key={o.id} className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50">
-                  <td className="px-3 py-0 text-[13px]"><a href={`/empresas/${id}/estoque/producao/${o.id}`} className="font-medium text-slate-800 hover:text-[#185FA5]">{o.nomeProduzido}</a></td>
+                  <td className="px-3 py-0 text-[13px]"><a href={`/empresas/${id}/estoque/producao/${o.id}`} className="font-medium hover:underline" style={{ color: 'var(--prod-primary)' }}>{o.nomeProduzido}</a></td>
                   <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-500">{fmtQtd(o.escalaReceitas * o.loteBase)} {o.unidadeProduzido}</td>
                   <td className="whitespace-nowrap px-3 py-0 text-[13px] tabular-nums text-slate-500">{fmtDia(o.dataProducao)}</td>
                   <td className="px-3 py-0 text-[13px] text-slate-500">{o.setorNome ?? '—'}</td>
@@ -656,7 +685,7 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
     <Card><CardContent className="space-y-3 p-4">
       <div className="flex items-center justify-between"><p className="text-sm font-semibold text-slate-900">Nova ordem de produção</p><button onClick={onFechar} className="text-xs text-slate-400 hover:text-slate-600">fechar</button></div>
       {fichas.length === 0 ? (
-        <p className="text-sm text-slate-500">Nenhuma ficha ainda — <a href={`/empresas/${id}/estoque/fichas/nova`} className="text-[#185FA5] hover:underline">crie uma ficha</a> primeiro.</p>
+        <p className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>Nenhuma ficha ainda — <a href={`/empresas/${id}/estoque/fichas/nova`} className="underline" style={{ color: 'var(--prod-accent)' }}>crie uma ficha</a> primeiro.</p>
       ) : (
         <>
           <div className="flex flex-wrap items-end gap-3">
@@ -706,7 +735,7 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
                   {/* ⚠️ total só quando TODOS têm custo — parcial com cara de total é a
                       mentira mais fácil numa tela de dinheiro (a régua do "a definir") */}
                   {vaiSair.custoTotal != null
-                    ? brl(vaiSair.custoTotal)
+                    ? formatBRL(vaiSair.custoTotal)
                     : `custo a definir · ${vaiSair.semCusto} componente(s) sem custo médio`}
                 </p>
               </div>
@@ -723,7 +752,7 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
                           {fmtQtd(l.porLote)} {l.unidade} por receita
                         </td>
                         <td className="px-2 py-0 text-right text-[12px] tabular-nums text-slate-500">
-                          {l.custoTotal == null ? 'a definir' : brl(l.custoTotal)}
+                          {l.custoTotal == null ? 'a definir' : formatBRL(l.custoTotal)}
                         </td>
                       </tr>
                     ))}
@@ -768,7 +797,16 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
             </div>
           )}
           {erro && <p className="text-xs text-rose-600">{erro}</p>}
-          <button onClick={criar} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Criar ordem</button>
+          <button onClick={criar} disabled={busy} /**
+            * ⚠️⚠️ **ESTE HEX FICA, E O MOTIVO É UM ACHADO (item 4b, 09/10).** Trocá-lo por
+            * `--prod-acao-bg` faz o guard do mock morder: ele conta *"cor forte preenchida"* e
+            * exige DOIS primários — este botão seria o TERCEIRO. ⛔ Ele JÁ era um terceiro
+            * primário forte; só era **invisível pro guard**, que conta TOKEN e não hex.
+            * ⚠️ Consequência: ele não inverte no tema escuro. **Decisão do dono** — ou o botão
+            * do formulário desce pra contorno, ou a régua passa a admitir o primário do
+            * formulário (que não compete na tela principal, porque só existe com o form aberto).
+            */
+            className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Criar ordem</button>
         </>
       )}
     </CardContent></Card>
@@ -1005,6 +1043,20 @@ function ListaConcluidas({ id, itens, periodo, nomePorOrdem, unidadePorOrdem, pe
                     {c.custoUnitarioReal != null && <span> · {formatBRL(c.custoUnitarioReal)}/un</span>}
                     {c.motivo && <i> · {c.motivo}</i>}
                   </span>
+                  {/**
+                    * ⭐⭐ O SELO DA CONFERÊNCIA (item 2c) — três estados, cada um com cor própria.
+                    *
+                    * ⚠️ Ele diz ESTADO, nunca o veredito do fiscal: *"aguardando"* / *"✓✓
+                    * conferido · nome"* / *"✓✓ corrigido e conferido (era X)"*. O número
+                    * esperado — a cola de prova — segue só na fila do gerente.
+                    * ⛔ E o "era X" não é enfeite: sem ele, a linha corrigida mostraria um
+                    * número que ninguém declarou, e o rastro do que a cozinha disse se perderia
+                    * da vista.
+                    */}
+                  {c.conferencia && (
+                    /** ⛔ o MESMO selo da página da ordem — dois seriam dois estados pro mesmo fato */
+                    <SeloDaConferencia c={c.conferencia} unidade={unidadePorOrdem.get(c.ordemId) ?? ''} />
+                  )}
                 </span>
 
                 {/**

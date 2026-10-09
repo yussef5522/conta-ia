@@ -363,7 +363,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
             onClick={() => aplicarPilula(p)}
             className="h-8 rounded-full px-3 text-[12.5px] font-semibold"
             style={chave === p.chave
-              ? { background: 'var(--prod-accent)', color: '#fff' }
+              ? { background: 'var(--prod-accent)', color: 'var(--prod-acao-ink)' }
               : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
           >
             {p.rotulo}
@@ -389,7 +389,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
           onClick={() => setAbrirTarefas((v) => !v)}
           className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-[12.5px] font-semibold"
           style={tarefa
-            ? { background: 'var(--prod-accent)', color: '#fff' }
+            ? { background: 'var(--prod-accent)', color: 'var(--prod-acao-ink)' }
             : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
         >
           <Search className="h-3.5 w-3.5" /> {tarefa ?? 'receita'}
@@ -404,7 +404,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
             onClick={() => setAbrirReceitas((v) => !v)}
             className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-[12.5px] font-semibold"
             style={(data?.ocultasNoPeriodo ?? 0) > 0
-              ? { background: 'var(--prod-accent)', color: '#fff' }
+              ? { background: 'var(--prod-accent)', color: 'var(--prod-acao-ink)' }
               : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
           >
             <Eye className="h-3.5 w-3.5" />
@@ -420,7 +420,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
             value={setor ?? ''} onChange={(e) => setSetor(e.target.value || null)}
             className="h-8 rounded-full px-3 text-[12.5px] font-semibold outline-none"
             style={setor
-              ? { background: 'var(--prod-accent)', color: '#fff' }
+              ? { background: 'var(--prod-accent)', color: 'var(--prod-acao-ink)' }
               : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
           >
             <option value="">setor</option>
@@ -432,7 +432,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
             value={quem ?? ''} onChange={(e) => setQuem(e.target.value || null)}
             className="h-8 rounded-full px-3 text-[12.5px] font-semibold outline-none"
             style={quem
-              ? { background: 'var(--prod-accent)', color: '#fff' }
+              ? { background: 'var(--prod-accent)', color: 'var(--prod-acao-ink)' }
               : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
           >
             <option value="">quem concluiu</option>
@@ -465,7 +465,7 @@ export default function RelatorioPorDiaPage({ params }: { params: Promise<{ id: 
                 onClick={() => { setTarefa(t === tarefa ? null : t); setAbrirTarefas(false) }}
                 className="rounded-full px-2.5 py-1 text-[12px] font-medium"
                 style={t === tarefa
-                  ? { background: 'var(--prod-accent)', color: '#fff' }
+                  ? { background: 'var(--prod-accent)', color: 'var(--prod-acao-ink)' }
                   : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
               >
                 {t}

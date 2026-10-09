@@ -22,7 +22,7 @@ import { avaliarLinguaDoBalcao } from '../lingua-do-balcao'
 import { acharPadrao, fraseDoPadrao, type LoteMedido } from '../padrao-de-rendimento'
 import { faixaDoSelo, DESVIO_GRAVE } from '@/lib/stock/producao/eficiencia-da-ordem'
 import { fichasParaConverter } from '@/lib/stock/producao/fichas-para-converter'
-import { fiscalDeOrdens, type FiscalDoLote } from '@/lib/stock/producao/fiscal-dos-lotes'
+import { fiscalDeOrdens, fichasComLoteTorto, type FiscalDoLote } from '@/lib/stock/producao/fiscal-dos-lotes'
 import type { NovoAviso } from '../tipos'
 
 /**
@@ -240,11 +240,13 @@ async function fichaNaoComparavel(companyId: string, r: ResumoDaCarga, db: Db): 
   r.resolvidos += await reconciliarOrigem(companyId, 'FICHA_SEM_COMPARACAO', ['fila-de-conversao'], db)
 }
 
-/** ⭐ as fichas cujo % medido NÃO é rendimento (é a ficha quebrada) — ver o produtor (1) */
-async function fichasComLoteTorto(companyId: string, db: Db): Promise<Set<string>> {
-  const fila = await fichasParaConverter(companyId, db)
-  return new Set(fila.pendentes.map((f) => f.fichaId))
-}
+/**
+ * ⚠️⚠️ A SUPRESSÃO MUDOU DE CASA EM 09/10 — `fichasComLoteTorto` saiu daqui pra
+ * `fiscal-dos-lotes.ts` porque o PONTINHO da lista passou a usar a MESMA régua (item 4a do
+ * dono). ⛔ Copiar as 2 linhas pra lá daria duas respostas pra "esta ficha mede rendimento?",
+ * e elas divergiriam no 1º ajuste do M5 — com o sininho calado e o pontinho aceso. Aqui só se
+ * consome.
+ */
 
 /**
  * ⭐⭐ (3) ORDEM PARADA — a linguagem CORAL da ordem atrasada (a mesma da home).

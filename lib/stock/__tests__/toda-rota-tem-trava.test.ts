@@ -84,6 +84,12 @@ describe('toda rota de estoque tem trava', () => {
     'producao/ordens/[ordemId]/consumo/route.ts':
       'o detalhe que a linha do relatório por dia abre ("o que saiu do estoque pra esta ordem", com custo). '
       + 'Mesma trava da tela que o abre — se fosse `view`, o relatório de gestão teria uma porta lateral aberta',
+    'producao/conferencia/route.ts':
+      '⛔⛔ A FILA DO GERENTE CARREGA O VEREDITO DO FISCAL ("o material dava ~51") — e a lei de 05/10 diz que '
+      + 'NENHUM número esperado aparece na tela de quem DECLARA, porque é cola de prova: ensina qual número digitar. '
+      + 'Em `stock.view` esse veredito viajaria no JSON até o tablet da cozinha, e a cola estaria a um DevTools de '
+      + 'distância — exatamente o canal lateral que a lei fechou quando o campo de motivo deixou de aparecer '
+      + 'condicional. O guard `conclusao-nao-da-cola` prova o outro lado: a tela de declarar segue cega',
   }
 
   it('GET nunca exige operar/gerenciar (ler é ler), fora as leituras sensíveis nomeadas', () => {

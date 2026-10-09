@@ -9,7 +9,8 @@ import { listOrdens, criarOrdem, receitaDasOrdens, OrdemError } from '@/lib/stoc
 import { sugestoesDeProducao } from '@/lib/stock/producao/sugestao-cardapio'
 import { cardsDoPainel, lotesDoPeriodo, ESTADOS_ABERTOS, ehDeOntem } from '@/lib/stock/producao/painel-producao'
 import { conclusoesNoPeriodo } from '@/lib/stock/producao/conclusao'
-import { fiscalDeOrdens } from '@/lib/stock/producao/fiscal-dos-lotes'
+import { fiscalDeOrdens, fichasComLoteTorto, pontinhoVale } from '@/lib/stock/producao/fiscal-dos-lotes'
+import { carimbosDasConclusoes } from '@/lib/stock/producao/conferencia'
 import { contextoDasAbertas, pedidoPorOrdem } from '@/lib/stock/producao/contexto-das-abertas'
 import { somarQuantidades } from '@/lib/stock/producao/desempenho'
 import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
@@ -55,6 +56,23 @@ export async function GET(request: NextRequest, { params }: Params) {
    * acabou de mandar embora.
    */
   const fiscal = await fiscalDeOrdens(companyId, [...new Set(concluidas.map((c) => c.ordemId))], prisma)
+  /**
+   * ⭐⭐ "UMA CAUSA, UM ALARME" NO PONTINHO (item 4a do dono, 09/10) — a MESMA supressão do
+   * sininho, pela MESMA função. Medido em prod: dos **100** pontinhos, **82 são ficha com o
+   * lote na unidade errada**, já avisada na fila de conversão — ali o `permitido` não mede
+   * lançamento, mede a ficha quebrada, e o pontinho é ruído que ensina a ignorar o fiscal.
+   * Sobram **18 com causa própria**, que é o sinal que vale.
+   */
+  const loteTorto = await fichasComLoteTorto(companyId, prisma)
+  /**
+   * ⭐ O SELO DA CONFERÊNCIA (item 2c) — em UMA consulta pras N linhas. ⚠️ Uma por conclusão
+   * aqui seria o N+1 de 28/09 (4.909 ms) numa tela de todo dia.
+   *
+   * ⚠️ E ele vem pra TODO MUNDO de propósito: o selo diz *"aguardando conferência"* / *"✓✓
+   * conferido · nome"* — é ESTADO, não o veredito do fiscal. A cola de prova é o número
+   * esperado, e esse segue só na fila do gerente (`stock.manage`).
+   */
+  const carimbos = await carimbosDasConclusoes(companyId, concluidas.map((c) => c.id), prisma)
   const abertas = ordens
     .filter((o) => (ESTADOS_ABERTOS as readonly string[]).includes(o.estado))
     .map((o) => ({ ...o, deOntem: ehDeOntem(new Date(o.dataProducao), agora) }))
@@ -116,7 +134,11 @@ export async function GET(request: NextRequest, { params }: Params) {
         ...c,
         pct: s?.pct ?? null, faixa: s?.faixa ?? 'SEM_REGUA', motivo: s?.motivo ?? null,
         selo: s?.selo ?? 'SEM_DADO',
-        fiscalImpossivel: fiscal.get(c.ordemId)?.impossivel ?? false,
+        fiscalImpossivel: (() => {
+          const f = fiscal.get(c.ordemId)
+          return f ? pontinhoVale(f, loteTorto) : false
+        })(),
+        conferencia: carimbos.get(c.id) ?? null,
       }
     }),
     // ⚠️ o período ECOA os DIAS pedidos (calendário de SP), nunca o recorte UTC — senão a

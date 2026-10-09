@@ -13,7 +13,15 @@
  * combinada. `sistema` é o balde do que não é de setor nenhum (certificado vencendo, cron
  * parado): ele aparece no SININHO e em nenhum bloco de setor.
  */
-export const SETORES = ['producao', 'estoque', 'financeiro', 'sistema'] as const
+/**
+ * ⭐⭐ `gerencia` NASCEU EM 09/10 PELO CAMINHO QUE ESTE ARQUIVO JÁ PREVIA — *"setor novo se
+ * resolve editando um array"*. O aviso da conferência parada (item 2d) é do **papel de
+ * gerência**, não da produção: `producao` exige `stock.view`, que o tablet da cozinha TEM —
+ * mandar por lá faria o aviso aparecer pra quem DECLAROU o lote.
+ * ⛔ E o CHECK do banco continua validando só a FORMA (minúsculo, não-vazio), de propósito:
+ * é a cicatriz de 21/09, em que vocabulário fechado no SQL virou parede em um dia.
+ */
+export const SETORES = ['producao', 'estoque', 'gerencia', 'financeiro', 'sistema'] as const
 export type Setor = (typeof SETORES)[number]
 
 /**
@@ -48,6 +56,7 @@ export const FAMILIA_DA_SEVERIDADE: Record<Severidade, string> = {
 export const ROTULO_DO_SETOR: Record<Setor, string> = {
   producao: 'Produção',
   estoque: 'Estoque',
+  gerencia: 'Gerência',
   financeiro: 'Financeiro',
   sistema: 'Sistema',
 }

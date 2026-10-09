@@ -8,6 +8,7 @@ import { guardStock } from '@/lib/stock/require-stock'
 import { explodirSeparacao, OrdemError } from '@/lib/stock/producao/ordens'
 import { listConclusoes, rendimentoMedidoDaFicha } from '@/lib/stock/producao/conclusao'
 import { pedidoDaOrdem } from '@/lib/stock/producao/pedido-da-ordem'
+import { carimbosDasConclusoes } from '@/lib/stock/producao/conferencia'
 
 interface Params { params: Promise<{ id: string; ordemId: string }> }
 
@@ -72,7 +73,17 @@ export async function GET(request: NextRequest, { params }: Params) {
     })
 
     // `lotes` vai junto: a tela precisa dizer "média de 4 lotes" e só adota a medida com 2+
-    return NextResponse.json({ ordem, linhas, conclusoes, colaboradores, rendimentoMedio: medido.media, rendimentoLotes: medido.lotes, parada, pedido })
+    /**
+     * ⭐⭐ O SELO DA CONFERÊNCIA NA LINHA DA CONCLUSÃO (itens 2c e 3) — e ele cabe nesta rota,
+     * que é `stock.view`, porque o carimbo **não carrega número esperado**: ele diz QUEM
+     * conferiu, QUANDO e, na corrigida, de QUE número veio.
+     * ⛔ O veredito do fiscal continua existindo só na fila do gerente (`stock.manage`) — é
+     * ELE a cola de prova da lei de 05/10, não o carimbo.
+     */
+    const carimbos = await carimbosDasConclusoes(companyId, conclusoes.map((c) => c.id), prisma)
+    const conclusoesComSelo = conclusoes.map((c) => ({ ...c, conferencia: carimbos.get(c.id) ?? null }))
+
+    return NextResponse.json({ ordem, linhas, conclusoes: conclusoesComSelo, colaboradores, rendimentoMedio: medido.media, rendimentoLotes: medido.lotes, parada, pedido })
   } catch (e) {
     if (e instanceof OrdemError) return NextResponse.json({ erro: e.message }, { status: 404 })
     throw e
