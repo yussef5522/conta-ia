@@ -42,7 +42,9 @@ async function main() {
 
     const p = await fetch(`${base}/api/empresas/${CO}/emprestimos/${loanId}/parcelas/${n}`, {
       method: 'POST', headers: { ...H(DESK), 'content-type': 'application/json' },
-      body: JSON.stringify({ transactionIds: ['nao-existe'] }),
+      // ⚠️ cuid de FORMATO válido e INEXISTENTE: passa o zod (senão a trava da janela nem roda
+      //    — foi o 400 "Dados inválidos" da 1ª sonda) e não grava nada em contrato nenhum.
+      body: JSON.stringify({ transactionId: 'cnaoexisteestatransacao01' }),
     })
     const pj = await p.json().catch(() => ({}))
     console.log(`  POST marcar paga · ${rotulo} → HTTP ${p.status}${(pj as { code?: string }).code ? ` · code ${(pj as { code?: string }).code}` : ''} · ${String((pj as { erro?: string }).erro ?? '').slice(0, 90)}`)
@@ -91,13 +93,16 @@ async function main() {
   const chunks = [...html.matchAll(/\/_next\/static\/chunks\/[^"']+?\.js/g)].map((m) => m[0])
   let js = ''
   for (const c of [...new Set(chunks)]) js += await (await fetch(`${base}${c}`, { headers: H(CEL) })).text()
+  // ⚠️ procurar o NOME da função no bundle é sonda errada: o minificador RENOMEIA
+  //    variável/import (a cicatriz do `t.selo`, 27/09). O que sobrevive é o TEXTO.
   const pecas: Array<[string, string]> = [
-    ['Registrar devolução', 'Registrar devolu'],
-    ['valor livre (campo de dinheiro)', 'sanitizarDinheiro'],
-    ['prévia casando', 'é uma saída diferente'],
-    ['resumo derivado', 'resumoFlex'],
-    ['guard do resumo (grita se não fecha)', 'fecha'],
-    ['Nª devolução', 'devolu'],
+    ['o botão primário', 'Registrar devolu'],
+    ['o campo de VALOR LIVRE', 'Quanto voc'],
+    ['o exemplo de 40 mil (placeholder)', '40.000,00'],
+    ['a conta do contrato (chip read-only)', 'De onde saiu'],
+    ['o escape do casar', 'uma sa'],
+    ['o guard do resumo (grita quando não fecha)', 'o fecha'],
+    ['o resumo derivado na tela', 'devolvidos de'],
   ]
   for (const [rot, agulha] of pecas) console.log(`  ${js.includes(agulha) ? '✓' : '⛔'} ${rot}`)
   console.log(`  (chunks lidos: ${new Set(chunks).size} · ${Math.round(js.length / 1024)} KB)`)
