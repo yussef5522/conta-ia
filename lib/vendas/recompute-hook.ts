@@ -49,6 +49,12 @@ export type OrigemHook =
   | 'import-ofx/confirm'
   /** ⭐ o balcão da caixa de entrada (15/09) — o 7º caminho que CRIA venda */
   | 'balcao'
+  /**
+   * ⭐ a porta de registrar devolução de mútuo flexível (09/10) — **no-op por desenho**
+   * (devolução é `TRANSFERENCIA`, nunca receita), e na lista porque *"porta que CRIA transação
+   * entra na lista"*: o no-op registrado é o que distingue "não foi chamado" de "não fez nada".
+   */
+  | 'emprestimos/devolucao'
   | 'conciliacao/reconcile'
   | 'createContaPendente'
   | 'desconhecida'

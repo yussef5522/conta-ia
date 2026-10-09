@@ -19,6 +19,7 @@ import {
   PRE_FIXED_AMOUNT_TOL_ABS,
 } from '@/lib/loans/installment-match'
 import { exigeContaDoEmprestimo, MutuoSemContaError } from '@/lib/loans/exige-conta'
+import { JanelaBancariaNoFlexivelError, ehJanelaBancaria } from '@/lib/loans/janela-bancaria'
 
 interface Params {
   params: Promise<{ id: string; loanId: string; number: string }>
@@ -39,10 +40,16 @@ export async function GET(request: NextRequest, { params }: Params) {
         contractNumber: true,
         lender: true,
         interestRateMonthly: true,
+        scheduleSource: true,
       },
     })
     if (!loan || loan.companyId !== empresaId) {
       return NextResponse.json({ erro: 'Não encontrado' }, { status: 404 })
+    }
+    if (!ehJanelaBancaria(loan.scheduleSource)) {
+      /** ⛔ ver `lib/loans/janela-bancaria.ts` — a régua mora lá, num lugar só */
+      const e = new JanelaBancariaNoFlexivelError()
+      return NextResponse.json({ erro: e.message, code: e.code }, { status: 422 })
     }
     const installment = await prisma.loanInstallment.findFirst({
       where: { loanId, number },

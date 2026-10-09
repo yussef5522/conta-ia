@@ -15,6 +15,7 @@ import {
   computePosFixedSplit,
   computePreFixedSplit,
 } from '@/lib/loans/installment-match'
+import { JanelaBancariaNoFlexivelError, ehJanelaBancaria } from '@/lib/loans/janela-bancaria'
 
 interface Params {
   params: Promise<{ id: string; loanId: string; number: string }>
@@ -44,11 +45,23 @@ export async function POST(request: NextRequest, { params }: Params) {
         companyId: true,
         bankAccountId: true,
         interestRateMonthly: true,
+        scheduleSource: true,
       },
     })
     if (!loan) return NextResponse.json({ erro: 'Loan não encontrado' }, { status: 404 })
     if (loan.companyId !== empresaId) {
       return NextResponse.json({ erro: 'Outra empresa' }, { status: 403 })
+    }
+    /**
+     * ⛔⛔ A GRAVAÇÃO DO «MARCAR PAGA» TAMBÉM FECHA NO FLEXÍVEL (09/10) — não só a busca.
+     *
+     * ⚠️ Travar só o `candidatos` deixaria **a porta de escrita aberta** pro mesmo fato: duas
+     * portas gravando devolução é exatamente o que o `loan_installment_no_double_link` existe
+     * pra recusar, e o dono foi explícito — *"o botão novo é a porta"*.
+     */
+    if (!ehJanelaBancaria(loan.scheduleSource)) {
+      const e = new JanelaBancariaNoFlexivelError()
+      return NextResponse.json({ erro: e.message, code: e.code }, { status: 422 })
     }
 
     const installment = await prisma.loanInstallment.findFirst({

@@ -7,6 +7,7 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { linhaDoCronograma, jurosRealizados } from '@/lib/loans/linha-do-cronograma'
 import { saldoDevedorAtual } from '@/lib/loans/saldo'
 import { estadoDaParcela, ofereceMarcarPaga, rotuloDoGesto } from '@/lib/loans/estado-da-parcela'
+import { resumoDoFlexivel } from '@/lib/loans/resumo-do-flexivel'
 
 interface Params {
   params: Promise<{ id: string; loanId: string }>
@@ -87,15 +88,45 @@ export async function GET(request: NextRequest, { params }: Params) {
     const devolvido = Math.round((loan.principal - saldoDevedor) * 100) / 100
     const progressoValor = loan.principal > 0 ? Math.round((devolvido / loan.principal) * 100) : 0
 
-    // Histórico de devoluções (2.5): cada parcela paga com data + valor devolvido.
-    const historicoDevolucoes = paid
-      .filter((i) => i.paidDate)
-      .sort((a, b) => (a.paidDate!.getTime() - b.paidDate!.getTime()))
-      .map((i) => ({
-        number: i.number,
-        date: i.paidDate!.toISOString(),
-        valor: Math.round((i.paidTotal ?? i.amortization) * 100) / 100,
+    /**
+     * ⭐⭐ O HISTÓRICO SAI DOS VÍNCULOS, NÃO DA PARCELA (09/10/2026) — e a diferença é de conceito.
+     *
+     * Era `parcelas PAID` com `paidTotal ?? amortization`, ou seja **uma linha por REFERÊNCIA**.
+     * No flexível a unidade de verdade é a **DEVOLUÇÃO**: ela é o fato (saiu dinheiro, nesta data,
+     * neste valor); a referência é só a prateleira onde ela foi encostada. Os dois coincidem
+     * enquanto cada devolução cobre uma referência — e divergem no primeiro mês em que o dono
+     * devolver duas vezes, ou menos que o nominal.
+     *
+     * ⚠️ Lê as DUAS portas (1:1 e N:1) pelo motivo de sempre (14/08): o contrato real usa as
+     * duas — jul/ago entraram por 1:1 e setembro por N:1 — e **não há dupla contagem**, porque o
+     * trigger `loan_installment_no_double_link` torna impossível uma parcela ter as duas.
+     */
+    const devolucoesComData = loan.installments.flatMap((i) => [
+      ...(i.reconciledTransaction
+        ? [{ number: i.number, data: i.reconciledTransaction.date, valor: i.reconciledTransaction.amount }]
+        : []),
+      ...i.payments.flatMap((p) =>
+        p.transaction ? [{ number: i.number, data: p.transaction.date, valor: p.amount }] : [],
+      ),
+    ])
+    const historicoDevolucoes = [...devolucoesComData]
+      .sort((a, b) => a.data.getTime() - b.data.getTime())
+      .map((d) => ({
+        number: d.number,
+        date: d.data.toISOString(),
+        valor: Math.round(d.valor * 100) / 100,
       }))
+
+    /**
+     * ⭐⭐⭐ O RESUMO DERIVADO (09/10) — o texto que a tela imprime no lugar da nota velha.
+     *
+     * ⛔ **O defeito que ele mata, medido em prod:** o `notes` dizia *"Devolvidos 40.000 e
+     * 50.000. Saldo 290.000"* enquanto o cartão mostrava R$ 240.000. A nota não mentiu: ela
+     * **congelou** no dia em que foi escrita. ⭐ Fato se deriva; decisão se grava.
+     */
+    const resumoFlex = flexible
+      ? resumoDoFlexivel(loan.principal, saldoDevedor, devolucoesComData)
+      : null
 
     /**
      * ⭐⭐⭐ A RÉGUA ÚNICA, CHAMADA UMA VEZ POR PARCELA (02/10/2026) — e o cabeçalho do
@@ -163,7 +194,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         falta: v.falta,
         selo: v.selo,
         /** ⛔ quitada NÃO oferece "marcar paga" — era por aí que a dupla contagem entrava */
-        ofereceMarcarPaga: ofereceMarcarPaga(v),
+        ofereceMarcarPaga: ofereceMarcarPaga(v, { flexible }),
         rotuloDoGesto: rotuloDoGesto(v),
         paidDate: i.paidDate?.toISOString() ?? null,
         linha: {
@@ -254,6 +285,18 @@ export async function GET(request: NextRequest, { params }: Params) {
         valorBase: flexible ? loan.principal : null,
         progressoValor: flexible ? progressoValor : null,
         historicoDevolucoes: flexible ? historicoDevolucoes : null,
+        /** ⭐ o resumo DERIVADO — a tela nunca mais imprime total de devolução escrito à mão */
+        resumoFlex: resumoFlex
+          ? {
+              devolucoes: resumoFlex.devolucoes,
+              totalDevolvido: resumoFlex.totalDevolvido,
+              saldo: resumoFlex.saldo,
+              ultima: resumoFlex.ultima?.toISOString() ?? null,
+              frase: resumoFlex.frase,
+              /** ⛔ `false` = Σ(histórico) ≠ principal − saldo; a tela GRITA em vez de escolher um */
+              fecha: resumoFlex.fecha,
+            }
+          : null,
         proximaParcela: proximaOpen
           ? {
               number: proximaOpen.number,

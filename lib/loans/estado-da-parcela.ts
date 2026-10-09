@@ -170,7 +170,25 @@ export function estadoDaParcela(
  * ⭐ Agora: **quitada não oferece** (não há o que completar), e **parcial oferece dizendo o
  * que falta** — o gesto completa a diferença, nunca recomeça.
  */
-export function ofereceMarcarPaga(v: VereditoDaParcela): boolean {
+export function ofereceMarcarPaga(
+  v: VereditoDaParcela,
+  opts?: { flexible?: boolean },
+): boolean {
+  /**
+   * ⛔⛔⛔ NO FLEXÍVEL A JANELA BANCÁRIA NÃO SERVE — e o botão sai da tela (09/10/2026).
+   *
+   * **O dono, com a devolução de 40.000 na mão:** *"o «Marcar paga» só concilia débito de
+   * extrato com valor ±R$ 1 e janela ±7d do vencimento — régua de banco que não serve pra mútuo
+   * de cofre com valor livre."*
+   *
+   * ⚠️ E o problema não é o botão aparecer: é ele **não poder funcionar por construção**. A
+   * janela de `installment-match` casa valor conhecido perto do vencimento; no mútuo o valor é
+   * livre (40k · 50k · 50k nas três reais) e a data é a do CAIXA. Resultado: lista sempre vazia,
+   * com o dono achando que o pagamento dele não importou. ⭐ A porta do flexível é
+   * «Registrar devolução» (`devolucao-flexivel.ts`), e **ter duas portas pro mesmo fato seria
+   * a doença que esta casa mais paga.**
+   */
+  if (opts?.flexible) return false
   return v.estado !== 'PAGA'
 }
 

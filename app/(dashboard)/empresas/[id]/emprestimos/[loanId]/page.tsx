@@ -28,6 +28,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { formatBRL } from '@/lib/format/money'
 import { fmtRateMonthly } from '@/lib/loans/format'
 import { CandidatosDialog } from './_components/candidatos-dialog'
+import { RegistrarDevolucaoDialog } from './_components/registrar-devolucao-dialog'
 import { rotuloDaConta } from '@/lib/loans/rotulo-conta'
 
 const SaldoDevedorChart = dynamic(
@@ -81,6 +82,18 @@ interface LoanDetalhe {
     historicoDevolucoes:
       | Array<{ number: number; date: string; valor: number }>
       | null
+    /**
+     * ⭐⭐ O RESUMO DERIVADO (09/10). A tela NUNCA mais imprime total de devolução escrito à
+     * mão — era o `notes` dizendo *"Saldo 290.000"* contra o cartão de R$ 240.000.
+     */
+    resumoFlex: {
+      devolucoes: number
+      totalDevolvido: number
+      saldo: number
+      ultima: string | null
+      frase: string
+      fecha: boolean
+    } | null
     proximaParcela: {
       number: number
       dueDate: string
@@ -154,6 +167,17 @@ const fmtDate = (iso: string) => {
 const fmtRate = fmtRateMonthly
 
 /**
+ * ⚠️ O "HOJE" É O DIA DO BRASIL, não o do servidor.
+ *
+ * ⛔ `new Date().toISOString().slice(0,10)` às 21h de São Paulo já diz AMANHÃ — e a devolução
+ * nasceria datada no dia seguinte, exatamente o fuso que fez o card do cartão mentir 3 horas
+ * por dia (09/09) e o Contas a Pagar pintar 25 contas de vermelho (13/09).
+ */
+function hojeNoBrasil(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+}
+
+/**
  * ⭐⭐⭐ O SELO VEM DO SERVIDOR (02/10/2026) — a tela não infere mais estado.
  *
  * ⛔⛔ O enum de 3 valores não tinha como dizer **PARCIAL**, então a parcela 22 do
@@ -220,6 +244,8 @@ export default function DetalheEmprestimoPage({
   const [openCandidatos, setOpenCandidatos] = useState<number | null>(null)
   const [confirmDel, setConfirmDel] = useState(false)
   const [confirmUndo, setConfirmUndo] = useState<number | null>(null)
+  /** ⚠️ REGRA 9 — hook no TOPO, nunca colado ao JSX que o consome (a cicatriz de 25/08) */
+  const [abrirDevolucao, setAbrirDevolucao] = useState(false)
 
   function refresh() {
     setLoading(true)
@@ -289,6 +315,17 @@ export default function DetalheEmprestimoPage({
             Voltar
           </Button>
         </Link>
+        {/*
+          ⭐⭐ A PORTA DO MÚTUO FLEXÍVEL (09/10) — primária, porque é o gesto de todo mês.
+          ⛔ E ela é a ÚNICA: o «Marcar paga» (janela bancária) sai da tela no flexível, e o
+          servidor recusa os dois ramos dele — *"o botão novo é a porta"* (ordem do dono).
+        */}
+        {loan.flexible && (
+          <Button variant="default" onClick={() => setAbrirDevolucao(true)}>
+            <Wallet className="h-4 w-4 mr-1" />
+            Registrar devolução
+          </Button>
+        )}
         <Link href={`/empresas/${empresaId}/emprestimos/importar-agenda`}>
           <Button variant="default" title="Lê o documento oficial do banco — sempre exato">
             <FileText className="h-4 w-4 mr-1" />
@@ -354,7 +391,31 @@ export default function DetalheEmprestimoPage({
           )
         )}
       </div>
-      {loan.notes && (
+      {/*
+        ⭐⭐⭐ O RESUMO DERIVADO É O PROTAGONISTA, e a nota do dono desce pra baixo dele (09/10).
+        ⛔ Antes a nota ERA o resumo — e ela congelou em *"Saldo 290.000"* enquanto o cartão
+        mostrava 240.000. **Fato se deriva; decisão se grava.**
+      */}
+      {agregados.resumoFlex && (
+        <div className="-mt-3 space-y-1">
+          <p className="text-sm font-medium">{agregados.resumoFlex.frase}</p>
+          {/*
+            ⛔ `fecha: false` = Σ(devoluções) ≠ principal − saldo. A tela GRITA em vez de
+            escolher um dos dois — número de dinheiro que não fecha com as partes é a família
+            do cabeçalho que afirmava 69 duplicatas com a aba dizendo 0.
+          */}
+          {!agregados.resumoFlex.fecha && (
+            <p className="text-xs font-medium text-red-700 dark:text-red-400">
+              ⛔ a soma das devoluções ({formatBRL(agregados.resumoFlex.totalDevolvido)}) não fecha
+              com o saldo — confira o histórico antes de usar estes números
+            </p>
+          )}
+          {loan.notes && (
+            <p className="text-xs text-muted-foreground">{loan.notes}</p>
+          )}
+        </div>
+      )}
+      {!agregados.resumoFlex && loan.notes && (
         <p className="text-sm text-muted-foreground -mt-3">{loan.notes}</p>
       )}
 
@@ -439,7 +500,8 @@ export default function DetalheEmprestimoPage({
             <div className="px-5 py-3 border-b flex items-center justify-between">
               <p className="text-sm font-medium">Histórico de devoluções</p>
               <p className="text-xs text-muted-foreground">
-                {formatBRL(agregados.devolvido ?? 0)} devolvidos de{' '}
+                {/* ⚠️ o MESMO número do resumo — duas somas aqui divergiriam na 1ª devolução parcial */}
+                {formatBRL(agregados.resumoFlex?.totalDevolvido ?? agregados.devolvido ?? 0)} devolvidos de{' '}
                 {formatBRL(agregados.valorBase ?? loan.principal)}
               </p>
             </div>
@@ -628,7 +690,12 @@ export default function DetalheEmprestimoPage({
         </CardContent>
       </Card>
 
-      {openCandidatos !== null && (
+      {/*
+        ⛔⛔ A JANELA BANCÁRIA NÃO EXISTE NO FLEXÍVEL — e o gate é CINTO SOBRE SUSPENSÓRIO: o
+        servidor já recusa os dois ramos (`janela-bancaria.ts`), e a tela não oferece o caminho.
+        Guard que só afirmasse a ausência na tela aprovaria o dia em que a rota voltasse a abrir.
+      */}
+      {openCandidatos !== null && !loan.flexible && (
         <CandidatosDialog
           empresaId={empresaId}
           loanId={loanId}
@@ -636,6 +703,20 @@ export default function DetalheEmprestimoPage({
           onClose={() => setOpenCandidatos(null)}
           onConfirmed={() => {
             setOpenCandidatos(null)
+            refresh()
+          }}
+        />
+      )}
+
+      {abrirDevolucao && (
+        <RegistrarDevolucaoDialog
+          empresaId={empresaId}
+          loanId={loanId}
+          /** ⚠️ o "hoje" é do BRASIL: às 21h em UTC já é amanhã, e a devolução nasceria datada errado */
+          hoje={hojeNoBrasil()}
+          onClose={() => setAbrirDevolucao(false)}
+          onGravado={() => {
+            setAbrirDevolucao(false)
             refresh()
           }}
         />

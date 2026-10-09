@@ -140,9 +140,18 @@ export function referenciaFlexivelDoMes(
     // ⭐ o AJUSTE DO DONO: não paga conta pelo NOMINAL (o caixa do mês certamente sai)
     valor: devido,
     ehReferencia: true,
+    /**
+     * ⭐ O SELO DIZ O QUE FALTA PRO NOMINAL (09/10) — curto, com o número.
+     *
+     * **Pedido do dono, ao abrir a porta de registrar devolução:** *"outubro passa a somar
+     * 40.000 e mostra, curto, que faltam R$ 1.428,57 pro nominal — honesto, sem atraso;
+     * flexível nunca atrasa."* ⚠️ E "faltam" aqui **não é cobrança**: o nominal é referência, e
+     * o estado segue `A_VENCER` (a isenção de 02/10 continua inteira). O que o número responde
+     * é *"o caixa deste mês cobriu a referência?"* — e a resposta é parcial.
+     */
     selo:
       saiuNoMes > TOL
-        ? `~referência flexível · devolvido ${brl(saiuNoMes)} neste mês`
+        ? `~referência flexível · devolvido ${brl(saiuNoMes)} · faltam ${brl(arredondar2(devido - saiuNoMes))} pro nominal`
         : '~referência flexível',
     porque,
   }
