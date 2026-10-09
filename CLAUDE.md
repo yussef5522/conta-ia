@@ -2468,6 +2468,106 @@ já normalizadas 9 · pedem confirmação 2
 
 📋 **FICA PRO DONO:** as **11 pendências de dose do molho** — e a do combo agora **diz** que são 2 pizzas, pra ele não declarar a dose de uma. ⚠️ E o **efeito do mês** das 2 últimas foi pequeno por construção (sobra bruta 86.338,21 → 86.298,59, **−39,62** em 8 dias, contra os R$ 387,28/mês da janela de 30 dias): a PROMO vendeu 159 un e a Aiq 16 na janela cheia.
 
+## 🫱🫲 CONFERÊNCIA DO GERENTE (QUATRO OLHOS) + POLIMENTO DA PRODUÇÃO (09/10/2026)
+
+**Mock aprovado no chat, e as duas decisões de produto do dono:** ***"TODAS as conclusões passam · estoque/etiqueta saem NA HORA, a conferência vem atrás — nada trava a cozinha."***
+
+### ⭐⭐ O RETRATO (item 0) MUDOU O DESENHO ANTES DA PRIMEIRA LINHA
+
+```
+PAPÉIS      3 pessoas com stock.manage (Yussef OWNER · marcyelle e cristian GERENTE_ESTOQUE)
+            + Tablet da cozinha (EXECUTOR_PRODUCAO, 1 chave)
+PINs        19 colaboradores, 19 com PIN ativo
+⛔ VÍNCULO  colaborador ↔ usuário: NENHUM no modelo · nomes que casam: 0 de 19
+QUEM DECLARA  448 conclusões · 397 com colaborador (PIN do tablet) · 82 com usuário · 0 com NENHUM
+```
+
+**⛔⛔ NÃO EXISTE "PIN DE GERÊNCIA" — e o retrato é que decidiu o desenho.** O `stock_colaborador` não carrega papel nem aponta pra `User`; casar por NOME daria 0 de 19 (e nome não é identidade: homônimo ou apelido quebram). Então a régua ficou: ***a SESSÃO prova o PAPEL (`stock.manage`), o PIN prova a PESSOA*** — e a regra dura é checada nos **DOIS eixos** (colaborador e usuário), porque 31 conclusões têm os dois e 397 só um.
+
+### ⭐⭐⭐ A REGRA DURA: CONFERENTE ≠ DECLARANTE, SEMPRE
+
+`porQueNaoPodeConferir` + **dois CHECKs no banco** (`chk_conferida_nao_e_o_declarante_colab` e `_user`). ⛔⛔ **E o `IS NOT NULL` vem EXPLÍCITO e PRIMEIRO em cada um (REGRA 13):** `conferido <> declarado` com o declarado **NULL** devolve **NULL**, e ***CHECK com expressão NULL PASSA*** — o furo exato do `chk_aviso_acao_completa` (04/10). Como 397 das 448 conclusões vêm do tablet **sem usuário**, a forma ingênua deixaria passar exatamente o caso comum.
+
+**REGRA 13 provada em prod** (`scripts/prova-check-conferencia.ts`): **8 de 8 INSERTs tortos recusados pela constraint certa** · **4 de 4 legítimos aceitos** (inclusive declarante NULL nos dois eixos e `corrigiuDe` ZERO) · 2º carimbo recusado pelo índice único (23505) · **escrita líquida 0**. ⭐ E o **contrafactual medido no próprio Postgres**: a forma ingênua sobre NULL devolve **NULL → PASSARIA**; a nossa devolve **false → RECUSA**.
+
+### ⭐⭐ O GATE É DO PAYLOAD — O FISCAL FALA SÓ NA FILA DO GERENTE
+
+O GET da fila exige **`stock.manage`** e entra em `LEITURA_SENSIVEL` **com o motivo escrito**: a fila carrega o **veredito do fiscal** (*"o material dava ~49"*), que é **cola de prova** pela lei de 05/10. Em `stock.view` ele viajaria no JSON até o tablet e a cola estaria a um DevTools de distância. **Provado em prod com as duas sessões:** gerente **200** (21 aguardando) · tablet **403** (`Permissão necessária: stock.manage`).
+
+⚠️ **E a distinção que importa:** o **RÓTULO** (*"saiu mais do que o material dava"*) está no bundle — é JSX estático; o **NÚMERO** (*"a receita permite ~49 UN"*) **não está**: ele nasce no servidor (`fraseDoFiscal`) e só viaja no payload gateado. A prova confere as duas frases separadamente.
+
+### ⭐ O SELO, O PAINEL — UM COMPONENTE CADA, DUAS TELAS
+
+`SeloDaConferencia` (âmbar aguardando · verde conferido · **índigo corrigido, com o «era X»**) e `PainelDeConferencia` (PIN, motivos, prévia, gravação) nasceram de **EXTRAÇÃO, nunca cópia**. ⛔ Dois formulários divergiriam no primeiro motivo novo e a mesma conclusão passaria a ter duas telas dizendo coisas diferentes sobre o mesmo gesto. ⚠️ O «era X» **não é** número esperado — é o que a cozinha declarou; esconder faria a linha corrigida mostrar um número que ninguém digitou.
+
+### ⭐⭐ ITEM 3 — A CORREÇÃO VIROU PORTA GERAL, CASO A CASO
+
+Abre da **página da ordem**, gateada por `stock.manage` **E** pelo estado do carimbo (conclusão já conferida é recusada pelo motor com `JA_CONFERIDA` — oferecer o botão ali seria mandar o dono clicar pra levar um "não"). ⛔ **Nada em lote:** o painel corrige UMA conclusão por gesto, e o guard proíbe lista de ids.
+
+**⭐ O DELTA CONFERIDO NA MÃO CONTRA O LEDGER CRU** (sem o motor no meio — conferir a prévia contra ela mesma seria o invariante circular de 28/08):
+```
+«Hamburger de frango 150 grama» declarado 19 → corrigir pra 10
+  a prévia promete: saldo 42 → 33 (delta −9)
+  NA MÃO: 7 movimentos · Σ crua 42 · saldo pela porta da casa 42
+          42 − 19 (estorna) + 10 (relança) = 33   ⭐ BATE ao centavo
+```
+⚠️ **E os 2 casos de 22.864 JÁ ESTÃO ESTORNADOS** (16/09 e 14/09, pelo gesto de 19/09) — medido no retrato. A porta serve pra os próximos; aqueles **não precisam dela**.
+
+### ⭐⭐ ITEM 2d — O SETOR `gerencia` NASCEU PELO CAMINHO QUE O PRÓPRIO ARQUIVO PREVIA
+
+O aviso de conclusão parada >3h **não podia ir no setor `producao`**: ele exige `stock.view`, que o **tablet TEM** — o aviso apareceria pra quem declarou o lote. Entrou `gerencia` (chave `stock.manage`), pelo caminho que `tipos.ts` documenta desde 04/10 (*"setor novo se resolve editando um array"*); **o CHECK do banco continua validando só a FORMA**, que é a cicatriz de 21/09.
+
+⭐ **A régua sai da MESMA `filaDeConferencia` que desenha os cartões** — o produtor TRADUZ, não decide; um `where criadoEm < agora-3h` próprio gritaria sobre conclusão que a tela não mostra (estornada, já conferida). ⛔ **E o veredito do fiscal NÃO entra na frase:** a lei de 05/10 vale no sininho também, e a forma de garantir é o número **não existir** no arquivo, não ser filtrado depois.
+
+**Provado em prod (rollback):** **21 avisos**, setor `gerencia`, severidade **coral** (*o dado não está errado — falta o segundo par de olhos*), com a **consequência na frase**: *"MAELE declarou 19 de Hamburger de frango 150 grama e ninguém conferiu — está esperando há 4h33. **O estoque já baixou e a etiqueta já saiu com esse número.**"* Anti-spam por `origem+alvo`; **conferir RESOLVE** o aviso (teste de integração prova).
+
+### ⛔⛔⛔ A REGRA 11 ACHOU DOIS BURACOS NO ITEM 5 — E OS DOIS VIERAM VERDES
+
+| defeito reposto | mordeu? |
+|---|---|
+| auto-conferência liberada | ✓ **4 vermelhos** |
+| **a conferência removida da tela** | ⛔ **VERDE** |
+| **o fiscal em `stock.view`** | ⛔ **VERDE** |
+
+**(a)** Nada afirmava que a seção é **RENDERIZADA** — o motor estaria em prod e **inalcançável**: a *"porta sem maçaneta"*, 10ª volta. ⚠️ E apertar uma vez não bastou: `podeGerenciar={true}` passava, e aí o componente dispara o fetch e **queima um 403 por carregamento de página no tablet** (a cicatriz do badge de 28/09, 1.391 403/dia).
+
+**(b)⚠️⚠️ A rota está em `LEITURA_SENSIVEL` COM O MOTIVO ESCRITO — e aquele registro é uma LISTA DE EXCEÇÕES, não uma trava:** ele **PERMITE** o GET ser mais estrito, nunca **EXIGE**. Baixar pra `stock.view` deixava o guard verde e **mandava o veredito do fiscal pro tablet**. ***Comentário que promete ser a trava sem ser a trava é pior que comentário nenhum.*** Os dois fecharam em `conferencia-tem-uma-porta-so.test.ts`, com red-then-green medido.
+
+### ⭐ ITEM 4b — O POLIMENTO MEDIDO (e o que ficou de LISTA)
+
+**Consertado (óbvio e barato):** o **`brl` local da home morreu** — era uma SEGUNDA formatação de dinheiro na MESMA tela que já usava `formatBRL` (a saída era idêntica, e é justamente isso que torna duas implementações perigosas: elas concordam até alguém ajustar uma); e os **6 chips do «Por dia»** passaram de `color: '#fff'` cravado pra **`--prod-acao-ink`** — o `--prod-accent` CLAREIA no escuro (#534ab7 → #8a81f0) e branco fixo perde contraste.
+
+**⚠️ E O GUARD DO MOCK MORDEU NUM ACHADO MELHOR QUE O FIX:** trocar o `bg-[#185FA5]` do botão **«Criar ordem»** por token fez o `home-producao-mock-v3` reprovar (*"cor forte preenchida em 3 lugares, esperado 2"*). ⛔ **Ele JÁ era um terceiro primário forte — só era invisível pro guard, que conta TOKEN e não hex.** Revertido, com o motivo escrito no arquivo: **decisão do dono** — ou o botão do formulário desce pra contorno, ou a régua passa a admitir o primário do formulário (que não compete na tela principal, porque só existe com o form aberto).
+
+### PROVADO EM PROD, NOS DOIS VIEWPORTS (REGRA 12)
+
+```
+A FILA (21 aguardando · 21 atrasados >3h) — e o fiscal falando SÓ ali:
+  ⚠️ porcao frango 100g        declarou 65 · material dava ~49 (limitado por FILE DE PEITO)
+  ⚠️ porçao calabresa ralada   declarou 54 · material dava ~35 (limitado por CALABRESA)
+  ✓  beef de hamburger         declarou 165 · material dava ~150 — confere
+GATE      gerente 200 · tablet 403 · a lista do tablet 403 · nenhum número de fiscal no bundle
+RECUSAS   PIN errado → 422 "PIN não confere." · «outro» sem texto → 422 que ENSINA
+          PREVER_CORRECAO → 200 (leitura pura) · carimbos 0 → 0 ⭐ nada gravado
+CICLO (rollback forçado)  carimbo ✓✓ por Carlisle (≠ quem declarou) · selo CONFERIDA
+          a fila 21 → 20 (a conferida SAIU) · 2º carimbo RECUSADO pelo índice único
+TELAS     celular 200/444ms · desktop 200/159ms · 879 KB · 8/8 peças nos dois
+          /producao/<ordem> 200 nos dois · carimbo no payload: AGUARDANDO_CONFERENCIA
+ESTADO    carimbos 0→0 · conclusões 448→448 · movimentos 6690→6690 · avisos 28→28
+          ⭐ ZERO ESCRITA — zero toque em movimento passado
+```
+
+**935 arquivos · 12.344 verdes · TS 0 · migration CREATE-only (1 CREATE TABLE, 5 CHECKs, 1 índice único, 1 índice) · `pg_dump pre-conferencia-gerente-20261009-010155.dump` (8.660.109 bytes, tamanho conferido) · deploys 4/4 (`EQH1FVzeQFgNzkGjIwxED`, `7Dosi9OYC3pp6cDyTMBPm`) · Δ bundle +28 KB.**
+
+⚠️ **E A MINHA SONDA DEU FALSO VERDE NA REGRA 11, de novo:** `npx vitest run $T` com `$T` sem aspas **não faz word-splitting em zsh** — os 3 defeitos rodaram contra zero arquivo e "passaram". É a cicatriz de 23/09 cometida outra vez; refeito com array. ***Sonda errada dá um verde tão convincente quanto um vermelho.*** E o `pg_dump` saiu com 0 bytes na 1ª tentativa porque eu chutei o usuário (`contaia` em vez de `conta_ia_user`) — a régua de sempre pegou: **dump só conta depois de conferir o TAMANHO**.
+
+📋 **FICA PRO DONO:**
+1. **Conferir os 21 lotes na tela**, no celular — e **2 deles o fiscal acusa** (`porcao frango 100g` 65 contra ~49 · `porçao calabresa ralada` 54 contra ~35). A correção com prévia está do lado do confirmar.
+2. **A decisão do botão «Criar ordem»** (terceiro primário forte no azul legado — contorno, ou régua admitindo o primário do formulário).
+3. ⚠️ **A recusa por PIN do DECLARANTE não deu pra exercer em prod**: o PIN é hash e não existe em claro em lugar nenhum, então a prova gravou o carimbo direto. A regra tem teste de integração nos **dois eixos** (colaborador e usuário) e **dois CHECKs no banco** — mas a volta completa pela tela é o dedo dele.
+4. ⚠️ **Conclusão JÁ conferida não se corrige** (o carimbo é único por conclusão). Hoje nenhum caso existe; se um dia precisar, é gesto novo — *re-conferir* —, não o mesmo botão.
+5. 📋 **Os 35 `slate-*` cravados na home** não invertem no tema escuro — varredura própria, não fiz no meio deste sprint. Os hex de `hoje/` e `relatorios/` são **do mock versionado** (a régua) e ficam.
+
 ## 🍕 BASES DE PIZZA — NORMALIZAÇÃO COM PREVIEW (08/10/2026, o preview que antecedeu a gravação)
 
 **Executa a decisão do dono de 07/10:** *"SIM, normalizar — receita é lei, preview antes de gravar"*. Problema medido: **11 fichas de base pro mesmo cardápio**, massa em UMA, caixa faltando em várias → custo subestimado → margens 79-93% infladas envenenando a casa e a liga.
