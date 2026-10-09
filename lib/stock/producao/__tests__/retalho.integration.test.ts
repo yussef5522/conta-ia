@@ -90,9 +90,15 @@ const criar = (fichaId: string, pedido: number, retalhoKg?: number) =>
 
 describe('⛔⛔ O RETALHO SÓ EXISTE NA RECEITA MARCADA', () => {
   it('⛔⛔ receita NÃO marcada RECUSA o retalho — e quem recusa é o SERVIDOR', async () => {
+    const ordensAntes = await prisma.stockProductionOrder.count({ where: { companyId } })
     await expect(criar(fichaOutra, 100, 5)).rejects.toThrow(OrdemError)
-    /** ⛔ e nada ficou gravado pela metade */
+    /**
+     * ⛔⛔ **E NADA FICA GRAVADO PELA METADE — este é o achado da prova em prod (09/10).** A 1ª
+     * versão checava a config DEPOIS do `create`: a rota devolvia 422 e **a ordem ficava no
+     * banco**, em PLANEJADA, sem nada. A contabilidade de escrita da prova pegou (531 → 532).
+     */
     expect(await prisma.stockOrdemRetalho.count({ where: { companyId } })).toBe(0)
+    expect(await prisma.stockProductionOrder.count({ where: { companyId } }), 'a ordem ficou gravada pela metade').toBe(ordensAntes)
   })
 
   it('⭐ a receita marcada aceita e GRAVA com rastro', async () => {

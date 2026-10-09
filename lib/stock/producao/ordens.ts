@@ -82,6 +82,32 @@ export async function criarOrdem(input: CriarOrdemInput, db: Db = defaultPrisma)
   const ficha = await db.stockFicha.findFirst({ where: { id: input.fichaId, companyId: input.companyId }, select: { id: true, itemProduzidoId: true, versaoAtual: true, ativo: true } })
   if (!ficha) throw new OrdemError('Ficha não encontrada.')
   if (!ficha.ativo) throw new OrdemError('Essa ficha está inativa.')
+
+  /**
+   * ⭐⭐ O RETALHO SÓ ENTRA NA RECEITA QUE O DONO MARCOU — e a conferência é **ANTES** de a
+   * ordem nascer.
+   *
+   * ⛔⛔ **QUEM RECUSA É O SERVIDOR, não a tela.** A pergunta só aparece em ficha com
+   * `aceitaRetalho`, mas esconder o campo é combinado: a rota pode ser chamada por outro
+   * caminho (script, cliente copiado, tela em cache) e aí um retalho entraria numa receita que
+   * não tem retalho — afrouxando o fiscal dela em silêncio. É a régua do FREIO da contagem
+   * (23/08): *aviso que vive no componente some no dia em que a rota for chamada por fora*.
+   *
+   * ⚠️⚠️ **E A ORDEM DELE É O ACHADO DA PROVA EM PROD (09/10).** A 1ª versão checava DEPOIS do
+   * `create`: a rota devolvia **422** e **a ordem ficava gravada** — recusa com estado pela
+   * metade, o pior dos dois mundos (o dono vê "não deu" e tem um lote fantasma em PLANEJADA).
+   * A prova pegou pela contabilidade de escrita (531 → 532 ordens), não por um teste meu.
+   */
+  const temRetalho = input.retalhoKg != null && input.retalhoKg > 0
+  if (temRetalho) {
+    const cfg = (await configDeRetalho(input.companyId, [ficha.id], db)).get(ficha.id)
+    if (!cfg?.aceita) {
+      throw new OrdemError(
+        'Esta receita não aceita retalho — o retalho só entra em receita marcada (hoje, a massa de pizza).',
+      )
+    }
+  }
+
   const ordem = await db.stockProductionOrder.create({
     data: {
       companyId: input.companyId, fichaId: ficha.id, versaoFicha: ficha.versaoAtual, itemProduzidoId: ficha.itemProduzidoId,
@@ -108,27 +134,13 @@ export async function criarOrdem(input: CriarOrdemInput, db: Db = defaultPrisma)
       },
     })
   }
-  /**
-   * ⭐⭐ O RETALHO VIRA LINHA — e **só na receita que o dono marcou**.
-   *
-   * ⛔⛔ **QUEM RECUSA É O SERVIDOR, não a tela.** A pergunta só aparece em ficha com
-   * `aceitaRetalho`, mas esconder o campo é combinado: a rota pode ser chamada por outro
-   * caminho (script, cliente copiado, tela em cache) e aí um retalho entraria numa receita que
-   * não tem retalho — afrouxando o fiscal dela em silêncio. É a régua do FREIO da contagem
-   * (23/08): *aviso que vive no componente some no dia em que a rota for chamada por fora*.
-   */
-  if (input.retalhoKg != null && input.retalhoKg > 0) {
-    const cfg = (await configDeRetalho(input.companyId, [ficha.id], db)).get(ficha.id)
-    if (!cfg?.aceita) {
-      throw new OrdemError(
-        'Esta receita não aceita retalho — o retalho só entra em receita marcada (hoje, a massa de pizza).',
-      )
-    }
+  /** ⭐ o retalho de ontem — a config já foi conferida ANTES de a ordem nascer (ver acima) */
+  if (temRetalho) {
     await db.stockOrdemRetalho.create({
       data: {
         companyId: input.companyId,
         ordemId: ordem.id,
-        kg: input.retalhoKg,
+        kg: input.retalhoKg!,
         declaradoPorId: input.userId ?? null,
       },
     })
