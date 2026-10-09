@@ -2468,6 +2468,73 @@ já normalizadas 9 · pedem confirmação 2
 
 📋 **FICA PRO DONO:** as **11 pendências de dose do molho** — e a do combo agora **diz** que são 2 pizzas, pra ele não declarar a dose de uma. ⚠️ E o **efeito do mês** das 2 últimas foi pequeno por construção (sobra bruta 86.338,21 → 86.298,59, **−39,62** em 8 dias, contra os R$ 387,28/mês da janela de 30 dias): a PROMO vendeu 159 un e a Aiq 16 na janela cheia.
 
+## ⛔⛔⛔ O CARIMBO ASSINA PELA SESSÃO — O PIN SAIU DO FLUXO (09/10/2026, defeito de estreia)
+
+**O dono, horas depois do deploy da conferência:** *"ao Confirmar, a tela pede PIN da conta do gerente — Yussef/marcyelle/cristian não têm PIN e NÃO devem ter: PIN é identidade dos colaboradores no tablet COMPARTILHADO; gerente entra com login próprio, e a SESSÃO é a assinatura."*
+
+**⭐⭐ ELE ESTÁ CERTO, E O RETRATO DA MANHÃ JÁ DIZIA ISSO — eu li o dado e tirei a conclusão errada.** O retrato de part C mediu: **19 PINs de colaborador, 0 vínculo colaborador↔usuário, 0 de 19 nomes casando**. Dali eu concluí *"a SESSÃO prova o PAPEL, o PIN prova a PESSOA"* e pedi os dois. ⛔ **A pessoa já estava provada pelo login** — o PIN existe porque **no tablet não existe login**; onde existe, pedir PIN é pedir uma credencial que o papel de gerência não tem e não deve ter. *O mesmo dado comporta a leitura certa e a errada; o que separa é perguntar quem a credencial identifica e por que ela existe.*
+
+### ⛔⛔ POR QUE TABELA NOVA, E NÃO UM ALTER
+
+A `stock_conclusao_conferida` (de horas antes) nasceu com **`conferidoPorColaboradorId` NOT NULL** + CHECK exigindo conteúdo nele: carimbar pela sessão é **justamente não ter colaborador** → a coluna quebraria **TODO** carimbo.
+- ⛔ `ALTER TABLE` é **proibido** em migration de estoque desde a Fase 0 (guard de CI `migration-isolation.test.ts`, e o artefato É o `.sql`);
+- ⛔ reescrever a migration de horas antes **também não serve** — migration aplicada não se reescreve, o checksum do Prisma reprova o deploy (a cicatriz de 04/10);
+- ⭐ **e gravar o `userId` na coluna do COLABORADOR seria pior que as duas:** ela significa *"o colaborador do PIN"*, e o CHECK passaria a comparar um `userId` com um `colaboradorId` — espaços de identidade diferentes, que **nunca** são iguais. O eixo viraria **no-op que PARECE trava**. *Comentário que promete ser a trava sem ser a trava é pior que comentário nenhum.*
+
+⚠️⚠️ **CONSEQUÊNCIA REGISTRADA, NÃO ESCONDIDA:** a `stock_conclusao_conferida` fica no banco **vazia e sem leitor** — **medido em prod: 0 linhas** (ela nunca carimbou nada). `DROP` é proibido pelo guard, e afrouxar o guard por arrumação seria trocar risco real por estética. **Débito nomeado no `.sql`.**
+
+### ⭐⭐ A REGRA DURA NÃO AFROUXOU — e o que ela PERDE está medido
+
+`resolverAlvo` exige **sessão pessoal** (`SEM_SESSAO`) **e papel nesta empresa** (`SEM_PAPEL`), checado contra `userCompanyRole`, **nunca presumido do cookie**. Os **4 CHECKs** do banco conferidos em prod (`\d` real), com a **REGRA 13** no lugar certo:
+- **o eixo do USUÁRIO fica DURO** — `chk_carimbo_nao_e_o_declarante_user` com o `IS NULL` **explícito e PRIMEIRO**: `conferido <> declarado` com o declarado NULL avalia pra **NULL**, e ***CHECK com expressão NULL PASSA*** — e **397 das 448** conclusões vêm do tablet sem usuário, ou seja a forma ingênua deixaria passar exatamente o caso comum;
+- ⚠️ **o eixo do COLABORADOR fica INERTE**, porque o conferente deixou de ter identidade de colaborador. `declaradoPorColaboradorId` **continua gravado** (é rastro, e é o lado esquerdo da comparação no dia do vínculo), e a régua `porQueNaoPodeConferir` **continua recebendo os dois eixos** — mas **não há CHECK comparando**: comparar com NULL seria trava de papel.
+- ⚠️ **O FLANCO QUE ISSO ABRE, com nome:** quem for **colaborador no tablet E usuário de gerência** pode declarar com o PIN e carimbar com o login, e **nada barra** — porque `stock_colaborador` não aponta pra `User`. A saída é o vínculo, que é **decisão do dono**.
+
+### ⛔ O PIN MORRE NA TELA **E** NA ROTA — não fica opcional
+
+Campo e estado removidos do painel; **`.strict()` nos 3 ramos** do zod. **Provado em prod:** mandar `pin` devolve **400 · `Unrecognized key(s) in object: 'pin'`**. *PIN opcional voltaria na primeira tela copiada ou no primeiro cliente em cache* — é a REGRA 5: impossibilidade, não combinado.
+
+### ⚠️⚠️ E A PROVA EM PROD PEGOU UMA SONDA MINHA QUE MENTIA
+
+A 1ª rodada imprimiu `⛔ sessão sem papel: RECUSADO — "Esta produção já foi conferida por Yussef…"`. **A régua da assinatura nunca foi exercida:** o teste tentava o 2º gesto na **MESMA** conclusão, e a ordem do `resolverAlvo` checa **`JA_CONFERIDA` ANTES** de sessão/papel. ***Reposição que não reproduz o caso é um verde de graça*** — e aqui era pior, porque a sonda **imprimia o selo certo pelo motivo errado**. Refeita contra conclusão **virgem**; aí os dois mordem com a frase própria.
+
+### PROVADO EM PROD, COM OS 3 PAPÉIS REAIS (rollback forçado, ZERO escrita)
+
+```
+⭐ CARIMBO SEM PIN por Yussef Abu Zahry Musa   (sessão própria, ≠ quem lançou)
+⭐ CARIMBO SEM PIN por marcyelle                (papel de gerência, login próprio)
+⭐ CARIMBO SEM PIN por cristian fortes          (idem)
+   o SELO que a lista desenha: CONFERIDA · Yussef Abu Zahry Musa
+   a fila do gerente: 21 → 20 (a conferida SAIU)
+⛔ conferir 2× a mesma conclusão → RECUSADO (JA_CONFERIDA, com nome e hora)
+⛔⛔ AUTO-CONFERÊNCIA → RECUSADA nomeando a regra: "Conferência é de QUATRO OLHOS:
+     quem confere nunca é quem declarou — nem gerente confere a própria conclusão."
+⛔ sem SESSÃO pessoal → "Conferir exige login pessoal: o carimbo é a sua assinatura."
+⛔ sem PAPEL nesta empresa → "A sua conta não tem papel nesta empresa."
+⭐ CORRIGIR SEM PIN: 165 → 83 por Yussef · modo ESTORNA_E_RELANCA
+     a prévia prometia 193 → 111 · o ledger deu 193 → 111  ⭐ BATE
+ESTADO: carimbos 0→0 · conclusões 448→448 · movimentos 6805→6805 · avisos 28→28
+
+O GATE:  gerente 200 (21 aguardando, com o veredito do fiscal) · TABLET 403
+         {"erro":"Permissão necessária: stock.manage"} · a lista do tablet 403
+O POST:  mandando pin → 400 (o campo MORREU) · «outro» sem texto → 422 · PREVER → 200
+         carimbos 0 → 0 ⭐ nada gravado
+TELAS (REGRA 12): celular 200/419ms · desktop 200/133ms · 879 KB · 8/8 peças nos dois
+         ⭐ nenhum campo de PIN no bundle
+REGRA 13: 7/7 INSERTs tortos recusados pela constraint certa · 4/4 legítimos aceitos
+         2º carimbo recusado pelo índice único (23505) · escrita líquida 0
+         ⭐ CONTRAFACTUAL medido: a forma INGÊNUA sobre NULL devolve NULL → PASSARIA
+```
+
+**REGRA 11 — 4 defeitos repostos, 4 vermelhos:** o campo `pin` de volta na rota (**1**) · o campo de PIN de volta na tela (**1**) · `SEM_SESSAO` removido (**2**) · `SEM_PAPEL` removido (**2**).
+
+**935 arquivos · 12.350 verdes · TS 0 · migration CREATE-only (1 CREATE TABLE, 4 CHECKs, 1 índice único, 1 índice) · `pg_dump pre-carimbo-sessao-20261009-015655.dump` (8.708.870 bytes, tamanho conferido) · deploy 4/4 (`vgAuUshP8NQ7pBZb1k7qV`) · Δ bundle −4 KB.**
+
+⚠️ **4 testes de integração invertidos com o motivo escrito** (afirmavam o PIN no carimbo) e as fixtures passaram a criar **`User` + `UserCompanyRole`** — elas carimbavam com ids inventados (`'u-gerente'`), ou seja **gravavam assinatura de quem não era membro da empresa**. É exatamente o vermelho que a trava nova existe pra dar.
+
+📋 **FICA PRO DONO:** conferir os **21 lotes** na tela com a própria sessão (2 com o fiscal acusando: `porcao frango 100 grama` 65 contra ~49 · `porçao calabresa ralada` 54 contra ~35) · a decisão do botão **«Criar ordem»** (3º primário forte no azul legado) · **conclusão já conferida não se corrige** (o carimbo é único por conclusão; re-conferir seria gesto novo) · os **35 `slate-*`** da home que não invertem no escuro · e o **vínculo colaborador↔usuário**, que é o que fecha o flanco do eixo inerte.
+
+
 ## 🫱🫲 CONFERÊNCIA DO GERENTE (QUATRO OLHOS) + POLIMENTO DA PRODUÇÃO (09/10/2026)
 
 **Mock aprovado no chat, e as duas decisões de produto do dono:** ***"TODAS as conclusões passam · estoque/etiqueta saem NA HORA, a conferência vem atrás — nada trava a cozinha."***
