@@ -20,22 +20,117 @@ import { prisma } from '@/lib/db'
 import { exigirEmpresaNesteBanco } from '@/lib/scripts/prova-banco'
 import { previewNormalizacao } from '@/lib/margem/preview-normalizacao'
 import { checkStockInvariants } from '@/lib/stock/stock-invariants'
+import { montarCtx, explodir } from '@/lib/stock/vendas/baixa-venda'
+import { custoMedioPorItem } from '@/lib/stock/saldo'
 
 const CO = process.env.EMPRESA_ID ?? 'cmq17yapb00gnrndlh33sctbo'
 const brl = (n: number | null | undefined) =>
   n == null ? 'a apurar' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-/** ⭐ a janela da GRAVAÇÃO — 08/10/2026 20:43, o minuto em que as 9 versões nasceram */
-const GRAVACAO_DE = new Date('2026-10-08T23:40:00.000Z')
-const GRAVACAO_ATE = new Date('2026-10-08T23:50:00.000Z')
+/**
+ * ⭐⭐ A JANELA DO GESTO SAI DAS PRÓPRIAS VERSÕES, nunca de uma constante cravada.
+ *
+ * ⛔ Datar à mão (`'2026-10-08T23:40Z'`) mentiria na 2ª gravação: as 2 últimas entraram num
+ * minuto diferente das 9, e a janela velha diria "0 movimentos" sem nem olhar pra elas —
+ * verde por não ter procurado. A versão da ficha É o carimbo do gesto, então é dela que a
+ * janela nasce, com folga de 2 minutos pra cada lado.
+ */
+const FOLGA_MS = 2 * 60 * 1000
 
 async function main() {
   const nome = await exigirEmpresaNesteBanco(prisma, CO)
   console.log(`[pós-normalização] ${nome.trim()}\n`)
 
+  /** ⚠️ o preview é lido UMA vez e serve as duas seções — duas leituras poderiam divergir */
+  const p = await previewNormalizacao(CO, {}, prisma)
+
+  /* ══════════ 0. O COMBO — custo NA MÃO × PELA PORTA, e a dose dizendo ×2 ══════════ */
+  console.log('═══ 0. O COMBO «PROMO 2 PIZZAS GRANDES» — 2× a grande')
+  /** ⚠️ resolve pelo ITEM: `stock_ficha` não tem `@relation` com `stock_item` — o isolamento
+   *  do módulo proíbe referência às tabelas fechadas, então o join é na mão */
+  const itemCombo = await prisma.stockItem.findFirst({
+    where: { companyId: CO, nome: { contains: 'PROMO 2 PIZZAS' } },
+    select: { id: true, nome: true },
+  })
+  const combo = itemCombo
+    ? await prisma.stockFicha.findFirst({
+        where: { companyId: CO, itemProduzidoId: itemCombo.id },
+        select: { id: true, versaoAtual: true },
+      })
+    : null
+  if (!combo) {
+    console.log('  ⛔ não achei a ficha do combo')
+  } else {
+    const v = await prisma.stockFichaVersao.findFirst({
+      where: { fichaId: combo.id, versao: combo.versaoAtual },
+      select: { id: true, versao: true },
+    })
+    const comps = await prisma.stockFichaComponente.findMany({
+      where: { versaoId: v!.id },
+      select: { itemId: true, qtdPlanejada: true },
+    })
+    const itens = await prisma.stockItem.findMany({
+      where: { id: { in: comps.map((c) => c.itemId) } },
+      select: { id: true, nome: true },
+    })
+    const nomeDe = new Map(itens.map((i) => [i.id, i.nome]))
+    const custos = await custoMedioPorItem(prisma, CO)
+    const ctx = await montarCtx(CO, prisma)
+
+    /** ⭐ A SOMA NA MÃO — componente a componente, sem o motor no meio */
+    let naMao = 0
+    for (const c of comps) {
+      const cm = custos.get(c.itemId) ?? null
+      if (cm != null) naMao += c.qtdPlanejada * cm
+      console.log(`      ${c.qtdPlanejada} × «${nomeDe.get(c.itemId)}» @ ${brl(cm)} = ${brl(cm == null ? null : c.qtdPlanejada * cm)}`)
+    }
+    /** ⭐ A PORTA ÚNICA — a MESMA explosão que a baixa de venda executa */
+    const acc = new Map<string, number>()
+    explodir({ tipo: 'FICHA', fichaId: combo.id }, 1, ctx, acc)
+    let pelaPorta = 0
+    for (const [itemId, qtd] of acc) {
+      const cm = custos.get(itemId)
+      if (cm != null) pelaPorta += qtd * cm
+    }
+    const bate = Math.abs(naMao - pelaPorta) < 0.005
+    console.log(`  v${v!.versao} · ${comps.length} componentes`)
+    console.log(`      NA MÃO ${brl(naMao)} × PELA PORTA ${brl(pelaPorta)} → ${bate ? '⭐ BATE ao centavo' : '⛔ NÃO BATE'}`)
+
+    /**
+     * ⚠️ E ELE TEM QUE SER ~2× A GRANDE — a conta que o dono mandou conferir. A base grande é
+     * lida da `stock_base_do_tamanho`, nunca de um número escrito aqui: cravar 12,56 faria o
+     * teste passar a mentir no dia em que o custo de um insumo mudasse.
+     */
+    const baseG = await prisma.stockBaseDoTamanho.findFirst({ where: { companyId: CO, tamanho: 'GRANDE' } })
+    if (baseG) {
+      const accG = new Map<string, number>()
+      explodir({ tipo: 'FICHA', fichaId: baseG.fichaId }, 1, ctx, accG)
+      let grande = 0
+      for (const [itemId, qtd] of accG) {
+        const cm = custos.get(itemId)
+        if (cm != null) grande += qtd * cm
+      }
+      const razao = grande > 0 ? naMao / grande : null
+      console.log(
+        `      a base GRANDE custa ${brl(grande)} → o combo é ${razao == null ? 'a apurar' : razao.toFixed(4) + '×'} ` +
+          `${razao != null && Math.abs(razao - 2) < 0.0001 ? '⭐ exatamente 2×' : '⛔ NÃO é 2×'}`,
+      )
+    }
+
+    /** ⭐ a pendência do molho tem que DIZER que são 2 pizzas (ordem do dono) */
+    const molho = p.itens.molho
+    if (molho) {
+      const dose = await prisma.stockDoseADeclarar.findFirst({
+        where: { companyId: CO, fichaId: combo.id, itemId: molho.id },
+        select: { motivo: true },
+      })
+      const diz = dose?.motivo.includes('2 pizzas') ?? false
+      console.log(`      a dose do molho: ${diz ? '⭐ DIZ que são 2 pizzas' : '⛔ NÃO diz'} — «${dose?.motivo ?? 'sem pendência'}»`)
+    }
+  }
+
   /* ══════════ 1. O Δ QUE SOBRA — tem que ser só o das 2 que PERGUNTAM ══════════ */
   console.log('═══ 1. O Δ ABSORVIDO (preview de novo, MESMA janela de 30 dias)')
-  const p = await previewNormalizacao(CO, {}, prisma)
   const pendentes = p.grupos.flatMap((g) => g.linhas.filter((l) => !l.jaNormalizada))
   console.log(`  bases: ${p.totais.bases} · já normalizadas: ${p.totais.jaNormalizadas}`)
   console.log(`  pedem confirmação: ${p.totais.pedemConfirmacao}`)
@@ -50,11 +145,26 @@ async function main() {
 
   /* ══════════ 2. O LEDGER — nada nasceu do gesto, nada antigo se moveu ══════════ */
   console.log('\n═══ 2. O LEDGER (o gesto versiona RECEITA, nunca movimento)')
+  /** as versões das 11 bases que o gesto criou — cada `criadoEm` é um instante de gravação */
+  const idsBases = p.grupos.flatMap((g) => g.linhas.map((l) => l.fichaId))
+  const versoesDoGesto = await prisma.stockFichaVersao.findMany({
+    where: { companyId: CO, fichaId: { in: idsBases }, versao: { gt: 1 } },
+    select: { criadoEm: true, versao: true, fichaId: true },
+    orderBy: { criadoEm: 'asc' },
+  })
+  const instantes = versoesDoGesto.map((v) => v.criadoEm.getTime())
+  const deDe = Math.min(...instantes) - FOLGA_MS
+  const ate = Math.max(...instantes) + FOLGA_MS
+  console.log(`  versões criadas pelo gesto: ${versoesDoGesto.length}`)
+  console.log(
+    `  janela derivada: ${new Date(deDe).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` +
+      ` → ${new Date(ate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
+  )
   const naJanela = await prisma.stockMovement.findMany({
-    where: { companyId: CO, criadoEm: { gte: GRAVACAO_DE, lt: GRAVACAO_ATE } },
+    where: { companyId: CO, criadoEm: { gte: new Date(deDe), lt: new Date(ate) } },
     select: { tipo: true, criadoEm: true, quantidade: true },
   })
-  console.log(`  movimentos criados na janela da gravação (20:40–20:50): ${naJanela.length}`)
+  console.log(`  ⛔ movimentos criados nessa janela: ${naJanela.length}`)
   for (const m of naJanela) console.log(`     ${m.tipo} · ${m.quantidade}`)
 
   /** ⚠️ os movimentos mais recentes: é a cozinha operando ao vivo, não o gesto */
