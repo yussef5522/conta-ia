@@ -2468,6 +2468,85 @@ já normalizadas 9 · pedem confirmação 2
 
 📋 **FICA PRO DONO:** as **11 pendências de dose do molho** — e a do combo agora **diz** que são 2 pizzas, pra ele não declarar a dose de uma. ⚠️ E o **efeito do mês** das 2 últimas foi pequeno por construção (sobra bruta 86.338,21 → 86.298,59, **−39,62** em 8 dias, contra os R$ 387,28/mês da janela de 30 dias): a PROMO vendeu 159 un e a Aiq 16 na janela cheia.
 
+## 🏦 EMPRÉSTIMO FLEXÍVEL — A PORTA "REGISTRAR DEVOLUÇÃO" (09/10/2026)
+
+**O dono:** *"paguei 40.000 ao Arafat hoje PELO COFRE e a tela não tem porta: o «Marcar paga» só concilia débito de extrato com valor ±R$ 1 e janela ±7d do vencimento — régua de banco que não serve pra mútuo de cofre com valor livre."*
+
+**⭐ E O DIAGNÓSTICO MEDIDO MOSTROU QUE NÃO ERA SÓ UX: a janela bancária devolve lista VAZIA no flexível POR CONSTRUÇÃO.** O valor da devolução é livre (40.000 contra um nominal de 41.428,57) e a data é a do **caixa**, não a do vencimento — então o botão nunca pôde funcionar ali, em nenhum dia. *Gesto que não tem como dar certo é beco, não atrito.*
+
+**⭐⭐ A PORTA (`lib/loans/devolucao-flexivel.ts`): VALOR LIVRE + a conta do contrato + descrição automática, UM clique.** *"Devolução de mútuo — Arafat (4ª devolução)"*, a saída **e** o vínculo **na MESMA transação de banco** — a cicatriz da ordem fantasma de 09/10 vale aqui: **nada de metade gravada**. Toda checagem roda **ANTES** do `create` (foi exatamente a ordem invertida que deixou uma ordem órfã naquele dia, e o teste de integração conta as ORDENS/transações pra travar isso).
+
+**⛔⛔ E ANTES DE CRIAR, ELA PROCURA A SAÍDA QUE O DONO JÁ LANÇOU NA MÃO.** Débito na mesma conta, valor ±2 centavos, **janela de 10 dias** — curta de propósito: 30 dias alcançariam a devolução do mês anterior (as dele são mensais, ~29 dias atrás) e o sistema ofereceria casar com o pagamento ERRADO. Candidata achada → a prévia mostra **qual** transação vai ser vinculada e o botão **CASA** em vez de duplicar; criar a segunda saída exige marcar *"é uma saída diferente"*, que **nasce desmarcado**. **Nunca duas saídas pro mesmo pagamento** — e a recusa (`SAIDA_JA_EXISTE`, 409) **ensina**: *"Vincule ela em vez de criar outra"*.
+
+**⭐ O VÍNCULO VAI NA PRÓXIMA REFERÊNCIA ABERTA POR ORDEM (como as 3 primeiras) e o SELO DO MÊS continua pela LEI DO CAIXA DO MÊS (07/10).** São perguntas diferentes: a referência é a **prateleira** (escrituração), o selo é o **caixa que SAIU dentro do mês**. Provado: o vínculo cai na **#4** (venc 15/12) e outubro mostra a **#2** com *"~referência flexível · devolvido R$ 40.000,00 · faltam R$ 1.428,57 pro nominal"*, estado **A_VENCER** — honesto, sem atraso, porque **flexível nunca atrasa**.
+
+**⭐⭐ O SPLIT DE 0% JÁ RESOLVIA A DEVOLUÇÃO PARCIAL — medido antes de escrever régua nova.** `computeLinkSplit` com `rateMonthly === 0` devolve `isPartial: false` e `amortization = pago`, então **40.000 num nominal de 41.428,57 conta INTEIRO no saldo** (240.000 → 200.000) sem tocar no `saldoDevedorAtual`. *A régua certa já existia desde 06/08; faltava a porta chegar nela.*
+
+**⛔ A JANELA BANCÁRIA SAIU DO FLEXÍVEL — E CONTINUA VIVA NO BANCÁRIO.** `ehJanelaBancaria(scheduleSource) => scheduleSource !== 'FLEXIBLE'` é o dono único da pergunta; `ofereceMarcarPaga(v, { flexible })` tira o botão da tela, e **as DUAS rotas do «Marcar paga»** (a busca de candidatos **e** a gravação) recusam com **422 que ENSINA a saída**. ⚠️ Travar só a busca deixaria a escrita aberta — é a família *"N caminhos, 1 esquecido"*. **Guard dos DOIS lados:** guard que só afirmasse a ausência aprovaria o dia em que a janela sumisse de todo lugar, e ela é a régua CERTA no contrato de banco.
+
+**⭐⭐ O TEXTO-RESUMO PASSOU A DERIVAR DO HISTÓRICO** (`resumoDoFlexivel`): *"Mútuo de R$ 380.000,00, sem juros · 3 devoluções somando R$ 140.000,00 (a última em 01/09/26) · saldo R$ 240.000,00"*. O `notes` dizia **"Devolvidos 40.000 e 50.000. Saldo 290.000"** ao lado de um cartão de **R$ 240.000** — ele **não mentiu: congelou** (era verdade em 05/08). ⛔ E a tela **GRITA** quando `fecha: false` em vez de escolher um dos dois números. **E o histórico mudou de CONCEITO:** no flexível a unidade de verdade é a **DEVOLUÇÃO** (o fato), não a referência (a prateleira) — por isso ele passou a sair dos **VÍNCULOS, pelas DUAS portas** (1:1 e N:1; ler uma e declarar completo foi o bug de 14/08, e **este doc errou nisso DUAS vezes sobre este mesmo contrato**).
+
+**⚠️⚠️ E O CAMPO DE DINHEIRO PRECISOU DE RÉGUA PRÓPRIA (`lib/format/money-input.ts`):** `40.000` em pt-BR são **quarenta mil**, e num campo de devolução de mútuo ler isso como R$ 40,00 seria errar por mil vezes — o dono digita exatamente assim. ⛔ **Por que NÃO reusa o `sanitizarQtd` do estoque:** lá a precisão vem da **UNIDADE** (6 casas em KG pra dose de fermento, fração **recusada** em UN); dinheiro é sempre 2 casas. *Duas perguntas diferentes, duas réguas* — reusar deixaria `40.000,123456` entrar como valor.
+
+### ⚠️⚠️ O QUE OS TESTES ACHARAM ANTES DE PROD
+
+- **BURACO DE DESENHO:** `categoriaDaDevolucao` exigia histórico → **contrato sem devolução anterior ficava travado**, pedindo escolha numa lista de UM item. Corrigido: **uma opção → o sistema resolve; duas+ → pergunta.**
+- **FIXTURE COM `balance: 50000` CRAVADO** — `reAncorarContas` **DERIVA** o saldo (a lei de 30/09), então o valor mágico evaporava. Corrigida com lançamento de abertura + re-âncora. *É a mina registrada neste doc desde 31/07, cobrando num teste novo.*
+- **REGRA 11 — 11 defeitos repostos, todos vermelhos.** O D11 (a checagem depois do `create`) deu a mensagem exata *"a recusa deixou saída órfã: expected 3 to be 2"*. ⚠️ **E o D10 veio VERDE na sonda:** a substituição `perl` **não aplicou** (escaping) — conferido com python, o defeito morde com 2 vermelhos. ***Sonda errada dá um verde tão convincente quanto um vermelho.***
+- **O guard `sem-data-fixa-no-futuro` pegou MEU teste novo** (`2026-12-20` em posição de `hoje`) — refeito com `AGORA`/`maisDias(n)` relativos a `Date.now()`.
+- **O `Intl` usa ESPAÇO NÃO-QUEBRÁVEL depois de "R$"** — 2 testes comparavam com literal e nunca casariam (cicatriz de 24/09).
+
+### A PROVA EM PROD — RED-THEN-GREEN COM ROLLBACK FORÇADO (zero escrita)
+
+⚠️ `registrarDevolucao` abre a **própria** `$transaction`, então o rollback mora num **Proxy** cujo `$transaction` devolve o MESMO `tx` (o padrão de 05/10). Sem isso a prova commitaria por dentro.
+
+```
+ESTADO ANTES: {tx 412 · vínculos 1:1 = 2 · N:1 = 1 · cofre 41.465,76}
+
+1. A PRÉVIA DE HOJE (40.000 pelo cofre)
+   ação CRIAR · referência #4 (vence 15/12) · "Devolução de mútuo — Arafat (4ª devolução)"
+   categoria Amortização de Mútuo (terceiros) · candidatas na janela de 10 dias: 0
+
+2. O CICLO (o dono lança na mão → o sistema CASA)
+   (a) saída manual de R$ 40.000,00 no cofre, descrição "arafat"
+   (b) a prévia achou 1 candidata
+   (c) criar outra saída → ⭐ RECUSADO (SAIDA_JA_EXISTE)
+   (d) CASOU: criou saída? ⭐ NÃO · saídas no cofre 413 → 413 (NENHUMA nova)
+
+   ⭐ histórico 4 linhas · Σ R$ 180.000,00 · saldo R$ 200.000,00
+   ⛔ GUARD Σ(histórico) == amortizado == principal − saldo → ⭐ FECHA
+   selo de outubro: "~referência flexível · devolvido R$ 40.000,00 · faltam R$ 1.428,57
+                     pro nominal" · estado A_VENCER (flexível NUNCA atrasa)
+
+3. A JANELA BANCÁRIA — 2 FLEXÍVEIS fechados · 8 BANCÁRIOS vivos (intocados)
+
+ESTADO DEPOIS: idêntico · ⭐ ZERO ESCRITA
+```
+
+**NAVEGANDO, pelas ROTAS REAIS e nos DOIS viewports (REGRA 12):**
+```
+GET candidatos  · FLEXIBLE → 422 JANELA_BANCARIA_NO_FLEXIVEL   · BANCÁRIO → 200
+POST marcar paga· FLEXIBLE → 422 JANELA_BANCARIA_NO_FLEXIVEL   · BANCÁRIO → 404 (tx inexistente)
+POST devolucao  · FLEXIBLE → 200 (prévia, nada gravado)        · BANCÁRIO → 422 NAO_E_FLEXIVEL
+telas: empréstimo flexível · bancário · carteira · custos fixos → 200 nos dois viewports
+bundle (873 KB): 7/7 peças — o botão · "Quanto você devolveu?" · o placeholder 40.000,00 ·
+   "De onde saiu" · o escape do casar · o grito do resumo · o resumo derivado
+```
+
+**⚠️⚠️ E A SONDA ME DEU DOIS FALSOS ACHADOS — a mesma classe, 4ª vez no dia:** (a) procurar **`sanitizarDinheiro`** no bundle (o minificador **renomeia** import/variável; o que sobrevive é o TEXTO — a cicatriz do `t.selo` de 27/09); (b) ler **`j.historicoDevolucoes`** quando o campo é **`j.agregados.historicoDevolucoes`** — imprimiu *"0 linha(s)"* ao lado de um resumo dizendo 3, e eu quase reportei contradição na mesma rota. **O campo tem as 3 devoluções reais, com data e valor.** ***Chutar o nome do campo produz achado falso tão convincente quanto um real*** — e um `startDate` chutado (o campo é `firstDueDate`) já tinha estourado antes disso.
+
+### ⭐ O `notes` FICOU COM O QUE NÃO SE DERIVA (item 5, APLICADO em prod)
+
+`pg_dump pre-notes-flexivel-20261009-203034.dump` (**8.791.086 bytes, tamanho conferido**) antes, preview → `--aplicar`.
+
+**⚠️ E O PREVIEW ACHOU UM SEGUNDO NÚMERO VELHO que ninguém tinha notado:** a nota da 2ª tranche dizia *"Total da dívida com a Arafat: 400.000"*, e a soma DERIVADA dos dois saldos hoje é **R$ 350.000,00**. *Número gravado envelhece — os dois envelheceram.*
+
+Ficou a **origem** (mútuo com a Arafat, empresa do grupo, mai/2026, sem juros, devolução conforme o caixa), a **decisão** (entrada original NÃO registrada, competência mai/2026) e, na tranche do forno, o **fato que nenhuma soma deriva** (pago em espécie direto ao fornecedor, sem trânsito por conta da empresa). Saiu tudo que o histórico responde — com a frase dizendo isso, pra ninguém reescrever amanhã.
+
+**943 arquivos · 12.461 verdes · 2 todo · TS 0 · REGRA 13: nenhuma migration, nenhum CHECK novo — nada a provar contra Postgres · commit `4cb29947` · deploy 4/4 (`iVVr3GxPNbCoT5EElCgbI`) · Δ chunks +12 KB (0,1%).**
+
+📋 **FICA PRO DONO (e uma decisão precisa da palavra dele):** ⛔ **a saída manual de R$ 40.000 NÃO EXISTE em prod** — medido, nenhum débito de 40.000 no cofre desde 25/09. Então **ou** ele lança na mão e casa pela tela (o caminho que a prova exercitou), **ou** eu aplico o CRIAR; **fazer os dois produz exatamente a segunda saída que a trava existe pra impedir.** ⚠️ Registrado à parte: a devolução de **01/09 (R$ 50.000) está SEM CATEGORIA** em prod, enquanto as de jul/ago têm *"Amortização de Mútuo (terceiros)"* — o mesmo fato contado de dois jeitos no Fluxo de Caixa. A porta nova fecha isso daqui pra frente (categoria obrigatória, repetindo a decisão anterior); a de 01/09 é um clique dele.
+
 ## 🍕 RETALHO DE MASSA (rework) + 🎛️ A CONFERÊNCIA VIROU PLACAR (09/10/2026)
 
 ### ⭐⭐⭐ PARTE 1 — O RETALHO: o fiscal acusava um lote CERTO
