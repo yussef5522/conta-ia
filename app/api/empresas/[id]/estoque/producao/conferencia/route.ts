@@ -8,8 +8,14 @@
  * de distância. ⚠️ Por isso ela entra em `LEITURA_SENSIVEL` com o motivo escrito: *ler é ler*
  * continua valendo pro resto do módulo, e aqui a exceção tem nome.
  *
- * ⚠️ **E o POST exige `stock.manage` + PIN.** A sessão prova o PAPEL; o PIN prova a PESSOA.
- * Só a sessão faria "quatro olhos" virar dois numa aba aberta no tablet.
+ * ⛔⛔⛔ **E O CARIMBO ASSINA PELA SESSÃO — O PIN SAIU DO FLUXO (correção do dono, 09/10).**
+ * Os três que podem carimbar (Yussef, marcyelle, cristian) **não têm PIN e não devem ter**:
+ * PIN é identidade de COLABORADOR no tablet compartilhado, onde não existe login. Aqui existe
+ * login pessoal, e ele É a assinatura.
+ *
+ * ⚠️ **E o `.strict()` do zod é o que faz o PIN MORRER em vez de ficar opcional:** mandar `pin`
+ * devolve **400**, então nenhuma tela antiga em cache, nenhum cliente copiado e nenhum script
+ * consegue ressuscitar o campo em silêncio. É a REGRA 5 — impossibilidade, não combinado.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -32,13 +38,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
+/**
+ * ⛔ `.strict()` nos três: campo desconhecido **recusa**. É o que mata o `pin` de verdade —
+ * sem isso o zod o ignoraria em silêncio e ele voltaria vivo na primeira tela copiada.
+ */
 const schema = z.discriminatedUnion('acao', [
-  z.object({ acao: z.literal('CONFIRMAR'), conclusaoId: z.string().min(1), pin: z.string().min(1) }),
+  z.object({ acao: z.literal('CONFIRMAR'), conclusaoId: z.string().min(1) }).strict(),
   z.object({
     acao: z.literal('PREVER_CORRECAO'),
     conclusaoId: z.string().min(1),
     qtdCerta: z.number().positive(),
-  }),
+  }).strict(),
   z.object({
     acao: z.literal('CORRIGIR'),
     conclusaoId: z.string().min(1),
@@ -47,8 +57,7 @@ const schema = z.discriminatedUnion('acao', [
      *  mortos por dias em 25/09 (o `z.enum` da rota divergindo do vocabulário da lib) */
     motivo: z.enum(MOTIVOS_DA_CORRECAO),
     observacao: z.string().optional(),
-    pin: z.string().min(1),
-  }),
+  }).strict(),
 ])
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -65,7 +74,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     if (body.acao === 'CONFIRMAR') {
       const r = await confirmarConclusao(
-        { companyId, conclusaoId: body.conclusaoId, pin: body.pin, userId: a.user.sub },
+        { companyId, conclusaoId: body.conclusaoId, userId: a.user.sub },
         prisma,
       )
       return NextResponse.json({ ok: true, ...r })
@@ -81,7 +90,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         qtdCerta: body.qtdCerta,
         motivo: body.motivo,
         observacao: body.observacao ?? null,
-        pin: body.pin,
         userId: a.user.sub,
       },
       prisma,

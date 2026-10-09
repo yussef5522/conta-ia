@@ -5,13 +5,18 @@
  * a tabela a partir do schema → no SQLite o INSERT torto PASSA, e isso não é o CHECK falhando:
  * é ele não existir ali. Logo, a prova é script contra Postgres, nunca teste da suíte.
  *
- * ⭐⭐ E OS CASOS QUE MAIS IMPORTAM AQUI SÃO OS DE **TRÊS VALORES**: `declaradoPorColaboradorId`
- * e `declaradoPorId` são **NULLABLE de propósito** (397 das 448 conclusões vêm do tablet, sem
- * usuário; e há conclusão sem colaborador). Então:
- *   · `conferido <> declarado` com o declarado NULL devolve **NULL**
+ * ⭐⭐ O CASO QUE MAIS IMPORTA AQUI É O DE **TRÊS VALORES**: `declaradoPorId` é **NULLABLE de
+ * propósito** (397 das 448 conclusões vêm do tablet, sem usuário). Então:
+ *   · `conferidoPorId <> declaradoPorId` com o declarado NULL devolve **NULL**
  *   · e ***CHECK com expressão NULL PASSA*** — o furo exato do `chk_aviso_acao_completa` (04/10)
- * Por isso o `IS NULL` vem EXPLÍCITO e PRIMEIRO em cada um, e este script mede o contrafactual
- * no próprio banco em vez de eu afirmar que a forma está certa.
+ * Por isso o `IS NULL` vem EXPLÍCITO e PRIMEIRO, e este script mede o contrafactual no próprio
+ * banco em vez de eu afirmar que a forma está certa.
+ *
+ * ⚠️ **ATUALIZADO EM 09/10 PRA A TABELA NOVA (`stock_conclusao_carimbo`).** O carimbo passou a
+ * assinar pela SESSÃO: o PIN saiu do fluxo, e com ele a coluna `conferidoPorColaboradorId`
+ * (NOT NULL na tabela velha) — era ela que tornava o carimbo-sem-PIN impossível de gravar.
+ * ⛔ Consequência registrada: o eixo do COLABORADOR não tem mais CHECK, porque o conferente
+ * não tem identidade de colaborador; comparar com NULL devolveria NULL e seria trava de papel.
  *
  * ⭐ ZERO ESCRITA LÍQUIDA: conta as linhas antes e depois e aborta se não voltar ao mesmo.
  */
@@ -23,159 +28,139 @@ const EMPRESA = process.env.EMPRESA_ID ?? 'cmq17yapb00gnrndlh33sctbo'
 type Caso = { nome: string; args: unknown[]; esperaConstraint: string }
 
 const SQL =
-  `INSERT INTO "stock_conclusao_conferida" ` +
-  `("id","companyId","conclusaoId","conferidoPorId","conferidoPorColaboradorId","conferidoPorNome",` +
-  `"declaradoPorColaboradorId","declaradoPorId","corrigiuDe","motivoDaCorrecao") ` +
-  `VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
+  `INSERT INTO "stock_conclusao_carimbo" ` +
+  `("id","companyId","conclusaoId","conferidoPorId","conferidoPorNome",` +
+  `"declaradoPorId","declaradoPorColaboradorId","corrigiuDe","motivoDaCorrecao") ` +
+  `VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
 
 async function main() {
   await exigirEmpresaNesteBanco(prisma, EMPRESA)
-  const antes = await prisma.stockConclusaoConferida.count()
+  const antes = await prisma.stockConclusaoCarimbo.count()
   console.log(`\nlinhas antes: ${antes}`)
 
   const tortos: Caso[] = [
     {
       nome: 'conclusaoId em branco (forma)',
-      args: ['pv1', EMPRESA, '   ', 'u-1', 'c-1', 'cristian', 'c-2', null, null, null],
-      esperaConstraint: 'chk_conferida_conclusao',
+      args: ['pv1', EMPRESA, '   ', 'u-1', 'marcyelle', null, 'c-2', null, null],
+      esperaConstraint: 'chk_carimbo_conclusao',
     },
     {
-      nome: 'nome do conferente em branco — o selo diria "conferido · "',
-      args: ['pv2', EMPRESA, 'conc-1', 'u-1', 'c-1', '  ', 'c-2', null, null, null],
-      esperaConstraint: 'chk_conferida_quem',
+      nome: 'nome do conferente em branco (o selo diria "conferido · " sem nome)',
+      args: ['pv2', EMPRESA, 'conc-1', 'u-1', '  ', null, 'c-2', null, null],
+      esperaConstraint: 'chk_carimbo_quem',
     },
     {
-      nome: 'colaborador do PIN em branco',
-      args: ['pv3', EMPRESA, 'conc-1', 'u-1', '', 'cristian', 'c-2', null, null, null],
-      esperaConstraint: 'chk_conferida_quem',
+      nome: 'conferidoPorId em branco (carimbo sem assinatura)',
+      args: ['pv3', EMPRESA, 'conc-1', '', 'marcyelle', null, 'c-2', null, null],
+      esperaConstraint: 'chk_carimbo_quem',
     },
     {
-      nome: '⛔⛔ AUTO-CONFERÊNCIA pelo COLABORADOR (o PIN do declarante)',
-      args: ['pv4', EMPRESA, 'conc-1', 'u-1', 'c-1', 'eliane', 'c-1', null, null, null],
-      esperaConstraint: 'chk_conferida_nao_e_o_declarante_colab',
-    },
-    {
-      nome: '⛔⛔ AUTO-CONFERÊNCIA pelo USUÁRIO (o gerente que concluiu pela tela)',
-      args: ['pv5', EMPRESA, 'conc-1', 'u-1', 'c-1', 'cristian', 'c-2', 'u-1', null, null],
-      esperaConstraint: 'chk_conferida_nao_e_o_declarante_user',
+      nome: '⭐⭐ AUTO-CONFERÊNCIA pelo eixo da SESSÃO (quem lançou carimbando a própria)',
+      args: ['pv4', EMPRESA, 'conc-1', 'u-1', 'marcyelle', 'u-1', 'c-2', null, null],
+      esperaConstraint: 'chk_carimbo_nao_e_o_declarante_user',
     },
     {
       nome: '⭐ MEIA-CORREÇÃO: número novo SEM motivo',
-      args: ['pv6', EMPRESA, 'conc-1', 'u-1', 'c-1', 'cristian', 'c-2', null, 7, null],
-      esperaConstraint: 'chk_conferida_correcao_completa',
+      args: ['pv5', EMPRESA, 'conc-1', 'u-1', 'marcyelle', null, 'c-2', 7, null],
+      esperaConstraint: 'chk_carimbo_correcao_completa',
     },
     {
       nome: '⭐ MEIA-CORREÇÃO: número novo com motivo em BRANCO (o furo do length(trim))',
-      args: ['pv7', EMPRESA, 'conc-1', 'u-1', 'c-1', 'cristian', 'c-2', null, 7, '   '],
-      esperaConstraint: 'chk_conferida_correcao_completa',
+      args: ['pv6', EMPRESA, 'conc-1', 'u-1', 'marcyelle', null, 'c-2', 7, '   '],
+      esperaConstraint: 'chk_carimbo_correcao_completa',
     },
     {
       nome: '⭐ MEIA-CORREÇÃO ao contrário: motivo SEM número',
-      args: ['pv8', EMPRESA, 'conc-1', 'u-1', 'c-1', 'cristian', 'c-2', null, null, 'contou errado'],
-      esperaConstraint: 'chk_conferida_correcao_completa',
+      args: ['pv7', EMPRESA, 'conc-1', 'u-1', 'marcyelle', null, 'c-2', null, 'contou errado'],
+      esperaConstraint: 'chk_carimbo_correcao_completa',
     },
   ]
 
-  console.log('\n═══════ INSERTS TORTOS — o banco tem que RECUSAR ═══════')
-  let recusados = 0
+  console.log('\n═══════ OS TORTOS TÊM QUE SER RECUSADOS ═══════')
+  let okTortos = 0
   for (const c of tortos) {
     try {
-      await prisma.$executeRawUnsafe(SQL, ...(c.args as never[]))
-      console.log(`  ⛔⛔ ${c.nome} → PASSOU (o CHECK ${c.esperaConstraint} NÃO morde)`)
+      await prisma.$executeRawUnsafe(SQL, ...c.args)
+      console.log(`  ⛔⛔ PASSOU (DEFEITO!): ${c.nome}`)
+      await prisma.$executeRawUnsafe(`DELETE FROM "stock_conclusao_carimbo" WHERE "id" = $1`, c.args[0])
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      const ok = msg.includes(c.esperaConstraint)
-      console.log(
-        `  ${ok ? '✓' : '⚠️'} ${c.nome} → recusado${ok ? ` por ${c.esperaConstraint}` : ` mas por OUTRA razão: ${msg.slice(0, 140)}`}`,
-      )
-      if (ok) recusados++
+      const pelaCerta = msg.includes(c.esperaConstraint)
+      console.log(`  ${pelaCerta ? '✓' : '⚠️'} ${c.nome} → recusado por ${pelaCerta ? c.esperaConstraint : `OUTRA constraint: ${msg.slice(0, 120)}`}`)
+      if (pelaCerta) okTortos++
     }
   }
 
-  console.log('\n═══════ OS LEGÍTIMOS TÊM QUE ENTRAR (e saem depois) ═══════')
   const legitimos: { nome: string; args: unknown[] }[] = [
     {
       nome: 'CONFIRMAR (o caminho de todo dia): conferente ≠ declarante, sem correção',
-      args: ['pv-ok-1', EMPRESA, 'conc-ok-1', 'u-ger', 'c-conf', 'cristian', 'c-decl', null, null, null],
+      args: ['pv-ok-1', EMPRESA, 'conc-ok-1', 'u-ger', 'marcyelle', 'u-outro', 'c-decl', null, null],
     },
     {
-      /** ⭐ o caso que a lógica de três valores tem que ACEITAR — 397 conclusões são assim */
-      nome: '⭐ declarante NULL nos DOIS eixos (conclusão do tablet sem colaborador)',
-      args: ['pv-ok-2', EMPRESA, 'conc-ok-2', 'u-ger', 'c-conf', 'cristian', null, null, null, null],
+      nome: '⭐ conclusão do TABLET: declaradoPorId NULL (397 das 448 são assim)',
+      args: ['pv-ok-2', EMPRESA, 'conc-ok-2', 'u-ger', 'marcyelle', null, 'c-decl', null, null],
     },
     {
       nome: 'CORRIGIR completo: número + motivo',
-      args: ['pv-ok-3', EMPRESA, 'conc-ok-3', 'u-ger', 'c-conf', 'cristian', 'c-decl', null, 10, 'contou errado'],
+      args: ['pv-ok-3', EMPRESA, 'conc-ok-3', 'u-ger', 'marcyelle', null, 'c-decl', 10, 'contou errado'],
     },
     {
-      /** ⚠️ zero é um VALOR: `corrigiuDe: 0` com motivo é correção legítima (declarou 0 por erro) */
       nome: '⚠️ corrigiuDe ZERO com motivo (zero é valor, não ausência)',
-      args: ['pv-ok-4', EMPRESA, 'conc-ok-4', 'u-ger', 'c-conf', 'cristian', 'c-decl', null, 0, 'digitou errado'],
+      args: ['pv-ok-4', EMPRESA, 'conc-ok-4', 'u-ger', 'marcyelle', null, 'c-decl', 0, 'digitou errado'],
     },
   ]
-  let legitimosOk = 0
-  for (const l of legitimos) {
+
+  console.log('\n═══════ OS LEGÍTIMOS TÊM QUE ENTRAR (e saem depois) ═══════')
+  let okLegit = 0
+  for (const c of legitimos) {
     try {
-      await prisma.$executeRawUnsafe(SQL, ...(l.args as never[]))
-      console.log(`  ✓ ${l.nome} → ENTROU`)
-      legitimosOk++
+      await prisma.$executeRawUnsafe(SQL, ...c.args)
+      console.log(`  ✓ ${c.nome} → ENTROU`)
+      okLegit++
     } catch (e) {
-      console.log(`  ⛔⛔ ${l.nome} → RECUSADO: ${e instanceof Error ? e.message.slice(0, 160) : e}`)
+      console.log(`  ⛔⛔ RECUSADO (DEFEITO!): ${c.nome} — ${(e instanceof Error ? e.message : '').slice(0, 160)}`)
     }
   }
 
   console.log('\n═══════ UM CARIMBO POR CONCLUSÃO — o índice único ═══════')
   try {
-    await prisma.$executeRawUnsafe(
-      SQL,
-      ...(['pv-dup', EMPRESA, 'conc-ok-1', 'u-outro', 'c-outro', 'marcyelle', 'c-decl', null, null, null] as never[]),
-    )
-    console.log('  ⛔⛔ o 2º carimbo da MESMA conclusão PASSOU — o selo diria "conferido" 2×, com 2 nomes')
+    await prisma.$executeRawUnsafe(SQL, 'pv-dup', EMPRESA, 'conc-ok-1', 'u-x', 'cristian', null, null, null, null)
+    console.log('  ⛔⛔ o 2º carimbo PASSOU (DEFEITO!)')
+    await prisma.$executeRawUnsafe(`DELETE FROM "stock_conclusao_carimbo" WHERE "id" = 'pv-dup'`)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    console.log(`  ✓ o 2º carimbo foi recusado (${msg.includes('23505') ? '23505, chave única' : msg.slice(0, 80)})`)
+    console.log(`  ✓ o 2º carimbo foi recusado (${msg.includes('23505') || msg.includes('nique') ? '23505, chave única' : msg.slice(0, 80)})`)
   }
 
-  /**
-   * ⛔⛔ O CONTRAFACTUAL MEDIDO NO PRÓPRIO BANCO — a razão de existir da REGRA 13.
-   *
-   * A forma INGÊNUA do anti-auto-conferência (`conferido <> declarado`, sem o `IS NULL`
-   * explícito) **ACEITA** o caso do declarante NULL por acidente — e, pior, é uma expressão
-   * NULL, então ela passaria **mesmo que a semântica fosse pra barrar**. O par abaixo prova que
-   * a lógica de três valores é REAL, e que a nossa forma decide DE PROPÓSITO.
-   */
   console.log('\n═══════ CONTRAFACTUAL — a lógica de TRÊS valores, medida ═══════')
-  const [tres] = await prisma.$queryRawUnsafe<{ ingenua: boolean | null; nossa: boolean }[]>(
-    `SELECT ('c-1' <> NULL::text) AS ingenua,
-            (NULL::text IS NULL OR 'c-1' <> NULL::text) AS nossa`,
+  const [t] = await prisma.$queryRawUnsafe<{ ingenua: boolean | null; nossa: boolean | null }[]>(
+    `SELECT ('u-1' <> NULL) AS ingenua,
+            (NULL IS NULL OR 'u-1' <> NULL) AS nossa`,
   )
-  console.log(`  a forma INGÊNUA sobre NULL devolve: ${tres.ingenua === null ? 'NULL → o CHECK PASSARIA sem decidir' : String(tres.ingenua)}`)
-  console.log(`  a NOSSA forma sobre NULL devolve:   ${String(tres.nossa)} → decide de propósito`)
-  const [meia] = await prisma.$queryRawUnsafe<{ ingenua: boolean | null; nossa: boolean }[]>(
-    `SELECT (length(trim(NULL::text)) > 0) AS ingenua,
-            (NULL::text IS NOT NULL AND length(trim(NULL::text)) > 0) AS nossa`,
+  console.log(`  a forma INGÊNUA sobre NULL devolve: ${t.ingenua === null ? 'NULL → o CHECK PASSARIA sem decidir' : t.ingenua}`)
+  console.log(`  a NOSSA forma sobre NULL devolve:   ${t.nossa === null ? 'NULL' : `${t.nossa} → decide de propósito`}`)
+  const [m] = await prisma.$queryRawUnsafe<{ ingenua: boolean | null; nossa: boolean | null }[]>(
+    `SELECT (length(trim(NULL)) > 0) AS ingenua,
+            (NULL IS NOT NULL AND length(trim(NULL)) > 0) AS nossa`,
   )
-  console.log(`  meia-correção, forma INGÊNUA (só length): ${meia.ingenua === null ? 'NULL → PASSARIA' : String(meia.ingenua)}`)
-  console.log(`  meia-correção, a NOSSA (IS NOT NULL antes): ${String(meia.nossa)} → RECUSA`)
+  console.log(`  meia-correção, forma INGÊNUA (só length): ${m.ingenua === null ? 'NULL → PASSARIA' : m.ingenua}`)
+  console.log(`  meia-correção, a NOSSA (IS NOT NULL antes): ${m.nossa === null ? 'NULL' : `${m.nossa} → RECUSA`}`)
 
   console.log('\n═══════ LIMPEZA — zero escrita líquida ═══════')
-  await prisma.stockConclusaoConferida.deleteMany({
-    where: { id: { in: ['pv-ok-1', 'pv-ok-2', 'pv-ok-3', 'pv-ok-4', 'pv-dup'] } },
-  })
-  const depois = await prisma.stockConclusaoConferida.count()
+  await prisma.$executeRawUnsafe(
+    `DELETE FROM "stock_conclusao_carimbo" WHERE "id" LIKE 'pv-%' OR "id" LIKE 'pv%'`,
+  )
+  const depois = await prisma.stockConclusaoCarimbo.count()
   console.log(`linhas depois: ${depois} (antes: ${antes})`)
 
-  const ok = recusados === tortos.length && legitimosOk === legitimos.length && depois === antes
+  const ok = okTortos === tortos.length && okLegit === legitimos.length && depois === antes
   console.log(
-    `\n${ok ? '⭐ PROVA OK' : '⛔ PROVA FALHOU'} — ${recusados}/${tortos.length} tortos recusados · ` +
-      `${legitimosOk}/${legitimos.length} legítimos aceitos · escrita líquida ${depois - antes}`,
+    ok
+      ? `\n⭐ PROVA OK — ${okTortos}/${tortos.length} tortos recusados · ${okLegit}/${legitimos.length} legítimos aceitos · escrita líquida 0`
+      : `\n⛔ PROVA FALHOU — tortos ${okTortos}/${tortos.length} · legítimos ${okLegit}/${legitimos.length} · linhas ${antes}→${depois}`,
   )
-  if (!ok) process.exitCode = 1
+  await prisma.$disconnect()
+  if (!ok) process.exit(1)
 }
 
-main()
-  .catch((e) => {
-    console.error('⛔ prova abortou:', e instanceof Error ? e.message : e)
-    process.exitCode = 1
-  })
-  .finally(() => prisma.$disconnect())
+main().catch((e) => { console.error('[prova] erro:', e instanceof Error ? e.message : e); process.exit(1) })

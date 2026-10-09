@@ -3941,21 +3941,31 @@ model StockConclusaoEstornada {
 // `stock_colaborador`, que não tem vínculo com usuário nenhum — então "PIN de gerência" não
 // existe, e sem o PIN do conferente o "conferente ≠ declarante" das 397 conclusões do tablet
 // seria incomparável.
-model StockConclusaoConferida {
+/// ⭐⭐⭐ O CARIMBO DA CONFERÊNCIA — ASSINADO PELA SESSÃO (09/10/2026).
+///
+/// ⛔⛔ Substituiu a `StockConclusaoConferida`, que exigia `conferidoPorColaboradorId` NOT NULL
+/// (o PIN era obrigatório por desenho). O dono corrigiu o desenho no mesmo dia: *"PIN é
+/// identidade dos COLABORADORES no tablet compartilhado; gerente entra com login próprio, e a
+/// SESSÃO é a assinatura"* — Yussef, marcyelle e cristian não têm PIN e **não devem ter**.
+/// ⚠️ A tabela velha ficou no banco **vazia e sem leitor** (0 linhas, medido): `ALTER`/`DROP` são
+/// proibidos em migration de estoque, e migration aplicada não se reescreve. Débito nomeado.
+model StockConclusaoCarimbo {
   id                        String   @id @default(cuid())
   companyId                 String
   conclusaoId               String   @unique // ⭐ conferir 2× é impossível por construção
-  conferidoPorId            String // o USUÁRIO da sessão — o papel
-  conferidoPorColaboradorId String // o COLABORADOR do PIN — a pessoa presente
+  conferidoPorId            String // ⭐ o USUÁRIO da sessão — a ASSINATURA (papel na rota)
   conferidoPorNome          String // snapshot: o selo não depende de join nem de rename
-  declaradoPorColaboradorId String? // contra quem a regra dura morde (CHECK)
-  declaradoPorId            String?
+  declaradoPorId            String? // o eixo DURO da regra: quem lançou pela sessão (CHECK)
+  /// ⚠️ rastro + o lado esquerdo da comparação no dia em que existir vínculo colaborador↔usuário.
+  /// Hoje não há CHECK comparando: o conferente não tem identidade de colaborador, e comparar
+  /// com NULL devolveria NULL — e CHECK com expressão NULL PASSA (a lição do 04/10).
+  declaradoPorColaboradorId String?
   corrigiuDe                Float? // o número que o declarante havia posto (null = confirmou)
   motivoDaCorrecao          String? // CONTOU_ERRADO | DIGITOU_ERRADO | OUTRO: …
   conferidoEm               DateTime @default(now())
 
   @@index([companyId, conferidoEm])
-  @@map("stock_conclusao_conferida")
+  @@map("stock_conclusao_carimbo")
 }
 
 model StockProducaoConclusao {

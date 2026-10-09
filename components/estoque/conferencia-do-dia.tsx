@@ -13,8 +13,8 @@
  * carrega, e disparar antes queimaria um 403 por carregamento de página no tablet — a cicatriz
  * do badge que levava 1.391 403/dia (28/09).
  *
- * ⭐ REGRA 12 — uma composição, dois viewports: os cartões empilham com `flex-wrap` e o PIN
- * cabe no polegar. **O gerente confere do CELULAR.**
+ * ⭐ REGRA 12 — uma composição, dois viewports: os cartões empilham com `flex-wrap` e o
+ * Confirmar cabe no polegar. **O gerente confere do CELULAR, com o login dele.**
  */
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCheck, Clock, Pencil, ShieldCheck, TriangleAlert, X } from 'lucide-react'

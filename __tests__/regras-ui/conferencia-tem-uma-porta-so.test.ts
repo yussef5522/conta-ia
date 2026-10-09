@@ -30,9 +30,8 @@ const ROTA_ORDEM = 'app/api/empresas/[id]/estoque/producao/ordens/[ordemId]/rout
 const ler = (p: string) => semComentarios(readFileSync(p, 'utf8'))
 
 describe('⛔⛔ UM formulário de correção, dois lugares', () => {
-  it('⭐ o painel é o dono do gesto: PIN, motivos, prévia e o POST moram nele', () => {
+  it('⭐ o painel é o dono do gesto: motivos, prévia e o POST moram nele', () => {
     const p = ler(PAINEL)
-    expect(p, 'o campo do PIN').toMatch(/seu PIN/)
     expect(p, 'os 3 motivos fechados').toMatch(/CONTOU_ERRADO/)
     expect(p, 'a prévia ANTES de gravar (ordem do dono)').toMatch(/PREVER_CORRECAO/)
     expect(p, 'e a gravação').toMatch(/acao: 'CORRIGIR'/)
@@ -44,7 +43,6 @@ describe('⛔⛔ UM formulário de correção, dois lugares', () => {
     for (const tela of [FILA, ORDEM]) {
       const s = ler(tela)
       expect(usosDe(s, 'PainelDeConferencia'), `${tela} parou de consumir o painel`).toBeGreaterThan(0)
-      expect(s, `${tela} remontou o campo do PIN`).not.toMatch(/seu PIN/)
       expect(s, `${tela} remontou a lista de motivos`).not.toMatch(/CONTOU_ERRADO/)
       expect(s, `${tela} fez a própria prévia`).not.toMatch(/PREVER_CORRECAO/)
       expect(s, `${tela} gravou a correção por fora do painel`).not.toMatch(/acao: 'CORRIGIR'/)
@@ -125,6 +123,66 @@ describe('⭐⭐ a porta da correção ABRE na página da ordem (item 3)', () =>
  * Baixar pra `stock.view` deixava o guard verde e **mandava o veredito do fiscal pro tablet**.
  * ***Comentário que promete ser a trava sem ser a trava é pior que comentário nenhum.***
  */
+/**
+ * ⛔⛔⛔ O PIN MORREU NO FLUXO DE CARIMBO (correção do dono, 09/10) — E NÃO FICOU OPCIONAL.
+ *
+ * **O defeito de estreia:** ao Confirmar, a tela pedia o PIN da conta do gerente — e
+ * **Yussef, marcyelle e cristian não têm PIN, nem devem ter**. Nas palavras dele: *"PIN é
+ * identidade dos COLABORADORES no tablet COMPARTILHADO; gerente entra com login próprio, e a
+ * SESSÃO é a assinatura."*
+ *
+ * ⚠️ **Opcional não serve.** Campo que "não é mais usado" volta na primeira tela copiada, e aí
+ * metade dos gerentes vê um campo que ninguém sabe preencher. O `.strict()` do zod é o que o
+ * mata: mandar `pin` devolve **400**.
+ */
+describe('⛔⛔⛔ o PIN morreu no carimbo — na tela E na rota', () => {
+  const ROTA = 'app/api/empresas/[id]/estoque/producao/conferencia/route.ts'
+
+  it('⛔ a TELA não pede PIN em lugar nenhum do carimbo', () => {
+    for (const tela of [PAINEL, FILA, ORDEM]) {
+      const s = ler(tela)
+      expect(s, `${tela} voltou a pedir PIN`).not.toMatch(/seu PIN|inputMode="numeric"/)
+      expect(s, `${tela} voltou a mandar pin no corpo`).not.toMatch(/\bpin[,:]/)
+    }
+  })
+
+  it('⛔⛔ a ROTA recusa o campo: os 3 ramos são .strict()', () => {
+    const r = ler(ROTA)
+    const bloco = r.slice(r.indexOf('const schema'), r.indexOf('export async function POST'))
+    expect(bloco, 'pin de volta no schema').not.toMatch(/\bpin\b/)
+    /** ⭐ 3 ramos, 3 `.strict()` — sem ele o zod ignoraria o campo em silêncio */
+    expect((bloco.match(/\}\)\.strict\(\)/g) ?? []).length, 'os 3 ramos .strict()').toBe(3)
+  })
+
+  it('⭐ e o MOTOR não aceita pin na assinatura — nem por engano', () => {
+    const m = ler('lib/stock/producao/conferencia.ts')
+    const conf = m.slice(m.indexOf('export async function confirmarConclusao'), m.indexOf('export async function preverCorrecao'))
+    expect(conf, 'pin de volta no confirmar').not.toMatch(/\bpin\b/)
+    expect(conf, 'e a assinatura é a SESSÃO').toMatch(/userId: string/)
+    /** ⛔ e o PIN não é mais nem importado aqui — função sem chamador é o que alguém religa */
+    expect(m, 'o motor voltou a importar o PIN').not.toMatch(/from '\.\/pin'/)
+  })
+
+  it('⛔⛔ a ASSINATURA exige sessão pessoal E papel nesta empresa', () => {
+    const m = ler('lib/stock/producao/conferencia.ts')
+    const alvo = m.slice(m.indexOf('async function resolverAlvo'), m.indexOf('export async function confirmarConclusao'))
+    expect(alvo, 'sem sessão o selo diria "conferido" sem ninguém por trás').toMatch(/SEM_SESSAO/)
+    expect(alvo, 'e o papel é resolvido contra o BANCO, dentro da empresa (REGRA 8)')
+      .toMatch(/userCompanyRole\.findFirst/)
+    expect(alvo).toMatch(/companyId: input\.companyId/)
+    expect(alvo, 'SEM_PAPEL recusa').toMatch(/SEM_PAPEL/)
+    /** ⭐ e a régua dura continua chamada ANTES de qualquer escrita */
+    expect(alvo).toMatch(/porQueNaoPodeConferir/)
+  })
+
+  it('⭐ a régua dura NÃO foi apagada: os dois eixos seguem na assinatura dela', () => {
+    const m = ler('lib/stock/producao/conferencia.ts')
+    const regua = m.slice(m.indexOf('export function porQueNaoPodeConferir'), m.indexOf('interface Alvo'))
+    expect(regua, 'o eixo da sessão').toMatch(/declaradoPorId/)
+    expect(regua, 'e o eixo do colaborador, esperando o vínculo').toMatch(/conferidoPorColaboradorId: string \| null/)
+  })
+})
+
 describe('⛔⛔⛔ os dois buracos do item 5', () => {
   it('⛔⛔ a FILA exige stock.manage no GET — é o gate da cola de prova', () => {
     const r = ler('app/api/empresas/[id]/estoque/producao/conferencia/route.ts')

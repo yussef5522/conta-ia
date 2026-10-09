@@ -45,7 +45,7 @@ async function main() {
   await exigirEmpresaNesteBanco(prisma, EMPRESA)
 
   const antes = {
-    carimbos: await prisma.stockConclusaoConferida.count({ where: { companyId: EMPRESA } }),
+    carimbos: await prisma.stockConclusaoCarimbo.count({ where: { companyId: EMPRESA } }),
     conclusoes: await prisma.stockProducaoConclusao.count({ where: { companyId: EMPRESA } }),
     movimentos: await prisma.stockMovement.count({ where: { companyId: EMPRESA } }),
     estornadas: await prisma.stockConclusaoEstornada.count({ where: { companyId: EMPRESA } }),
@@ -95,8 +95,8 @@ async function main() {
 
   const alvo = fila.cartoes[0]
 
-  // ───────── 3. A REGRA DURA: declarante não confere a própria produção ─────────
-  console.log(`\n═══ 3. A REGRA DURA — conferente ≠ declarante ═══`)
+  // ───────── 3. QUEM DECLAROU (os dois eixos da regra dura) ─────────
+  console.log(`\n═══ 3. QUEM DECLAROU — os dois eixos da regra dura ═══`)
   const pins = await prisma.stockColaboradorPin.findMany({
     where: { companyId: EMPRESA },
     select: { colaboradorId: true },
@@ -108,12 +108,13 @@ async function main() {
   console.log(`a conclusão foi declarada por: colaborador ${conc.colaboradorId ?? '—'} · usuário ${conc.criadoPorId ?? '—'}`)
   console.log(`PINs cadastrados na empresa: ${pins.length}`)
 
-  const pinDoDeclarante = conc.colaboradorId
-    ? await prisma.stockColaboradorPin.findFirst({ where: { companyId: EMPRESA, colaboradorId: conc.colaboradorId } })
-    : null
-  if (!pinDoDeclarante) {
-    console.log('⚠️ quem declarou não tem PIN cadastrado — a recusa por PIN não dá pra exercer hoje')
-    console.log('   (a trava do USUÁRIO continua valendo e tem teste de integração próprio)')
+  /**
+   * ⚠️ **O EIXO DO COLABORADOR FICOU INERTE (consequência registrada de tirar o PIN do carimbo):**
+   * o conferente assina pela sessão e não tem identidade de colaborador, e `stock_colaborador`
+   * não aponta pra `User`. O eixo que morde é o da SESSÃO — exercido abaixo com o motor real.
+   */
+  if (!conc.criadoPorId) {
+    console.log('⚠️ esta conclusão veio do TABLET (sem usuário): o eixo da sessão não tem o que comparar NELA')
   }
 
   // ───────────────────────── 4. A PRÉVIA DA CORREÇÃO ─────────────────────────
@@ -168,25 +169,24 @@ async function main() {
       })).itemProduzidoId
       const saldoAntes = await saldoItem(tx, EMPRESA, itemProduzidoId)
 
-      /** o conferente é QUALQUER PIN que não seja o de quem declarou */
-      const candidato = pins.find((p) => p.colaboradorId !== conc.colaboradorId)
-      if (!candidato) throw new Error('sem PIN de outra pessoa — não dá pra exercer os quatro olhos')
-      const colab = await tx.stockColaborador.findFirstOrThrow({ where: { id: candidato.colaboradorId }, select: { nome: true } })
-      console.log(`conferente: ${colab.nome} (≠ quem declarou)`)
-
-      /** ⛔ o PIN real não está em claro em lugar nenhum (é hash) — a prova usa o ID direto */
-      const r = await tx.stockConclusaoConferida.create({
-        data: {
-          companyId: EMPRESA,
-          conclusaoId: alvo.conclusaoId,
-          conferidoPorId: conc.criadoPorId ?? (await tx.user.findFirstOrThrow({ select: { id: true } })).id,
-          conferidoPorColaboradorId: candidato.colaboradorId,
-          conferidoPorNome: colab.nome,
-          declaradoPorColaboradorId: conc.colaboradorId,
-          declaradoPorId: conc.criadoPorId,
-        },
+      /**
+       * ⭐⭐ O CARIMBO PELO MOTOR REAL, ASSINADO PELA SESSÃO — sem PIN (correção do dono, 09/10).
+       * ⛔ Gravar a linha na mão aqui seria provar a tabela, não o gesto: a regra dura, a
+       * resolução do papel e o `JA_CONFERIDA` vivem no `confirmarConclusao`.
+       */
+      const gerentes = await tx.userCompanyRole.findMany({
+        where: { companyId: EMPRESA, role: { permissions: { some: { permission: { key: { in: ['stock.manage', 'stock.*', '*'] } } } } } },
+        select: { user: { select: { id: true, name: true, email: true } } },
       })
-      console.log(`  ⭐ CARIMBO gravado: ✓✓ conferido por ${r.conferidoPorNome}`)
+      const conferenteUser = gerentes.find((g) => g.user.id !== conc.criadoPorId)?.user
+      if (!conferenteUser) throw new Error('sem gerente diferente de quem lançou — não dá pra exercer os quatro olhos')
+      console.log(`conferente: ${conferenteUser.name ?? conferenteUser.email} (sessão própria, ≠ quem lançou)`)
+
+      const r = await confirmarConclusao(
+        { companyId: EMPRESA, conclusaoId: alvo.conclusaoId, userId: conferenteUser.id },
+        db,
+      )
+      console.log(`  ⭐ CARIMBO gravado SEM PIN: ✓✓ conferido por ${r.conferidoPorNome}`)
 
       const carimbos = await carimbosDasConclusoes(EMPRESA, [alvo.conclusaoId], tx)
       console.log(`  o SELO que a lista desenha: ${carimbos.get(alvo.conclusaoId)!.estado} · ${carimbos.get(alvo.conclusaoId)!.conferidoPorNome}`)
@@ -194,29 +194,48 @@ async function main() {
       const filaDepois = await filaDeConferencia(EMPRESA, tx)
       console.log(`  ⭐ a fila do gerente: ${fila.aguardando} → ${filaDepois.aguardando} (a conferida SAIU)`)
 
-      /** ⛔ e um 2º carimbo é impossível — o índice único recusa */
+      /** ⛔ e um 2º carimbo é impossível — o motor recusa com JA_CONFERIDA */
       let dobrou = false
+      let recusa = ''
       try {
-        await tx.stockConclusaoConferida.create({
-          data: {
-            companyId: EMPRESA, conclusaoId: alvo.conclusaoId,
-            conferidoPorId: r.conferidoPorId, conferidoPorColaboradorId: candidato.colaboradorId,
-            conferidoPorNome: colab.nome,
-          },
-        })
+        await confirmarConclusao({ companyId: EMPRESA, conclusaoId: alvo.conclusaoId, userId: conferenteUser.id }, db)
         dobrou = true
-      } catch { /* esperado */ }
-      console.log(`  ⛔ conferir 2× a mesma conclusão: ${dobrou ? 'PASSOU (defeito!)' : 'RECUSADO pelo índice único'}`)
+      } catch (e) { recusa = e instanceof Error ? e.message : String(e) }
+      console.log(`  ⛔ conferir 2× a mesma conclusão: ${dobrou ? 'PASSOU (defeito!)' : `RECUSADO — "${recusa.slice(0, 90)}"`}`)
+
+      /** ⛔⛔ e a AUTO-CONFERÊNCIA pelo eixo da sessão, com o motor real */
+      const conc2 = await tx.stockProducaoConclusao.findFirst({
+        where: { companyId: EMPRESA, criadoPorId: { not: null } },
+        select: { id: true, criadoPorId: true },
+        orderBy: { criadoEm: 'desc' },
+      })
+      if (conc2?.criadoPorId) {
+        let passou = false
+        let msg = ''
+        try {
+          await confirmarConclusao({ companyId: EMPRESA, conclusaoId: conc2.id, userId: conc2.criadoPorId }, db)
+          passou = true
+        } catch (e) { msg = e instanceof Error ? e.message : String(e) }
+        console.log(`  ⛔⛔ AUTO-CONFERÊNCIA (quem lançou carimbando a própria): ${passou ? 'PASSOU (defeito!)' : `RECUSADA — "${msg.slice(0, 120)}"`}`)
+      } else {
+        console.log('  ⚠️ nenhuma conclusão com `criadoPorId` na janela — o eixo da sessão não deu pra exercer aqui')
+      }
+
+      /** ⛔ e sem papel nesta empresa, não carimba */
+      let semPapel = ''
+      try {
+        await confirmarConclusao({ companyId: EMPRESA, conclusaoId: alvo.conclusaoId, userId: 'u-que-nao-existe' }, db)
+      } catch (e) { semPapel = e instanceof Error ? e.message : String(e) }
+      console.log(`  ⛔ sessão sem papel nesta empresa: "${semPapel.slice(0, 100)}"`)
 
       console.log(`  saldo do item antes de qualquer correção: ${saldoAntes.saldo} ${alvo.unidade}`)
-      void db
       throw new Volta()
     })
   } catch (e) { if (!(e instanceof Volta)) throw e }
 
   // ───────────────────────── 6. NADA GRAVADO ─────────────────────────
   const depois = {
-    carimbos: await prisma.stockConclusaoConferida.count({ where: { companyId: EMPRESA } }),
+    carimbos: await prisma.stockConclusaoCarimbo.count({ where: { companyId: EMPRESA } }),
     conclusoes: await prisma.stockProducaoConclusao.count({ where: { companyId: EMPRESA } }),
     movimentos: await prisma.stockMovement.count({ where: { companyId: EMPRESA } }),
     estornadas: await prisma.stockConclusaoEstornada.count({ where: { companyId: EMPRESA } }),

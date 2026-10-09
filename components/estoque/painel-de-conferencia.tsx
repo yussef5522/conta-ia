@@ -14,8 +14,14 @@
  * telas precisam da MESMA decisão, a decisão vira componente.
  *
  * ⚠️ **E ele não decide NADA sobre permissão.** Quem pode conferir é o servidor (`stock.manage`
- * + PIN + a regra dos quatro olhos); este arquivo só desenha. Esconder aqui seria combinado;
- * a trava é a rota — e ela recusa com o motivo escrito.
+ * + sessão pessoal + a regra dos quatro olhos); este arquivo só desenha. Esconder aqui seria
+ * combinado; a trava é a rota — e ela recusa com o motivo escrito.
+ *
+ * ⛔⛔⛔ **O CAMPO DE PIN MORREU AQUI (correção do dono, 09/10).** Na estreia ele pedia o PIN da
+ * conta do gerente — e **Yussef, marcyelle e cristian não têm PIN, nem devem ter**: PIN é
+ * identidade de COLABORADOR no tablet compartilhado, onde não existe login. O carimbo assina
+ * pela SESSÃO. ⚠️ E o campo não ficou opcional: o schema da rota é `.strict()`, então mandar
+ * `pin` dá **400** — *PIN opcional voltaria na primeira tela copiada*.
  */
 import { useState } from 'react'
 import { CheckCheck, X } from 'lucide-react'
@@ -59,7 +65,6 @@ export function PainelDeConferencia({
   onFechar: () => void
 }) {
   const [modo, setModo] = useState<'CONFIRMAR' | 'CORRIGIR'>(somenteCorrigir ? 'CORRIGIR' : modoInicial)
-  const [pin, setPin] = useState('')
   const [qtd, setQtd] = useState(modo === 'CORRIGIR' ? String(alvo.declarado) : '')
   const [motivo, setMotivo] = useState<MotivoDaTela>('CONTOU_ERRADO')
   const [obs, setObs] = useState('')
@@ -95,14 +100,13 @@ export function PainelDeConferencia({
   async function enviar() {
     setEnviando(true); setRecusa(null)
     const corpo = modo === 'CONFIRMAR'
-      ? { acao: 'CONFIRMAR', conclusaoId: alvo.conclusaoId, pin }
+      ? { acao: 'CONFIRMAR', conclusaoId: alvo.conclusaoId }
       : {
           acao: 'CORRIGIR',
           conclusaoId: alvo.conclusaoId,
           qtdCerta: Number(qtd.replace(',', '.')),
           motivo,
           observacao: obs || undefined,
-          pin,
         }
     const r = await fetchComTimeout<{ conferidoPorNome: string }>(rota, {
       method: 'POST',
@@ -182,24 +186,21 @@ export function PainelDeConferencia({
           style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}>{previa}</p>
       )}
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
-          seu PIN
-          <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-            inputMode="numeric" autoComplete="off"
-            className="mt-0.5 block h-9 w-24 rounded-lg border px-2 text-center text-[18px] tabular-nums tracking-[0.3em]"
-            style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)', background: 'var(--prod-bg)' }} />
-        </label>
-        <button type="button" disabled={pin.length !== 4 || enviando || (modo === 'CORRIGIR' && !qtdValida)}
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" disabled={enviando || (modo === 'CORRIGIR' && !qtdValida)}
           onClick={() => void enviar()}
           className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-semibold disabled:opacity-40"
           style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
           <CheckCheck className="h-4 w-4" />
           {enviando ? 'gravando…' : modo === 'CONFIRMAR' ? 'Conferir' : 'Corrigir e conferir'}
         </button>
-        {/* ⚠️ a razão do PIN fica escrita: ele não é senha, é a assinatura de quem conferiu */}
+        {/**
+          * ⚠️ A RAZÃO FICA ESCRITA, como ficava a do PIN: o gerente tem que saber que o gesto
+          * é assinado — é o nome dele que vai pro selo e pro rastro, e é por isso que ele não
+          * pode carimbar a produção que ele mesmo lançou.
+          */}
         <p className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
-          o PIN diz QUEM conferiu — e quem declarou não confere a própria produção
+          você assina com o seu login — e quem declarou não confere a própria produção
         </p>
       </div>
 

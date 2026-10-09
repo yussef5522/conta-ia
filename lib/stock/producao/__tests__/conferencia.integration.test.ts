@@ -30,8 +30,16 @@ let insumoId = ''
 let declaranteId = ''
 let conferenteId = ''
 
-const USER_GERENTE = 'u-gerente'
-const USER_OUTRO = 'u-outro'
+/**
+ * ⭐⭐ OS DOIS GERENTES SÃO USUÁRIOS DE VERDADE, COM PAPEL NESTA EMPRESA (09/10).
+ *
+ * ⛔ Antes eram ids inventados (`'u-gerente'`), e o motor aceitava — ou seja: **o carimbo
+ * gravava a assinatura de alguém que não era membro da empresa**, e o selo diria "✓✓ conferido"
+ * sem ninguém por trás. A trava nova (`SEM_PAPEL`) mordeu estas fixtures na hora, que é
+ * exatamente o red-then-green do item 3 do dono.
+ */
+let USER_GERENTE = ''
+let USER_OUTRO = ''
 
 beforeEach(async () => {
   await prisma.company.deleteMany({ where: { cnpj: CNPJ } })
@@ -71,20 +79,37 @@ beforeEach(async () => {
   const conf = await prisma.stockColaborador.create({ data: { companyId, nome: 'cristian' } })
   declaranteId = dec.id
   conferenteId = conf.id
+  /**
+   * ⚠️ Os PINs continuam existindo — eles são a identidade do COLABORADOR no tablet (é assim
+   * que a conclusão nasce com `colaboradorId`). O que saiu do fluxo é o PIN **no carimbo**:
+   * ali a assinatura é a SESSÃO (correção do dono, 09/10).
+   */
   await definirPin({ companyId, colaboradorId: declaranteId, pin: '5137' }, prisma)
   await definirPin({ companyId, colaboradorId: conferenteId, pin: '8264' }, prisma)
+
+  /** ⭐ os dois gerentes: usuário + papel NESTA empresa — é o que a assinatura exige */
+  const papel = await prisma.role.findFirst({ where: { name: 'GERENTE_ESTOQUE', companyId: null } })
+    ?? await prisma.role.create({ data: { name: 'GERENTE_ESTOQUE', isSystemDefault: true, companyId: null } })
+  const g1 = await prisma.user.create({ data: { email: `g1-${c.id}@teste.local`, name: 'gerente um', password: 'x' } })
+  const g2 = await prisma.user.create({ data: { email: `g2-${c.id}@teste.local`, name: 'gerente dois', password: 'x' } })
+  await prisma.userCompanyRole.create({ data: { userId: g1.id, companyId, roleId: papel.id } })
+  await prisma.userCompanyRole.create({ data: { userId: g2.id, companyId, roleId: papel.id } })
+  USER_GERENTE = g1.id
+  USER_OUTRO = g2.id
 })
 
 afterEach(async () => {
   for (const t of [
-    prisma.stockConclusaoConferida, prisma.stockConclusaoEstornada, prisma.stockProducaoDesvio,
+    prisma.stockConclusaoCarimbo, prisma.stockConclusaoEstornada, prisma.stockProducaoDesvio,
     prisma.stockProducaoConclusao, prisma.stockMovement, prisma.stockFichaComponente,
     prisma.stockFichaVersao, prisma.stockFicha, prisma.stockProductionOrder, prisma.stockOrdemMeta,
     prisma.stockColaboradorPin, prisma.stockColaborador, prisma.stockItem, prisma.stockSaldoCache,
   ]) {
     await (t as { deleteMany: (a: unknown) => Promise<unknown> }).deleteMany({ where: { companyId } })
   }
+  /** ⚠️ o cascade da Company leva o UserCompanyRole; os Users são deste teste e saem por id */
   await prisma.company.deleteMany({ where: { cnpj: CNPJ } })
+  await prisma.user.deleteMany({ where: { id: { in: [USER_GERENTE, USER_OUTRO].filter(Boolean) } } })
 })
 
 /** cria a conclusão com a geração no ledger, como o motor real faz */
@@ -113,11 +138,17 @@ describe('⭐ o estado é DERIVADO, nunca gravado', () => {
 
   it('⭐ confirmar carimba e o estado vira CONFERIDA, com quem e quando', async () => {
     const c = await declarar(10)
-    const r = await confirmarConclusao({ companyId, conclusaoId: c.id, pin: '8264', userId: USER_GERENTE }, prisma)
-    expect(r.conferidoPorNome).toBe('cristian')
+    const r = await confirmarConclusao({ companyId, conclusaoId: c.id, userId: USER_GERENTE }, prisma)
+    /**
+     * ⚠️ **ASSERÇÃO INVERTIDA COM O MOTIVO ESCRITO (09/10):** antes era `'cristian'`, o nome do
+     * COLABORADOR do PIN. O carimbo passou a assinar pela SESSÃO, então o selo leva o nome do
+     * USUÁRIO que conferiu — que é justamente quem o dono quer ver ali ("✓✓ conferido ·
+     * marcyelle"), e não o apelido de um PIN que gerente nenhum tem.
+     */
+    expect(r.conferidoPorNome).toBe('gerente um')
     const m = await carimbosDasConclusoes(companyId, [c.id], prisma)
     expect(m.get(c.id)!.estado).toBe('CONFERIDA')
-    expect(m.get(c.id)!.conferidoPorNome).toBe('cristian')
+    expect(m.get(c.id)!.conferidoPorNome).toBe('gerente um')
     expect(m.get(c.id)!.corrigiuDe).toBeNull()
   })
 
@@ -131,28 +162,41 @@ describe('⭐ o estado é DERIVADO, nunca gravado', () => {
 })
 
 describe('⛔⛔⛔ A REGRA DURA: conferente ≠ declarante, SEMPRE', () => {
-  it('⛔ o PIN do DECLARANTE é recusado, nomeando a regra', async () => {
+  /**
+   * ⚠️⚠️ **TESTE INVERTIDO COM O MOTIVO ESCRITO — e a consequência é a que fica registrada.**
+   *
+   * Ele afirmava *"o PIN do DECLARANTE é recusado"*: com o PIN no carimbo, o eixo do
+   * COLABORADOR comparava o PIN do conferente com o do declarante. **Tirando o PIN do fluxo
+   * (ordem do dono), o conferente deixa de ter identidade de colaborador** — então uma
+   * conclusão do TABLET, declarada com PIN, é conferível por qualquer gerente, porque não há
+   * nada que os ligue: `stock_colaborador` não aponta pra `User` (0 de 19 nomes casam).
+   *
+   * ⭐ **A metade que continua valendo é o EIXO DA SESSÃO**, travada nos dois testes abaixo e
+   * no CHECK do banco. ⚠️ E o eixo do colaborador **não foi apagado da régua**: ele segue no
+   * `porQueNaoPodeConferir` (teste puro logo abaixo) esperando o vínculo.
+   */
+  it('⚠️ conclusão do TABLET: o gerente confere (não há como ligá-lo ao PIN do declarante)', async () => {
     const c = await declarar(10)
-    await expect(
-      confirmarConclusao({ companyId, conclusaoId: c.id, pin: '5137', userId: USER_GERENTE }, prisma),
-    ).rejects.toThrow(/QUATRO OLHOS|quem confere nunca é quem declarou/)
-    /** ⛔ e NADA foi gravado — recusa não deixa meio carimbo */
-    expect(await prisma.stockConclusaoConferida.count({ where: { companyId } })).toBe(0)
+    const r = await confirmarConclusao({ companyId, conclusaoId: c.id, userId: USER_GERENTE }, prisma)
+    expect(r.conferidoPorNome).toBe('gerente um')
+    /** ⭐ e o rastro guarda CONTRA QUEM a regra morderia no dia do vínculo */
+    const row = await prisma.stockConclusaoCarimbo.findFirstOrThrow({ where: { companyId } })
+    expect(row.declaradoPorColaboradorId).toBe(declaranteId)
   })
 
   it('⛔ nem o GERENTE confere a própria conclusão (eixo do USUÁRIO)', async () => {
     // o gerente concluiu pela tela de Produção: tem `criadoPorId`, não tem colaborador
     const c = await declarar(10, { colaboradorId: null, criadoPorId: USER_GERENTE })
     await expect(
-      confirmarConclusao({ companyId, conclusaoId: c.id, pin: '8264', userId: USER_GERENTE }, prisma),
+      confirmarConclusao({ companyId, conclusaoId: c.id, userId: USER_GERENTE }, prisma),
     ).rejects.toThrow(/lançada por você|QUATRO OLHOS/)
-    expect(await prisma.stockConclusaoConferida.count({ where: { companyId } })).toBe(0)
+    expect(await prisma.stockConclusaoCarimbo.count({ where: { companyId } })).toBe(0)
   })
 
   it('⭐ OUTRO gerente confere a conclusão lançada pela tela — o quatro-olhos de verdade', async () => {
     const c = await declarar(10, { colaboradorId: null, criadoPorId: USER_GERENTE })
-    const r = await confirmarConclusao({ companyId, conclusaoId: c.id, pin: '8264', userId: USER_OUTRO }, prisma)
-    expect(r.conferidoPorNome).toBe('cristian')
+    const r = await confirmarConclusao({ companyId, conclusaoId: c.id, userId: USER_OUTRO }, prisma)
+    expect(r.conferidoPorNome).toBe('gerente dois')
   })
 
   /**
@@ -168,22 +212,48 @@ describe('⛔⛔⛔ A REGRA DURA: conferente ≠ declarante, SEMPRE', () => {
     expect(porQueNaoPodeConferir({ ...base, declaradoPorId: 'u2', declaradoPorColaboradorId: 'c2' })).toBeNull()
     /** ⚠️ sem declarante conhecido não há auto-conferência a barrar — e aí passar é o certo */
     expect(porQueNaoPodeConferir({ ...base, declaradoPorId: null, declaradoPorColaboradorId: null })).toBeNull()
+    /**
+     * ⭐⭐ E O EIXO DO COLABORADOR CONTINUA NA RÉGUA, esperando o vínculo: hoje o carimbo passa
+     * `null` ali (o conferente não tem PIN), e aí ele é inerte — mas a régua **não foi
+     * apagada**. ⛔ Apagar obrigaria a reescrevê-la no dia do vínculo, e régua reescrita é
+     * régua que diverge.
+     */
+    const semPin = { conferidoPorId: 'u1', conferidoPorColaboradorId: null, nomeDoConferente: 'marcyelle' }
+    expect(porQueNaoPodeConferir({ ...semPin, declaradoPorId: null, declaradoPorColaboradorId: 'c1' })).toBeNull()
+    expect(porQueNaoPodeConferir({ ...semPin, declaradoPorId: 'u1', declaradoPorColaboradorId: 'c1' })).toMatch(/QUATRO OLHOS/)
   })
 
   it('⛔ conferir DUAS vezes é impossível — e a recusa diz quem já conferiu', async () => {
     const c = await declarar(10)
-    await confirmarConclusao({ companyId, conclusaoId: c.id, pin: '8264', userId: USER_GERENTE }, prisma)
+    await confirmarConclusao({ companyId, conclusaoId: c.id, userId: USER_GERENTE }, prisma)
     await expect(
-      confirmarConclusao({ companyId, conclusaoId: c.id, pin: '8264', userId: USER_OUTRO }, prisma),
-    ).rejects.toThrow(/já foi conferida por cristian/)
-    expect(await prisma.stockConclusaoConferida.count({ where: { companyId } })).toBe(1)
+      confirmarConclusao({ companyId, conclusaoId: c.id, userId: USER_OUTRO }, prisma),
+    ).rejects.toThrow(/já foi conferida por gerente um/)
+    expect(await prisma.stockConclusaoCarimbo.count({ where: { companyId } })).toBe(1)
   })
 
-  it('⛔ PIN que não existe é recusado sem dizer de quem é', async () => {
+  /**
+   * ⚠️ **ESTE SUBSTITUI o "PIN que não existe é recusado"** — não há PIN no carimbo. A pergunta
+   * equivalente, e mais forte, é sobre a ASSINATURA: sem sessão pessoal, ou com uma conta que
+   * não tem papel NESTA empresa, o carimbo não acontece. ⛔ Sem isso o selo diria
+   * "✓✓ conferido" sem ninguém por trás — e foi essa trava que mordeu as fixtures antigas,
+   * que carimbavam com um id inventado.
+   */
+  it('⛔⛔ sem SESSÃO PESSOAL ou sem PAPEL nesta empresa, não carimba', async () => {
     const c = await declarar(10)
     await expect(
-      confirmarConclusao({ companyId, conclusaoId: c.id, pin: '9876', userId: USER_GERENTE }, prisma),
-    ).rejects.toThrow(/PIN não confere/)
+      confirmarConclusao({ companyId, conclusaoId: c.id, userId: '' }, prisma),
+    ).rejects.toThrow(/login pessoal/)
+    await expect(
+      confirmarConclusao({ companyId, conclusaoId: c.id, userId: 'u-que-nao-existe' }, prisma),
+    ).rejects.toThrow(/não tem papel nesta empresa/)
+    /** ⛔ e um usuário REAL de OUTRA empresa também não — a empresa entra no escopo (REGRA 8) */
+    const forasteiro = await prisma.user.create({ data: { email: `fora-${companyId}@teste.local`, name: 'de fora', password: 'x' } })
+    await expect(
+      confirmarConclusao({ companyId, conclusaoId: c.id, userId: forasteiro.id }, prisma),
+    ).rejects.toThrow(/não tem papel nesta empresa/)
+    await prisma.user.delete({ where: { id: forasteiro.id } })
+    expect(await prisma.stockConclusaoCarimbo.count({ where: { companyId } })).toBe(0)
   })
 })
 
@@ -191,7 +261,7 @@ describe('⭐⭐ CORRIGIR — nova versão com rastro, o declarado original fica
   it('⭐ o delta vai pro ledger pela porta existente, e a conclusão velha fica no histórico', async () => {
     const c = await declarar(10)
     const r = await corrigirConclusao(
-      { companyId, conclusaoId: c.id, qtdCerta: 7, motivo: 'CONTOU_ERRADO', pin: '8264', userId: USER_GERENTE },
+      { companyId, conclusaoId: c.id, qtdCerta: 7, motivo: 'CONTOU_ERRADO', userId: USER_GERENTE },
       prisma,
     )
     expect(r.modo).toBe('ESTORNA_E_RELANCA')
@@ -216,10 +286,16 @@ describe('⭐⭐ CORRIGIR — nova versão com rastro, o declarado original fica
     expect((await carimbosDasConclusoes(companyId, [c.id], prisma)).get(c.id)!.estado).toBe('AGUARDANDO_CONFERENCIA')
   })
 
-  it('⛔ a regra dura vale igual no corrigir — o declarante não corrige a própria', async () => {
-    const c = await declarar(10)
+  /**
+   * ⚠️ **AJUSTADO COM O MOTIVO ESCRITO:** o cenário era *"o declarante corrige a própria"* pelo
+   * PIN. Sem PIN no carimbo, quem tem que ser barrado é o gerente que **lançou pela sessão** —
+   * e é esse o caso que a `declarar(…, { criadoPorId })` monta agora. ⭐ A pergunta é a mesma
+   * (*a regra dura vale igual no corrigir*) e o eixo é o que sobrou DURO.
+   */
+  it('⛔ a regra dura vale igual no corrigir — quem lançou não corrige a própria', async () => {
+    const c = await declarar(10, { colaboradorId: null, criadoPorId: USER_GERENTE })
     await expect(
-      corrigirConclusao({ companyId, conclusaoId: c.id, qtdCerta: 7, motivo: 'CONTOU_ERRADO', pin: '5137', userId: USER_GERENTE }, prisma),
+      corrigirConclusao({ companyId, conclusaoId: c.id, qtdCerta: 7, motivo: 'CONTOU_ERRADO', userId: USER_GERENTE }, prisma),
     ).rejects.toThrow(/QUATRO OLHOS/)
     /** ⛔ e o ledger fica INTACTO: a recusa roda antes de qualquer escrita */
     const movs = await prisma.stockMovement.findMany({ where: { companyId, itemId: itemProduzidoId } })
@@ -230,15 +306,15 @@ describe('⭐⭐ CORRIGIR — nova versão com rastro, o declarado original fica
   it('⛔ «outro» sem escrever o que houve é recusado — correção sem porquê vira mistério', async () => {
     const c = await declarar(10)
     await expect(
-      corrigirConclusao({ companyId, conclusaoId: c.id, qtdCerta: 7, motivo: 'OUTRO', pin: '8264', userId: USER_GERENTE }, prisma),
+      corrigirConclusao({ companyId, conclusaoId: c.id, qtdCerta: 7, motivo: 'OUTRO', userId: USER_GERENTE }, prisma),
     ).rejects.toThrow(/escreva em uma linha/)
-    expect(await prisma.stockConclusaoConferida.count({ where: { companyId } })).toBe(0)
+    expect(await prisma.stockConclusaoCarimbo.count({ where: { companyId } })).toBe(0)
   })
 
   it('⛔ o MESMO número manda usar o confirmar — correção que não corrige nada não existe', async () => {
     const c = await declarar(10)
     await expect(
-      corrigirConclusao({ companyId, conclusaoId: c.id, qtdCerta: 10, motivo: 'CONTOU_ERRADO', pin: '8264', userId: USER_GERENTE }, prisma),
+      corrigirConclusao({ companyId, conclusaoId: c.id, qtdCerta: 10, motivo: 'CONTOU_ERRADO', userId: USER_GERENTE }, prisma),
     ).rejects.toThrow(/mesmo número/)
   })
 
@@ -269,7 +345,7 @@ describe('⭐⭐ CORRIGIR — nova versão com rastro, o declarado original fica
     if (plano.modo === 'SO_A_CONCLUSAO') expect(plano.porque).toMatch(/DOBRARIA o lote|estornada/)
 
     const r = await corrigirConclusao(
-      { companyId, conclusaoId: c.id, qtdCerta: 10, motivo: 'DIGITOU_ERRADO', pin: '8264', userId: USER_GERENTE },
+      { companyId, conclusaoId: c.id, qtdCerta: 10, motivo: 'DIGITOU_ERRADO', userId: USER_GERENTE },
       prisma,
     )
     expect(r.modo).toBe('SO_A_CONCLUSAO')
@@ -307,7 +383,7 @@ describe('⭐ A FILA DO GERENTE', () => {
 
   it('⭐ conferida SAI da fila', async () => {
     const c = await declarar(10)
-    await confirmarConclusao({ companyId, conclusaoId: c.id, pin: '8264', userId: USER_GERENTE }, prisma)
+    await confirmarConclusao({ companyId, conclusaoId: c.id, userId: USER_GERENTE }, prisma)
     expect((await filaDeConferencia(companyId, prisma)).aguardando).toBe(0)
   })
 

@@ -11,7 +11,6 @@ import { prisma } from '@/lib/db'
 import { produzirAvisosDeConferencia, ORIGEM, haQuantoTempoTxt } from '../produtores/conferencia'
 import { setoresVisiveis, podeVerSetor } from '../visibilidade'
 import { confirmarConclusao } from '@/lib/stock/producao/conferencia'
-import { definirPin } from '@/lib/stock/producao/pin'
 import { avisosAbertos } from '../central'
 
 const CNPJ = '91929394000191'
@@ -48,6 +47,13 @@ beforeEach(async () => {
     data: { email: `conf2d-${Date.now()}@teste.local`, name: 'Gerente', password: 'x' },
   })
   userId = u.id
+  /**
+   * ⭐ O CARIMBO EXIGE PAPEL NESTA EMPRESA (09/10) — a trava nova mordeu esta fixture, que
+   * criava o usuário solto. Sem o vínculo o selo diria "✓✓ conferido" sem ninguém por trás.
+   */
+  const papel = await prisma.role.findFirst({ where: { name: 'GERENTE_ESTOQUE', companyId: null } })
+    ?? await prisma.role.create({ data: { name: 'GERENTE_ESTOQUE', isSystemDefault: true, companyId: null } })
+  await prisma.userCompanyRole.create({ data: { userId: u.id, companyId, roleId: papel.id } })
 
   const item = await prisma.stockItem.create({
     data: { companyId, nome: 'porçao teste 2d', unidadeControle: 'UN', categoria: 'INTERMEDIARIO', criadoVia: 'MANUAL' },
@@ -80,7 +86,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   for (const t of [
-    prisma.aviso, prisma.stockConclusaoConferida, prisma.stockConclusaoEstornada,
+    prisma.aviso, prisma.stockConclusaoCarimbo, prisma.stockConclusaoEstornada,
     prisma.stockProducaoDesvio, prisma.stockProducaoConclusao, prisma.stockMovement,
     prisma.stockFichaComponente, prisma.stockFichaVersao, prisma.stockFicha,
     prisma.stockProductionOrder, prisma.stockOrdemMeta, prisma.stockColaboradorPin,
@@ -139,9 +145,12 @@ describe('⛔ anti-spam e reconciliação', () => {
     await produzirAvisosDeConferencia(companyId)
     expect(await avisosAbertos(companyId)).toHaveLength(1)
 
-    /** ⭐ PIN pela PORTA ÚNICA — montar o hash à mão aqui seria a 2ª régua do PIN */
-    await definirPin({ companyId, colaboradorId: colabConfere, pin: '4242', userId }, prisma)
-    await confirmarConclusao({ companyId, conclusaoId, pin: '4242', userId }, prisma)
+    /**
+     * ⭐ O CARIMBO ASSINA PELA SESSÃO — nenhum PIN no caminho (correção do dono, 09/10).
+     * ⚠️ E o `userId` precisa ter PAPEL nesta empresa: sem vínculo, o motor recusa com
+     * `SEM_PAPEL`, porque o selo diria "✓✓ conferido" sem ninguém por trás.
+     */
+    await confirmarConclusao({ companyId, conclusaoId, userId }, prisma)
 
     const r = await produzirAvisosDeConferencia(companyId)
     expect(r.resolvidos).toBe(1)

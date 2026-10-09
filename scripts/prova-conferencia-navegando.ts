@@ -65,21 +65,24 @@ async function main() {
     }
   }
 
-  // ───────────── 2. A RECUSA DO POST (sem PIN válido, nada grava) ─────────────
-  console.log('\n═══ 2. O POST RECUSA E ENSINA (nada gravado) ═══')
-  const antes = await prisma.stockConclusaoConferida.count({ where: { companyId: CO } })
+  // ───────────── 2. O POST: SEM PIN, E O PIN RECUSADO ─────────────
+  console.log('\n═══ 2. O POST — sem PIN, e o PIN RECUSADO (nada gravado) ═══')
+  const antes = await prisma.stockConclusaoCarimbo.count({ where: { companyId: CO } })
   const alvo = jDono?.cartoes?.[0]
   if (alvo) {
+    /** ⛔⛔ mandar `pin` tem que dar 400 — é o `.strict()` que faz o campo MORRER */
     const r = await fetch(`${base}/api/empresas/${CO}/estoque/producao/conferencia`, {
       method: 'POST',
       headers: { cookie: ckDono, 'Content-Type': 'application/json' },
       body: JSON.stringify({ acao: 'CONFIRMAR', conclusaoId: alvo.conclusaoId, pin: '0000' }),
     })
-    console.log(`  PIN errado → HTTP ${r.status} · ${(await r.text()).slice(0, 140)}`)
+    const corpoPin = (await r.text()).slice(0, 160)
+    console.log(`  mandando PIN → HTTP ${r.status} ${r.status === 400 ? '⭐ RECUSADO (o campo morreu)' : '⛔ aceitou o campo!'}`)
+    console.log(`    ${corpoPin}`)
     const r2 = await fetch(`${base}/api/empresas/${CO}/estoque/producao/conferencia`, {
       method: 'POST',
       headers: { cookie: ckDono, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ acao: 'CORRIGIR', conclusaoId: alvo.conclusaoId, qtdCerta: 1, motivo: 'OUTRO', pin: '1234' }),
+      body: JSON.stringify({ acao: 'CORRIGIR', conclusaoId: alvo.conclusaoId, qtdCerta: 1, motivo: 'OUTRO' }),
     })
     console.log(`  «outro» SEM texto → HTTP ${r2.status} · ${(await r2.text()).slice(0, 160)}`)
     /** ⭐ e a PRÉVIA é leitura pura — pode rodar sem gravar nada */
@@ -90,7 +93,7 @@ async function main() {
     })
     console.log(`  PREVER_CORRECAO → HTTP ${r3.status} · ${(await r3.text()).slice(0, 200)}`)
   }
-  const depois = await prisma.stockConclusaoConferida.count({ where: { companyId: CO } })
+  const depois = await prisma.stockConclusaoCarimbo.count({ where: { companyId: CO } })
   console.log(`  carimbos: ${antes} → ${depois} ${antes === depois ? '⭐ nada gravado' : '⛔ GRAVOU'}`)
 
   // ───────────── 3. AS TELAS, NOS DOIS VIEWPORTS (REGRA 12) ─────────────
@@ -101,9 +104,9 @@ async function main() {
     ['o selo aguardando', 'aguardando conferência'],
     ['o selo conferido', 'conferido'],
     ['o selo corrigido', 'corrigido e conferido'],
-    ['o painel único', 'seu PIN'],
     ['os motivos', 'contou errado'],
-    ['a razão do PIN', 'quem declarou não confere a própria produção'],
+    ['a razão da assinatura', 'você assina com o seu login'],
+    ['e a regra dos quatro olhos', 'quem declarou não confere a própria produção'],
   ] as const
 
   for (const [rotulo, ua] of [['CELULAR', CELULAR], ['DESKTOP', DESKTOP]] as const) {
@@ -117,6 +120,9 @@ async function main() {
     for (const [nome, frase] of PECAS) {
       console.log(`    ${js.includes(frase) || html.includes(frase) ? '✓' : '⛔'} ${nome}`)
     }
+    /** ⛔⛔ e o campo de PIN NÃO pode estar no bundle — ele morreu na tela */
+    const pinNaTela = ['seu PIN', 'inputMode="numeric"'].filter((k) => js.includes(k) || html.includes(k))
+    console.log(`    ${pinNaTela.length ? `⛔⛔ PIN de volta na tela: ${pinNaTela.join(' · ')}` : '⭐ nenhum campo de PIN no bundle'}`)
     /** ⛔ e a COLA não pode estar no bundle da home (ela é da fila, que vem por fetch) */
     const cola = ['o material dava', 'a receita permite ~'].filter((k) => js.includes(k) || html.includes(k))
     console.log(`    ${cola.length ? `⚠️ frases do fiscal no bundle: ${cola.join(' · ')} (a tela da fila é a casa delas)` : '⭐ nenhuma frase de fiscal no bundle'}`)

@@ -2,9 +2,9 @@
  * ⭐⭐⭐ A CONFERÊNCIA DO GERENTE — QUATRO OLHOS NA CONCLUSÃO (09/10/2026).
  *
  * **Ordem do dono:** *"Conclusão nasce no estado AGUARDANDO_CONFERENCIA (tudo o mais igual:
- * baixa, etiqueta, custo — intocados). CONFIRMAR = 1 toque + PIN → ✓✓. CORRIGIR = novo número
- * + motivo + PIN → nova VERSÃO com rastro. REGRA DURA: conferente ≠ declarante, SEMPRE — nem
- * gerente confere a própria conclusão."* E a régua de produto: ***TODAS as conclusões passam ·
+ * baixa, etiqueta, custo — intocados). CONFIRMAR = 1 toque → ✓✓. CORRIGIR = novo número +
+ * motivo → nova VERSÃO com rastro. REGRA DURA: conferente ≠ declarante, SEMPRE — nem gerente
+ * confere a própria conclusão."* E a régua de produto: ***TODAS as conclusões passam ·
  * estoque/etiqueta saem NA HORA, a conferência vem atrás — nada trava a cozinha.***
  *
  * ⭐⭐ O ESTADO É DERIVADO, NUNCA GRAVADO. Existe linha em `stock_conclusao_conferida`? →
@@ -14,20 +14,32 @@
  * de graça: o estado *aguardando* existe por AUSÊNCIA de carimbo, sem um passo novo no
  * caminho de quem declara.
  *
- * ⛔⛔ AS DUAS IDENTIDADES (o retrato do item 0 decidiu isto, não eu):
- *   · **sessão com `stock.manage`** → prova o **PAPEL**
- *   · **PIN de colaborador**        → prova a **PESSOA** presente
- * Medido em prod: `stock_colaborador` tem nome e ativo, **mais nada** — zero vínculo com
- * usuário (0 de 19 nomes casam), e o `pin.ts` declara que o PIN *"identifica, não autentica"*.
- * Então **"PIN de gerência" não existe hoje**: papel vem da sessão. E 397 das 448 conclusões
- * vêm do tablet (colaborador, sem usuário) — sem o PIN do conferente, o *conferente ≠
- * declarante* dessas 397 compararia espaços de identidade diferentes, ou seja não compararia
- * nada. ⚠️ E o PIN é o que dá o quarto olho de verdade: só com a sessão, uma aba de gerente
- * aberta no tablet da cozinha faria "quatro olhos" virar dois.
+ * ⛔⛔⛔ **O CARIMBO ASSINA PELA SESSÃO, E O PIN SAIU DO FLUXO (correção do dono, 09/10).**
+ *
+ * A 1ª versão exigia PIN do conferente, e o defeito apareceu na estreia: **Yussef, marcyelle e
+ * cristian não têm PIN e NÃO devem ter.** Nas palavras dele: *"PIN é identidade dos
+ * COLABORADORES no tablet COMPARTILHADO; gerente entra com login próprio, e a SESSÃO é a
+ * assinatura."* ⭐ Está certo e é mais forte: num aparelho compartilhado o PIN existe porque
+ * **não há login**; onde há login pessoal, pedir PIN é inventar uma segunda senha pior (4
+ * dígitos, sem rotação) pra provar uma identidade que o cookie já provou.
+ *
+ * ⛔ E ele **morreu no fluxo, não virou opcional**: o schema da rota é `.strict()` (mandar
+ * `pin` dá 400) e o campo saiu da tela. *PIN opcional voltaria na primeira cópia de tela.*
+ *
+ * ⚠️⚠️ **O QUE A REGRA DURA MANTÉM E O QUE ELA PERDE — medido, não suposto:**
+ *   · **o eixo do USUÁRIO fica DURO** (guard + CHECK): `userId` da sessão × `criadoPorId` da
+ *     conclusão. É ele que barra o gerente que concluiu pela tela de Produção e tenta se
+ *     auto-carimbar — o caso que o dono nomeou.
+ *   · **o eixo do COLABORADOR fica INERTE**, porque o conferente deixou de ter identidade de
+ *     colaborador. `porQueNaoPodeConferir` **continua checando os dois** (a assinatura não
+ *     mudou) e hoje recebe `null` ali: no dia em que existir vínculo colaborador↔usuário,
+ *     basta passar o id e ele volta a morder sem mexer na régua.
+ *   ⚠️ O flanco está no relatório com nome: quem for colaborador no tablet **e** usuário de
+ *     gerência pode declarar com o PIN e carimbar com o login — `stock_colaborador` não aponta
+ *     pra `User` (0 de 19 nomes casam, e nome não é identidade). O vínculo é decisão do dono.
  */
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { quemEstaComOPin, PinError } from './pin'
 import { OrdemError } from './ordens'
 import { estornarERelancar, preverRelancamento, type PreviewDoRelancamento } from './estorna-e-relanca'
 
@@ -93,7 +105,7 @@ export async function carimbosDasConclusoes(
   const out = new Map<string, CarimboDaConferencia>()
   const ids = [...new Set(conclusaoIds)]
   if (!ids.length) return out
-  const rows = await db.stockConclusaoConferida.findMany({
+  const rows = await db.stockConclusaoCarimbo.findMany({
     where: { companyId, conclusaoId: { in: ids } },
     select: { conclusaoId: true, conferidoPorNome: true, conferidoEm: true, corrigiuDe: true, motivoDaCorrecao: true },
   })
@@ -125,15 +137,26 @@ export async function carimbosDasConclusoes(
  * novo achando que é bug.
  */
 export function porQueNaoPodeConferir(input: {
+  /** o USUÁRIO da sessão — a assinatura */
   conferidoPorId: string
-  conferidoPorColaboradorId: string
+  /**
+   * ⚠️ `null` HOJE, de propósito: o carimbo assina pela sessão e o conferente não tem
+   * identidade de colaborador. O parâmetro FICA porque é o lado direito da comparação no dia
+   * em que existir vínculo colaborador↔usuário — remover a checagem agora obrigaria a
+   * reescrever a régua depois, e régua reescrita é régua que diverge.
+   */
+  conferidoPorColaboradorId: string | null
   declaradoPorId: string | null
   declaradoPorColaboradorId: string | null
   nomeDoConferente: string
 }): string | null {
-  if (input.declaradoPorColaboradorId && input.conferidoPorColaboradorId === input.declaradoPorColaboradorId) {
+  if (
+    input.conferidoPorColaboradorId &&
+    input.declaradoPorColaboradorId &&
+    input.conferidoPorColaboradorId === input.declaradoPorColaboradorId
+  ) {
     return (
-      `O PIN é de ${input.nomeDoConferente}, que foi quem declarou esta produção. ` +
+      `${input.nomeDoConferente} foi quem declarou esta produção. ` +
       `Conferência é de QUATRO OLHOS: quem confere nunca é quem declarou — nem gerente confere a própria conclusão.`
     )
   }
@@ -148,15 +171,20 @@ export function porQueNaoPodeConferir(input: {
 
 interface Alvo {
   conclusao: { id: string; ordemId: string; qtdGerada: number; colaboradorId: string | null; criadoPorId: string | null }
-  conferente: { colaboradorId: string; nome: string }
+  /** ⭐ o conferente é o USUÁRIO da sessão — o nome vai pro selo como SNAPSHOT */
+  conferente: { userId: string; nome: string }
 }
 
 /**
- * Resolve o PIN e aplica a regra dura. ⛔ Faz isso ANTES de qualquer escrita: a recusa não
- * pode deixar meio carimbo nem meio relançamento.
+ * Resolve o conferente pela SESSÃO e aplica a regra dura. ⛔ Faz isso ANTES de qualquer
+ * escrita: a recusa não pode deixar meio carimbo nem meio relançamento.
+ *
+ * ⚠️ O `userId` vem do `guardStock` da rota, que já provou o papel `stock.manage`. Aqui ele é
+ * resolvido contra o BANCO **e contra a empresa**: sessão sem usuário vivo nesta empresa não
+ * carimba nada — é a REGRA 8 (resolver por ID, dentro do escopo) aplicada à assinatura.
  */
 async function resolverAlvo(
-  input: { companyId: string; conclusaoId: string; pin: string; userId: string },
+  input: { companyId: string; conclusaoId: string; userId: string },
   db: PrismaClient,
 ): Promise<Alvo> {
   const conclusao = await db.stockProducaoConclusao.findFirst({
@@ -165,7 +193,7 @@ async function resolverAlvo(
   })
   if (!conclusao) throw new ConferenciaError('Esta conclusão não existe nesta empresa.', 'NAO_ENCONTRADA')
 
-  const ja = await db.stockConclusaoConferida.findUnique({ where: { conclusaoId: input.conclusaoId } })
+  const ja = await db.stockConclusaoCarimbo.findUnique({ where: { conclusaoId: input.conclusaoId } })
   if (ja) {
     throw new ConferenciaError(
       `Esta produção já foi conferida por ${ja.conferidoPorNome} em ${ja.conferidoEm.toLocaleString('pt-BR')}.`,
@@ -173,12 +201,41 @@ async function resolverAlvo(
     )
   }
 
-  const conferente = await quemEstaComOPin(input.companyId, input.pin, db)
-  if (!conferente) throw new PinError('PIN não confere.')
+  /**
+   * ⛔⛔ A ASSINATURA EXIGE **SESSÃO PESSOAL E PAPEL NESTA EMPRESA** — e isso é checado contra
+   * o banco, não presumido do cookie. Sem `userId`, ou com um usuário que não é membro desta
+   * empresa, o carimbo não acontece: o selo diria "✓✓ conferido" sem ninguém por trás.
+   */
+  if (!input.userId?.trim()) {
+    throw new ConferenciaError(
+      'Conferir exige login pessoal: o carimbo é a sua assinatura. Entre com a sua conta de gerência.',
+      'SEM_SESSAO',
+    )
+  }
+  const vinculo = await db.userCompanyRole.findFirst({
+    where: { userId: input.userId, companyId: input.companyId },
+    select: { user: { select: { id: true, name: true, email: true } } },
+  })
+  if (!vinculo?.user) {
+    throw new ConferenciaError(
+      'A sua conta não tem papel nesta empresa — só quem gerencia o estoque carimba conferência.',
+      'SEM_PAPEL',
+    )
+  }
+  const conferente = {
+    userId: vinculo.user.id,
+    /** ⚠️ nome vazio cairia no CHECK de forma do banco; o e-mail é o fallback honesto */
+    nome: vinculo.user.name?.trim() || vinculo.user.email,
+  }
 
+  /**
+   * ⚠️ O eixo do COLABORADOR entra como `null` HOJE (o conferente não tem PIN) — e a régua
+   * continua recebendo os dois de propósito: no dia do vínculo colaborador↔usuário, basta
+   * passar o id aqui e ela volta a morder sem uma linha nova.
+   */
   const barrado = porQueNaoPodeConferir({
-    conferidoPorId: input.userId,
-    conferidoPorColaboradorId: conferente.colaboradorId,
+    conferidoPorId: conferente.userId,
+    conferidoPorColaboradorId: null,
     declaradoPorId: conclusao.criadoPorId,
     declaradoPorColaboradorId: conclusao.colaboradorId,
     nomeDoConferente: conferente.nome,
@@ -188,21 +245,20 @@ async function resolverAlvo(
   return { conclusao, conferente }
 }
 
-/** ⭐ (a) CONFIRMAR — 1 toque + PIN. O número do declarante fica como está. */
+/** ⭐ (a) CONFIRMAR — **1 toque**, assinado pela sessão. O número do declarante fica como está. */
 export async function confirmarConclusao(
-  input: { companyId: string; conclusaoId: string; pin: string; userId: string },
+  input: { companyId: string; conclusaoId: string; userId: string },
   db: PrismaClient = defaultPrisma,
 ): Promise<{ conferidoPorNome: string; conferidoEm: Date }> {
   const { conclusao, conferente } = await resolverAlvo(input, db)
-  const row = await db.stockConclusaoConferida.create({
+  const row = await db.stockConclusaoCarimbo.create({
     data: {
       companyId: input.companyId,
       conclusaoId: conclusao.id,
-      conferidoPorId: input.userId,
-      conferidoPorColaboradorId: conferente.colaboradorId,
+      conferidoPorId: conferente.userId,
       conferidoPorNome: conferente.nome,
-      declaradoPorColaboradorId: conclusao.colaboradorId,
       declaradoPorId: conclusao.criadoPorId,
+      declaradoPorColaboradorId: conclusao.colaboradorId,
     },
   })
   return { conferidoPorNome: row.conferidoPorNome, conferidoEm: row.conferidoEm }
@@ -254,7 +310,7 @@ export async function preverCorrecao(
 }
 
 /**
- * ⭐ (b) CORRIGIR — número novo + motivo + PIN → **nova VERSÃO com rastro**.
+ * ⭐ (b) CORRIGIR — número novo + motivo → **nova VERSÃO com rastro**, assinada pela sessão.
  *
  * ⛔ A conclusão velha **não é editada**: ela fica como o registro do que foi declarado (é o
  * "declarado original fica no histórico" que o dono pediu), sai das médias pelo
@@ -271,7 +327,7 @@ export async function corrigirConclusao(
     qtdCerta: number
     motivo: MotivoDaCorrecao
     observacao?: string | null
-    pin: string
+    /** ⭐ a ASSINATURA — nada de PIN aqui (ordem do dono, 09/10) */
     userId: string
   },
   db: PrismaClient = defaultPrisma,
@@ -345,15 +401,14 @@ export async function corrigirConclusao(
   }
 
   /** ⭐ o carimbo vai na NOVA, com o número antigo no rastro — é o selo "era X" da tela */
-  await db.stockConclusaoConferida.create({
+  await db.stockConclusaoCarimbo.create({
     data: {
       companyId: input.companyId,
       conclusaoId: conclusaoNovaId,
-      conferidoPorId: input.userId,
-      conferidoPorColaboradorId: conferente.colaboradorId,
+      conferidoPorId: conferente.userId,
       conferidoPorNome: conferente.nome,
-      declaradoPorColaboradorId: conclusao.colaboradorId,
       declaradoPorId: conclusao.criadoPorId,
+      declaradoPorColaboradorId: conclusao.colaboradorId,
       corrigiuDe: conclusao.qtdGerada,
       motivoDaCorrecao: motivoTexto,
     },
