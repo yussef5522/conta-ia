@@ -110,6 +110,60 @@ describe('⭐⭐ a porta da correção ABRE na página da ordem (item 3)', () =>
   })
 })
 
+/**
+ * ⛔⛔⛔ OS DOIS BURACOS QUE A REGRA 11 ACHOU NO ITEM 5 (09/10) — e os dois vieram VERDES.
+ *
+ * Repondo *"a conferência removida da tela"* e *"o fiscal em `stock.view`"*, **nenhum teste
+ * mordeu**. As causas são de família conhecida:
+ *
+ * ⚠️ **(a)** o motor estava em prod e nada afirmava que a seção é RENDERIZADA — é a *"porta sem
+ * maçaneta"* (10 voltas nesta casa): a fila existiria, a rota responderia, e o dedo do dono não
+ * alcançaria nada.
+ *
+ * ⚠️⚠️ **(b)** a rota está em `LEITURA_SENSIVEL` **com o motivo escrito** — mas aquele registro
+ * é uma LISTA DE EXCEÇÕES, não uma trava: ele PERMITE o GET ser mais estrito, nunca EXIGE.
+ * Baixar pra `stock.view` deixava o guard verde e **mandava o veredito do fiscal pro tablet**.
+ * ***Comentário que promete ser a trava sem ser a trava é pior que comentário nenhum.***
+ */
+describe('⛔⛔⛔ os dois buracos do item 5', () => {
+  it('⛔⛔ a FILA exige stock.manage no GET — é o gate da cola de prova', () => {
+    const r = ler('app/api/empresas/[id]/estoque/producao/conferencia/route.ts')
+    /** o GET é o primeiro handler do arquivo; a fatia dele vai até o `const schema` */
+    const get = r.slice(r.indexOf('export async function GET'), r.indexOf('const schema'))
+    expect(get, 'o veredito do fiscal em stock.view viaja no JSON até o tablet')
+      .toMatch(/guardStock\(request, companyId, 'stock\.manage'\)/)
+    expect(get).not.toMatch(/'stock\.view'|'stock\.operate'/)
+    /** ⭐ e o POST também: conferir é gesto de gestão */
+    const post = r.slice(r.indexOf('export async function POST'))
+    expect(post).toMatch(/guardStock\(request, companyId, 'stock\.manage'\)/)
+  })
+
+  it('⛔⛔ a seção está na LISTA DE RENDER da home — motor sem maçaneta não existe', () => {
+    const h = ler(HOME)
+    /**
+     * ⚠️ Lê o JSX QUE RODA, não o arquivo: a `function ConferenciaDoDia` importada continua
+     * existindo mesmo se ninguém a desenhar — é a *"menção, não uso"* que já veio verde 11×.
+     */
+    const render = h.slice(h.indexOf('return (', h.indexOf('export default function ProducaoPage')))
+    expect(render, 'a seção saiu da tela — a fila existiria e ninguém chegaria nela')
+      .toMatch(/<ConferenciaDoDia\b/)
+    const tag = render.slice(render.indexOf('<ConferenciaDoDia'), render.indexOf('<ConferenciaDoDia') + 400)
+    /**
+     * ⚠️ **E o gate tem que VIR DA PERMISSÃO, não ser `true` cravado** — o guard passou verde
+     * com `podeGerenciar={true}` na 1ª versão. A trava de verdade é o payload (a rota 403), mas
+     * com `true` o componente dispara o fetch e **queima um 403 por carregamento de página no
+     * tablet**, mostrando a faixa âmbar de erro pra a cozinha. É a cicatriz do badge de 28/09
+     * (1.391 403/dia) com outra roupa.
+     */
+    expect(tag, 'e ela recebe o gate de permissão (o payload é a trava, isto é o desenho)')
+      .toMatch(/podeGerenciar=\{podePerm\('stock\.manage'\)\}/)
+    expect(tag, 'e espera as permissões carregarem antes de pedir a fila')
+      .toMatch(/carregandoPerm=/)
+    expect(tag, 'e a lista recarrega junto — o selo tem que mudar na frente dele')
+      .toMatch(/onMudou=/)
+  })
+})
+
 describe('⭐ auto-teste do detector', () => {
   it('pega o formulário remontado e não acusa quem só consome', () => {
     const consome = "import { PainelDeConferencia } from './painel-de-conferencia'\n<PainelDeConferencia id={id} />"
