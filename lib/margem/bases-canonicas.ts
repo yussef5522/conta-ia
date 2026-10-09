@@ -109,21 +109,56 @@ const PALAVRA_DO_TAMANHO: readonly [RegExp, TamanhoCanonico][] = [
   [/\bPEQUENAS?\b/, 'PEQUENA'],
 ]
 
+/**
+ * ⭐⭐ O CANAL NÃO É TAMANHO — lista FECHADA, e ela é a régua do dono de 08/10.
+ *
+ * `Pizza (Aiq)` é o produto do **Aiqfome**: o parêntese diz por onde ele vende, nunca de que
+ * tamanho ele é. ⛔ Inferir "canal" de qualquer parêntese faria `(Novo)` ou `(Promo)` virar
+ * canal — a mesma trava da lista fechada dos qualificadores de bebida (14/09) e dos sufixos
+ * societários (13/09): o que não está na lista **não vira régua**.
+ */
+const CANAIS: readonly RegExp[] = [/\bAIQ\b/, /\bAIQFOME\b/]
+
+/**
+ * ⭐⭐⭐ AS REGRAS NOMEADAS DO MAPEAMENTO — toda classificação diz QUAL régua decidiu.
+ *
+ * ⚠️ É união FECHADA de propósito: ramo novo sem nome **não compila**, então não existe
+ * decisão anônima neste mapa. É o que faz o relatório poder dizer *"quem decidiu foi a régua
+ * do canal"* em vez de só mostrar o resultado — e é o "rastro" que o dono pediu em 08/10.
+ */
+export type RegraDoMapeamento =
+  /** o nome traz a palavra do tamanho (`PIZZA FAMILIA 45CM`) */
+  | 'PALAVRA_DO_NOME'
+  /** ⭐ a régua do dono (08/10): nome de CANAL sem palavra de tamanho é GRANDE */
+  | 'CANAL_SEM_TAMANHO_E_GRANDE'
+  /** o nome diz N pizzas — combo, a composição é N× a canônica e o dono confirma */
+  | 'COMBO_DE_N_PIZZAS'
+  /** ⛔ a régua do canal diria GRANDE e a composição atual diz outro tamanho */
+  | 'CANAL_CONTRA_EVIDENCIA'
+  /** o nome não diz nada; a evidência é a caixa que a ficha usa hoje */
+  | 'EVIDENCIA_DA_CAIXA'
+  /** idem, pela contagem de porções de queijo */
+  | 'EVIDENCIA_DO_QUEIJO'
+  /** nem nome nem evidência — devolve `null`, nunca chuta */
+  | 'SEM_RESPOSTA'
+
 export interface ClassificacaoDaBase {
   tamanho: TamanhoCanonico | null
   /** ⚠️ `PROMO 2 PIZZAS GRANDES` são DUAS pizzas: a composição é 2× a canônica */
   multiplicador: number
-  /** `CLARO` = o nome diz o tamanho e é 1 pizza · `PERGUNTA` = o dono decide */
+  /** `CLARO` = dá pra decidir por régua declarada · `PERGUNTA` = o dono decide */
   confianca: 'CLARO' | 'PERGUNTA'
+  /** ⭐ QUAL régua decidiu — viaja até o relatório, nunca fica só na prosa do `porque` */
+  regra: RegraDoMapeamento
   porque: string
 }
 
 /**
  * ⭐ CLASSIFICA uma ficha de base: qual tamanho e quantas pizzas.
  *
- * ⛔ Devolve `PERGUNTA` em vez de chutar quando (a) o nome não diz o tamanho — aí a evidência
- * é a composição atual, que o dono confere —, ou (b) o nome indica mais de uma pizza. **O
- * preview pergunta; o aplicar só mexe no que foi confirmado.**
+ * ⛔ Devolve `PERGUNTA` em vez de chutar quando (a) o nome não diz o tamanho **e não há régua
+ * declarada que o cubra** — aí a evidência é a composição atual, que o dono confere —, ou (b) o
+ * nome indica mais de uma pizza. **O preview pergunta; o aplicar só mexe no que foi confirmado.**
  */
 export function classificarBase(opts: {
   nome: string
@@ -137,38 +172,87 @@ export function classificarBase(opts: {
   const mult = n.match(/\b(\d+)\s*PIZZAS\b/)
   const multiplicador = mult ? Number(mult[1]) : 1
 
+  /** a evidência da composição ATUAL, calculada antes porque a régua do canal a consulta */
+  const porCaixa = (['PEQUENA', 'GRANDE', 'FAMILIA'] as const).find((t) =>
+    componentes.some((c) => c.itemId === itens.caixa[t]),
+  )
+  const queijos = componentes.filter((c) => c.itemId === itens.queijo).reduce((s, c) => s + c.qtdPlanejada, 0)
+  /** ⚠️ comparação CRUA de propósito: dividir pelo `multiplicador` mudaria a evidência do ramo
+   *  de combo, que ninguém pediu pra mexer. A régua do canal só roda com multiplicador 1, onde
+   *  dividir seria identidade — então o aperto não traria nada e abriria regressão de graça. */
+  const porQueijo = TAMANHOS_CANONICOS.find((t) => COMPOSICAO[t].queijo === queijos)
+  const evidencia = porCaixa ?? porQueijo ?? null
+
+  // ─────────── 1. a PALAVRA do nome ganha de tudo ───────────
   const porNome = PALAVRA_DO_TAMANHO.find(([re]) => re.test(n))?.[1] ?? null
   if (porNome && multiplicador === 1) {
-    return { tamanho: porNome, multiplicador: 1, confianca: 'CLARO', porque: `o nome diz ${porNome}` }
+    return {
+      tamanho: porNome,
+      multiplicador: 1,
+      confianca: 'CLARO',
+      regra: 'PALAVRA_DO_NOME',
+      porque: `o nome diz ${porNome}`,
+    }
   }
   if (porNome && multiplicador > 1) {
     return {
       tamanho: porNome,
       multiplicador,
       confianca: 'PERGUNTA',
+      regra: 'COMBO_DE_N_PIZZAS',
       porque: `o nome diz ${porNome} e ${multiplicador} pizzas — a composição proposta é ${multiplicador}× a canônica`,
     }
   }
 
-  // ⭐ o nome não diz o tamanho (`Pizza (Aiq)`): a EVIDÊNCIA é a composição atual, dita ao dono
-  const porCaixa = (['PEQUENA', 'GRANDE', 'FAMILIA'] as const).find((t) =>
-    componentes.some((c) => c.itemId === itens.caixa[t]),
-  )
+  /**
+   * ─────────── 2. ⭐ A RÉGUA DO CANAL (declaração do dono, 08/10/2026) ───────────
+   *
+   * *"Nome SEM tamanho = GRANDE; nome com FAMÍLIA depois do Aiq = FAMÍLIA."* A segunda metade
+   * já é atendida pelo passo 1 (a palavra ganha de tudo), então aqui só vive a primeira.
+   *
+   * ⛔⛔ E ELA **NÃO SOBRESCREVE EVIDÊNCIA QUE A CONTRADIZ** — é a trava que o «Combo Caçula»
+   * ensinou em 08/10: lá a régua passou e a proposta **destruiria a receita** (R$ 15,18 → 6,94).
+   * Ficha de canal cuja composição de hoje diz PEQUENA volta a PERGUNTAR, nomeando o conflito;
+   * aplicar GRANDE em silêncio ali trocaria uma pizza pequena por uma grande no custo de todo
+   * dia, e o número sairia plausível. ⚠️ Hoje isso não morde (o `Pizza (Aiq)` real é GRANDE pela
+   * régua **e** pela evidência) — a trava existe pro produto de canal que ainda vai nascer.
+   */
+  const ehCanal = CANAIS.some((re) => re.test(n))
+  if (ehCanal && multiplicador === 1) {
+    if (evidencia && evidencia !== 'GRANDE') {
+      return {
+        tamanho: evidencia,
+        multiplicador,
+        confianca: 'PERGUNTA',
+        regra: 'CANAL_CONTRA_EVIDENCIA',
+        porque: `a régua do canal diria GRANDE, mas a ficha hoje tem composição de ${evidencia} — o dono decide qual vale`,
+      }
+    }
+    return {
+      tamanho: 'GRANDE',
+      multiplicador: 1,
+      confianca: 'CLARO',
+      regra: 'CANAL_SEM_TAMANHO_E_GRANDE',
+      porque: 'régua do dono (08/10): nome de canal sem palavra de tamanho é GRANDE',
+    }
+  }
+
+  // ─────────── 3. a EVIDÊNCIA da composição atual, dita ao dono ───────────
   if (porCaixa) {
     return {
       tamanho: porCaixa,
       multiplicador,
       confianca: 'PERGUNTA',
+      regra: 'EVIDENCIA_DA_CAIXA',
       porque: `o nome não diz o tamanho; a ficha hoje usa a caixa de ${porCaixa}`,
     }
   }
-  const queijos = componentes.filter((c) => c.itemId === itens.queijo).reduce((s, c) => s + c.qtdPlanejada, 0)
-  const porQueijo = TAMANHOS_CANONICOS.find((t) => COMPOSICAO[t].queijo === queijos)
   if (porQueijo) {
     return {
       tamanho: porQueijo,
       multiplicador,
       confianca: 'PERGUNTA',
+      regra: 'EVIDENCIA_DO_QUEIJO',
       porque: `o nome não diz o tamanho; a ficha hoje pede ${queijos} porção(ões) de queijo, que bate com ${porQueijo}`,
     }
   }
@@ -176,6 +260,7 @@ export function classificarBase(opts: {
     tamanho: null,
     multiplicador,
     confianca: 'PERGUNTA',
+    regra: 'SEM_RESPOSTA',
     porque: 'não dá pra dizer o tamanho pelo nome nem pela composição atual',
   }
 }
@@ -198,6 +283,21 @@ export function composicaoProposta(
     { itemId: itens.queijo, qtdPlanejada: c.queijo * m, unidade: UNIDADE_DA_BASE },
     { itemId: itens.caixa[tamanho], qtdPlanejada: c.caixa * m, unidade: UNIDADE_DA_BASE },
   ]
+}
+
+/**
+ * ⭐ O MOTIVO da pendência de dose — PURO, porque ele carrega uma regra.
+ *
+ * ⛔ Ele vivia montado dentro do laço da gravação, e ali **só dava pra conferir por grep**.
+ * A regra é a ordem do dono de 08/10 (*"molho segue a declarar ×2 como nas irmãs"*): a ficha
+ * de combo tem que DIZER quantas pizzas são, senão o dono abre a ficha e declara a dose de
+ * UMA pizza. ⚠️ `stock_dose_a_declarar` não tem coluna de quantidade — e nem deve, porque ali
+ * quantidade seria justamente o número que o sistema se recusa a inventar.
+ */
+export function motivoDaDoseADeclarar(multiplicador: number): string {
+  const base = 'a dose do molho é declaração do dono — o sistema não inventa quantidade de insumo'
+  if (multiplicador <= 1) return base
+  return `${base} · ⚠️ esta ficha são ${multiplicador} pizzas: a dose é ${multiplicador}× a da base de um tamanho`
 }
 
 /**

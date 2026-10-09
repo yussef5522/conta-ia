@@ -39,6 +39,8 @@ async function main() {
     for (const l of g.linhas) {
       const selo = l.jaNormalizada ? '✓ já normalizada' : l.classificacao.confianca === 'CLARO' ? '⭐ CLARO' : '⚠️ PERGUNTA'
       console.log(`\n  «${l.nome}» [${l.fichaId.slice(-6)}] v${l.versaoAtual} · ${selo}`)
+      /** ⭐ QUAL régua decidiu — é o rastro que o dono pediu em 08/10: o relatório DIZ */
+      console.log(`     régua: ${l.classificacao.regra}`)
       console.log(`     porque: ${l.classificacao.porque}`)
       if (l.faltandoHoje.length) console.log(`     ⛔ FALTA HOJE: ${l.faltandoHoje.join(' + ')}`)
       console.log(`     ATUAL    (${brl(l.custoAtual)}):`)
@@ -84,12 +86,49 @@ async function main() {
   )
   console.log('     (é o que SAI da sobra que a casa e a liga leem — margem deixa de vir inflada)')
 
+  /**
+   * ⭐ AS QUE PEDEM CONFIRMAÇÃO, com o ID INTEIRO — porque é esse id que vai no `--confirmar`.
+   * Sem imprimir o id completo, confirmar exigiria adivinhar, e adivinhar id de ficha é como
+   * se grava na receita errada.
+   */
+  const pedem = p.grupos.flatMap((g) => g.linhas.filter((l) => !l.jaNormalizada && l.classificacao.confianca === 'PERGUNTA'))
+  if (pedem.length) {
+    console.log('\n═══════ PEDEM CONFIRMAÇÃO — o id pra passar no --confirmar ═══════')
+    for (const l of pedem) console.log(`  ${l.fichaId}  «${l.nome}» · ${l.classificacao.regra}`)
+  }
+
   if (!APLICAR) {
     console.log('\n⭐ ZERO ESCRITA — preview. Pra gravar: --aplicar (só com o OK do dono).\n')
     return
   }
 
+  /**
+   * ⛔⛔ `--confirmar=<id>,<id>` — a lista que o dono autorizou NO CHAT.
+   *
+   * ⚠️ E ele ABORTA quando um id passado **não está pedindo confirmação**: id que já é CLARO,
+   * de outra empresa, ou com um dígito errado de digitação seria um `--confirmar` que não
+   * confirma NADA — e o script diria "aplicado" com a linha intocada. **No-op silencioso num
+   * gesto de gravação é a família do sucesso-disfarçado**, e aqui custaria o dono achar que
+   * gravou. Se o id não pede, o gesto para e diz qual é.
+   */
+  const confirmados = (process.argv.find((a) => a.startsWith('--confirmar='))?.split('=')[1] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const idsQuePedem = new Set(pedem.map((l) => l.fichaId))
+  const forasteiros = confirmados.filter((id) => !idsQuePedem.has(id))
+  if (forasteiros.length) {
+    throw new Error(
+      `--confirmar recebeu ${forasteiros.length} id(s) que NÃO pedem confirmação: ${forasteiros.join(', ')} — ` +
+        `confirmar o que não pergunta é um no-op silencioso. Os que pedem: ${[...idsQuePedem].join(', ') || 'nenhum'}`,
+    )
+  }
+
   console.log('\n═══════ APLICANDO ═══════')
+  if (confirmados.length) {
+    console.log(`  ⭐ confirmadas pelo dono: ${confirmados.length}`)
+    for (const id of confirmados) console.log(`     ${id} «${pedem.find((l) => l.fichaId === id)!.nome}»`)
+  }
   /**
    * ⭐⭐ O AUTOR VAI NO RASTRO — a ordem do dono diz *"atualizarFicha versionado com rastro"*, e
    * versão de receita sem autor é meia-gravação: em três meses ninguém sabe quem mudou a ficha.
@@ -104,7 +143,7 @@ async function main() {
   })
   if (!papel) throw new Error('não achei o OWNER desta empresa — sem autor eu não gravo')
   console.log(`  autor do rastro: ${papel.user?.name ?? papel.user?.email ?? papel.userId}`)
-  const r = await aplicarNormalizacao(EMPRESA, { preview: p, userId: papel.userId }, prisma)
+  const r = await aplicarNormalizacao(EMPRESA, { preview: p, confirmados, userId: papel.userId }, prisma)
   for (const a of r.fichas) {
     console.log(`  «${a.nome}» v${a.de} → v${a.para} · ${a.resumo}`)
   }

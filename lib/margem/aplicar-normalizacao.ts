@@ -15,7 +15,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { atualizarFicha } from '@/lib/stock/producao/fichas'
-import { TAMANHOS_CANONICOS, type TamanhoCanonico } from './bases-canonicas'
+import { TAMANHOS_CANONICOS, motivoDaDoseADeclarar, type TamanhoCanonico } from './bases-canonicas'
 import { previewNormalizacao, type PreviewDaNormalizacao } from './preview-normalizacao'
 
 export interface ResultadoDaNormalizacao {
@@ -113,14 +113,18 @@ export async function aplicarNormalizacao(
   if (molho) {
     for (const l of todas) {
       if (!l.classificacao.tamanho) continue
+      /** ⭐ a régua do texto mora em `motivoDaDoseADeclarar` (pura) — aqui só se consome */
+      const motivo = motivoDaDoseADeclarar(l.classificacao.multiplicador)
       await db.stockDoseADeclarar.upsert({
         where: { companyId_fichaId_itemId: { companyId, fichaId: l.fichaId, itemId: molho.id } },
-        update: {},
+        /** ⚠️ o motivo é texto DERIVADO da classificação, então ele se atualiza: a pendência do
+         *  combo nasceu antes da régua do multiplicador existir e ficaria mentindo "uma pizza". */
+        update: { motivo },
         create: {
           companyId,
           fichaId: l.fichaId,
           itemId: molho.id,
-          motivo: 'a dose do molho é declaração do dono — o sistema não inventa quantidade de insumo',
+          motivo,
           criadoPorId: opts.userId ?? null,
         },
       })

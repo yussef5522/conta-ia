@@ -12,6 +12,7 @@ import {
   composicaoProposta,
   conferirBaseDeTamanho,
   ehBaseDeTamanho,
+  motivoDaDoseADeclarar,
   type ComponenteDaFicha,
   type ItensDaBase,
 } from '../bases-canonicas'
@@ -127,18 +128,74 @@ describe('a classificação diz o tamanho ou PERGUNTA', () => {
     expect(r.porque).toContain('2 pizzas')
   })
 
-  it('⚠️ nome sem tamanho usa a CAIXA como evidência, e PERGUNTA (Pizza (Aiq) com caixa)', () => {
-    const r = classificarBase({ nome: 'Pizza (Aiq)', componentes: [c('i-queijo', 2), c('i-cx35', 1)], itens: ITENS })
+  /**
+   * ⚠️⚠️ OS DOIS TESTES ABAIXO FORAM INVERTIDOS EM 08/10, com o motivo escrito: eles afirmavam
+   * que `Pizza (Aiq)` **PERGUNTA** pela evidência — e isso era o mundo ANTES da régua do dono.
+   * Em 08/10 ele declarou: *"nome SEM tamanho = GRANDE; nome com FAMÍLIA depois do Aiq =
+   * FAMÍLIA — vale pra qualquer produto Aiq futuro"*. ⭐ A metade que continua valendo (a
+   * EVIDÊNCIA segue existindo e sendo dita pra nome sem régua nenhuma) está travada nos dois
+   * testes seguintes, com um nome que não é de canal.
+   */
+  it('⭐ a RÉGUA DO CANAL decide: nome de canal sem palavra de tamanho é GRANDE', () => {
+    for (const comps of [
+      [c('i-queijo', 2), c('i-cx35', 1)], // com a caixa de grande (concorda com a régua)
+      [c('i-queijo', 2), c('i-massa', 2)], // o caso REAL do Pizza (Aiq): sem caixa nenhuma
+      [c('i-massa', 2)], // ⭐ sem evidência nenhuma — e a régua resolve sozinha
+    ]) {
+      const r = classificarBase({ nome: 'Pizza (Aiq)', componentes: comps, itens: ITENS })
+      expect(r.tamanho).toBe('GRANDE')
+      expect(r.confianca).toBe('CLARO')
+      expect(r.regra).toBe('CANAL_SEM_TAMANHO_E_GRANDE')
+      expect(r.porque).toContain('régua do dono')
+    }
+  })
+
+  it('⭐ a PALAVRA ganha da régua do canal — «Pizza Aiq Família» é FAMILIA', () => {
+    // é a 2ª metade da régua de 08/10, e ela sai de graça: a palavra é conferida ANTES do canal
+    const r = classificarBase({ nome: 'Pizza Aiq Família', componentes: [c('i-queijo', 2)], itens: ITENS })
+    expect(r.tamanho).toBe('FAMILIA')
+    expect(r.confianca).toBe('CLARO')
+    expect(r.regra).toBe('PALAVRA_DO_NOME')
+  })
+
+  it('⛔⛔ a régua do canal NÃO sobrescreve evidência que a contradiz — volta a PERGUNTAR', () => {
+    // a trava que o «Combo Caçula» ensinou: aplicar GRANDE numa ficha com composição de PEQUENA
+    // trocaria o custo de todo dia por um número plausível e errado
+    const r = classificarBase({
+      nome: 'Pizza (Aiq)',
+      componentes: [c('i-queijo', 1), c('i-cx25', 1)],
+      itens: ITENS,
+    })
+    expect(r.tamanho).toBe('PEQUENA')
+    expect(r.confianca).toBe('PERGUNTA')
+    expect(r.regra).toBe('CANAL_CONTRA_EVIDENCIA')
+    expect(r.porque).toContain('o dono decide')
+  })
+
+  it('⚠️ nome SEM régua nenhuma usa a CAIXA como evidência, e PERGUNTA', () => {
+    const r = classificarBase({ nome: 'Pizza Surpresa', componentes: [c('i-queijo', 2), c('i-cx35', 1)], itens: ITENS })
     expect(r.tamanho).toBe('GRANDE')
     expect(r.confianca).toBe('PERGUNTA')
+    expect(r.regra).toBe('EVIDENCIA_DA_CAIXA')
     expect(r.porque).toContain('caixa')
   })
 
-  it('⚠️ sem caixa, a evidência é a contagem de queijo — o caso REAL do Pizza (Aiq)', () => {
-    const r = classificarBase({ nome: 'Pizza (Aiq)', componentes: [c('i-queijo', 2), c('i-massa', 2)], itens: ITENS })
+  it('⚠️ sem caixa, a evidência é a contagem de queijo', () => {
+    const r = classificarBase({ nome: 'Pizza Surpresa', componentes: [c('i-queijo', 2), c('i-massa', 2)], itens: ITENS })
     expect(r.tamanho).toBe('GRANDE')
     expect(r.confianca).toBe('PERGUNTA')
+    expect(r.regra).toBe('EVIDENCIA_DO_QUEIJO')
     expect(r.porque).toContain('queijo')
+  })
+
+  it('⚠️ canal COM combo de N pizzas não é CLARO — a régua do canal não cobre combo', () => {
+    const r = classificarBase({
+      nome: 'PROMO 2 PIZZAS (Aiq)',
+      componentes: [c('i-queijo', 4), c('i-cx35', 2)],
+      itens: ITENS,
+    })
+    expect(r.multiplicador).toBe(2)
+    expect(r.confianca).toBe('PERGUNTA')
   })
 
   it('⛔ sem nome nem evidência, devolve null — nunca chuta um tamanho', () => {
@@ -185,5 +242,24 @@ describe('⭐⭐ O GUARD DO DONO: base de tamanho sem massa + queijo + caixa é 
 
   it('⭐ a caixa de QUALQUER tamanho satisfaz o guard — ele cobra "tem caixa", não "qual"', () => {
     expect(conferirBaseDeTamanho([c('i-massa', 1), c('i-queijo', 1), c('i-cx45', 1)], ITENS).completa).toBe(true)
+  })
+})
+
+describe('⭐ a pendência de dose DIZ quantas pizzas são (ordem do dono, 08/10)', () => {
+  it('base de um tamanho: o motivo é o de sempre, sem número nenhum', () => {
+    const m = motivoDaDoseADeclarar(1)
+    expect(m).toContain('declaração do dono')
+    expect(m).not.toContain('pizzas:')
+  })
+
+  it('⛔ COMBO: o motivo carrega o multiplicador — senão o dono declara a dose de UMA pizza', () => {
+    const m = motivoDaDoseADeclarar(2)
+    expect(m).toContain('declaração do dono')
+    expect(m).toContain('são 2 pizzas')
+    expect(m).toContain('2× a da base')
+  })
+
+  it('⚠️ e vale pra qualquer N, não só 2', () => {
+    expect(motivoDaDoseADeclarar(3)).toContain('são 3 pizzas')
   })
 })
