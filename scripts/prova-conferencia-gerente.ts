@@ -129,6 +129,34 @@ async function main() {
     console.log(`  ⛔ o estoque NÃO se mexe — a geração já foi estornada; relançar DOBRARIA o lote`)
   }
 
+  /**
+   * ⭐⭐ O DELTA CONFERIDO NA MÃO CONTRA O LEDGER (ordem do dono) — **sem o motor no meio.**
+   * ⛔ Conferir a prévia contra ela mesma seria o invariante circular de 28/08, que dá verde de
+   * graça. Aqui a soma sai de `stockMovement` cru e tem que bater com o que a prévia prometeu.
+   */
+  const itemId = (await prisma.stockProductionOrder.findFirstOrThrow({
+    where: { id: alvo.ordemId }, select: { itemProduzidoId: true },
+  })).itemProduzidoId
+  const movs = await prisma.stockMovement.findMany({
+    where: { companyId: EMPRESA, itemId },
+    select: { tipo: true, quantidade: true, estornoDeId: true, receiptId: true },
+  })
+  const somaCrua = movs.reduce((a, m) => a + m.quantidade, 0)
+  const geracoesDaOrdem = movs.filter((m) => m.receiptId === alvo.ordemId && m.tipo === 'PRODUCAO_GERACAO')
+  const estornosDaOrdem = movs.filter((m) => m.receiptId === alvo.ordemId && m.tipo === 'ESTORNO')
+  const saldoDaCasa = await saldoItem(prisma, EMPRESA, itemId)
+  console.log(`  ─── NA MÃO, contra o ledger cru ───`)
+  console.log(`  movimentos do item: ${movs.length} · Σ quantidade CRUA: ${somaCrua}`)
+  console.log(`  desta ordem: ${geracoesDaOrdem.length} geração(ões) (Σ ${geracoesDaOrdem.reduce((a, m) => a + m.quantidade, 0)}) · ${estornosDaOrdem.length} estorno(s)`)
+  console.log(`  saldo pela PORTA da casa (saldoItem): ${saldoDaCasa.saldo}`)
+  if (plano.modo === 'ESTORNA_E_RELANCA') {
+    const naMao = saldoDaCasa.saldo - alvo.declarado + novaQtd
+    const daPrevia = plano.preview!.saldoDepois
+    console.log(`  Σ na mão: ${saldoDaCasa.saldo} − ${alvo.declarado} (estorna) + ${novaQtd} (relança) = ${naMao}`)
+    console.log(`  a prévia promete: ${daPrevia}`)
+    console.log(`  ${Math.abs(naMao - daPrevia) < 1e-9 ? '⭐ BATE ao centavo' : '⛔⛔ NÃO BATE — conferir'}`)
+  }
+
   // ─────────── 5. O CICLO INTEIRO, COM ROLLBACK (confirmar e corrigir) ───────────
   console.log(`\n═══ 5. O CICLO, COM ROLLBACK FORÇADO ═══`)
   try {
