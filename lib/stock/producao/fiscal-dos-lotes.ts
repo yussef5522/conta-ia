@@ -25,6 +25,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { consumidoPorOrdem } from './ordens'
 import { eficienciaDaOrdem, type FiscalDoDeclarado } from './eficiencia-da-ordem'
 import { fichasParaConverter } from './fichas-para-converter'
+import { configDeRetalho, retalhoDasOrdens, unidadesDoRetalho } from './retalho'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -62,6 +63,8 @@ export function pontinhoVale(f: Pick<FiscalDoLote, 'impossivel' | 'fichaId'>, lo
 
 export interface FiscalDoLote extends FiscalDoDeclarado {
   ordemId: string
+  /** ⭐ os KG que o dono declarou nesta ordem (`null` = não houve) — é o que a tela nomeia */
+  retalhoKg: number | null
   /** ⭐ a RECEITA — é por ela que o sininho agrupa o padrão (e é ela que o dono conserta) */
   fichaId: string
   /** quantas unidades a ordem declarou no total (soma das conclusões dela) */
@@ -122,12 +125,23 @@ export async function fiscalDeOrdens(
     : []
   const itemDe = new Map(itens.map((i) => [i.id, i]))
 
-  const [conclusoes, consumo] = await Promise.all([
+  /**
+   * ⭐⭐ O RETALHO ENTRA EM **DUAS CONSULTAS PRA N ORDENS** (09/10) — a config por ficha e o
+   * declarado por ordem.
+   *
+   * ⚠️ Uma por ordem aqui seria o N+1 de 28/09 (4.909 ms) na tela que o dono abre todo dia —
+   * e esta função é chamada tanto pela home quanto pela fila de conferência.
+   * ⛔ Empresa que nunca ligou retalho em ficha nenhuma devolve dois `Map` vazios: o bônus é
+   * zero e **nada muda** pras 189 receitas.
+   */
+  const [conclusoes, consumo, cfgRetalho, retalhos] = await Promise.all([
     db.stockProducaoConclusao.findMany({
       where: { companyId, ordemId: { in: ids } },
       select: { ordemId: true, qtdGerada: true },
     }),
     consumidoPorOrdem(companyId, ids, db),
+    configDeRetalho(companyId, ordens.map((o) => o.fichaId), db),
+    retalhoDasOrdens(companyId, ids, db),
   ])
   const geradoPorOrdem = new Map<string, number>()
   for (const c of conclusoes) {
@@ -149,17 +163,31 @@ export async function fiscalDeOrdens(
       }
     })
 
+    /**
+     * ⭐ o BÔNUS DO RETALHO — e ele só existe quando a ficha ACEITA.
+     *
+     * ⛔⛔ **A config manda, não a existência da linha.** Ordem antiga que declarou retalho numa
+     * ficha que o dono DESLIGOU depois volta a ser fiscalizada sem o bônus — o interruptor é a
+     * decisão vigente dele, e honrar a linha contra a config seria a config não valer nada.
+     */
+    const cfg = cfgRetalho.get(o.fichaId)
+    const bonusDeRetalho = cfg?.aceita
+      ? unidadesDoRetalho(retalhos.get(o.id)?.kg ?? null, cfg.pesoUnidadeG) ?? 0
+      : 0
+
     /** ⭐ a CONTA é da porta — aqui só se monta a entrada dela */
     const ef = eficienciaDaOrdem({
       escala: o.escalaReceitas,
       loteBase: v.loteBase,
       qtdGerada: gerado,
       componentes,
+      bonusDeRetalho,
     })
     const prod = itemDe.get(o.itemProduzidoId)
     out.set(o.id, {
       ...ef.fiscal,
       ordemId: o.id,
+      retalhoKg: cfg?.aceita ? retalhos.get(o.id)?.kg ?? null : null,
       fichaId: o.fichaId,
       declarado: gerado,
       produto: prod?.nome ?? 'o produto',

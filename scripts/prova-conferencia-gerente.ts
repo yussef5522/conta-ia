@@ -63,7 +63,7 @@ async function main() {
         `${c.pedidoTxt ? ` · pedido ${c.pedidoTxt}` : ''}` +
         ` · ${c.declaradoPor ?? 'sem PIN'} · ${c.minutosEsperando}min${c.atrasado ? ' ⚠ atrasado' : ''}`,
     )
-    console.log(`     fiscal: ${c.fiscalOk === null ? 'não dá pra medir' : c.fiscalOk ? 'material confere ✓' : '⚠ saiu mais do que o material dava'} — ${c.fiscalFrase ?? '—'}`)
+    console.log(`     fiscal: ${c.fiscalOk === null ? 'não dá pra medir' : c.fiscalOk ? 'material confere ✓' : '⚠ saiu mais do que o material dava'} — ${c.fiscalResumo ?? 'sem material com dose'}${c.retalhoKg ? ` · retalho ${c.retalhoKg} kg → esperado ~${c.esperadoTxt}` : ''}`)
   }
 
   // ───────────────────────── 2. O AVISO (item 2d) ─────────────────────────

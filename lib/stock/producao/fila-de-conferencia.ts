@@ -23,7 +23,8 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { caraDaReceita, type CaraDaReceita } from './cara-da-receita'
 import { fiscalDeOrdens } from './fiscal-dos-lotes'
-import { fraseDoFiscal } from './eficiencia-da-ordem'
+import { resumoDoFiscal } from './eficiencia-da-ordem'
+import { esperadoComRetalho, unidadesDoRetalho, configDeRetalho, retalhoDasOrdens } from './retalho'
 import { pedidoDaOrdem, type OrigemDoPedido } from './pedido-da-ordem'
 import { fmtPedido } from './pedido-na-tela'
 import { carimbosDasConclusoes } from './conferencia'
@@ -54,9 +55,27 @@ export interface CartaoDaConferencia {
   minutosEsperando: number
   /** ⛔ passou do degrau de 3h (o mesmo número do aviso — um lugar só) */
   atrasado: boolean
-  /** ⭐ O VEREDITO DO FISCAL, EM LÍNGUA DE BALCÃO — só existe neste cartão */
+  /**
+   * ⭐⭐ O ESPERADO **COM O RETALHO DE ONTEM** (09/10, Parte 1) — `null` quando não houve.
+   *
+   * ⛔⛔ **É COLA DE PROVA e vive SÓ aqui:** a fila é gateada em `stock.manage` (o mesmo gate do
+   * fiscal). Na tela de quem DECLARA ele não existe — o guard `conclusao-nao-da-cola` segue
+   * inteiro, e a lei de 05/10 não abre exceção porque o número ficou mais justo.
+   */
+  esperadoComRetalho: number | null
+  esperadoTxt: string | null
+  /** os KG declarados na criação da ordem (`null` = não houve) — a tela NOMEIA a folga */
+  retalhoKg: number | null
+  /**
+   * ⭐⭐ O VEREDITO **CURTO, COM NÚMERO** — *"confere"* ou *"dava ~49"* (Parte 2).
+   *
+   * ⛔⛔ **A FRASE LONGA DO FISCAL MORREU DESTE PAYLOAD, não só da tela** (ordem do dono): a
+   * conta completa vive na página da ordem. Deixar o texto viajando aqui seria deixar alguém
+   * desenhá-lo de volta no cartão no primeiro ajuste de layout — é a REGRA 5 aplicada a um
+   * campo de JSON.
+   */
   fiscalOk: boolean | null
-  fiscalFrase: string | null
+  fiscalResumo: string | null
 }
 
 export interface FilaDeConferencia {
@@ -116,6 +135,11 @@ export async function filaDeConferencia(
     where: { companyId, fichaId: { in: [...new Set(ordens.map((o) => o.fichaId))] } },
     select: { fichaId: true, versao: true, loteBase: true },
   })
+  /** ⭐ o retalho: config por ficha + declarado por ordem, em DUAS consultas pras N linhas */
+  const [cfgRetalho, retalhos] = await Promise.all([
+    configDeRetalho(companyId, ordens.map((o) => o.fichaId), db),
+    retalhoDasOrdens(companyId, ordemIds, db),
+  ])
 
   const ordemDe = new Map(ordens.map((o) => [o.id, o]))
   const itemDe = new Map(itens.map((i) => [i.id, i]))
@@ -138,6 +162,16 @@ export async function filaDeConferencia(
     })
     const f = fiscais.get(c.ordemId)
     const minutos = Math.max(0, Math.round((agora.getTime() - c.criadoEm.getTime()) / 60000))
+
+    /**
+     * ⭐ O ESPERADO COM RETALHO — e ele só existe quando a ficha ACEITA retalho.
+     * ⚠️ Pela MESMA régua do fiscal (`cfg.aceita` manda, não a existência da linha): se o dono
+     * desligou o interruptor, o esperado volta a ser o pedido, nos dois lugares.
+     */
+    const cfg = cfgRetalho.get(o.fichaId)
+    const retalhoKg = cfg?.aceita ? retalhos.get(c.ordemId)?.kg ?? null : null
+    const bonus = unidadesDoRetalho(retalhoKg, cfg?.pesoUnidadeG ?? null)
+    const esperado = bonus == null ? null : esperadoComRetalho(pedido.unidades, bonus)
 
     cartoes.push({
       conclusaoId: c.id,
@@ -162,13 +196,40 @@ export async function filaDeConferencia(
        * o oposto do que ele existe pra fazer).
        */
       fiscalOk: f == null || f.permitido == null ? null : !f.impossivel,
-      fiscalFrase: f ? fraseDoFiscal(f, c.qtdGerada, unidade) : null,
+      fiscalResumo: f ? resumoDoFiscal(f) : null,
+      esperadoComRetalho: esperado,
+      esperadoTxt: fmtPedido(esperado, unidade),
+      retalhoKg,
     })
   }
 
   return {
-    cartoes,
+    cartoes: ordenarCartoes(cartoes),
     aguardando: cartoes.length,
     atrasados: cartoes.filter((c) => c.atrasado).length,
   }
+}
+
+/**
+ * ⭐⭐ A ORDEM DA FILA (09/10, Parte 2): **suspeitas primeiro, depois as mais antigas.**
+ *
+ * **Ordem do dono:** *"suspeitas (⚠) primeiro com borda esquerda coral, depois as mais antigas"*.
+ *
+ * ⛔⛔ **ELA MORA NO SERVIDOR, e isso é o ponto.** Se a tela ordenasse, o `.sort()` dela e esta
+ * régua seriam duas respostas pra *"o que eu confiro primeiro?"* — e divergiriam no primeiro
+ * degrau novo, com o badge contando uma coisa e a lista mostrando outra (a doença do B1, que
+ * esta casa paga desde o badge da Conciliação).
+ *
+ * ⚠️ PURA e exportada de propósito: o red-then-green da REGRA 11 pega quem tirar a prioridade
+ * sem precisar de banco.
+ */
+export function ordenarCartoes(cartoes: CartaoDaConferencia[]): CartaoDaConferencia[] {
+  return [...cartoes].sort((a, b) => {
+    /** ⭐ o ⚠ do fiscal sobe — é o lote que pode ter número errado, e é o que o dono abre antes */
+    const sa = a.fiscalOk === false ? 0 : 1
+    const sb = b.fiscalOk === false ? 0 : 1
+    if (sa !== sb) return sa - sb
+    /** ⚠️ dentro do grupo, o MAIS ANTIGO primeiro: ele é o que já esperou (e o que o aviso de 3h cobra) */
+    return b.minutosEsperando - a.minutosEsperando
+  })
 }

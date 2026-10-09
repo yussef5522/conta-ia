@@ -17,6 +17,7 @@ import { produzirAvisosDeFinanceiro } from './financeiro'
 import { produzirAvisosDeMargem } from './margem'
 import { produzirAvisosDeImportDeVenda } from './import-de-venda'
 import { produzirAvisosDeConferencia } from './conferencia'
+import { produzirAvisosDeRetalho } from './retalho'
 import { montarSemanaVerde } from '../semana-verde'
 import { registrarAviso, avisosAbertos } from '../central'
 
@@ -150,6 +151,19 @@ export async function rodarProdutoresDeAviso(agora: Date = new Date()): Promise<
       r.reabertos += cf.reabertos
       r.resolvidos += cf.resolvidos
       for (const x of cf.recusados) r.recusados.push({ empresa: e.name, ...x })
+      /**
+       * ⭐ A SANIDADE DO RETALHO (09/10, Parte 1) — *"retalho > 20 kg = aviso âmbar"*.
+       *
+       * ⚠️ Entra DEPOIS da conferência e **não se suprime com ela**: aquele cobra o GESTO que
+       * falta (*"ninguém conferiu"*), este diz que o NÚMERO que afrouxa o fiscal está alto.
+       * Suprimir um pelo outro deixaria um lote com 92 kg de folga passando sem ninguém olhar.
+       * ⛔ Empresa que não ligou retalho em ficha nenhuma devolve zero e não grava nada.
+       */
+      const rt = await produzirAvisosDeRetalho(e.id, agora)
+      r.gravados += rt.gravados
+      r.reabertos += rt.reabertos
+      r.resolvidos += rt.resolvidos
+      for (const x of rt.recusados) r.recusados.push({ empresa: e.name, ...x })
       if (await verdeDaSemana(e.id, agora)) r.verdesSemanais++
     } catch (err) {
       // ⛔ uma empresa com problema não derruba a rodada das outras nem o juiz

@@ -76,8 +76,14 @@ export function fraseDaConferenciaParada(
     corpo:
       `${quem} ${c.declaradoTxt} de ${c.produto} e ninguém conferiu — está esperando há ${tempo}. ` +
       `O estoque já baixou e a etiqueta já saiu com esse número.`,
+    /**
+     * ⚠️⚠️ **AQUI DIZIA "confirme com o seu PIN" — e o PIN saiu do carimbo em 09/10.** O texto
+     * sobreviveu à correção do fluxo porque ele vive no PRODUTOR, não na tela: *a varredura por
+     * tela não acha a frase que mora no sininho*. Mandar o gerente procurar um PIN que ele não
+     * tem é a mesma família do *"o rótulo promete mais do que entrega"*.
+     */
     oQueFazer:
-      'Abra a Conferência do dia na produção e confirme com o seu PIN — ou corrija o número, ' +
+      'Abra a Conferência do dia na produção e confirme com o seu login — ou corrija o número, ' +
       'se a contagem foi outra.',
     acaoRotulo: 'conferir agora',
     acaoHref: `/empresas/${companyId}/estoque/producao#conferencia-do-dia`,

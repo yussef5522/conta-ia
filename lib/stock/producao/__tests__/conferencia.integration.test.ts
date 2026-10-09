@@ -376,8 +376,13 @@ describe('⭐ A FILA DO GERENTE', () => {
     expect(f.cartoes[0].conclusaoId).toBe(c.id)
     expect(f.cartoes[0].declaradoPor).toBe('eliane')
     expect(f.cartoes[0].declarado).toBe(10)
-    /** ⭐ O FISCAL FALA AQUI — e só aqui */
-    expect(f.cartoes[0].fiscalFrase).toMatch(/material separado/)
+    /**
+     * ⭐ O FISCAL FALA AQUI — e só aqui.
+     * ⚠️ **Invertido com o motivo escrito (09/10, Parte 2):** o cartão passou a carregar o
+     * veredito CURTO (`fiscalResumo`), e a **frase longa morreu do payload** — a conta completa
+     * vive na página da ordem. Afirmar `/material separado/` aqui seria afirmar o cartão antigo.
+     */
+    expect(f.cartoes[0].fiscalResumo).toBe('confere')
     expect(f.cartoes[0].fiscalOk).toBe(true)
   })
 

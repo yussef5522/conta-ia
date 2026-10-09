@@ -219,9 +219,19 @@ describe('⛔⛔ 3. o fiscal no lugar certo — ordem · sininho · pontinho', (
     const ponto = logo.slice(logo.indexOf('{alerta && ('))
     expect(ponto, 'é um círculo').toMatch(/rounded-full/)
     expect(ponto, 'posicionado em cima do logo').toMatch(/absolute rounded-full \$\{m\.ponto\}/)
-    /** ⭐ e o canto vem da MEDIDA — os TRÊS tamanhos (32/38/48) põem o ponto no canto */
+    /**
+     * ⭐ e o canto vem da MEDIDA — **TODO degrau** põe o ponto no canto.
+     *
+     * ⚠️⚠️ **REAPONTADO em 09/10: ele CONTAVA `.toBe(3)` e quebrou COM A TELA CERTA** quando o
+     * degrau de 34px entrou (o cartão-placar da conferência). ***Guard que conta cresce junto
+     * com a tela e cobra por cada degrau novo: ele mede o TAMANHO, não a doença.*** A doença é
+     * um degrau SEM o canto — e é isso que ele afirma agora, derivando a contagem das próprias
+     * chaves do mapa.
+     */
     const medida = logo.slice(logo.indexOf('const MEDIDA'), logo.indexOf('} as const'))
-    expect((medida.match(/-right-\[3px\] -top-\[3px\]/g) ?? []).length, 'nos 3 tamanhos').toBe(3)
+    const degraus = (medida.match(/^\s*\d+: \{/gm) ?? []).length
+    expect(degraus, 'o mapa de medidas foi achado').toBeGreaterThan(0)
+    expect((medida.match(/-right-\[3px\] -top-\[3px\]/g) ?? []).length, 'em TODO degrau de tamanho').toBe(degraus)
     expect(ponto, 'coral — a cor do alarme da casa').toMatch(/var\(--fam-coral-mid\)/)
     expect(ponto, 'com anel da superfície pra não virar mancha sobre o logo colorido').toMatch(/boxShadow: '0 0 0 2px var\(--prod-surface\)'/)
     expect(ponto, 'e com nome pra leitor de tela').toMatch(/aria-label=/)

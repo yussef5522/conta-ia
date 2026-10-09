@@ -106,7 +106,8 @@ describe('⭐⭐ o pedido se CANCELA — o fiscal mede material, não meta', () 
    *  nunca zero: zero afirmaria que o material não permitia nada. */
   it('⛔ sem pedido, o fiscal se cala (null, não zero)', () => {
     const ef = ordem(0, 20, [{ nome: 'Acém', porLote: 1, consumido: 2 }])
-    expect(ef.fiscal).toEqual({ permitido: null, gargalo: null, pctFisico: null, impossivel: false })
+    /** ⚠️ `bonusDeRetalho` entrou no contrato em 09/10 (Parte 1) — `0` é a ausência de retalho */
+    expect(ef.fiscal).toEqual({ permitido: null, bonusDeRetalho: 0, gargalo: null, pctFisico: null, impossivel: false })
     expect(fraseDoFiscal(ef.fiscal, 20, 'UN'), 'frase sem conta é ruído').toBeNull()
   })
 

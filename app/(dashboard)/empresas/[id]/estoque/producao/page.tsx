@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { eficienciaMedia } from '@/lib/stock/producao/previsao-rendimento'
 import { escalaDoPedido } from '@/lib/stock/producao/escala-da-ordem'
 import { avisosDaEscala } from '@/lib/stock/producao/escala-do-pedido'
+import { fraseDoRetalho } from '@/lib/stock/producao/retalho'
 import { listaDoQueVaiSeparar } from '@/lib/stock/producao/lista-da-separacao'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
@@ -608,6 +609,18 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
   const [setorId, setSetorId] = useState('')
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  /**
+   * ⭐⭐ O RETALHO DE ONTEM (09/10) — a pergunta só existe em receita MARCADA.
+   *
+   * ⛔⛔ **A AUSÊNCIA DA PERGUNTA VEM DA AUSÊNCIA DO DADO:** a rota devolve `{aceita:false}`
+   * pra toda ficha não marcada, e aí não há o que desenhar. Um `if (nome === 'massa')` aqui
+   * seria régua de tela sobre texto livre — a cicatriz da conta `'sicredi '`.
+   * ⚠️ `retalho` NASCE VAZIO e `temRetalho` nasce `null` (nem sim nem não): pré-preencher é
+   * confirmar um número que ninguém pesou, e o retalho é medido TODO DIA.
+   */
+  const [cfgRetalho, setCfgRetalho] = useState<{ aceita: boolean; pesoUnidadeG?: number; ultimoKg?: number | null } | null>(null)
+  const [temRetalho, setTemRetalho] = useState<'NAO' | 'SIM' | null>(null)
+  const [retalho, setRetalho] = useState('')
 
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/fichas`).then((r) => r.json())
@@ -617,6 +630,22 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
       .then((j) => setFichas((j.fichas ?? []).filter(ehReceitaDeProducao))).catch(() => {})
     fetch(`/api/empresas/${id}/estoque/setores`).then((r) => r.json()).then((j) => setSetores(j.setores ?? [])).catch(() => {})
   }, [id])
+
+  /**
+   * ⭐ a config do retalho segue a FICHA escolhida — e **zera o que foi digitado** ao trocar.
+   * ⚠️ Sem o reset, trocar de receita carregaria "9,2 kg" pra uma massa que não é aquela: o
+   * número ficaria na tela sem a pergunta, e entraria no POST se a nova também aceitasse.
+   */
+  useEffect(() => {
+    setCfgRetalho(null); setTemRetalho(null); setRetalho('')
+    if (!fichaId) return
+    let vivo = true
+    fetch(`/api/empresas/${id}/estoque/producao/retalho?ficha=${fichaId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (vivo && j) setCfgRetalho(j) })
+      .catch(() => {})
+    return () => { vivo = false }
+  }, [id, fichaId])
 
   const ficha = fichas.find((f) => f.id === fichaId) ?? null
   /** ⭐ ESPELHO, não régua: só pra tela DIZER quanto a cozinha vem rendendo. */
@@ -663,6 +692,21 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
       )
     : null
 
+  /**
+   * ⭐⭐ A FRASE CURTA — *"vai sair ~205 UN no total"* (pedido literal do dono).
+   * ⛔ A conta mora na LIB (`fraseDoRetalho`), nunca aqui: *regra que vive num componente é
+   * regra que ninguém prova* — este projeto roda sem jsdom.
+   */
+  const retalhoKgNum = Number(retalho.replace(',', '.'))
+  const fraseRetalho = ficha && temRetalho === 'SIM'
+    ? fraseDoRetalho({
+        pedido: alvoNum > 0 ? alvoNum : null,
+        kg: retalhoKgNum > 0 ? retalhoKgNum : null,
+        pesoUnidadeG: cfgRetalho?.pesoUnidadeG ?? null,
+        unidade: ficha.unidadeProduzido,
+      })
+    : null
+
   const criar = async () => {
     setErro(null)
     const alvo = Number(quanto.replace(',', '.'))
@@ -674,7 +718,11 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
     if (!data) return setErro('Informe a data de produção.')
     setBusy(true)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fichaId, escalaReceitas: esc, dataProducao: data, setorId: setorId || null, pedidoUnidades: alvo }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        fichaId, escalaReceitas: esc, dataProducao: data, setorId: setorId || null, pedidoUnidades: alvo,
+        /** ⚠️ "não tem" manda o campo AUSENTE — ausência é a resposta, e o CHECK exige kg > 0 */
+        retalhoKg: temRetalho === 'SIM' && retalhoKgNum > 0 ? retalhoKgNum : undefined,
+      }) })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui criar.'); return }
       onCriada(j.ordemId)
@@ -710,6 +758,61 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
               </span>
             </label>
           </div>
+          {/**
+            * ⭐⭐⭐ "TEM RETALHO DE ONTEM?" — SÓ na receita marcada (09/10, Parte 1).
+            *
+            * ⛔ Nasce SEM resposta (nem sim nem não) e o campo nasce VAZIO. ⚠️ E o lembrete é
+            * DISCRETO de propósito: ele serve pra o dono reconhecer uma grandeza absurda
+            * (92 onde costuma ser 9,2), nunca pra poupar a pesagem.
+            */}
+          {cfgRetalho?.aceita && (
+            <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}>
+              <p className="text-[12.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
+                Tem retalho de ontem? Quer adicionar na receita?
+              </p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => { setTemRetalho('NAO'); setRetalho('') }}
+                  className="rounded-lg px-2.5 py-1.5 text-[12px]"
+                  style={temRetalho === 'NAO'
+                    ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)', fontWeight: 600 }
+                    : { border: '1px solid var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
+                  Não tem
+                </button>
+                <button type="button" onClick={() => setTemRetalho('SIM')}
+                  className="rounded-lg px-2.5 py-1.5 text-[12px]"
+                  style={temRetalho === 'SIM'
+                    ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)', fontWeight: 600 }
+                    : { border: '1px solid var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
+                  Sim
+                </button>
+                {temRetalho === 'SIM' && (
+                  <label className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--prod-muted)' }}>
+                    quantos kg
+                    <input value={retalho} onChange={(e) => setRetalho(e.target.value)} inputMode="decimal"
+                      placeholder="9,2"
+                      className="h-9 w-24 rounded-lg border px-2 text-[15px] tabular-nums"
+                      style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)', background: 'var(--prod-bg)' }} />
+                    kg
+                  </label>
+                )}
+              </div>
+              {temRetalho === 'SIM' && cfgRetalho.ultimoKg != null && (
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+                  da última vez: {cfgRetalho.ultimoKg.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg
+                </p>
+              )}
+              {/** ⭐ A FRASE CURTA, e ela é a ÚNICA resposta da tela a este campo */}
+              {fraseRetalho && (
+                <p className="mt-1.5 text-[12.5px] font-medium tabular-nums" style={{ color: 'var(--fam-indigo-ink)' }}>
+                  {fraseRetalho}
+                </p>
+              )}
+              {/** ⚠️ a separação NÃO muda, e a tela DIZ — senão o dono espera mais material na câmara */}
+              <p className="mt-1 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+                o material que sai da câmara continua sendo o do pedido — o retalho já está na cozinha
+              </p>
+            </div>
+          )}
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-xs text-slate-500">Data de produção
               <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm" />

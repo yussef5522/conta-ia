@@ -11,6 +11,7 @@ import { criarMovimento } from '../movement'
 import { explodirReceita } from '../explodir-receita'
 import { saldoItem, custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 import { materializarEtapasDaOrdem } from './etapas'
+import { configDeRetalho } from './retalho'
 import { encerrarEtapasAbertas } from './encerrar-etapas-abertas'
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -65,6 +66,15 @@ export interface CriarOrdemInput {
    * `pedidoDaOrdem`, marcado como tal.
    */
   pedidoUnidades?: number | null
+  /**
+   * ⭐⭐ O RETALHO DE ONTEM, EM KG (09/10/2026) — *"tem retalho de ontem? quer adicionar na
+   * receita?"*.
+   *
+   * ⛔ **OPCIONAL, e "não tem" NÃO grava linha:** ausência é a resposta. ⚠️ E ele **não muda a
+   * separação**: o material que sai da câmara continua sendo `ficha × pedido` pela porta única
+   * (lei de 03/10). O retalho soma no RENDIMENTO ESPERADO e no FISCAL, nada mais.
+   */
+  retalhoKg?: number | null
 }
 
 export async function criarOrdem(input: CriarOrdemInput, db: Db = defaultPrisma): Promise<{ ordemId: string }> {
@@ -95,6 +105,31 @@ export async function criarOrdem(input: CriarOrdemInput, db: Db = defaultPrisma)
         ordemId: ordem.id,
         unidades: input.pedidoUnidades,
         registradoPorId: input.userId ?? null,
+      },
+    })
+  }
+  /**
+   * ⭐⭐ O RETALHO VIRA LINHA — e **só na receita que o dono marcou**.
+   *
+   * ⛔⛔ **QUEM RECUSA É O SERVIDOR, não a tela.** A pergunta só aparece em ficha com
+   * `aceitaRetalho`, mas esconder o campo é combinado: a rota pode ser chamada por outro
+   * caminho (script, cliente copiado, tela em cache) e aí um retalho entraria numa receita que
+   * não tem retalho — afrouxando o fiscal dela em silêncio. É a régua do FREIO da contagem
+   * (23/08): *aviso que vive no componente some no dia em que a rota for chamada por fora*.
+   */
+  if (input.retalhoKg != null && input.retalhoKg > 0) {
+    const cfg = (await configDeRetalho(input.companyId, [ficha.id], db)).get(ficha.id)
+    if (!cfg?.aceita) {
+      throw new OrdemError(
+        'Esta receita não aceita retalho — o retalho só entra em receita marcada (hoje, a massa de pizza).',
+      )
+    }
+    await db.stockOrdemRetalho.create({
+      data: {
+        companyId: input.companyId,
+        ordemId: ordem.id,
+        kg: input.retalhoKg,
+        declaradoPorId: input.userId ?? null,
       },
     })
   }

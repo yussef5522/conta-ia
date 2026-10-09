@@ -4957,6 +4957,50 @@ model StockItemCategoriaTrocada {
 // "pedido 130 → entregue 137 UN (105%)"; sem registro → "sem meta registrada".
 // ⛔ Registrada, nunca derivada: `escala × rendimento médio` compararia o real com a média
 // do próprio real e daria ~100% sempre.
+/// ⭐⭐⭐ RETALHO DE MASSA — A CONFIG POR RECEITA (09/10/2026).
+///
+/// **O processo do dono:** bolinhas de tarde, o serviço corta de noite e sobra RETALHO; no dia
+/// seguinte o retalho entra na massa nova. *"Pedir 200 e sair 246 é NORMAL e hoje o fiscal
+/// acusa à toa."*
+///
+/// ⛔⛔ **LIGADO SÓ onde o dono ligou.** Sem linha aqui a pergunta não aparece, o bônus é zero e
+/// o fiscal conta como contava ontem — as outras 189 receitas não mudam NADA. ⚠️ Config no
+/// BANCO em vez de `if (nome === …)`: nome é texto livre, e a conta `'sicredi '` com espaço no
+/// fim já custou um diagnóstico nesta casa.
+model StockFichaRetalho {
+  id            String   @id @default(cuid())
+  companyId     String
+  fichaId       String
+  aceitaRetalho Boolean  @default(true)
+  /// ⭐ quanto pesa 1 UNIDADE do produto, CRUA, em gramas. Pra «metade de bolinha massa de
+  /// pizza» a unidade É a metade: 200 g (bolinha inteira 400 g — declaração do dono, 09/10).
+  pesoUnidadeG  Float
+  definidoPorId String?
+  definidoEm    DateTime @default(now())
+
+  @@unique([companyId, fichaId])
+  @@map("stock_ficha_retalho")
+}
+
+/// ⭐⭐ O RETALHO DECLARADO NUMA ORDEM — digitado todo dia, nunca pré-preenchido.
+///
+/// ⛔ **"Não tem" NÃO grava linha:** ausência é a resposta. O CHECK exige `kg > 0`, e o bônus
+/// zero é exatamente o que a ausência produz.
+/// ⛔⛔ **FASE 1 SEM LEDGER:** retalho não é item, não tem movimento, não toca P1-P8. Ele soma
+/// no RENDIMENTO ESPERADO; a separação segue ficha × pedido pela porta única (lei de 03/10).
+model StockOrdemRetalho {
+  id             String   @id @default(cuid())
+  companyId      String
+  ordemId        String
+  kg             Float
+  declaradoPorId String?
+  declaradoEm    DateTime @default(now())
+
+  @@unique([companyId, ordemId])
+  @@index([companyId, declaradoEm])
+  @@map("stock_ordem_retalho")
+}
+
 model StockOrdemMeta {
   id              String   @id @default(cuid())
   companyId       String

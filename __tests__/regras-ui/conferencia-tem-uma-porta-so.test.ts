@@ -21,6 +21,8 @@ import { readFileSync } from 'node:fs'
 import { semComentarios, usosDe } from './_leitura-de-fonte'
 
 const PAINEL = 'components/estoque/painel-de-conferencia.tsx'
+/** ⭐ o módulo ÚNICO que monta o corpo do POST (09/10, Parte 2) */
+const GESTO = 'components/estoque/gesto-de-conferencia.ts'
 const SELO = 'components/estoque/selo-da-conferencia.tsx'
 const FILA = 'components/estoque/conferencia-do-dia.tsx'
 const ORDEM = 'app/(dashboard)/empresas/[id]/estoque/producao/[ordemId]/page.tsx'
@@ -30,13 +32,33 @@ const ROTA_ORDEM = 'app/api/empresas/[id]/estoque/producao/ordens/[ordemId]/rout
 const ler = (p: string) => semComentarios(readFileSync(p, 'utf8'))
 
 describe('⛔⛔ UM formulário de correção, dois lugares', () => {
-  it('⭐ o painel é o dono do gesto: motivos, prévia e o POST moram nele', () => {
-    const p = ler(PAINEL)
-    expect(p, 'os 3 motivos fechados').toMatch(/CONTOU_ERRADO/)
-    expect(p, 'a prévia ANTES de gravar (ordem do dono)').toMatch(/PREVER_CORRECAO/)
-    expect(p, 'e a gravação').toMatch(/acao: 'CORRIGIR'/)
+  /**
+   * ⚠️⚠️ **REAPONTADO em 09/10 (Parte 2), e ficou MAIS FORTE.** Com o cartão-placar, o **✓
+   * confirma em UM toque** direto do cartão — então o POST passou a ter DOIS chamadores. O
+   * corpo saiu pra um módulo único (`gesto-de-conferencia`), e a pergunta do guard mudou de
+   * *"o painel monta o corpo?"* pra ***"só UM arquivo monta o corpo?"*** — que é a régua que
+   * importa, porque a rota é `.strict()` e dois montadores são dois jeitos de levar 400.
+   *
+   * ⛔ *Grep não distingue "refatorei" de "quebrei"* — é a razão de existir da REGRA 3.
+   */
+  it('⭐⭐ UM módulo monta o corpo do gesto — e só ele', () => {
+    const g = ler(GESTO)
+    expect(g, 'os 3 motivos fechados').toMatch(/CONTOU_ERRADO/)
+    expect(g, 'a prévia ANTES de gravar (ordem do dono)').toMatch(/PREVER_CORRECAO/)
+    expect(g, 'o confirmar de um toque').toMatch(/acao: 'CONFIRMAR'/)
+    expect(g, 'e a correção').toMatch(/acao: 'CORRIGIR'/)
     /** ⚠️ teto de gravação maior que o de leitura — a correção mexe no ledger */
-    expect(p).toMatch(/timeoutMs: 60_000/)
+    expect(g).toMatch(/timeoutMs: 60_000/)
+
+    /** ⛔⛔ e NINGUÉM MAIS monta o corpo: nem o painel, nem a fila, nem a página da ordem */
+    for (const outro of [PAINEL, FILA, ORDEM]) {
+      const s = ler(outro)
+      expect(s, `${outro} voltou a montar o corpo do gesto`).not.toMatch(/acao: 'CONFIRMAR'/)
+      expect(s, `${outro} voltou a montar o corpo da correção`).not.toMatch(/acao: 'CORRIGIR'/)
+      expect(s, `${outro} fez a própria prévia`).not.toMatch(/PREVER_CORRECAO/)
+    }
+    /** ⭐ e o painel CONSOME o módulo — senão o formulário ficou sem porta */
+    expect(usosDe(ler(PAINEL), 'corrigirNaRota'), 'o painel parou de usar a porta única').toBeGreaterThan(0)
   })
 
   it('⛔ as DUAS telas CONSOMEM o painel — nenhuma remonta o formulário', () => {
@@ -46,6 +68,7 @@ describe('⛔⛔ UM formulário de correção, dois lugares', () => {
       expect(s, `${tela} remontou a lista de motivos`).not.toMatch(/CONTOU_ERRADO/)
       expect(s, `${tela} fez a própria prévia`).not.toMatch(/PREVER_CORRECAO/)
       expect(s, `${tela} gravou a correção por fora do painel`).not.toMatch(/acao: 'CORRIGIR'/)
+      expect(s, `${tela} remontou o campo de quantidade da correção`).not.toMatch(/qtdCerta:/)
     }
   })
 

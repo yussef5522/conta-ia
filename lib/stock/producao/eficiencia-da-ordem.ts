@@ -105,6 +105,19 @@ export interface FiscalDoDeclarado {
   /** quantas unidades o material REALMENTE consumido permite, pela ficha inteira. `null` quando
    *  não há componente com dose declarada (nada a fiscalizar). */
   permitido: number | null
+  /**
+   * ⭐⭐ O RETALHO DE ONTEM, EM UNIDADES (09/10/2026) — `0` quando não houve.
+   *
+   * **Ordem do dono:** *"permitido = material separado + (retalho ÷ peso da metade)"*. A massa
+   * que o serviço cortou de noite voltou pra a massa nova de hoje: ela **não saiu da câmara
+   * hoje**, então nenhum componente a contabiliza — e sem este termo o fiscal acusa *"saiu mais
+   * do que o material dava"* num lote que está certo. *Era o alarme falso que o dono mediu.*
+   *
+   * ⚠️ Fica como CAMPO (e não só somado no `permitido`) porque a tela precisa poder DIZER de
+   * onde veio a folga: *"o material dava ~200 + 46 de retalho"*. Bônus invisível é bônus que
+   * ninguém consegue conferir.
+   */
+  bonusDeRetalho: number
   /** o componente que limita — é ele que o dono vai conferir */
   gargalo: string | null
   /** declarado ÷ permitido. `null` sem permitido. */
@@ -148,6 +161,15 @@ export interface EntradaDaEficiencia {
   loteBase: number
   qtdGerada: number
   componentes: { nome: string; unidade: string; porLote: number; consumido: number }[]
+  /**
+   * ⭐ RETALHO em unidades (09/10) — entra **SÓ no fiscal**.
+   *
+   * ⛔⛔ **Não toca `pedido`, `pct`, `faixa` nem `alerta`** — e isso é a ordem do dono (*"zero
+   * toque em P1-P8"*). O `pct` responde *"saiu o que a FICHA promete?"*, e a resposta não muda
+   * porque sobrou massa de ontem; o FISCAL responde *"o declarado cabe no material?"*, e aí o
+   * retalho é material de verdade. Duas perguntas, um bônus, um lugar.
+   */
+  bonusDeRetalho?: number
 }
 
 /**
@@ -171,7 +193,7 @@ export function eficienciaDaOrdem(e: EntradaDaEficiencia): EficienciaDaOrdem {
     return { nome: c.nome, unidade: c.unidade, plano, real: round4(c.consumido), gap: round4(c.consumido - plano) }
   })
 
-  const fiscal = fiscalDoDeclarado(pedido, e.qtdGerada, componentes)
+  const fiscal = fiscalDoDeclarado(pedido, e.qtdGerada, componentes, e.bonusDeRetalho ?? 0)
 
   if (pct == null) return { pedido, produzido: e.qtdGerada, pct: null, faixa: 'SEM_PEDIDO', alerta: false, componentes, fiscal }
 
@@ -191,8 +213,15 @@ export function fiscalDoDeclarado(
   pedido: number | null,
   declarado: number,
   componentes: ComponenteDaEficiencia[],
+  /**
+   * ⭐ o retalho de ontem, já em UNIDADES (`retalho ÷ peso da metade`) — ver `retalho.ts`.
+   * ⚠️ Default `0` de propósito: **toda ordem que não declarou retalho conta como contava
+   * ontem**, e as 189 receitas que não aceitam retalho nem passam por aqui com valor.
+   */
+  bonusDeRetalho = 0,
 ): FiscalDoDeclarado {
-  const vazio: FiscalDoDeclarado = { permitido: null, gargalo: null, pctFisico: null, impossivel: false }
+  const bonus = Number.isFinite(bonusDeRetalho) && bonusDeRetalho > 0 ? bonusDeRetalho : 0
+  const vazio: FiscalDoDeclarado = { permitido: null, bonusDeRetalho: bonus, gargalo: null, pctFisico: null, impossivel: false }
   if (pedido == null || pedido <= 0) return vazio
 
   let permitido: number | null = null
@@ -207,15 +236,25 @@ export function fiscalDoDeclarado(
       gargalo = c.nome
     }
   }
+  /**
+   * ⛔⛔ **SEM COMPONENTE COM DOSE, O BÔNUS SOZINHO NÃO VIRA FISCAL.** `permitido == null`
+   * significa *"não há material pra fiscalizar"*, e somar o retalho ali inventaria um limite a
+   * partir de uma declaração — exatamente a acusação-a-partir-de-ausência que este fiscal
+   * existe pra não fazer.
+   */
   if (permitido == null) return vazio
 
-  const pctFisico = permitido > 0 ? round4(declarado / permitido) : null
+  /** ⭐ a soma do dono: material + retalho. O gargalo continua sendo o componente mais escasso —
+   *  ele é que diz ONDE conferir; o retalho só afrouxa o teto. */
+  const comRetalho = round4(permitido + bonus)
+  const pctFisico = comRetalho > 0 ? round4(declarado / comRetalho) : null
   return {
-    permitido,
+    permitido: comRetalho,
+    bonusDeRetalho: bonus,
     gargalo,
     pctFisico,
     /** ⚠️ permitido ZERO com declarado > 0 é impossível por definição: saiu produto sem material */
-    impossivel: permitido === 0 ? declarado > 0 : (pctFisico ?? 0) > TETO_FISICO,
+    impossivel: comRetalho === 0 ? declarado > 0 : (pctFisico ?? 0) > TETO_FISICO,
   }
 }
 
@@ -230,8 +269,35 @@ export function fraseDoFiscal(f: FiscalDoDeclarado, declarado: number, unidade: 
   if (f.permitido == null) return null
   const un = unidade ? ` ${unidade}` : ''
   const onde = f.gargalo ? ` (limitado por ${f.gargalo})` : ''
-  const base = `pelo material separado, a receita permite ~${f.permitido}${un}${onde}; foram declaradas ${declarado}${un}`
+  /**
+   * ⭐ O RETALHO VAI NOMEADO NA FRASE — *"+46 de retalho de ontem"*.
+   * ⚠️ Sem isso o dono veria o teto afrouxar e não teria como saber por quê: bônus silencioso
+   * é bônus que ninguém confere, e aí o fiscal deixa de ser auditável.
+   */
+  const comRetalho = f.bonusDeRetalho > 0
+    ? ` (inclui +${round4(f.bonusDeRetalho)}${un} do retalho de ontem)`
+    : ''
+  const base = `pelo material separado, a receita permite ~${f.permitido}${un}${onde}${comRetalho}; foram declaradas ${declarado}${un}`
   return f.impossivel ? `${base} — confere o lançamento` : base
+}
+
+/**
+ * ⭐⭐ O VEREDITO **CURTO, COM NÚMERO** — pro cartão-placar da conferência (09/10, Parte 2).
+ *
+ * **Ordem do dono:** *"veredito CURTO com número: «✓ confere» verde ou «⚠ dava ~49» vermelho —
+ * a frase longa do fiscal MORRE do cartão (a conta completa vive só na página da ordem)."*
+ *
+ * ⛔ Ele **não é uma segunda régua**: o `impossivel` e o `permitido` vêm do MESMO
+ * `fiscalDoDeclarado`. O que muda é o tamanho do texto — e por isso ele mora aqui, do lado da
+ * frase longa, em vez de num `?:` dentro do componente (*regra que mora no JSX é regra que
+ * ninguém prova*).
+ *
+ * ⚠️ `null` quando não há material pra fiscalizar: *"não deu pra medir"* nunca vira veredito, e
+ * um cartão sem resumo é o estado honesto (a tela escreve a ressalva).
+ */
+export function resumoDoFiscal(f: FiscalDoDeclarado): string | null {
+  if (f.permitido == null) return null
+  return f.impossivel ? `dava ~${f.permitido}` : 'confere'
 }
 
 /**

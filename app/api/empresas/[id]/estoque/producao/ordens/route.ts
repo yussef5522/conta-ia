@@ -167,6 +167,15 @@ const criarSchema = z.object({
    * terem contra o que comparar o produzido.
    */
   pedidoUnidades: z.number().positive().max(1_000_000).nullable().optional(),
+  /**
+   * ⭐⭐ O RETALHO DE ONTEM, EM KG (09/10) — *"[Não tem] / [Sim, __ KG]"*.
+   *
+   * ⚠️ `.positive()` é o que faz *"não tem"* **não gravar nada**: a tela manda o campo ausente,
+   * e ausência é a resposta. ⛔ E o teto de 1.000 kg não é cosmético: um dedo escorregando num
+   * zero (92 onde era 9,2) afrouxaria o fiscal em 4.600 unidades — o aviso de sanidade cobre o
+   * absurdo plausível, e este teto cobre o impossível.
+   */
+  retalhoKg: z.number().positive().max(1000).nullable().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
