@@ -2382,7 +2382,51 @@ arquivos 0→0 · linhas 2773→2773 · comp 2717→2717 · movimentos 6680→66
 3. ⚠️ **41 sabores SEM FICHA em 07/10** (de 75 nomes) — o maior é `CHOCOLATE PRETO` 18×. Cada um é um nome que vendeu e **não baixou estoque**; o detalhe oferece *"criar agora →"* em cada.
 4. 📋 **O "substituir o dia" leva ao fluxo de upload com a data posta** — e o import de fato SUBSTITUI, com preview do plano. **O diff cheio ("o que muda · o que estorna" lado a lado antes do clique) NÃO foi construído** — fica nomeado em vez de disfarçado.
 
-## 🍕 BASES DE PIZZA — NORMALIZAÇÃO COM PREVIEW (08/10/2026, **O PREVIEW ESTÁ NA MESA, NADA GRAVADO**)
+## ⭐⭐⭐ BASES DE PIZZA — AS 9 CLARAS GRAVADAS (08/10/2026) · B1 2 → 0
+
+**Ordem do dono, item 3 da resposta ao preview:** *"As 9 linhas CLARAS: OK, GRAVAR (`atualizarFicha` versionado, rastro, exatamente como o preview mostrou — e a liga/casa recalculam sozinhas na leitura)."* ⛔ **Os itens 1 e 2 voltaram EM BRANCO** (`PROMO 2 PIZZAS GRANDES: são ___ pizzas grandes` e `Pizza (Aiq): é do tamanho ___`) — as 2 linhas que PERGUNTAM **seguem em v1, intactas**, e preencher o tamanho por conta própria seria decidir a receita dele.
+
+**⭐ A SESSÃO ESTOUROU NO MEIO DA GRAVAÇÃO, E O PASSO 1 FOI MEDIR — NÃO CONFIAR NO ECO.** O aplicador imprimiu *"9 fichas versionadas"*, e isso é o que o **processo diz**; o que vale é o que o **banco tem**. ⛔ Regravar o que já entrou cria **versão dupla**, que é ruído permanente no rastro de uma receita. `scripts/medir-bases-gravadas.ts` (read-only) percorre as linhas CLARAS do preview e, pra cada uma, lê a versão ATUAL e **compara a composição com a CANÔNICA do tamanho** (massa+queijo+caixa, com o `multiplicador` da classificação). ⚠️ **A régua é a COMPOSIÇÃO, nunca a versão nem a hora:** versão nova pode ter nascido por outro motivo, e hora não diz o que ficou dentro.
+
+```
+✓ GRAVADA  PIZZA PEQUENA 25CM     [PEQUENA] v2 · 20:43:39 · 3 componentes
+✓ GRAVADA  PIZZA GRANDE PRECINHO  [GRANDE]  v2 · 20:43:40 · 3 componentes
+✓ GRAVADA  PIZZA GRANDE 35CM · GRANDE PRECINHO · Pizza Grande (35cm) · PIZZA GRANDE PROMO
+✓ GRAVADA  PIZZA FAMILIA 45CM · PIZZA FAMILIA PRECINHO · Pizza Família (45cm)
+   ⭐ 9 de 9 com a composição canônica — versões 280 → 289, +9 exatamente
+   as que PERGUNTAM: PROMO 2 PIZZAS GRANDES v1 · Pizza (Aiq) v1   ⛔ intactas
+```
+**Nada pendente → o passo 2 foi NO-OP**, e é esse o desfecho que a medição comprou: sem ela eu teria regravado as 9.
+
+**⭐⭐ O RED-THEN-GREEN AO VIVO — B1 2 → 0.** A foto do ANTES (`scripts/prova-normalizacao-antes-depois.ts`, rodada antes de aplicar) pegou o guard do dono **vermelho pelos dois defeitos reais**: *"a base «PIZZA GRANDE 35CM» está sem massa"* e *"a base «PIZZA GRANDE PRECINHO» está sem caixa"*. Depois: **B1 0 · B2 0**.
+
+**⭐⭐ E O CUSTO FOI CONFERIDO NA MÃO CONTRA A PORTA ÚNICA, componente por componente** (o item 4 do pedido). O script soma `qtd × custoMedio` **sem o motor no meio** e exige que bata com o que `explodir({tipo:'FICHA'},1,ctx,acc)` — **a MESMA explosão que a baixa de venda executa** — devolve. ⛔ Sem isso eu conferiria o motor contra ele mesmo: o **invariante circular de 28/08**, que dá verde de graça.
+```
+PEQUENA  1×massa 0,54 + 1×queijo 4,37 + 1×caixa25 1,98  → NA MÃO 6,89  × PELA PORTA 6,89  ⭐
+GRANDE   2×massa 1,08 + 2×queijo 8,74 + 1×caixa35 2,74  → NA MÃO 12,56 × PELA PORTA 12,56 ⭐
+FAMILIA  3×massa 1,62 + 3×queijo 13,11 + 1×caixa45 4,48 → NA MÃO 19,21 × PELA PORTA 19,21 ⭐
+```
+⭐ A GRANDE saiu de **R$ 11,48 → R$ 12,56**: a massa que faltava (o **CASO A de 02/10**, registrado desde então) entrou.
+
+**⭐⭐ O Δ ABSORVIDO — e a prova precisou de outra janela, não de outra conta.** A casa e a liga leem o **MÊS** (outubro, 8 dias) e o Δ do preview foi medido em **30 dias** — comparar os dois seria comparar janelas diferentes e chamar a diferença de erro. ⭐ A prova limpa é **rodar o preview DE NOVO na mesma janela**: as 9 viraram `jaNormalizada`, então o que sobra tem que ser **só o das 2 que perguntam**.
+```
+já normalizadas 9 · pedem confirmação 2
+⛔ Δ que SOBRA: R$ 387,28  =  PROMO 2 PIZZAS GRANDES 343,44 + Pizza (Aiq) 43,84
+⭐ exatamente as 2 — logo os R$ 4.526,94 das 9 foram absorvidos
+```
+⚠️ **E o Δ dentro de outubro é menor por construção, não por falha:** a sobra bruta foi de **87.232,25 → 86.338,21 (−894,04)**, que é o efeito das 9 proporcional a 8 dias — com os 4 maiores tijolos respondendo por −849,64 dele (FAMILIA 45CM −184,68 · GRANDE PRECINHO −495,94 · GRANDE 35CM −66,96 · FAMILIA PRECINHO −102,06). **A liga/casa recalcularam SOZINHAS na leitura**, como ele previu, e o **guard do dono continua fechando: Σ(liga) R$ 86.338,21 == sobra bruta R$ 86.338,21**.
+
+**⭐ O LEDGER NÃO FOI TOCADO — medido, não deduzido.** `atualizarFicha` versiona **receita** e não escreve movimento; mas afirmar isso sem medir é confiar no meu raciocínio. `scripts/prova-pos-normalizacao.ts` conta os movimentos criados **na janela da gravação**: **ZERO**. ⚠️ Os movimentos foram de 6.682 → 6.690 e **os 8 novos são `ENTRADA_NF` às 21:01, do próprio dono conferindo uma nota enquanto eu provava** — operação ao vivo, não o gesto.
+
+⚠️ **E O JUIZ TEM 2 ACHADOS P1 — OS DOIS DATADOS E PRÉ-EXISTENTES** (a régua de 01/09: *"pré-existente só depois de MEDIR a causa"*). As ordens são de **14/09** (`…3vhmhw`, o P1 já registrado neste doc) e **30/09** (`…i5jn9a`, separado 20,09 × consumido 20,10 — resíduo de 1 centavo), **as duas CONCLUÍDAS antes de hoje**. O P1 fecha por **ORDEM**, não por receita: versionar ficha não o alcança. O resto do relatório (E15 10 · P8 54 · P3 57 · P5 3 · P6 98 · V1 122 · M1 41 · M3 1 · M5 37 · E7 90 · F2 26) são os débitos já registrados nas seções anteriores.
+
+**⚠️ O AUTOR ENTROU NO RASTRO, e resolvido pelo PAPEL na empresa:** `userCompanyRole` com `role: { name: 'OWNER' }`, abortando se não achar — ⛔ **sem autor eu não gravo**, e no sprint das bases eu já havia usado `admin@contaia.com.br` e levado **403**, porque ele não é o dono desta empresa (a cicatriz da REGRA 8: resolver por papel/ID, nunca por e-mail chutado).
+
+**`pg_dump pre-normalizar-bases-20261008-204320.dump` (8.654.548 bytes, tamanho conferido) antes da gravação** — a régua de 28/09: *dump só conta depois de conferir o TAMANHO*.
+
+📋 **FICA PRO DONO:** os **dois tamanhos em branco**. Enquanto ele não disser, `PROMO 2 PIZZAS GRANDES` (são 2 pizzas grandes? a base conta ×2?) e `Pizza (Aiq)` (Aiqfome é o CANAL, não o tamanho — o produto baixa a base do tamanho que ele disser) seguem em v1, com **R$ 387,28/mês de custo subestimado** medido e à espera. ⚠️ E as **11 pendências de dose do molho** nasceram do gesto, por desenho (`stock_dose_a_declarar`): a dose é declaração dele, e um número chutado num insumo de R$ 6,22/UN envenenaria o custo de ~3.035 pizzas/mês saindo plausível.
+
+## 🍕 BASES DE PIZZA — NORMALIZAÇÃO COM PREVIEW (08/10/2026, o preview que antecedeu a gravação)
 
 **Executa a decisão do dono de 07/10:** *"SIM, normalizar — receita é lei, preview antes de gravar"*. Problema medido: **11 fichas de base pro mesmo cardápio**, massa em UMA, caixa faltando em várias → custo subestimado → margens 79-93% infladas envenenando a casa e a liga.
 
@@ -2446,7 +2490,7 @@ MARGEM: PRECINHO 80,7% → 75,4% · FAMILIA 45CM 85,3% → 83,9% · Pizza (Aiq) 
 
 **PROVADO EM PROD, nos DOIS viewports:** margem 200 · 18 chunks · 858 KB, com `buscar sabor` · `nenhum dos` · `casa com` nos dois; a rota do produto **200** devolvendo o campo `dosesADeclarar`. **928 arquivos · 12.237 verdes · TS 0 · migration ADITIVA PURA (1 CREATE TABLE, 3 CHECKs, 1 índice único, zero ALTER) · `pg_dump pre-bases-pizza-20261008-004400.dump` (8.577.707 bytes, tamanho conferido) · deploy 4/4 (`1AOLUWt_WJuMAgwYg1QhC`) · Δ bundle +0 KB.**
 
-**⛔⛔ ZERO ESCRITA EM DADO DE PROD, com a contabilidade:** `doses=0 · bases=2 (as que já existiam) · versões=280 · componentes=715 · movimentos=6.610` — nenhuma ficha versionada, nenhum movimento. **A gravação espera o OK no chat.**
+**⚠️ ESTADO NO FIM DO PREVIEW (antes da gravação): `doses=0 · bases=2 · versões=280 · componentes=715 · movimentos=6.610`** — nenhuma ficha versionada. ⭐ O OK veio no chat e as 9 CLARAS foram gravadas; ver a seção de cima.
 
 ⚠️ **ERRO MEU NO CAMINHO:** rodei `git checkout -- prisma/schema.prisma` (o reflexo do swap-postgres) num arquivo com o model novo **não-commitado** e apaguei o trabalho — é a cicatriz de 14/09 (*"reposição se desfaz com `cp` de backup, nunca com git"*) em roupa nova. E a **crase na mensagem de commit** virou substituição de comando no zsh pela segunda vez (29/09), comendo `"PROMO 2 PIZZAS GRANDES"` do texto; corrigido com `--amend`.
 
