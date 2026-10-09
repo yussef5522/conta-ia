@@ -152,19 +152,30 @@ async function main() {
     select: { criadoEm: true, versao: true, fichaId: true },
     orderBy: { criadoEm: 'asc' },
   })
+  /**
+   * ⛔⛔ A JANELA É ±2 MIN DE **CADA** INSTANTE, NUNCA O INTERVALO min→max.
+   *
+   * A 1ª versão deste script usava `min(instantes) → max(instantes)` — e as 11 versões
+   * nasceram em DUAS gravações separadas por 3 HORAS, então a janela larga engolia tudo que
+   * aconteceu no meio: ela acusou os **8 `ENTRADA_NF` que o próprio dono lançou às 21:01**
+   * como se fossem do gesto. ⚠️ Janela que mistura a operação com o gesto não prova nada
+   * sobre o gesto — e nesse caso prova ao CONTRÁRIO do que é verdade.
+   */
   const instantes = versoesDoGesto.map((v) => v.criadoEm.getTime())
-  const deDe = Math.min(...instantes) - FOLGA_MS
-  const ate = Math.max(...instantes) + FOLGA_MS
-  console.log(`  versões criadas pelo gesto: ${versoesDoGesto.length}`)
-  console.log(
-    `  janela derivada: ${new Date(deDe).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` +
-      ` → ${new Date(ate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
-  )
-  const naJanela = await prisma.stockMovement.findMany({
-    where: { companyId: CO, criadoEm: { gte: new Date(deDe), lt: new Date(ate) } },
-    select: { tipo: true, criadoEm: true, quantidade: true },
-  })
-  console.log(`  ⛔ movimentos criados nessa janela: ${naJanela.length}`)
+  const gravacoes = [...new Set(instantes.map((t) => Math.round(t / (5 * 60 * 1000))))].length
+  console.log(`  versões criadas pelo gesto: ${versoesDoGesto.length} · em ${gravacoes} gravação(ões)`)
+  const naJanela: { tipo: string; quantidade: number; criadoEm: Date }[] = []
+  for (const t of instantes) {
+    const perto = await prisma.stockMovement.findMany({
+      where: { companyId: CO, criadoEm: { gte: new Date(t - FOLGA_MS), lt: new Date(t + FOLGA_MS) } },
+      select: { tipo: true, criadoEm: true, quantidade: true },
+    })
+    for (const m of perto) if (!naJanela.some((x) => x.criadoEm.getTime() === m.criadoEm.getTime() && x.tipo === m.tipo)) naJanela.push(m)
+  }
+  for (const v of versoesDoGesto) {
+    console.log(`     v${v.versao} em ${v.criadoEm.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', timeStyle: 'medium', dateStyle: 'short' })}`)
+  }
+  console.log(`  ⛔ movimentos criados a ±2 min de QUALQUER uma dessas versões: ${naJanela.length}`)
   for (const m of naJanela) console.log(`     ${m.tipo} · ${m.quantidade}`)
 
   /** ⚠️ os movimentos mais recentes: é a cozinha operando ao vivo, não o gesto */
