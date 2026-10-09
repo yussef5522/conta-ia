@@ -2468,6 +2468,110 @@ já normalizadas 9 · pedem confirmação 2
 
 📋 **FICA PRO DONO:** as **11 pendências de dose do molho** — e a do combo agora **diz** que são 2 pizzas, pra ele não declarar a dose de uma. ⚠️ E o **efeito do mês** das 2 últimas foi pequeno por construção (sobra bruta 86.338,21 → 86.298,59, **−39,62** em 8 dias, contra os R$ 387,28/mês da janela de 30 dias): a PROMO vendeu 159 un e a Aiq 16 na janela cheia.
 
+## 🍕 RETALHO DE MASSA (rework) + 🎛️ A CONFERÊNCIA VIROU PLACAR (09/10/2026)
+
+### ⭐⭐⭐ PARTE 1 — O RETALHO: o fiscal acusava um lote CERTO
+
+**O processo real, nas palavras do dono:** *"bolinhas feitas de tarde; de noite o serviço corta e sobra retalho; no dia seguinte o retalho entra na massa nova — pedir 200 e sair 246 é NORMAL e hoje o fiscal acusa à toa."*
+
+**⭐ O ALARME FALSO, MEDIDO EM PROD com o dado real:** o mesmo lote de 246, com o material de 200 separado, dá **`permitido ~200 · impossível true`** sem o retalho e **`permitido ~246 · impossível false`** com os 9,2 kg. *Era o fiscal medindo material que saiu da câmara hoje contra massa que entrou ontem.*
+
+**⛔⛔ A CONFIG É DO BANCO, LIGADA SÓ ONDE O DONO LIGOU — e isso é o que protege as outras.** `stock_ficha_retalho` (CREATE-only, interruptor + o **peso da metade crua: 200 g**, declaração dele; a bolinha inteira tem 400) com rastro de quem definiu. Medido em prod: **191 fichas ativas · 1 com retalho ligado · as outras 190 não mudam NADA** (sem linha, o bônus é zero e o fiscal conta como contava ontem).
+⚠️ **Config no BANCO em vez de `if (nome === 'metade de bolinha…')`:** nome é texto livre, e a conta **`'sicredi '` com espaço no fim** já custou um diagnóstico nesta casa.
+
+**⛔⛔⛔ O QUE O RETALHO **NÃO** FAZ — a metade mais importante do sprint:**
+- **não muda a SEPARAÇÃO.** Provado em prod, componente a componente: `FARINHA=30 · LEITE=3,6 · sal=0,6 · OLEO=0,2 · fermento=0,06` **idêntico** com e sem retalho. A lei de 03/10 segue inteira — *o material que sai da câmara é o do PEDIDO; o retalho já estava na cozinha* —, e **a tela DIZ isso**, senão o dono espera mais material na prateleira;
+- **não é ITEM** (Fase 1, ordem dele): zero movimento, zero toque em `explodirReceita`. **P1-P8 idênticos antes e depois** (`P1:2 · P8:54 · P3:56 · P5:3 · P6:96`);
+- **não mexe no `pct` nem no P8:** o denominador deles continua sendo o que a FICHA promete. O retalho entra **só no FISCAL**, que é a pergunta que ele de fato responde (*"o declarado cabe no material?"*). Duas perguntas, um bônus, um lugar.
+
+**⭐ A PERGUNTA, na criação da ordem:** *"Tem retalho de ontem? Quer adicionar na receita?"* → **[Não tem] / [Sim, __ kg]**, campo **livre e NUNCA pré-preenchido** (ele pesa todo dia; *número sugerido vira número confirmado sem ninguém pesar*), com o lembrete discreto *"da última vez: X kg"* — que serve pra reconhecer grandeza absurda (92 onde é 9,2), não pra poupar a pesagem. A resposta é **uma frase curta**: *"vai sair ~246 UN no total"*.
+⛔ **"Não tem" NÃO grava linha** — ausência é a resposta, e o CHECK exige `kg > 0`. ⚠️ Registrado: com isso não dá pra distinguir *"respondeu não tem"* de *"não respondeu"* — e pro fiscal, pro lembrete e pra sanidade as duas valem o mesmo, que é o que torna a distinção desnecessária hoje.
+
+**⛔ A TRAVA É DO SERVIDOR, não da tela:** retalho em receita não marcada volta **422** pela rota real. Esconder o campo é combinado — a rota pode ser chamada por script, cliente copiado ou tela em cache, e aí um retalho afrouxaria o fiscal de outra receita **em silêncio**.
+⚠️ **E o interruptor MANDA, não a linha:** ordem antiga que declarou retalho numa ficha depois DESLIGADA volta a ser fiscalizada sem o bônus — honrar a linha contra a config seria a config não valer nada.
+
+**⚠️ SANIDADE: >20 kg avisa, não trava.** Setor `producao`, **âmbar** (o dado não está errado, está ALTO — pintar de coral o *"confere se é isso mesmo"* é como o dono aprende a ignorar coral), com a **consequência dentro**: *"Isso dá ~125 unidades a mais de folga no fiscal deste lote."* Anti-spam por `origem+alvo`. ⛔ Travar empurraria a cozinha a declarar MENOS do que entrou — o oposto do que o campo mede.
+
+### ⭐⭐ PARTE 2 — O CARTÃO VIRA PLACAR ("números, curto, funcional")
+
+**Cartão de UMA LINHA:** logo 34 + nome + *"quem · há Xh"* | **número grande tabular** `246 / ~246` (com retalho) ou `65 / 50 ped.` | **veredito CURTO com número** (*✓ confere* / *⚠ dava ~200*) | **dois botões de 42px** com `aria-label`.
+
+**⛔⛔ A FRASE LONGA DO FISCAL MORREU DO CARTÃO **E DO PAYLOAD**.** Não era só esconder: `fiscalFrase` **saiu de `CartaoDaConferencia`**. Deixar o texto viajando no JSON seria deixar alguém desenhá-lo de volta no primeiro ajuste de layout — REGRA 5 aplicada a um campo. ⭐ A conta completa continua viva **na página da ordem**, com o retalho nomeado (*"inclui +46 UN do retalho de ontem"*): bônus silencioso é bônus que ninguém confere.
+
+**⛔⛔ A ORDEM DA FILA MORA NO SERVIDOR** (`ordenarCartoes`, pura): suspeitas primeiro (borda esquerda coral 3px), depois as mais antigas. Um `.sort()` na tela seria a **segunda** resposta pra *"o que eu confiro primeiro?"*, e as duas divergiriam no primeiro degrau novo — a doença do B1. ⭐ E a frase da assinatura virou **UMA** linha miúda no cabeçalho: repetida por cartão, numa rajada de 10 lotes, é a frase que se aprende a não ler.
+
+**⭐ MODO RAJADA:** carimbar remove o cartão **localmente** com transição de 150 ms, o próximo sobe e **o badge desce junto**. ⛔ **Sem recarregar a fila, e isso é o ponto do modo** — um `carregar()` por carimbo remonta a lista, o scroll pula e o cartão que o dedo mirava troca de lugar. ⚠️ Preço registrado: conclusão nova que chegar durante a rajada só aparece no próximo carregamento — **melhor que a lista se mexer embaixo do dedo**.
+
+**⭐⭐ CORRIGIR INLINE É O MESMO PAINEL — *"só a roupa muda"* é literal.** O ✏️ expande o próprio cartão com `compacto`: campo de 42px, motivos em chips, [Salvar]; **a porta, a prévia, o rastro e o delta são os mesmos**. Escrever um segundo form daria duas telas de correção, e elas divergiriam no primeiro motivo novo — é a lição do B1 em forma de formulário, a mesma que a extração deste arquivo evitou de manhã.
+
+**⛔ E O CORPO DO POST GANHOU DONO ÚNICO** (`gesto-de-conferencia.ts`): com o ✓ de **um toque**, o POST passou a ter DOIS chamadores — e a rota é `.strict()`, então **dois montadores são dois jeitos de levar 400** na cara do gerente no meio de uma rajada.
+
+**⚠️ O 34px ENTROU COMO DEGRAU NOVO no logo (32 · 34 · 38 · 48), e o registro importa:** o dono pediu 34, e *"quase atender"* deixaria a tela 2px fora do que ele aprovou. Acrescentar um degrau é barato; divergir do que ele aprovou é o que custa.
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU UM DEFEITO QUE TESTE MEU NENHUM PEGOU
+
+A rodada terminou com o veredito **`⛔ ALGO FOI GRAVADO`** — **ordens 531 → 532** numa prova que acabou em **422**. A causa: a checagem da config rodava **DEPOIS** do `create` da ordem. Resultado: a rota dizia *"esta receita não aceita retalho"* e **deixava um lote fantasma em PLANEJADA** — ***recusa com estado pela metade, o pior dos dois mundos*** (o dono lê "não deu" e fica com uma ordem que ninguém pediu).
+
+⭐ **Quem pegou foi a CONTABILIDADE DE ESCRITA da prova**, não uma asserção minha — e é o mesmo mecanismo que pegou a linha de chips gravada em prod em 07/10. Corrigido (a config é conferida **antes** de a ordem nascer), o teste de integração passou a contar **as ORDENS** também, e a ordem fantasma foi apagada em prod (0 movimento, 0 conclusão).
+
+### ⚠️⚠️ E A MINHA SONDA DA REGRA 11 SE ENVENENOU — backup por BASENAME
+
+A 1ª rodada dos defeitos repostos guardava os arquivos em `bk-$(basename)`, e **duas telas desta casa se chamam `page.tsx`** (`producao/` e `producao/[ordemId]/`): o segundo `cp` sobrescreveu o primeiro, e o `restaurar` **escreveu o conteúdo da página da ordem dentro da home de produção**. De D2 em diante os números vieram inflados em 7, e o `RESTAURADO` fechou com **7 vermelhos** — foi ele que denunciou.
+
+⭐ **Recuperado sem perder trabalho** (`git checkout --` no arquivo + reaplicar o patch) e refeito com a chave pelo **caminho inteiro**. ***Sonda errada dá um verde tão convincente quanto um vermelho*** — e aqui ela quase me fez reportar 8 vermelhos onde havia 1.
+
+### REGRA 11 — 10 DEFEITOS REPOSTOS, 14 VERMELHOS
+
+| defeito reposto | vermelhos |
+|---|---|
+| **a pergunta do retalho sem o gate da config** (receita não marcada) | **1** |
+| **os botões de dedo encolhendo** (42px → 36px) | **1** |
+| **a frase longa do fiscal de volta no cartão** | **1** |
+| a fila deixando de priorizar as suspeitas | 2 |
+| o servidor aceitando retalho em receita não marcada | 1 |
+| o retalho INFLANDO a escala (a separação passando a mudar) | 1 |
+| o fiscal voltando a ignorar o retalho (o alarme falso de volta) | 3 |
+| o aviso de sanidade (>20 kg) deixando de nascer | 2 |
+| o esperado com retalho vazando pra a modal de quem declara | 1 |
+| **a config conferida DEPOIS do create** (a ordem pela metade) | **1** |
+
+**⚠️ 2 GUARDS REAPONTADOS, nenhum afrouxado, e um ficou MAIS FORTE:** o do pontinho do fiscal **contava `.toBe(3)`** e quebrou **com a tela certa** quando o degrau de 34px entrou — ***guard que conta cresce junto com a tela e cobra por cada degrau novo: ele mede o TAMANHO, não a doença*** (passou a derivar a contagem das chaves do próprio mapa); e o do *"painel é o dono do gesto"* mudou de pergunta: de *"o painel monta o corpo?"* pra ***"só UM arquivo monta o corpo?"***. **E 2 testes ajustados com o motivo escrito** (o cartão passou a carregar o veredito curto; `bonusDeRetalho` entrou no contrato do fiscal).
+
+### PROVADO EM PROD, NOS DOIS VIEWPORTS (REGRA 12)
+
+```
+A ROTA DA PERGUNTA   a MASSA → {"aceita":true,"pesoUnidadeG":200,"ultimoKg":null}
+                     outra receita → {"aceita":false}  ⭐ sem peso e sem último kg
+A FRASE CURTA        200 + 1 kg → "vai sair ~205 UN no total"
+                     200 + 9,2 kg → "vai sair ~246 UN no total"   ⭐ o caso real
+O CICLO (ROLLBACK)   separação SEM × COM retalho: ⭐ IDÊNTICA
+                     ⛔ SEM: permitido ~200 · impossível true   ← o alarme FALSO
+                     ⭐ COM: permitido ~246 · bônus 46 · impossível false
+                     CARTÃO (sem): 246 / 200 ped. · ⚠ dava ~200
+                     CARTÃO (com): 246 / ~246 · ✓ confere · retalho 9,2 kg
+A FILA               ⚠0min · 99min · 70min · 0min
+                     ⛔ nenhuma suspeita DEPOIS de uma normal ✓
+A SANIDADE (25 kg)   [producao · ambar] "Confere o retalho de metade de bolinha massa
+                     de pizza — … Isso dá ~125 unidades a mais de folga no fiscal"
+A TRAVA              POST com retalho em receita não marcada → 422 ⭐ RECUSADO
+TELAS                celular 200/485ms · desktop 200/167ms · 976 KB · 8/8 nos dois
+                     ⭐ nenhuma frase longa de fiscal no bundle
+REGRA 13             6/6 tortos recusados pela constraint certa · 4/4 legítimos
+                     2ª config e 2º retalho recusados pelo índice único (23505)
+                     ⭐ CONTRAFACTUAL: a forma INGÊNUA (peso >= 0) sobre ZERO devolve
+                     true → PASSARIA, e o bônus viraria "o material dava infinito"
+ESTADO               ordens 531→531 · retalhos 0→0 · movimentos 6857→6857
+                     conclusões 453→453 · avisos 29→29   ⭐ ZERO ESCRITA
+INVARIANTES          P1:2 · P8:54 · P3:56 · P5:3 · P6:96 — IDÊNTICOS antes/depois
+```
+
+**938 arquivos · 12.407 verdes · TS 0 · migration CREATE-only (2 CREATE TABLE, 4 CHECKs, 2 índices únicos, 1 índice) · `pg_dump pre-retalho-placar-20261009-172540.dump` (8.757.502 bytes, tamanho conferido) · deploys 4/4 (`MhApkiYB7PIHlUFQmFuhU` e `VykVHrJKV2fzsO41CaOKd`) · Δ bundle +4 KB.**
+
+⚠️ **ESCRITA EM PROD DECLARADA (autorizada no item 1 do pedido):** a config da massa foi **semeada** — ficha `cmttba6va0002t66huxcv6els`, `aceita=true`, peso **200 g**, assinada pelo OWNER. O script **recusa rodar** se o nome casar mais de um item ou mais de uma ficha ativa: *ligar o interruptor na receita errada afrouxaria o fiscal dela em silêncio*.
+
+📋 **FICA PRO DONO:** criar a ordem da massa de amanhã com o retalho de hoje e ver a frase (*"vai sair ~X no total"*) → concluir → conferir pelo placar, com a rajada. ⚠️ E **o peso da metade é editável**: se a bolinha mudar de tamanho, o 200 g é o número a corrigir — ele vive no banco com rastro, não em código. 📋 **Fase 2 (o retalho virar ITEM, com saldo e baixa) segue NÃO construída**, por ordem dele.
+
+
 ## ⛔⛔⛔ O CARIMBO ASSINA PELA SESSÃO — O PIN SAIU DO FLUXO (09/10/2026, defeito de estreia)
 
 **O dono, horas depois do deploy da conferência:** *"ao Confirmar, a tela pede PIN da conta do gerente — Yussef/marcyelle/cristian não têm PIN e NÃO devem ter: PIN é identidade dos colaboradores no tablet COMPARTILHADO; gerente entra com login próprio, e a SESSÃO é a assinatura."*
