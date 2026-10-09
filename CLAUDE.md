@@ -2382,7 +2382,7 @@ arquivos 0→0 · linhas 2773→2773 · comp 2717→2717 · movimentos 6680→66
 3. ⚠️ **41 sabores SEM FICHA em 07/10** (de 75 nomes) — o maior é `CHOCOLATE PRETO` 18×. Cada um é um nome que vendeu e **não baixou estoque**; o detalhe oferece *"criar agora →"* em cada.
 4. 📋 **O "substituir o dia" leva ao fluxo de upload com a data posta** — e o import de fato SUBSTITUI, com preview do plano. **O diff cheio ("o que muda · o que estorna" lado a lado antes do clique) NÃO foi construído** — fica nomeado em vez de disfarçado.
 
-## ⭐⭐⭐ BASES DE PIZZA — AS 9 CLARAS GRAVADAS (08/10/2026) · B1 2 → 0
+## ⭐⭐⭐ BASES DE PIZZA — AS 11 GRAVADAS (08/10/2026) · B1 2 → 0 · Δ → R$ 0,00
 
 **Ordem do dono, item 3 da resposta ao preview:** *"As 9 linhas CLARAS: OK, GRAVAR (`atualizarFicha` versionado, rastro, exatamente como o preview mostrou — e a liga/casa recalculam sozinhas na leitura)."* ⛔ **Os itens 1 e 2 voltaram EM BRANCO** (`PROMO 2 PIZZAS GRANDES: são ___ pizzas grandes` e `Pizza (Aiq): é do tamanho ___`) — as 2 linhas que PERGUNTAM **seguem em v1, intactas**, e preencher o tamanho por conta própria seria decidir a receita dele.
 
@@ -2424,7 +2424,49 @@ já normalizadas 9 · pedem confirmação 2
 
 **`pg_dump pre-normalizar-bases-20261008-204320.dump` (8.654.548 bytes, tamanho conferido) antes da gravação** — a régua de 28/09: *dump só conta depois de conferir o TAMANHO*.
 
-📋 **FICA PRO DONO:** os **dois tamanhos em branco**. Enquanto ele não disser, `PROMO 2 PIZZAS GRANDES` (são 2 pizzas grandes? a base conta ×2?) e `Pizza (Aiq)` (Aiqfome é o CANAL, não o tamanho — o produto baixa a base do tamanho que ele disser) seguem em v1, com **R$ 387,28/mês de custo subestimado** medido e à espera. ⚠️ E as **11 pendências de dose do molho** nasceram do gesto, por desenho (`stock_dose_a_declarar`): a dose é declaração dele, e um número chutado num insumo de R$ 6,22/UN envenenaria o custo de ~3.035 pizzas/mês saindo plausível.
+⚠️ As **11 pendências de dose do molho** nasceram do gesto, por desenho (`stock_dose_a_declarar`): a dose é declaração dele, e um número chutado num insumo de R$ 6,22/UN envenenaria o custo de ~3.035 pizzas/mês saindo plausível.
+
+### ⭐⭐⭐ AS 2 ÚLTIMAS — E A RÉGUA DO CANAL VIROU REGRA NOMEADA (08/10, Δ → R$ 0,00)
+
+**A decisão do dono, as duas de uma vez:** *"(1) PROMO 2 PIZZAS GRANDES = SÃO 2 PIZZAS GRANDES → a base conta ×2 … molho segue 'a declarar' ×2 como nas irmãs. (2) Pizza (Aiq) = GRANDE. E a REGRA fica registrada pro mapa (vale pra qualquer produto Aiq futuro): **nome SEM tamanho = GRANDE; nome com FAMÍLIA depois do Aiq = FAMÍLIA** — registrar como regra nomeada no mapeamento, com rastro."*
+
+**⭐⭐ A 2ª METADE DA RÉGUA SAIU DE GRAÇA — e isso foi MEDIDO, não suposto.** A `PALAVRA_DO_TAMANHO` é conferida **ANTES** do canal, então *"Pizza Aiq Família"* já resolve **FAMILIA/CLARO** sem uma linha nova. ⚠️ E a ordem não é detalhe: com o canal antes, aquele nome viraria **GRANDE** — é um dos defeitos repostos abaixo.
+
+**⭐⭐ AS REGRAS DO MAPEAMENTO VIRARAM UNIÃO FECHADA, e é ela o "rastro" pedido.** `RegraDoMapeamento` nomeia **todo** ramo (`PALAVRA_DO_NOME` · `CANAL_SEM_TAMANHO_E_GRANDE` · `COMBO_DE_N_PIZZAS` · `CANAL_CONTRA_EVIDENCIA` · `EVIDENCIA_DA_CAIXA` · `EVIDENCIA_DO_QUEIJO` · `SEM_RESPOSTA`) e viaja no payload até o relatório. ⛔ **Ramo novo sem nome não compila** → não existe decisão anônima neste mapa, e é isso que faz o preview poder dizer *"quem decidiu foi a régua do canal"* em vez de só mostrar o resultado.
+
+**⛔⛔ E A RÉGUA DO CANAL NÃO SOBRESCREVE EVIDÊNCIA QUE A CONTRADIZ — a trava do «Combo Caçula», aplicada antes de morder.** Ficha de canal cuja composição de hoje diz PEQUENA **volta a PERGUNTAR**, nomeando o conflito (`CANAL_CONTRA_EVIDENCIA`). Aplicar GRANDE em silêncio ali trocaria o custo de todo dia por um número **plausível e errado** — foi exatamente assim que a 1ª versão da régua estrutural quase destruiu a receita do Combo (R$ 15,18 → 6,94). ⚠️ **Hoje ela não morde** (o `Pizza (Aiq)` real é GRANDE pela régua **e** pela evidência): a trava existe pro produto de canal que ainda vai nascer.
+
+⚠️ **`CANAIS` é lista FECHADA** (`AIQ`/`AIQFOME`): inferir "canal" de qualquer parêntese faria `(Novo)` ou `(Promo)` virar canal — a mesma trava dos qualificadores de bebida (14/09) e dos sufixos societários (13/09). ⚠️ E a comparação do queijo ficou **CRUA de propósito**: dividir pelo multiplicador mudaria a evidência do ramo de combo, que ninguém pediu pra mexer, e a régua do canal só roda com multiplicador 1, onde dividir seria identidade — **o aperto não traria nada e abriria regressão de graça**.
+
+**⭐ A DOSE DO COMBO DIZ QUANTAS PIZZAS SÃO.** `motivoDaDoseADeclarar` saiu do laço da gravação pra **função PURA** — enterrada ali, só dava pra conferir por grep. ⛔ `stock_dose_a_declarar` **não tem coluna de quantidade, e nem deve**: ali quantidade seria justamente o número que o sistema se recusa a inventar. O multiplicador entra no **MOTIVO** (texto derivado, campo que já existe); sem ele o dono abriria a ficha do combo e declararia a dose de **UMA** pizza. ⚠️ O upsert passou a **atualizar** o motivo — a pendência do combo nasceu antes desta régua e ficaria mentindo *"uma pizza"*.
+
+**⭐⭐ O `--confirmar` GANHOU A TRAVA DO NO-OP, e ela é a lição do sucesso-disfarçado:** o preview imprime o **id INTEIRO** das que pedem (adivinhar id de ficha é como se grava na receita errada) e o gesto **ABORTA** quando um id passado **não está pedindo confirmação** — id já CLARO, de outra empresa ou com um dígito trocado seria um `--confirmar` que não confirma nada, e o script diria *"aplicado"* com a linha intocada. **Provado em prod com um id de empresa no lugar do de ficha: recusou nomeando o forasteiro, e as 289 versões ficaram intactas.**
+
+**AS PROVAS, todas em prod depois de gravar:**
+```
+⭐ o COMBO, somado NA MÃO contra a MESMA explosão da baixa de venda:
+   4 × metade de massa @ 0,54 = 2,16 · 4 × queijo 135g @ 4,37 = 17,48 · 2 × caixa35 @ 2,74 = 5,48
+   NA MÃO R$ 25,12 × PELA PORTA R$ 25,12 → ⭐ BATE ao centavo
+   a base GRANDE custa R$ 12,56 → o combo é 2.0000× ⭐ exatamente 2×
+   a dose do molho: ⭐ «… ⚠️ esta ficha são 2 pizzas: a dose é 2× a da base de um tamanho»
+
+⭐ O Δ QUE SOBRA:  bases 11 · já normalizadas 11 · pedem confirmação 0 · Δ R$ 0,00
+   (eram R$ 387,28 = 343,44 da PROMO + 43,84 da Aiq — os dois entraram)
+⭐ B1: 0 · B2: 0   ·   Σ(liga) R$ 86.298,59 == sobra bruta R$ 86.298,59 → FECHA
+⭐ as 9 anteriores: "já está na composição canônica" — a idempotência do gesto
+⛔ movimentos criados a ±2 min de QUALQUER das 11 versões: 0
+```
+⚠️ **A razão ×2 é conferida contra a base lida de `stock_base_do_tamanho`, nunca contra um número escrito no script** — cravar `12,56` faria a prova passar a mentir no dia em que o custo de um insumo mudasse.
+
+**⚠️⚠️ E A PROVA EM PROD PEGOU UM DEFEITO MEU NO PRÓPRIO SCRIPT: a janela do ledger era `min → max` dos instantes.** As 11 versões nasceram em **DUAS gravações separadas por 3 HORAS** (20:43 e 23:46), e a janela larga engoliu tudo no meio — **ela acusou os 8 `ENTRADA_NF` que o próprio dono lançou às 21:01 como se fossem do gesto**. O comentário já prometia *"±2 min pra cada lado"*; era a implementação que não cumpria. Corrigida pra **±2 min de CADA instante**: deu **0**. ***Janela que mistura a operação com o gesto não prova nada sobre o gesto — e aqui provava o CONTRÁRIO do que é verdade.***
+
+**REGRA 11 — 4 defeitos repostos:** a régua do canal removida (**2 vermelhos**) · a trava da evidência caindo (**1**) · o canal conferido ANTES da palavra (**1**) · o motivo da dose sem o multiplicador (**2**).
+
+**⚠️ 2 TESTES INVERTIDOS COM O MOTIVO ESCRITO** — eles afirmavam que `Pizza (Aiq)` **PERGUNTA** pela evidência, que era o mundo **antes** da régua do dono. ⭐ A metade que continua valendo (a evidência segue existindo e sendo dita pra nome sem régua nenhuma) ficou travada em **dois testes próprios**, com um nome que não é de canal.
+
+**931 arquivos · 12.294 verdes · TS 0 · migration NENHUMA · `pg_dump pre-bases-2ultimas-20261008-234542.dump` (8.659.715 bytes, tamanho conferido).**
+
+📋 **FICA PRO DONO:** as **11 pendências de dose do molho** — e a do combo agora **diz** que são 2 pizzas, pra ele não declarar a dose de uma. ⚠️ E o **efeito do mês** das 2 últimas foi pequeno por construção (sobra bruta 86.338,21 → 86.298,59, **−39,62** em 8 dias, contra os R$ 387,28/mês da janela de 30 dias): a PROMO vendeu 159 un e a Aiq 16 na janela cheia.
 
 ## 🍕 BASES DE PIZZA — NORMALIZAÇÃO COM PREVIEW (08/10/2026, o preview que antecedeu a gravação)
 
