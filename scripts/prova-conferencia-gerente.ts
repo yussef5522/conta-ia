@@ -203,6 +203,28 @@ async function main() {
       } catch (e) { recusa = e instanceof Error ? e.message : String(e) }
       console.log(`  ⛔ conferir 2× a mesma conclusão: ${dobrou ? 'PASSOU (defeito!)' : `RECUSADO — "${recusa.slice(0, 90)}"`}`)
 
+      /**
+       * ⭐⭐ OS TRÊS PAPÉIS REAIS CARIMBAM, CADA UM NUMA CONCLUSÃO PRÓPRIA (item 3 do dono).
+       * ⛔ Cada um numa conclusão DIFERENTE porque a 2ª tentativa na mesma cai em `JA_CONFERIDA`
+       *    ANTES de chegar na régua da assinatura — e aí a prova diria "recusado" pelo motivo
+       *    errado. *Reposição que não reproduz o caso é um verde de graça.*
+       */
+      const outras = fila.cartoes
+        .map((c: { conclusaoId: string }) => c.conclusaoId)
+        .filter((id: string) => id !== alvo.conclusaoId)
+      let n = 0
+      for (const g of gerentes) {
+        if (g.user.id === conferenteUser.id) continue
+        const alvoDele = outras[n++]
+        if (!alvoDele) break
+        try {
+          const rr = await confirmarConclusao({ companyId: EMPRESA, conclusaoId: alvoDele, userId: g.user.id }, db)
+          console.log(`  ⭐ CARIMBO SEM PIN por ${rr.conferidoPorNome} (papel de gerência, login próprio)`)
+        } catch (e) {
+          console.log(`  ⚠️ ${g.user.name ?? g.user.email}: ${e instanceof Error ? e.message.slice(0, 110) : e}`)
+        }
+      }
+
       /** ⛔⛔ e a AUTO-CONFERÊNCIA pelo eixo da sessão, com o motor real */
       const conc2 = await tx.stockProducaoConclusao.findFirst({
         where: { companyId: EMPRESA, criadoPorId: { not: null } },
@@ -216,17 +238,52 @@ async function main() {
           await confirmarConclusao({ companyId: EMPRESA, conclusaoId: conc2.id, userId: conc2.criadoPorId }, db)
           passou = true
         } catch (e) { msg = e instanceof Error ? e.message : String(e) }
-        console.log(`  ⛔⛔ AUTO-CONFERÊNCIA (quem lançou carimbando a própria): ${passou ? 'PASSOU (defeito!)' : `RECUSADA — "${msg.slice(0, 120)}"`}`)
+        console.log(`  ⛔⛔ AUTO-CONFERÊNCIA (quem lançou carimbando a própria): ${passou ? 'PASSOU (defeito!)' : `RECUSADA — "${msg.slice(0, 160)}"`}`)
       } else {
         console.log('  ⚠️ nenhuma conclusão com `criadoPorId` na janela — o eixo da sessão não deu pra exercer aqui')
       }
 
-      /** ⛔ e sem papel nesta empresa, não carimba */
-      let semPapel = ''
-      try {
-        await confirmarConclusao({ companyId: EMPRESA, conclusaoId: alvo.conclusaoId, userId: 'u-que-nao-existe' }, db)
-      } catch (e) { semPapel = e instanceof Error ? e.message : String(e) }
-      console.log(`  ⛔ sessão sem papel nesta empresa: "${semPapel.slice(0, 100)}"`)
+      /**
+       * ⛔ SEM SESSÃO PESSOAL e SEM PAPEL — contra uma conclusão **AINDA NÃO CARIMBADA**.
+       * ⚠️ Na 1ª versão desta prova eu usei a conclusão já conferida e as duas respostas vieram
+       * `JA_CONFERIDA`: a sonda imprimia "recusado" sem nunca ter exercido a régua da assinatura.
+       */
+      const virgem = outras[n]
+      if (virgem) {
+        for (const [rotulo, uid] of [['sem SESSÃO pessoal', ''], ['sem PAPEL nesta empresa', 'u-que-nao-existe']] as const) {
+          let m = ''
+          let passou = false
+          try {
+            await confirmarConclusao({ companyId: EMPRESA, conclusaoId: virgem, userId: uid }, db)
+            passou = true
+          } catch (e) { m = e instanceof Error ? e.message : String(e) }
+          console.log(`  ⛔ ${rotulo}: ${passou ? 'PASSOU (defeito!)' : `RECUSADO — "${m.slice(0, 110)}"`}`)
+        }
+      } else {
+        console.log('  ⚠️ sem conclusão virgem sobrando na fila — a régua da assinatura não deu pra exercer aqui')
+      }
+
+      /** ⭐⭐ E O CORRIGIR PELO MESMO CAMINHO — a prévia do item 4 executada de verdade */
+      if (virgem) {
+        const vc = await tx.stockProducaoConclusao.findFirstOrThrow({
+          where: { id: virgem }, select: { qtdGerada: true, ordemId: true },
+        })
+        const itemV = (await tx.stockProductionOrder.findFirstOrThrow({
+          where: { id: vc.ordemId }, select: { itemProduzidoId: true },
+        })).itemProduzidoId
+        const sAntes = await saldoItem(tx, EMPRESA, itemV)
+        const qtdCerta = Math.max(1, Math.round(vc.qtdGerada / 2))
+        /** ⚠️ a assinatura é POSICIONAL `(companyId, conclusaoId, qtdCerta, db)` — chutei objeto e o tsc cobrou */
+        const prev = await preverCorrecao(EMPRESA, virgem, qtdCerta, tx as unknown as PrismaClient)
+        const prometido = prev.modo === 'ESTORNA_E_RELANCA' ? prev.preview.saldoDepois : prev.depois
+        const rc = await corrigirConclusao(
+          { companyId: EMPRESA, conclusaoId: virgem, qtdCerta, motivo: 'CONTOU_ERRADO', userId: conferenteUser.id },
+          db,
+        )
+        const sDepois = await saldoItem(tx, EMPRESA, itemV)
+        console.log(`  ⭐ CORRIGIR SEM PIN: ${vc.qtdGerada} → ${qtdCerta} por ${rc.conferidoPorNome} (era ${rc.corrigiuDe}) · modo ${rc.modo}`)
+        console.log(`     a prévia prometia saldo ${sAntes.saldo} → ${prometido} · o ledger deu ${sAntes.saldo} → ${sDepois.saldo} ${prometido === sDepois.saldo ? '⭐ BATE' : '⛔ DIVERGIU'}`)
+      }
 
       console.log(`  saldo do item antes de qualquer correção: ${saldoAntes.saldo} ${alvo.unidade}`)
       throw new Volta()
