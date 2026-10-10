@@ -2468,6 +2468,95 @@ já normalizadas 9 · pedem confirmação 2
 
 📋 **FICA PRO DONO:** as **11 pendências de dose do molho** — e a do combo agora **diz** que são 2 pizzas, pra ele não declarar a dose de uma. ⚠️ E o **efeito do mês** das 2 últimas foi pequeno por construção (sobra bruta 86.338,21 → 86.298,59, **−39,62** em 8 dias, contra os R$ 387,28/mês da janela de 30 dias): a PROMO vendeu 159 un e a Aiq 16 na janela cheia.
 
+## 🎨 CUSTOS FIXOS — CARTÕES SÓLIDOS + DIETA DE TEXTO (10/10/2026)
+
+**Opção A do dono:** *"cor sólida cheia, número branco — cores de vida"*, cada cartão em **3 linhas**, e *"TODOS os parágrafos dos cartões MORREM e viram UMA linha miúda sob os 4"*. **Nada de conta mudou — só apresentação.**
+
+### ⛔⛔⛔ A MEDIÇÃO MUDOU O DESENHO ANTES DA PRIMEIRA LINHA — a letra do pedido REPROVA WCAG
+
+Ele pediu o tom forte da família (o `-mid`) com número branco, **e pediu a prova pelo guard**. A prova dá vermelho em **6 dos 8 casos**:
+
+```
+                 TEMA CLARO              TEMA ESCURO (o -mid CLAREIA)
+índigo  #534ab7  6,93:1 OK      #8a81f0  3,24:1 REPROVA
+azul    #2563eb  5,17:1 OK      #6aa0fb  2,61:1 REPROVA
+verde   #0f9d58  3,51:1 REPROVA #3ecf8e  2,00:1 REPROVA
+coral   #e5484d  3,91:1 REPROVA #ff6369  2,90:1 REPROVA
+```
+
+⚠️ **E o verde e o coral reprovam já no tema CLARO, que é o que ele usa** — o coral é o cartão **herói** ("PRA NÃO AFUNDAR"). O número de 30px é texto grande (limiar 3:1), mas a **etiqueta de 11px e a sub ficam sobre o MESMO chão** e são texto normal, exigindo 4,5:1.
+
+**⭐ O QUE FICA É SÓLIDO CHEIO COM O DEGRAU CERTO POR TEMA** — o par `--fam-X-solid` / `-on` / `-on-soft`: no claro o chão é o tom 800/900 e no escuro é o fundo escuro da família; **a tinta é branca nos dois**, que é exatamente o que ele pediu. **8 de 8 passam, de 7,88 a 16,94:1.** ⚠️ É o MESMO desenho de `--prod-acao-bg`/`--prod-acao-ink` (04/10) e a mesma lei de *"no escuro o 50 e o 800 trocam de lado"* — o que inverte é o **CHÃO**, não a tinta. ⛔ Só as 4 famílias que têm cartão: *token sem chamador é token que alguém religa por descuido*.
+
+### ⭐ O CARTÃO, EM 3 LINHAS
+
+Etiqueta 11px/700 no tom claro · **NÚMERO 30px/700 BRANCO tabular, ARREDONDADO AO REAL** · UMA sub de ≤5 palavras. **O centavo vai pro tooltip** — a mesma régua do pão (27/08): *o ledger guarda precisão cheia, quem arredonda é a leitura*.
+
+**⛔⛔ A RÉGUA MORA EM LIB PURA (`cartao-de-dono.ts`), NÃO NO JSX** — o projeto roda em `environment: node`, sem jsdom, e *regra que mora num `value={...}` é regra que ninguém prova* (a lição do prefill do cardápio, que quebrou 2× antes de virar função). Ali a sub tem **contagem de palavra conferida**, o número tem o "sem centavos" **executado**, e o texto do ⓘ é **dado**. ⛔ E a tela não escolhe cor: a família vem de `FAMILIA_DO_CARTAO`.
+
+⚠️ **E O `escuro` MORREU:** os quatro são sólidos. Três pastéis ao lado de um escuro fazia o herói competir por atenção com cartões de peso visual diferente.
+⚠️ **Decisões declaradas:** o `/mês` do 1º cartão saiu (o título *"O mês custa"* já carrega) e o título dele virou **fixo** — a composição (`CASA + BANCO + COMPROMISSOS`) desceu pro ⓘ, e **quais chips estão ligados os próprios chips já mostram**. A sub do **porDia** é minha, derivada da que a tela já tinha: ele deu **três** exemplos pros quatro cartões, e inventar tom novo ali seria escrever por ele.
+
+### ⭐⭐ O CHIP "7 SEM PLANO →" — e ele FILTRA de verdade
+
+No 1º cartão, fundo branco translúcido, **`<button>` e não `<div>`** (clicável que não é botão perde teclado e leitor de tela). O clique **liga o filtro E rola** até a lista: filtrar sem rolar deixaria o dono olhando o cartão sem ver o efeito; rolar sem filtrar o largaria numa lista de 26 linhas.
+
+⛔ **O filtro nasce DESLIGADO** (ligado por default esconderia linha sem ninguém pedir) · a tela **DIZ que recortou** e oferece *"ver tudo"* — a régua de 23/09 (*"ausência de resultado NESTE recorte não é ausência de trabalho"*, que evitou o *"tudo resolvido"* com 35 linhas esperando) · e **o Σ do rodapé é da prateleira INTEIRA**: um subtotal que mudasse com o filtro deixaria de fechar com o cartão, que é o guard que ele mandou manter.
+
+### ⭐⭐ A LINHA MIÚDA E O ⓘ — honestidade guardada, não gritada
+
+*"margem 47,7% (CMV por compra) · 31 dias corridos · como eu conto ⓘ"*, e o ⓘ abre **a margem · o calendário · a composição · o que ficou fora · pra não afundar**. ⛔ **Nada se perde: cada parágrafo que morreu na frente do dono está lá dentro**, e o guard é de dois lados — se eu só proibisse os parágrafos, aprovaria o dia em que a ressalva do CMV sumisse da tela inteira.
+
+**⛔⛔ E O ⓘ É `<details>`, NUNCA `title`:** **tooltip não existe no celular**, e é lá que o dono opera (a cicatriz de 30/08). O que pode ir pro `title` nesta tela é só o que **repete** um número já visível (os centavos) ou **explica um rótulo**; a régua completa fica a um **toque**.
+
+### ⚠️⚠️ A TENSÃO COM 07/10, RESOLVIDA COM DESENHO E REGISTRADA
+
+Em **07/10** ele exigiu que a linha-mitigação do Arafat *"não ficasse muda"* (virou parágrafo); hoje pediu *"linha curta, resto no tooltip"*. **A pergunta do guard não mudou** (*a prateleira DIZ qual é a dela*) — mudou **onde** ela diz. O que segura a promessa é a **divisão**: o **FATO** (os dois números) fica no CHIP, visível no dedo — `devolvido R$ 40.000,00 · faltam R$ 1.428,57` — e só a **RÉGUA** (o rótulo `~referência flexível` + o porquê do mês) vai pro `title`. Jogar o fato pro hover o faria **desaparecer** pro dono. O selo foi partido em `selo` + `seloDetalhe` na lib, com teste exigindo que o detalhe continue nomeando a agenda flexível. ⚠️ `referenciaFlexivelDoMes` tem **um único consumidor** (a prateleira), então a tela do empréstimo não foi afetada — conferido antes de partir.
+
+**O resto do item 4:** *"o planejado é seu…"* **morreu** (a tela ensina pela FORMA: as colunas se chamam planejado e realizado, e o planejado é o único editável) · *"não são custo — é caixa que certamente sai"* virou **tooltip + `aria-label` do título** · o *"~previsto com base na parcela N"* virou tooltip **do próprio número**, com o `~` seguindo visível (ele distingue previsão de fato e isso não pode morar no hover) · a nota do cartão virou **1 linha, só quando houve compra** · campo do plano 13→14px · **Σ dos rodapés em 700**.
+
+### ⚠️⚠️ A PROVA EM PROD ACHOU UM DEFEITO QUE A DIETA DEIXOU VISÍVEL
+
+O ⓘ imprimia **`47.7%`, com PONTO** — **três cópias** de `(pct * 100).toFixed(1)` em `margem.ts` e `prateleira.ts`, nenhuma trocando o separador. É **pré-existente** (vivia escondido num parágrafo de cartão) e a dieta o pôs no popover, onde ficou na cara. Virou `pctBR`, **dono único**, consumido pelos três. ⚠️ **E um teste afirmava o defeito** (`toContain('49.8%')`) — invertido com o motivo escrito; a metade certa dele (*a conta vai ESCRITA, a tela nunca mostra percentual sem régua*) continua travada.
+
+### A PROVA — 2 VIEWPORTS × 2 TEMAS, ZERO ESCRITA
+
+```
+OS 4 CARTÕES (rota real → 200)
+  [indigo] O MÊS CUSTA          R$ 193.083   (tooltip R$ 193.082,88) · a casa come isso parada
+  [azul]   POR DIA ABERTO       R$   6.228   (tooltip R$   6.228,48) · isso por dia, parado
+  [verde]  PONTO DE EQUILÍBRIO  R$  13.055   (tooltip R$  13.054,68) · venda/dia que paga o mês
+  [coral]  PRA NÃO AFUNDAR      R$  13.055   (tooltip R$  13.054,68) · acima disso, sobra de verdade
+  ⛔ cartão com CENTAVOS na frente: 0 ⭐   ·   chip: "7 sem plano →" (realizado R$ 150,00)
+
+A LINHA MIÚDA  "margem 47,7% (CMV por compra) · 31 dias corridos · como eu conto ⓘ"
+  ⓘ a margem · o calendário · a composição (CASA + BANCO + COMPROMISSOS) · pra não afundar
+
+NADA DE CONTA MUDOU
+  ⛔ Σ(linhas) casa  R$ 93.868,79 × subtotal R$ 93.868,79 → ⭐ FECHA
+  ⛔ Σ(linhas) banco R$ 13.734,01 × subtotal R$ 13.734,01 → ⭐ FECHA
+  as 8 combinações de chips responderam: 8 de 8 ⭐
+  ⭐ o 4º cartão NÃO obedece aos chips: IDÊNTICO nas 8
+
+celular 200/235ms · desktop 200/151ms · 18 chunks · 871 KB
+  ✓ 10/10 peças novas · ✓ 6/6 frases mortas FORA
+  ✓ os 12 tokens (4 famílias × 3 papéis) nos DOIS mapas do CSS servido
+  ✓ hex de cor no chunk DESTA tela: 0
+marcações 26→26 · planos 38→38 · chips 1→1 · ⭐ ZERO ESCRITA
+```
+
+**REGRA 11 — os 3 vermelhos que o dono nomeou, mais um:** parágrafo de volta no cartão (**2**) · centavos no número (**2**) · sólido trocado por pastel (**3**) · **o `-mid` cru como chão (2)**.
+
+**⚠️⚠️ E O 4º VEIO VERDE NA 1ª RODADA — era SONDA ERRADA, não guard cego.** Minha substituição procurava `--fam-coral-solid: #8f2327;` com **um** espaço e o arquivo tem **dois** (alinhamento) — o defeito **nunca foi reposto**. Refeito com verificação de que o `sed` aplicou, ele morde com a mensagem exata (*"on sobre solid = 3.91:1"*). ***Reposição que não reproduz o defeito é um verde de graça*** — e é a cicatriz do `perl` que não aplicou, de 09/10.
+
+**⚠️ DOIS GUARDS MEUS FORAM CORRIGIDOS NO CAMINHO:** (a) o *"máximo 3 parágrafos"* contava **4 tags** porque o número e o "a apurar" eram dois `<p>` em ramos exclusivos — em vez de afrouxar pra 4 (e perder a mordida), **o cartão passou a ter UM `<p>` pro número** com o texto mudando; (b) o guard do Σ deu **falso vermelho** por fatiar ±700 caracteres e alcançar o botão *"ver todas"*, que usa o recorte **corretamente** — ***janela de distância já produziu falso vermelho e falso verde nesta casa 7 vezes***; reapontado pro bloco do rodapé, por estrutura.
+
+**⚠️ 4 GUARDS REAPONTADOS, nenhum afrouxado, e DOIS ficaram MAIS FORTES:** o do 4º cartão passou a conferir a família no **dono único** em vez da string no JSX; o do token virou *"o chão é o SÓLIDO"* e **proíbe o pastel e o `-mid`** — que é o vermelho do pedido.
+
+**945 arquivos · 12.500 verdes · 2 todo · TS 0 · migration NENHUMA · deploys 4/4 (`C9hzrW7xHutvMOMlzhfaN`, `ABQ7DhgElKzluRa6k4yn0`) · Δ chunks +4 KB.**
+
+📋 **FICA PRO DONO:** abrir a tela no celular e no notebook, **nos dois temas**, com o olho dele — a prova mede o que prod serve (tokens nos dois mapas, zero hex, as 10 peças), mas screenshot está indisponível (extensão do Chrome desligada). ⚠️ E um detalhe do dado de hoje, que **não é defeito**: o **EQUILÍBRIO e o PRA NÃO AFUNDAR mostram o mesmo R$ 13.055** porque os 3 chips estão ligados — o 3º obedece aos chips e o 4º soma tudo sempre, então eles **convergem** nesse estado. Desligar um chip separa os dois na hora.
+
 ## 🏦 EMPRÉSTIMO FLEXÍVEL — A PORTA "REGISTRAR DEVOLUÇÃO" (09/10/2026)
 
 **O dono:** *"paguei 40.000 ao Arafat hoje PELO COFRE e a tela não tem porta: o «Marcar paga» só concilia débito de extrato com valor ±R$ 1 e janela ±7d do vencimento — régua de banco que não serve pra mútuo de cofre com valor livre."*
