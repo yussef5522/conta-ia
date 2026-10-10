@@ -79,6 +79,13 @@ export interface LinhaDeParcela {
    */
   avisoFlexivel: string | null
   /**
+   * ⭐ O RESTO DO SELO — vai no `title` do chip (10/10, a dieta de texto).
+   *
+   * ⚠️ `null` em parcela bancária: ali o selo já é curto ("paga", "a vencer") e um tooltip
+   * repetindo o óbvio é ruído.
+   */
+  seloDetalhe: string | null
+  /**
    * ⛔ entra na Σ da prateleira? **Só a parcela "a apurar" fica FORA** — e a tela DIZ por quê,
    * nunca esconde a linha. ⚠️ A referência FLEXÍVEL não-paga **ENTRA pelo nominal** desde
    * 07/10 (ajuste do dono; ver o bloco no laço).
@@ -400,6 +407,7 @@ export async function lerCompromissos(
          * é a dela, com a data da última devolução.
          */
         avisoFlexivel: ref?.porque ?? null,
+        seloDetalhe: ref?.seloDetalhe ?? null,
         contaNaSoma,
         href: `/empresas/${companyId}/emprestimos/${l.id}`,
       })

@@ -192,7 +192,86 @@ describe('⛔⛔ contraste MEDIDO nos dois temas (a régua do "nenhum 600 em fun
   })
 })
 
+/**
+ * ⭐⭐⭐ O CARTÃO SÓLIDO — os 4 cartões × 2 temas, MEDIDOS (10/10/2026).
+ *
+ * **Exigência do dono, literal:** *"nos 2 temas os sólidos seguem sólidos — contraste
+ * branco×fundo provado pelo guard WCAG existente nos 4 cartões × 2 temas"*.
+ *
+ * ⛔⛔ **E FOI ESTA MEDIÇÃO QUE MUDOU O DESENHO:** a letra do pedido era o `-mid`, e branco
+ * sobre ele **reprova em 6 dos 8 casos** — verde **3,51:1** e coral **3,91:1** já no tema
+ * CLARO (o que o dono usa), e no escuro os quatro abaixo de 3,3:1 porque lá o `-mid` CLAREIA.
+ * O par `solid`/`on`/`on-soft` entrega sólido cheio com o degrau certo por tema, e aí passa.
+ *
+ * ⚠️ O piso é **4,5:1**, não os 3:1 de texto grande: o número é 30px, mas a **etiqueta de
+ * 11px e a sub** ficam sobre o MESMO chão e são texto normal.
+ */
+const CARTOES = [
+  { qual: 'O mês custa', fam: 'indigo' },
+  { qual: 'Por dia aberto', fam: 'azul' },
+  { qual: 'Ponto de equilíbrio', fam: 'verde' },
+  { qual: 'Pra não afundar', fam: 'coral' },
+] as const
+
+describe('⛔⛔ o CARTÃO SÓLIDO passa WCAG nos 4 × 2 temas', () => {
+  for (const tema of ['claro', 'escuro'] as const) {
+    const mapa = tema === 'claro' ? CLARO : ESCURO
+
+    it(`⭐ ${tema}: a TINTA do número passa nos 4 cartões`, () => {
+      for (const c of CARTOES) {
+        const r = razao(mapa[`--fam-${c.fam}-on`], mapa[`--fam-${c.fam}-solid`])
+        expect(r, `${c.qual} (${c.fam}) no ${tema}: on sobre solid = ${r.toFixed(2)}:1`)
+          .toBeGreaterThanOrEqual(4.5)
+      }
+    })
+
+    it(`⭐ ${tema}: a ETIQUETA e a SUB (texto de 11px) passam nos 4 cartões`, () => {
+      for (const c of CARTOES) {
+        const r = razao(mapa[`--fam-${c.fam}-on-soft`], mapa[`--fam-${c.fam}-solid`])
+        expect(r, `${c.qual} (${c.fam}) no ${tema}: on-soft sobre solid = ${r.toFixed(2)}:1`)
+          .toBeGreaterThanOrEqual(4.5)
+      }
+    })
+
+    /**
+     * ⛔ *"nos 2 temas os sólidos seguem SÓLIDOS"* — o chão é escuro o suficiente pra carregar
+     * tinta branca nos dois. Um chão pastel aqui faria o cartão voltar a ser fraco.
+     */
+    it(`⭐ ${tema}: o chão é SÓLIDO (escuro), nunca pastel`, () => {
+      for (const c of CARTOES) {
+        const l = luminancia(mapa[`--fam-${c.fam}-solid`])
+        expect(l, `${c.qual}: luminância do chão no ${tema} = ${l.toFixed(3)}`).toBeLessThan(0.2)
+      }
+    })
+  }
+
+  /**
+   * ⛔⛔ O CONTRAFACTUAL — sem ele este guard seria uma afirmação sobre o mundo bom. Ele prova
+   * que o `-mid` (a letra do pedido) REPROVA, e é por isso que o cartão não o usa.
+   */
+  it('⛔⛔ o `-mid` cru com branco REPROVA — a medição que mudou o desenho', () => {
+    const reprovam: string[] = []
+    for (const tema of ['claro', 'escuro'] as const) {
+      const mapa = tema === 'claro' ? CLARO : ESCURO
+      for (const c of CARTOES) {
+        const r = razao('#ffffff', mapa[`--fam-${c.fam}-mid`])
+        if (r < 4.5) reprovam.push(`${c.fam}/${tema} ${r.toFixed(2)}:1`)
+      }
+    }
+    expect(reprovam.length, `o -mid reprova em: ${reprovam.join(' · ')}`).toBeGreaterThanOrEqual(6)
+  })
+
+  /** ⭐ e o CHÃO inverte por tema, como a lei do 50↔800 da casa manda */
+  it('⭐⭐ o chão sólido muda de tom entre os temas (não é o mesmo hex nos dois)', () => {
+    for (const c of CARTOES) {
+      expect(CLARO[`--fam-${c.fam}-solid`], `${c.fam}: o chão tem que inverter`)
+        .not.toBe(ESCURO[`--fam-${c.fam}-solid`])
+    }
+  })
+})
+
 // ───────────────────────── a PREFERÊNCIA (nunca localStorage) ─────────────────────────
+
 
 describe('⛔⛔ a escolha vive em TABELA, nunca no navegador', () => {
   const arquivos = [

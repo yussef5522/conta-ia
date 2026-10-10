@@ -25,7 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { use } from 'react'
 import {
   AlertTriangle, ArrowRight, ArrowRightLeft, Building2, CalendarClock, Check, ChevronDown,
-  CreditCard, Landmark, Loader2, Plus, Receipt, Sparkles, Wallet, X,
+  CreditCard, Info, Landmark, Loader2, Plus, Receipt, Sparkles, Wallet, X,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { NavegadorDeMes } from '@/components/contas-pagar/NavegadorDeMes'
@@ -48,6 +48,14 @@ import {
   cartoesDoTopo, PRATELEIRAS, type Chips, type Prateleira,
 } from '@/lib/custos-fixos/prateleira'
 import type { CompromissosDoMes, LinhaDeParcela, LinhaDeFatura } from '@/lib/custos-fixos/compromissos'
+/**
+ * ⭐ A RÉGUA DO CARTÃO FORTE — pura. A tela não escolhe cor, não conta palavra da sub e não
+ * arredonda número na mão: *regra que mora num `value={...}` é regra que ninguém prova*.
+ */
+import {
+  FAMILIA_DO_CARTAO, SUB_DO_CARTAO, valorDoCartao, linhaDeHonestidade, explicacoesDoPopover,
+  type QualCartao, type ExplicacaoDoPopover,
+} from '@/lib/custos-fixos/cartao-de-dono'
 
 /** ⚠️ acima disso a lista colapsa — ordem do dono (~8) */
 const LINHAS_VISIVEIS = 8
@@ -90,6 +98,21 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
    * acesso (celular × notebook); o número na tela sai da função pura, na hora.
    */
   const [chips, setChips] = useState<Chips | null>(null)
+  /**
+   * ⭐ O FILTRO DO CHIP "N sem plano →" — e ele mora aqui pra as DUAS prateleiras ouvirem.
+   * ⚠️ Nasce `false`: filtro ligado por default esconderia linha com plano sem ninguém pedir.
+   */
+  const [soSemPlano, setSoSemPlano] = useState(false)
+  const alvoSemPlano = useRef<HTMLDivElement | null>(null)
+  /**
+   * ⭐ O CLIQUE DO CHIP: liga o filtro E rola até a lista — *"clique rola/filtra a lista nas
+   * linhas sem plano"*. ⚠️ Os dois juntos de propósito: filtrar sem rolar deixaria o dono
+   * olhando o cartão sem ver o efeito, e rolar sem filtrar o largaria numa lista de 26 linhas.
+   */
+  const irPraSemPlano = useCallback(() => {
+    setSoSemPlano(true)
+    requestAnimationFrame(() => alvoSemPlano.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }, [])
 
   const carregar = useCallback(async () => {
     setEstado((e) => (e === 'OK' ? 'OK' : 'CARREGANDO'))
@@ -216,60 +239,75 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
         aoAlternar={alternarChip}
       />
 
-      {/* ─────────── OS 4 NÚMEROS DE DONO ─────────── */}
+      {/* ─────────── OS 4 NÚMEROS DE DONO — SÓLIDOS, 3 LINHAS ─────────── */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <CartaoDeDono
-          familia="indigo"
-          titulo={cartoes!.conta.rotulo}
-          sub={`${rotuloDoMes(mes)} — o plano que você declarou`}
+          qual="conta"
+          titulo="O mês custa"
           valor={cartoes!.conta.total}
-          sufixo="/mês"
           aApurar={cartoes!.conta.porque ?? 'a apurar'}
-          detalhe={dados.semPlano.n > 0
-            ? `${dados.semPlano.n} ${dados.semPlano.n === 1 ? 'categoria' : 'categorias'} ainda sem plano — o realizado delas é ${formatBRL(dados.semPlano.realizado)}`
-            : null}
+          chip={
+            dados.semPlano.n > 0 ? (
+              /**
+               * ⭐ O CHIP CLICÁVEL (pedido do dono): *"«7 sem plano →», fundo branco
+               * translúcido — clique rola/filtra a lista nas linhas sem plano"*.
+               * ⚠️ É `<button>`, não `<div>`: elemento clicável que não é botão perde teclado
+               * e leitor de tela (a lição dos cards-filtro da Conciliação).
+               */
+              <button
+                type="button"
+                onClick={irPraSemPlano}
+                className="mt-2 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold"
+                style={{ background: 'rgba(255,255,255,0.18)', color: `var(--fam-indigo-on)` }}
+                title={`${dados.semPlano.n} sem plano — o realizado delas é ${formatBRL(dados.semPlano.realizado)}`}
+              >
+                {dados.semPlano.n} sem plano
+                <ArrowRight className="h-3 w-3" aria-hidden />
+              </button>
+            ) : undefined
+          }
         />
         <CartaoDeDono
-          familia="azul"
+          qual="porDia"
           titulo="Por dia aberto"
-          sub="quanto isso come por dia, parado"
           valor={cartoes!.porDia.valor}
           aApurar="depende do plano acima"
-          detalhe={cartoes!.porDia.rotulo}
         />
         <CartaoDeDono
-          familia="verde"
+          qual="equilibrio"
           titulo="Ponto de equilíbrio"
-          sub="vendendo isso por dia, isso se paga"
           valor={cartoes!.equilibrio.porDia}
           aApurar={cartoes!.equilibrio.porque ?? 'a apurar'}
-          detalhe={cartoes!.equilibrio.conta
-            ? `${cartoes!.equilibrio.conta} · ${dados.margem.ressalva}`
-            : dados.margem.ressalva}
         />
         {/*
-          ⭐⭐ O 4º CARTÃO — e ele NÃO obedece aos chips, de propósito (ordem do dono).
+          ⭐⭐ O 4º CARTÃO — o HERÓI, e ele NÃO obedece aos chips, de propósito (ordem do dono).
           ⛔ Os três de cima servem pra ENSAIAR cenário; este responde "quanto preciso vender
           HOJE pra não afundar", e a resposta não muda porque o dono desligou um interruptor.
           Um 4º cartão que obedecesse seria o cartão do equilíbrio com outro nome.
         */}
         <CartaoDeDono
-          familia="coral"
-          escuro
+          qual="afundar"
           titulo="Pra não afundar"
-          sub="cobre casa, banco e dívida; acima disso começa a sobrar de verdade"
           valor={cartoes!.afundar.porDia}
           aApurar={cartoes!.afundar.porque ?? 'a apurar'}
-          detalhe={cartoes!.afundar.conta}
         />
       </div>
 
-      {/* ⚠️ O QUE FICOU FORA DA CONTA — dito com o valor, nunca só "filtrado" */}
-      {cartoes!.conta.foraDaConta && (
-        <p className="px-1 text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
-          {cartoes!.conta.foraDaConta}
-        </p>
-      )}
+      {/* ⭐ A UMA LINHA que substituiu os 4 parágrafos — com o ⓘ guardando o resto */}
+      <LinhaDeHonestidade
+        linha={linhaDeHonestidade({ margemPct: dados.margem.pct, dias: dados.cartaoPorDia.dias })}
+        explicacoes={explicacoesDoPopover({
+          margemPct: dados.margem.pct,
+          margemPorque: dados.margem.porque,
+          margemRessalva: dados.margem.ressalva,
+          margemConta: dados.margem.conta,
+          dias: dados.cartaoPorDia.dias,
+          diasRotulo: cartoes!.porDia.rotulo,
+          contaDosChips: cartoes!.conta.rotulo,
+          foraDaConta: cartoes!.conta.foraDaConta,
+          porqueDoAfundar: cartoes!.afundar.conta,
+        })}
+      />
 
       {/* ─────────── AS FERRAMENTAS (marcar · semear) ─────────── */}
       <Card style={{ background: 'var(--prod-surface)', borderColor: 'var(--prod-line)' }}>
@@ -279,9 +317,13 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
             <h2 className="text-sm font-semibold" style={{ color: 'var(--prod-primary)' }}>
               Planejado × realizado
             </h2>
-            <p className="hidden flex-1 truncate text-[11.5px] lg:block" style={{ color: 'var(--prod-muted)' }}>
-              o planejado é seu; o realizado é o que o fluxo pagou no mês
-            </p>
+            {/*
+              ⛔ A FRASE "o planejado é seu; o realizado é o que o fluxo pagou" MORREU (10/10,
+              dieta de texto). A tela ensina pela FORMA: as colunas se chamam "planejado" e
+              "realizado", e o planejado é o único campo editável. Texto que se lê uma vez e
+              nunca mais ocupava a dobra de uma tela de trabalho.
+            */}
+            <span className="flex-1" />
             {dados.linhas.some((l) => l.planejado == null || incluirComPlano) && (
               <button type="button"
                 onClick={() => void gesto({ acao: 'SEMEAR', mesReferencia: dados.mesReferencia, incluirComPlano, confirmar: false }, 'semear')}
@@ -358,6 +400,7 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
       </Card>
 
       {/* ─────────── 🏠 A CASA ─────────── */}
+      <div ref={alvoSemPlano}>
       <SecaoDaPrateleira
         icone={<Building2 className="h-4 w-4 shrink-0" style={{ color: 'var(--fam-indigo-ink)' }} />}
         titulo="🏠 A casa"
@@ -370,7 +413,10 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
         aoTirar={(l) => void gesto({ acao: 'TIRAR', categoryId: l.categoryId }, `tirar:${l.categoryId}`)}
         aoMover={(l, p) => void gesto({ acao: 'MARCAR', categoryId: l.categoryId, prateleira: p }, `marcar:${l.categoryId}`)}
         vazio="nenhuma categoria operacional marcada ainda."
+        soSemPlano={soSemPlano}
+        aoLimparFiltro={() => setSoSemPlano(false)}
       />
+      </div>
 
       {/* ─────────── 🏦 O BANCO ─────────── */}
       <SecaoDaPrateleira
@@ -385,6 +431,8 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
         aoTirar={(l) => void gesto({ acao: 'TIRAR', categoryId: l.categoryId }, `tirar:${l.categoryId}`)}
         aoMover={(l, p) => void gesto({ acao: 'MARCAR', categoryId: l.categoryId, prateleira: p }, `marcar:${l.categoryId}`)}
         vazio="nenhuma categoria no banco ainda — marque os juros e as tarifas aqui pra separar o custo do dinheiro do custo da casa."
+        soSemPlano={soSemPlano}
+        aoLimparFiltro={() => setSoSemPlano(false)}
       />
 
       {/* ─────────── 📅 COMPROMISSOS DO MÊS ─────────── */}
@@ -394,13 +442,19 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
         mes={mes}
       />
 
-      {/* ⚠️ A LACUNA, DITA: custo fixo pago no cartão não aparece no realizado deste mês */}
+      {/*
+        ⚠️ A LACUNA, EM UMA LINHA (10/10) — e ela só aparece QUANDO HOUVE COMPRA no cartão
+        (`dados.comprasNoCartao` já é `null` sem compra): aviso que aparece sempre é aviso que
+        se aprende a não ler. O resto da explicação vive no `title`.
+      */}
       {dados.comprasNoCartao && (
-        <p className="px-1 text-[11.5px] leading-snug" style={{ color: 'var(--prod-muted)' }}>
-          ⚠️ O realizado conta o dinheiro que saiu da conta. Este mês tem{' '}
-          {dados.comprasNoCartao.n} compra{dados.comprasNoCartao.n > 1 ? 's' : ''} no cartão de
-          crédito — custo fixo pago por lá entra como pagamento de fatura, sem a categoria da
-          despesa, então ele não aparece na linha dele aqui.
+        <p
+          className="px-1 text-[11.5px]"
+          style={{ color: 'var(--prod-muted)' }}
+          title="custo fixo pago no cartão entra como pagamento de fatura, sem a categoria da despesa — então ele não aparece na linha dele aqui"
+        >
+          ⚠️ {dados.comprasNoCartao.n} compra{dados.comprasNoCartao.n > 1 ? 's' : ''} no cartão
+          neste mês · fora do realizado
         </p>
       )}
 
@@ -421,48 +475,89 @@ export default function CustosFixosPage({ params }: { params: Promise<{ id: stri
 }
 
 /**
- * ⭐ o cartão de dono v4: fundo da família, texto da família, sublinha serifada em itálico.
+ * ⭐⭐ O CARTÃO FORTE (10/10) — chão SÓLIDO cheio da família, número BRANCO, 3 linhas.
  *
- * ⚠️ `escuro` é o pedido do dono pro 4º cartão (*"coral-ESCURO"*): o chão passa a ser o degrau
- * `-mid` (preenchido) e a tinta vira `--prod-acao-ink`, que é a tinta sobre fundo forte e
- * **inverte nos dois temas**. Um hex cravado aqui ficaria ilegível no tema escuro.
+ * **Pedido do dono (opção A):** *"cor sólida cheia, número branco — cores de vida"*.
+ *
+ * ⛔⛔ **O chão é o `-solid`, NUNCA o `-mid`:** branco sobre o `-mid` **reprova WCAG em 6 dos 8
+ * casos** (verde 3,51:1 e coral 3,91:1 no tema CLARO; os quatro abaixo de 3,3:1 no escuro,
+ * porque lá o `-mid` CLAREIA). O par `solid`/`on`/`on-soft` inverte o CHÃO por tema e mantém a
+ * tinta branca — medido em 7,88 a 16,94:1. Está escrito no `globals.css`, com os números.
+ *
+ * ⛔ **E não existe mais `escuro`:** os quatro são sólidos. Um "pastel + um escuro" fazia o
+ * herói competir por atenção com três cartões de peso visual diferente.
  */
-function CartaoDeDono({ familia, escuro, titulo, sub, valor, sufixo, aApurar, detalhe }: {
-  familia: 'indigo' | 'azul' | 'verde' | 'coral'
-  escuro?: boolean
+function CartaoDeDono({ qual, titulo, valor, aApurar, chip }: {
+  qual: QualCartao
   titulo: string
-  sub: string
   valor: number | null
-  sufixo?: string
+  /** ⚠️ o porquê do "a apurar" — ele é a AÇÃO, então fica na cara, não no tooltip */
   aApurar: string
-  detalhe: string | null
+  /** ⭐ o chip opcional (o "N sem plano →" do 1º cartão) */
+  chip?: ReactNode
 }) {
-  const chao = escuro ? `var(--fam-${familia}-mid)` : `var(--fam-${familia}-bg)`
-  const tinta = escuro ? 'var(--prod-acao-ink)' : `var(--fam-${familia}-ink)`
-  const apoio = escuro ? 'var(--prod-acao-ink)' : `var(--fam-${familia}-mid)`
+  const fam = FAMILIA_DO_CARTAO[qual]
+  const v = valorDoCartao(valor)
   return (
-    <div className="rounded-xl p-3.5" style={{ background: chao }}>
-      <p className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: tinta }}>
+    <div className="rounded-xl p-3.5" style={{ background: `var(--fam-${fam}-solid)` }}>
+      {/* 1 · a etiqueta, no tom claro da família */}
+      <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: `var(--fam-${fam}-on-soft)` }}>
         {titulo}
       </p>
-      <p className="font-serif text-[11.5px] italic" style={{ color: apoio, opacity: escuro ? 0.85 : 1 }}>{sub}</p>
-      {valor == null ? (
-        <>
-          <p className="mt-1.5 text-[19px] font-semibold" style={{ color: tinta }}>a apurar</p>
-          <p className="mt-0.5 text-[11px] leading-snug" style={{ color: apoio, opacity: escuro ? 0.85 : 1 }}>{aApurar}</p>
-        </>
-      ) : (
-        <>
-          <p className="mt-1.5 text-[22px] font-semibold tabular-nums" style={{ color: tinta }}>
-            {formatBRL(valor)}
-            {sufixo && <span className="text-[12px] font-normal"> {sufixo}</span>}
-          </p>
-          {detalhe && (
-            <p className="mt-0.5 text-[11px] leading-snug" style={{ color: apoio, opacity: escuro ? 0.85 : 1 }}>{detalhe}</p>
-          )}
-        </>
-      )}
+      {/*
+        2 · o NÚMERO — 30px, branco, tabular, redondo ao real; o centavo vive no tooltip.
+        ⚠️ UM `<p>` só, com o TEXTO mudando: dois `<p>` em ramos exclusivos dariam 3 papéis e
+        4 tags, e aí o guard do *"máximo 3 parágrafos"* teria que ser afrouxado pra 4 — e
+        pararia de morder o parágrafo de volta, que é justamente o vermelho que ele existe
+        pra dar.
+      */}
+      <p
+        className={`mt-1 font-bold leading-none ${v ? 'text-[30px] tabular-nums' : 'text-[22px]'}`}
+        style={{ color: `var(--fam-${fam}-on)` }}
+        title={v ? `com os centavos: ${v.cheio}` : undefined}
+      >
+        {v ? v.curto : 'a apurar'}
+      </p>
+      {/* 3 · UMA sub (≤5 palavras) — ou o PORQUÊ, quando é "a apurar" */}
+      <p className="mt-1.5 text-[11px] leading-snug" style={{ color: `var(--fam-${fam}-on-soft)` }}>
+        {v ? SUB_DO_CARTAO[qual] : aApurar}
+      </p>
+      {chip}
     </div>
+  )
+}
+
+/**
+ * ⭐⭐ A LINHA MIÚDA SOB OS 4 — e o ⓘ que guarda o que os parágrafos diziam.
+ *
+ * **Pedido do dono:** *"TODOS os parágrafos dos cartões MORREM e viram UMA linha miúda sob os
+ * 4 (…) o ⓘ abre popover com as explicações completas. Honestidade guardada, não gritada."*
+ *
+ * ⛔⛔ **É `<details>`, não `title`** — e a razão é dura: **tooltip não existe no celular**, que
+ * é onde o dono opera (a cicatriz de 30/08). O que vai pro `title` nesta tela é só o que
+ * REPETE um número já visível (os centavos); o que explica a régua fica a um TOQUE.
+ */
+function LinhaDeHonestidade({ linha, explicacoes }: { linha: string; explicacoes: ExplicacaoDoPopover[] }) {
+  return (
+    <details className="group px-1">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-1.5 text-[11.5px]"
+        style={{ color: 'var(--prod-muted)' }}>
+        <span>{linha}</span>
+        <span className="inline-flex items-center gap-1 font-semibold underline decoration-dotted"
+          style={{ color: 'var(--prod-accent)' }}>
+          como eu conto
+          <Info className="h-3 w-3" aria-hidden />
+        </span>
+      </summary>
+      <div className="mt-1.5 space-y-1.5 rounded-xl px-3 py-2.5"
+        style={{ background: 'var(--prod-surface-1)', boxShadow: 'inset 0 0 0 1px var(--prod-line)' }}>
+        {explicacoes.map((e) => (
+          <p key={e.titulo} className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
+            <b style={{ color: 'var(--prod-primary)' }}>{e.titulo}:</b> {e.texto}
+          </p>
+        ))}
+      </div>
+    </details>
   )
 }
 
@@ -522,6 +617,7 @@ function ChipsDasPrateleiras({ chips, temBanco, temCompromissos, aoAlternar }: {
  */
 function SecaoDaPrateleira({
   icone, titulo, sub, prateleira, ligada, mesReferencia, salvando, aoPlanejar, aoTirar, aoMover, vazio,
+  soSemPlano, aoLimparFiltro,
 }: {
   icone: ReactNode
   titulo: string
@@ -534,9 +630,19 @@ function SecaoDaPrateleira({
   aoTirar: (l: LinhaDoCustoFixo) => void
   aoMover: (l: LinhaDoCustoFixo, p: Prateleira) => void
   vazio: string
+  /** ⭐ ligado pelo chip "N sem plano →" do 1º cartão */
+  soSemPlano: boolean
+  aoLimparFiltro: () => void
 }) {
   const [todas, setTodas] = useState(false)
-  const visiveis = todas ? prateleira.linhas : prateleira.linhas.slice(0, LINHAS_VISIVEIS)
+  /**
+   * ⚠️ O FILTRO RECORTA, E A TELA DIZ QUE RECORTOU — *lista mostrando menos do que existe
+   * precisa dizer por quê* (a régua de 23/09, que evitou o "tudo resolvido" com 35 linhas
+   * esperando). E o Σ do rodapé continua sendo o da PRATELEIRA INTEIRA, nunca o do recorte:
+   * um subtotal que muda com o filtro deixaria de fechar com o cartão.
+   */
+  const daFila = soSemPlano ? prateleira.linhas.filter((l) => l.planejado == null) : prateleira.linhas
+  const visiveis = todas ? daFila : daFila.slice(0, LINHAS_VISIVEIS)
   const outra: Prateleira = prateleira.prateleira === 'CASA' ? 'BANCO' : 'CASA'
 
   return (
@@ -553,6 +659,18 @@ function SecaoDaPrateleira({
             </span>
           )}
         </div>
+
+        {soSemPlano && prateleira.linhas.length > 0 && (
+          <div className="mx-4 mb-2 flex flex-wrap items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11.5px]"
+            style={{ background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)' }}>
+            <span>
+              {daFila.length === 0
+                ? `nenhuma linha sem plano aqui — esta prateleira tem ${prateleira.linhas.length}, todas declaradas`
+                : `só as ${daFila.length} sem plano · a prateleira tem ${prateleira.linhas.length}`}
+            </span>
+            <button type="button" onClick={aoLimparFiltro} className="font-semibold underline">ver tudo</button>
+          </div>
+        )}
 
         {prateleira.linhas.length === 0 ? (
           <p className="px-4 pb-4 text-[13px]" style={{ color: 'var(--prod-secondary)' }}>{vazio}</p>
@@ -581,17 +699,17 @@ function SecaoDaPrateleira({
               ))}
             </ul>
 
-            {prateleira.linhas.length > LINHAS_VISIVEIS && (
+            {daFila.length > LINHAS_VISIVEIS && (
               <button type="button" onClick={() => setTodas((v) => !v)}
                 className="flex w-full items-center justify-center gap-1.5 border-t py-2 text-[12px] font-medium"
                 style={{ borderColor: 'var(--prod-line)', color: 'var(--prod-accent)' }}>
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${todas ? 'rotate-180' : ''}`} />
-                {todas ? 'ver só as primeiras' : `+${prateleira.linhas.length - LINHAS_VISIVEIS} categorias · ver todas`}
+                {todas ? 'ver só as primeiras' : `+${daFila.length - LINHAS_VISIVEIS} categorias · ver todas`}
               </button>
             )}
 
             <div className="border-t px-4 py-3" style={{ borderColor: 'var(--prod-line-strong)' }}>
-              <div className="flex flex-wrap items-baseline justify-end gap-x-6 gap-y-1 text-[13px]">
+              <div className="flex flex-wrap items-baseline justify-end gap-x-6 gap-y-1 text-[13px] font-bold">
                 <span style={{ color: 'var(--prod-muted)' }}>
                   Σ planejado{' '}
                   <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>
@@ -640,10 +758,21 @@ function SecaoDeCompromissos({ compromissos, ligada, mes }: {
       <CardContent className="p-0">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-3">
           <CalendarClock className="h-4 w-4 shrink-0" style={{ color: 'var(--fam-teal-ink)' }} />
-          <h2 className="text-sm font-semibold" style={{ color: 'var(--prod-primary)' }}>📅 Compromissos do mês</h2>
-          <p className="font-serif text-[11.5px] italic" style={{ color: 'var(--prod-muted)' }}>
-            não são custo — é caixa que certamente sai
-          </p>
+          {/*
+            ⭐ A RÉGUA VIROU TOOLTIP DO TÍTULO (10/10) — e ela segue DITA, não apagada: o
+            `title` guarda a frase pro mouse e o `aria-label` pro leitor de tela.
+            ⚠️ Aqui o tooltip é legítimo porque o texto EXPLICA uma classificação; o que nunca
+            pode ir pro hover é AÇÃO ou número que decide (a cicatriz de 30/08, sem hover no
+            celular).
+          */}
+          <h2
+            className="text-sm font-semibold underline decoration-dotted decoration-from-font"
+            style={{ color: 'var(--prod-primary)' }}
+            title="não são custo — é caixa que certamente sai"
+            aria-label="Compromissos do mês — não são custo, é caixa que certamente sai"
+          >
+            📅 Compromissos do mês
+          </h2>
           {!ligada && (
             <span className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold"
               style={{ background: 'var(--fam-cinza-bg)', color: 'var(--fam-cinza-ink)' }}>
@@ -672,7 +801,7 @@ function SecaoDeCompromissos({ compromissos, ligada, mes }: {
                   parcelas de empréstimo ({c.parcelas.length})
                 </p>
                 <ul>{c.parcelas.map((p, i) => <LinhaDeParcelaNaTela key={`${p.loanId}-${p.numero}`} p={p} zebra={i % 2 === 1} />)}</ul>
-                <div className="px-4 pb-2 pt-1 text-right text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+                <div className="px-4 pb-2 pt-1 text-right text-[12.5px] font-bold" style={{ color: 'var(--prod-muted)' }}>
                   Σ parcelas{' '}
                   <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{formatBRL(c.somaParcelas)}</b>
                 </div>
@@ -685,7 +814,7 @@ function SecaoDeCompromissos({ compromissos, ligada, mes }: {
                   faturas de cartão ({c.faturas.length})
                 </p>
                 <ul>{c.faturas.map((f, i) => <LinhaDeFaturaNaTela key={f.cardId} f={f} zebra={i % 2 === 1} mes={mes} />)}</ul>
-                <div className="px-4 pb-2 pt-1 text-right text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+                <div className="px-4 pb-2 pt-1 text-right text-[12.5px] font-bold" style={{ color: 'var(--prod-muted)' }}>
                   Σ faturas{' '}
                   <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{formatBRL(c.somaFaturas)}</b>
                 </div>
@@ -693,7 +822,7 @@ function SecaoDeCompromissos({ compromissos, ligada, mes }: {
             )}
 
             <div className="border-t px-4 py-3" style={{ borderColor: 'var(--prod-line-strong)' }}>
-              <div className="flex flex-wrap items-baseline justify-between gap-2 text-[13px]">
+              <div className="flex flex-wrap items-baseline justify-between gap-2 text-[13px] font-bold">
                 {/* ⚠️ o que ficou FORA da Σ, contado e explicado */}
                 {c.foraDaSoma.n > 0 ? (
                   <details className="min-w-0 flex-1">
@@ -740,32 +869,45 @@ function LinhaDeParcelaNaTela({ p, zebra }: { p: LinhaDeParcela; zebra: boolean 
           parcela {p.numero} · vence dia {p.diaDoVencimento} · {p.faltam}
           {!p.contaNaSoma && ' · fora da soma'}
         </p>
-        {/* ⭐ A LINHA-MITIGAÇÃO (07/10): a página do empréstimo responde a pergunta do
-            CONTRATO ("#2 paga") e esta prateleira a do MÊS ("o caixa de outubro não saiu").
-            São perguntas diferentes, e a tela DIZ qual é a dela — senão as duas se
-            contradizem na cabeça de quem lê. */}
-        {p.avisoFlexivel && (
-          <p className="mt-0.5 text-[11px] leading-snug" style={{ color: 'var(--prod-accent)' }}>
-            {p.avisoFlexivel}
-          </p>
-        )}
+        {/*
+          ⭐ A LINHA-MITIGAÇÃO DE 07/10 NÃO MORREU — ENCURTOU (10/10, ordem do dono: *"linha do
+          Arafat curta, resto no tooltip"*). A pergunta do guard daquele dia é a mesma (*a
+          prateleira DIZ qual é a dela*); o que mudou é ONDE ela diz.
+          ⛔⛔ E o FATO fica na cara, nunca no hover: os dois números ("devolvido X · faltam Y")
+          vão no CHIP, que é visível no celular; o tooltip guarda só a RÉGUA (o rótulo
+          "~referência flexível" e o porquê do mês). Jogar o fato pro `title` o faria
+          desaparecer pro dono, que opera no dedo.
+        */}
       </div>
       <div className="flex items-baseline justify-between lg:block lg:text-right">
         <span className="text-[11px] lg:hidden" style={{ color: 'var(--prod-muted)' }}>parcela</span>
         <div>
-          <span className="text-[14px] font-semibold tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+          {/*
+            ⭐ O `~` CARREGA O PORQUÊ (10/10) — *"«~previsto com base na parcela N» vira tooltip
+            do ~"*. ⚠️ O sinal `~` CONTINUA visível: ele é o que distingue previsão de fato, e
+            isso não pode morar no hover. O que foi pro tooltip é a EXPLICAÇÃO do sinal.
+          */}
+          <span
+            className="text-[14px] font-semibold tabular-nums"
+            style={{ color: 'var(--prod-primary)' }}
+            title={p.valorPorque ?? undefined}
+            aria-label={p.valorPorque ? `${formatBRL(p.valor ?? 0)} — ${p.valorPorque}` : undefined}
+          >
             {/* ⚠️ "a apurar" NUNCA vira R$ 0,00 */}
             {p.valor == null ? 'a apurar' : `${p.valorEhPrevisto ? '~' : ''}${formatBRL(p.valor)}`}
           </span>
-          {p.valorPorque && (
-            <p className="text-[10.5px] leading-snug" style={{ color: 'var(--prod-muted)' }}>{p.valorPorque}</p>
-          )}
         </div>
       </div>
       <div className="flex items-center justify-between lg:justify-end">
         <span className="text-[11px] lg:hidden" style={{ color: 'var(--prod-muted)' }}>situação</span>
-        <span className="rounded-md px-1.5 py-0.5 text-[11.5px] font-semibold"
-          style={{ background: tom.bg, color: tom.ink }}>{p.selo}</span>
+        <span
+          className="rounded-md px-1.5 py-0.5 text-[11.5px] font-semibold"
+          style={{ background: tom.bg, color: tom.ink }}
+          title={p.seloDetalhe ?? undefined}
+          aria-label={p.seloDetalhe ? `${p.selo} — ${p.seloDetalhe}` : undefined}
+        >
+          {p.selo}
+        </span>
       </div>
     </li>
   )
@@ -1089,7 +1231,7 @@ function SeletorDeCategoria({ disponiveis, salvando, aoMarcar, aoTirar, aoFechar
         <label className="flex-1 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
           Qual categoria a casa paga todo mês? (clique no ✓ pra tirar da lista)
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="aluguel"
-            className="mt-1 block w-full rounded-lg px-2 py-1.5 text-[13px]"
+            className="mt-1 block w-full rounded-lg px-2 py-1.5 text-[14px]"
             style={{ border: '1px solid var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }} />
         </label>
         <button type="button" onClick={aoFechar} className="mt-4 rounded p-1" aria-label="fechar"

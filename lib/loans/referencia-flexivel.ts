@@ -75,7 +75,21 @@ export interface ReferenciaFlexivel {
   valor: number
   /** `true` = o valor é a referência nominal (ainda não aconteceu) → a tela marca `~` */
   ehReferencia: boolean
+  /**
+   * ⭐ O SELO CURTO — o que o chip da linha imprime (10/10).
+   *
+   * **Pedido do dono, na dieta de texto:** *"linha do Arafat curta («devolvido R$ 40.000 ·
+   * faltam R$ 1.428,57»), resto no tooltip"*. ⚠️ O selo antigo carregava o rótulo
+   * `~referência flexível` grudado nos dois números e estourava o chip.
+   */
   selo: string
+  /**
+   * ⭐ O RESTO — o que o `title` do chip guarda (o rótulo + a explicação do mês).
+   *
+   * ⛔ Nada se perde: o partido é de APRESENTAÇÃO, e há teste exigindo que o detalhe continue
+   * nomeando a agenda flexível — senão o chip curto viraria dois números sem régua.
+   */
+  seloDetalhe: string
   /**
    * ⭐ A LINHA-MITIGAÇÃO (exigência do dono): a página do empréstimo diz "#2 paga" e outubro
    * diz "a vencer" — são perguntas diferentes, e a prateleira DIZ qual é a dela. `null` quando
@@ -115,6 +129,10 @@ export function referenciaFlexivelDoMes(
       valor: saiuNoMes,
       ehReferencia: false,
       selo: noMes.length > 1 ? `paga em ${noMes.length} devoluções` : 'paga',
+      seloDetalhe:
+        noMes.length > 1
+          ? `agenda flexível — a referência do mês foi coberta por ${noMes.length} devoluções`
+          : 'agenda flexível — a referência do mês foi coberta',
       porque: null,
     }
   }
@@ -151,8 +169,16 @@ export function referenciaFlexivelDoMes(
      */
     selo:
       saiuNoMes > TOL
-        ? `~referência flexível · devolvido ${brl(saiuNoMes)} · faltam ${brl(arredondar2(devido - saiuNoMes))} pro nominal`
+        ? `devolvido ${brl(saiuNoMes)} · faltam ${brl(arredondar2(devido - saiuNoMes))}`
         : '~referência flexível',
+    /**
+     * ⚠️ O detalhe carrega o RÓTULO (`~referência flexível`) e o `porque` — o chip mostra os
+     * números, o tooltip mostra a régua. Sem o rótulo no detalhe, o chip curto diria
+     * *"devolvido X · faltam Y"* sem dizer que o nominal é REFERÊNCIA, e "faltam" viraria
+     * cobrança — exatamente o que a isenção do flexível existe pra não dizer.
+     */
+    seloDetalhe:
+      saiuNoMes > TOL ? `~referência flexível · ${porque} · pro nominal` : porque,
     porque,
   }
 }

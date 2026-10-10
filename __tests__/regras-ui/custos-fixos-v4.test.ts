@@ -189,9 +189,15 @@ describe('⭐ a roupa é v4: token, dois temas, zero hex', () => {
     expect(hex, `cor cravada: ${hex.join(', ')}`).toEqual([])
   })
 
-  it('⭐ os cartões de dono usam o fundo e a tinta da FAMÍLIA', () => {
-    expect(src).toContain('var(--fam-${familia}-bg)')
-    expect(src).toContain('var(--fam-${familia}-ink)')
+  /**
+   * ⚠️ REAPONTADO em 10/10: os cartões viraram SÓLIDOS (opção A do dono — *"cor sólida cheia,
+   * número branco"*), então o par mudou de `-bg`/`-ink` pra `-solid`/`-on`/`-on-soft`.
+   * A pergunta é a mesma: *a cor vem do TOKEN DA FAMÍLIA, nunca de hex*.
+   */
+  it('⭐ os cartões de dono pintam pelo par SÓLIDO da família', () => {
+    expect(src).toContain('var(--fam-${fam}-solid)')
+    expect(src).toContain('var(--fam-${fam}-on)')
+    expect(src).toContain('var(--fam-${fam}-on-soft)')
   })
 
   it('⛔ nenhuma opacidade sobre valor arbitrário — no Tailwind 3 isso sai TRANSPARENTE', () => {

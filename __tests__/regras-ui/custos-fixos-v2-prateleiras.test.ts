@@ -24,6 +24,8 @@ const COMPROMISSOS = R('lib/custos-fixos/compromissos.ts')
 const ROTA = R('app/api/empresas/[id]/custos-fixos/route.ts')
 
 const ler = (p: string) => readFileSync(p, 'utf8')
+/** ⭐ lê uma lib por nome — `cartao-de-dono` ou `../loans/referencia-flexivel` */
+const lerLib = (nome: string) => semComentarios(ler(R(`lib/custos-fixos/${nome}.ts`)))
 
 describe('⭐⭐ OS 3 INTERRUPTORES EXISTEM E RECALCULAM AO VIVO', () => {
   const tela = semComentarios(ler(TELA))
@@ -88,11 +90,19 @@ describe('⭐⭐ O 4º CARTÃO É FIXO — não obedece aos chips', () => {
   const tela = semComentarios(ler(TELA))
   const lib = semComentarios(ler(LIB))
 
-  it('⭐ ele está na tela, coral, com a sublinha que o dono ditou', () => {
+  it('⭐ ele está na tela, coral, e a família vem do dono único', () => {
     expect(tela).toContain('Pra não afundar')
-    expect(tela).toContain('familia="coral"')
-    expect(tela, 'o pedido é coral-ESCURO').toContain('escuro')
-    expect(tela).toContain('cobre casa, banco e dívida; acima disso começa a sobrar de verdade')
+    /**
+     * ⚠️ REAPONTADO em 10/10 (a dieta de texto), não afrouxado — e ficou MAIS FORTE.
+     * A pergunta é a mesma (*o 4º cartão é o coral e é fixo*); o que mudou é QUEM responde:
+     * a família saiu da string na tela e virou o mapa `FAMILIA_DO_CARTAO` da lib pura, então
+     * o guard passou a conferir a DECISÃO no dono único em vez do texto no JSX.
+     * ⛔ E a sublinha longa morreu de propósito: *"TODOS os parágrafos dos cartões MORREM"*;
+     * o que sobrou é a sub de ≤5 palavras, conferida em `cartao-de-dono.test.ts`.
+     */
+    expect(tela, 'o 4º cartão é o "afundar"').toContain('qual="afundar"')
+    expect(lerLib('cartao-de-dono'), 'e afundar é a família CORAL, num lugar só')
+      .toMatch(/afundar:\s*'coral'/)
   })
 
   it('⛔⛔ a LIB ignora os chips no 4º cartão — `CHIPS_PADRAO` cravado, nunca o estado', () => {
@@ -109,10 +119,22 @@ describe('⭐⭐ O 4º CARTÃO É FIXO — não obedece aos chips', () => {
     expect(bloco).not.toContain('chips')
   })
 
-  it('⛔ o cartão escuro pinta por TOKEN — hex cravado ficaria ilegível no tema escuro', () => {
+  /**
+   * ⚠️ REAPONTADO em 10/10 e MAIS FORTE: antes exigia a tinta sobre fundo forte
+   * (`--prod-acao-ink`) só no 4º cartão; agora os QUATRO são sólidos, e o guard passou a
+   * PROIBIR o degrau pastel — que é o vermelho que o dono pediu (*"fundo sólido trocado por
+   * pastel = vermelho"*).
+   */
+  it('⛔⛔ o cartão pinta no SÓLIDO da família — pastel (-bg) ou -mid no chão é vermelho', () => {
     const i = tela.indexOf('function CartaoDeDono')
     const corpo = tela.slice(i, tela.indexOf('\n}\n', i))
-    expect(corpo).toContain('var(--prod-acao-ink)')
+    expect(corpo, 'o chão é o degrau sólido').toContain('-solid)')
+    expect(corpo, 'a tinta do número é a do par').toContain('-on)')
+    expect(corpo, 'a etiqueta/sub é o tom claro do par').toContain('-on-soft)')
+    // ⛔ o pastel de volta = o cartão fraco de volta
+    expect(corpo, 'pastel no chão do cartão').not.toContain('-bg)')
+    // ⛔ o -mid cru REPROVA WCAG com branco em 6 dos 8 casos (medido em 10/10)
+    expect(corpo, 'o -mid cru não serve de chão').not.toContain('-mid)')
     expect(corpo).not.toMatch(/#[0-9a-fA-F]{3,8}/)
   })
 })
@@ -166,12 +188,31 @@ describe('⭐⭐ 📅 COMPROMISSOS — a prateleira que não é custo', () => {
    * frase também aparece no comentário que documenta o defeito, e *"o arquivo que documenta o
    * defeito não pode ser o que o absolve"* (a cicatriz de 21/09, a 11ª "menção, não uso").
    */
-  it('⭐ a linha da parcela DESENHA o aviso da referência flexível', () => {
+  /**
+   * ⚠️⚠️ REAPONTADO em 10/10 — e há uma TENSÃO REAL entre dois pedidos do dono, registrada:
+   * em 07/10 ele exigiu que a divergência *"não ficasse muda"* (virou parágrafo na linha);
+   * hoje ele pediu *"linha do Arafat curta, resto no tooltip"*. **A pergunta do guard não
+   * mudou** (*a prateleira DIZ qual é a dela*); mudou ONDE ela diz.
+   *
+   * ⛔⛔ E o que segura a promessa é a DIVISÃO: o **FATO** (os dois números) fica no CHIP,
+   * visível no celular, e só a **RÉGUA** (o rótulo + o porquê) vai pro `title`. Jogar o fato
+   * pro hover o faria desaparecer pro dono, que opera no dedo (a cicatriz de 30/08) — por
+   * isso o guard exige as DUAS metades.
+   */
+  it('⭐⭐ o chip curto carrega os NÚMEROS e o tooltip carrega a RÉGUA', () => {
     const i = tela.indexOf('function LinhaDeParcelaNaTela')
     expect(i, 'o componente da linha existe').toBeGreaterThan(-1)
     const bloco = tela.slice(i, tela.indexOf('function LinhaDeFaturaNaTela'))
-    expect(usosDe(bloco, 'avisoFlexivel'), 'o gate E o texto, dentro da linha').toBeGreaterThan(1)
-    expect(bloco).toContain('{p.avisoFlexivel}')
+    // o detalhe chega ao dono por tooltip E por leitor de tela
+    expect(usosDe(bloco, 'seloDetalhe'), 'o title E o aria-label').toBeGreaterThan(1)
+    expect(bloco).toContain('title={p.seloDetalhe')
+    expect(bloco).toContain('aria-label={p.seloDetalhe')
+    // ⛔ e o fato continua FORA do hover: o selo curto é desenhado
+    expect(bloco).toContain('{p.selo}')
+    // o selo curto TEM os dois números (a lib é quem monta)
+    const flex = lerLib('../loans/referencia-flexivel')
+    expect(flex).toContain('devolvido ${brl(saiuNoMes)} · faltam')
+    expect(flex, 'e o rótulo da referência vive no DETALHE').toContain('seloDetalhe')
   })
 
   it('⭐ clicar na parcela abre O CONTRATO e na fatura abre O CARTÃO (a fonte)', () => {

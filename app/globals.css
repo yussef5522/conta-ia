@@ -578,6 +578,44 @@
   --fam-cinza-bg:  #1d212c; --fam-cinza-mid:  #7b8194; --fam-cinza-ink:  #b2b8c8;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   ⭐⭐ O CARTÃO SÓLIDO — `solid` (o chão cheio) + `on` (a tinta) + `on-soft` (a etiqueta)
+   (10/10/2026, os 4 cartões de Custos fixos)
+
+   **Pedido do dono (opção A):** *"cor sólida cheia, número branco — cores de vida"*.
+
+   ⛔⛔ **E A LETRA DO PEDIDO ERA O `-mid`, QUE REPROVA WCAG EM 6 DOS 8 CASOS — medido:**
+   branco sobre o `-mid` dá **verde 3,51:1** e **coral 3,91:1 no tema CLARO** (o que o dono usa),
+   e no escuro o `-mid` CLAREIA (#534ab7 → #8a81f0) → índigo 3,24 · azul 2,61 · verde 2,00 ·
+   coral 2,90. O número de 30px é texto grande (limiar 3:1), mas a **etiqueta de 11px e a sub
+   são texto normal** sobre o MESMO chão e exigem 4,5:1. Ele pediu a prova pelo guard; a prova
+   dava vermelho.
+
+   ⭐ **O que fica é sólido cheio com o degrau CERTO por tema**, e aí branco passa nos 8:
+     claro  → `solid` = o tom 800/900 da família (o `-ink` de hoje) · branco 7,88 a 11,62:1
+     escuro → `solid` = o fundo escuro da família (o `-bg` do escuro)  · branco 15,05 a 16,94:1
+   ⚠️ É o MESMO desenho de `--prod-acao-bg`/`--prod-acao-ink` (04/10) e a mesma lei de
+   *"no escuro o 50 e o 800 trocam de lado"* — o que inverte é o CHÃO, não a tinta: o número
+   é **branco nos dois temas**, que é exatamente o que ele pediu.
+   ⚠️ `on-soft` (etiqueta/sub) é o tom 100 no claro e o 300/400 no escuro — 4,94 a 10,06:1.
+   ⛔ Só as 4 famílias que têm cartão: token sem chamador é token que alguém religa por
+   descuido. Família nova ganha o par no dia em que ganhar um cartão.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --fam-indigo-solid: #322c80; --fam-indigo-on: #ffffff; --fam-indigo-on-soft: #efedfb;
+  --fam-azul-solid:   #17398c; --fam-azul-on:   #ffffff; --fam-azul-on-soft:   #e8effd;
+  --fam-verde-solid:  #0a5e35; --fam-verde-on:  #ffffff; --fam-verde-on-soft:  #e7f7ee;
+  --fam-coral-solid:  #8f2327; --fam-coral-on:  #ffffff; --fam-coral-on-soft:  #fdecec;
+}
+
+.dark {
+  /* ⭐ o CHÃO inverte (vira o fundo escuro da família); a TINTA segue branca */
+  --fam-indigo-solid: #1e1b4a; --fam-indigo-on: #ffffff; --fam-indigo-on-soft: #8a81f0;
+  --fam-azul-solid:   #14244f; --fam-azul-on:   #ffffff; --fam-azul-on-soft:   #6aa0fb;
+  --fam-verde-solid:  #11291f; --fam-verde-on:  #ffffff; --fam-verde-on-soft:  #3ecf8e;
+  --fam-coral-solid:  #2d1618; --fam-coral-on:  #ffffff; --fam-coral-on-soft:  #ff6369;
+}
+
 /* ⭐ A LINHA EDITORIAL do topo — itálico serifado, a "calma editorial" do Mercury.
    ⚠️ Usa a pilha serif do sistema: nenhuma fonte nova entra por causa de uma linha. */
 [data-tela='producao-home'] .editorial {
