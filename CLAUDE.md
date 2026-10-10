@@ -2557,6 +2557,58 @@ marcações 26→26 · planos 38→38 · chips 1→1 · ⭐ ZERO ESCRITA
 
 📋 **FICA PRO DONO:** abrir a tela no celular e no notebook, **nos dois temas**, com o olho dele — a prova mede o que prod serve (tokens nos dois mapas, zero hex, as 10 peças), mas screenshot está indisponível (extensão do Chrome desligada). ⚠️ E um detalhe do dado de hoje, que **não é defeito**: o **EQUILÍBRIO e o PRA NÃO AFUNDAR mostram o mesmo R$ 13.055** porque os 3 chips estão ligados — o 3º obedece aos chips e o 4º soma tudo sempre, então eles **convergem** nesse estado. Desligar um chip separa os dois na hora.
 
+## 💰 CMV NA CASA — O PLACAR VIROU A CASCATA DO MÊS (10/10/2026)
+
+**Ordem escrita do dono:** *"A CASCATA substitui o placar atual (é ele crescido): 5 cartões em linha — VENDEU · − CMV (INSUMOS) · = SOBRA · − A CASA · = LUCRO"*. **ZERO conta nova:** o CMV por consumo é a **MESMA soma de custos que já produz a sobra**.
+
+**⭐⭐ A CADEIA FECHA POR CONSTRUÇÃO — e o campo `fecha` é conferido na PRÓPRIA saída.** `montarCascata` deriva o CMV de `vendeu − sobraTotal`, então os 5 números saem do MESMO conjunto (as vendas com custo conhecido) e não existe caminho em que a tela mostre um total que não bate com as partes. ⛔ **E a tela GRITA quando `fecha` é false:** número de dinheiro que não fecha é a família do cabeçalho que afirmava 69 duplicatas com a aba dizendo 0 — o invariante tem que ser VISÍVEL, não só verde no CI.
+
+**⚠️⚠️ CORREÇÃO DE UMA PREMISSA MINHA, MEDIDA — e o dado refutou o meu raciocínio.** Eu havia escrito que a derivação consertava resíduo de arredondamento *"porque `sobraUn` usa valores CRUS"*. **Medido: `sobrasDoPeriodo` arredonda o custo em 2 casas**, e com custo de 3/4 casas e 2.429 unidades as **três** formas alternativas de somar dão o MESMO número ao centavo. ⭐ A derivação vale por **ACOPLAMENTO** (a cadeia não depende da régua de arredondamento de OUTRO arquivo), não por resíduo. *Evidência medida não se abandona por raciocínio confortável — e aqui o raciocínio era meu.* ⚠️ E isso **invalidou a minha 1ª reposição da REGRA 11**, que veio verde; o guard só passou a morder contra as causas **reais** (o CMV esquecer os complementos · a sobra virar a BRUTA · a casa inflada no 2º elo → **7 vermelhos cada**).
+
+**⭐ O HERÓI, e o chão é o `-solid`:** o LUCRO é **verde-escuro SÓLIDO com número branco**; negativo vira **coral "FALTAM R$ X"** — estado honesto, nunca lucro negativo disfarçado. ⛔ Nunca o `-mid`: branco sobre ele **reprova WCAG em 6 dos 8 casos** (medido em 10/10 — verde 3,51:1 e coral 3,91:1 já no tema CLARO), e a etiqueta de 11,5px vive no mesmo chão. O CMV é âmbar pastel com o **% GIGANTE embaixo do valor** — ele é o número que PEDE atenção, não o que decide; cinco cartões sólidos fariam o herói deixar de ser herói.
+
+**⭐ A BARRA DE COMPOSIÇÃO — de cada R$ 100 vendidos, Σ = 100% POR CONSTRUÇÃO** (`vendeu = cmv + casa + lucro`). ⛔ Com prejuízo **não existe fatia verde**: os dois pedaços se normalizam pelo total GASTO e o **selo coral** carrega o que falta. Desenhar um verde de 0% seria a barra afirmando um lucro que não houve.
+
+**⭐⭐ A HONESTIDADE NUMA LINHA, com o ⓘ por TOQUE** (`<details>`, **nunca `title`** — tooltip não existe no celular, a cicatriz de 30/08): *"medido em 75,3% das vendas · vendas totais R$ 174.745,82 · CMV por compra (notas): R$ 73.833,17 — detalhes ⓘ"*. Dentro: consumo × compra lado a lado, **por que os dois diferem** (*"comprar não é consumir"*), e os complementos com o piso dito (*"2409 ocorrências ainda sem ficha: o CMV acima é o MÍNIMO"*). ⚠️ **A LINHA DA COBERTURA (o 🏁 do dia D e o limiar de 80%) migrou pra DENTRO do ⓘ** em vez de virar uma 2ª linha repetindo o percentual — a régua de 07/10 não se perde, e a ressalva do veredito viaja com o **herói** (o veredito nunca vem seco).
+
+**⛔⛔ `montarPlacar`/`CartaoDoPlacar`/`BarraDaCasa`/`TomDoResultado` FORAM APAGADOS, não deixados sem chamador** — *enquanto o componente existe no arquivo, alguém religa* (a lição do `GruposSugeridos`, 23/09), e aí a tela volta a ter DUAS apresentações do mesmo dinheiro. ⭐ As ressalvas da `sublinhaDaSobra` (cobertura, abatimento e o piso) **migraram pro ⓘ**, onde há teste exigindo cada uma. ⚠️ E há guard afirmando a AUSÊNCIA das 6 frases do placar antigo — *"placar antigo de volta = vermelho"*, o vermelho que o dono pediu.
+
+**⛔ O `pct` LOCAL DA TELA USAVA PONTO — e era defeito LIVE:** a aba MARGEM da liga mostrava **`66.3%`**. `lib/format/percentual.ts` é o dono único; `pctBR`/`pctInteiroBR` em todo percentual da tela e da lib.
+
+**⚠️ A REFERÊNCIA VERSIONADA FOI ATUALIZADA — e a seção 2 DECLARA de onde veio.** `docs/margem-referencia.html` ganhou a cascata, com um comentário HTML dizendo que ela **deriva do pedido ESCRITO do dono**, não de um mock desenhado: *inventar um visual e chamá-lo de "o mock aprovado" é exatamente o erro que o protocolo de 10/09 existe pra impedir*. Entraram os tokens `--verde-solid`/`--coral-solid` (+ `on`/`on-soft`), o corte de 900px e as letras 22/26/17px.
+
+**⚠️ E UMA ASSERÇÃO DO GUARD MEDIA A COISA ERRADA:** ela exigia *"CMV 28–35% das vendas"* **contíguo no código** — o que **obrigaria a tela a DIGITAR o número**, justamente o que o outro teste proíbe (a cicatriz do `TETO = 25` hardcoded). Frase montada por template nunca é contígua; a asserção passou a casar a parte FIXA, com os números travados contra a **constante**.
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU O DEFEITO DO ESTADO MAIS COMUM DA TELA
+
+No período **HOJE** — e é o estado que o dono mais vê, porque **a venda do dia só entra na madrugada** — a cascata mostrava `vendeu/cmv/sobra` em *"a apurar"* e o herói em **CORAL gritando "FALTAM R$ 6.228,48"** (o custo de um dia de casa). ***Ela afirmava um prejuízo calculado sobre uma sobra que ela própria dizia não saber:*** sem o `vendeu`, a sobra entrava na conta como **ZERO**.
+
+⭐ **A régua: o LUCRO exige AS DUAS PONTAS — plano declarado E venda medida.** *Não dá pra dizer quanto falta sem saber quanto entrou.* É a régua da casa (*"a apurar" nunca vira 0*) aplicada ao 2º elo da cadeia. **REGRA 11: repondo o defeito, 1 vermelho.**
+
+**PROVADO EM PROD, nos 4 PERÍODOS e nos DOIS viewports (REGRA 12):**
+```
+HOJE    tudo "a apurar" · heroi A_APURAR          ⭐ (era FALTAM R$ 6.228,48)
+SEMANA  vendeu  81.287,62 − cmv 24.922,92 = sobra 56.364,70 − casa = lucro 12.765,34 · CMV 30,7%
+MES     vendeu 138.419,78 − cmv 42.849,99 = sobra 95.569,79 − casa = lucro 33.284,99 · CMV 31,0%
+DATAS   vendeu 341.903,49 − cmv 122.137,81 = sobra 219.765,68 − casa = lucro 11.095,37 · CMV 35,7%
+  ⛔ fecha nos 4 · elo1 e elo2 true nos 3 com venda · Σcomposição = 100,0% nos 3
+  ⛔ Σ(quem carregou) == sobra bruta nos 4 (o guard do dono segue de pé)
+  ⭐ o CMV do mês em 31,0% — DENTRO da faixa saudável 28–35%
+
+as 6 seções da referência COMPLETAS nos 3 tamanhos (390 · 1280 · 1600+) · cascata 30/30
+celular 863 KB · desktop 863 KB · 10/10 peças nos dois · ⛔ "o placar de": MORREU ✓
+hex de cor no chunk desta tela: 0 · os 10 tokens nos DOIS mapas do CSS
+marcações 26→26 · planos 38→38 · movimentos 7066→7066 · avisos 29→29 · ⭐ ZERO ESCRITA
+```
+
+**REGRA 11 — 8 defeitos repostos:** placar de volta (**1**) · cadeia quebrada (**7**) · % com ponto (**2**) · chão no `-mid` (**1**) · o grito do `fecha` arrancado (**1**) · a cobertura fora do ⓘ (**1**) · o % acima do valor (**1**) · o "FALTAM" sem venda medida (**1**).
+
+**⚠️ 4 GUARDS REAPONTADOS com o motivo escrito, nenhum afrouxado** (a barra — reapontada pela 3ª vez, e a PERGUNTA nunca mudou: *"a tela não normaliza por conta própria"* · a ressalva, que mudou de casa pro herói · o complemento nomeado, que migrou pro ⓘ · os *"3 cartões"*, que viraram 5). **2 describes do placar INVERTIDOS** com a metade viva realocada pra `cascata.test.ts`. ⚠️ E uma asserção minha nasceu **larga demais** (proibia `-mid` em qualquer lugar do cartão, dando falso vermelho na ressalva, que é TEXTO índigo sobre superfície clara) — apertada pro **CHÃO**, que é onde o WCAG morde.
+
+**946 arquivos · 12.524 verdes · TS 0 · migration NENHUMA · deploys 4/4 (`dNS2_S-_nRKNrFFggXFJA`, `5RkK0FxyB7L-JA0GHB6ss`) · Δ chunks +8 KB.** ⛔ **Zero escrita em prod.** `scripts/prova-margem-v2.ts` removido — superado pelo v3, que virou a sonda da referência nova (*uma régua, um leitor*).
+
+📋 **FICA PRO DONO:** abrir `/margem` no celular e no notebook, **nos dois temas**, e trocar o período — a prova mede o que prod serve (as 30 peças da cascata, zero hex, os tokens nos dois mapas), mas **o olho é dele**; screenshot segue indisponível (extensão do Chrome desligada). ⚠️ E um detalhe do dado de hoje: **o CMV de SETEMBRO é 35,7%**, no teto da faixa saudável, contra **31,0% em outubro** — vale o olho dele se é compra concentrada ou dose subindo.
+
 ## 🏦 EMPRÉSTIMO FLEXÍVEL — A PORTA "REGISTRAR DEVOLUÇÃO" (09/10/2026)
 
 **O dono:** *"paguei 40.000 ao Arafat hoje PELO COFRE e a tela não tem porta: o «Marcar paga» só concilia débito de extrato com valor ±R$ 1 e janela ±7d do vencimento — régua de banco que não serve pra mútuo de cofre com valor livre."*
