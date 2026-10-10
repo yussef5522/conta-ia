@@ -164,7 +164,17 @@ export function montarCascata(
   const sobra = casa.sobraLiquida
   const temPlano = casa.custoFixo != null && casa.custoFixo > 0
   const custoFixo = temPlano ? casa.custoFixo! : null
-  const lucro = custoFixo == null ? null : round2(sobra - custoFixo)
+  /**
+   * ⛔⛔ O LUCRO EXIGE **AS DUAS PONTAS** — plano declarado E venda medida. Achado na prova em
+   * prod de 10/10: no período **HOJE** (a venda do dia entra na madrugada) a cascata mostrava
+   * vendeu/cmv/sobra em *"a apurar"* e o herói em **CORAL gritando "FALTAM R$ 6.228,48"** —
+   * ***afirmando um prejuízo calculado sobre uma sobra que ela própria diz não saber.***
+   *
+   * ⚠️ É a régua da casa (*"a apurar" nunca vira 0*) no elo 2: sem `vendeu`, a sobra entrava
+   * na conta como ZERO e o dia inteiro de casa aparecia como falta. **Não dá pra dizer quanto
+   * falta sem saber quanto entrou.**
+   */
+  const lucro = custoFixo == null || vendeu <= 0 ? null : round2(sobra - custoFixo)
 
   // ⚠️ sem venda medida no período, o % do CMV é `null` — nunca "0,0% das vendas"
   const pctCmv = vendeu > 0 ? cmv / vendeu : null

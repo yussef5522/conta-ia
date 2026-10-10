@@ -143,12 +143,26 @@ describe('⛔⛔ "A APURAR" NUNCA VIRA R$ 0,00 — a régua da casa', () => {
     expect(cartao(c, 'casa').sub).toContain('declare')
   })
 
-  it('⛔ período SEM venda medida: vendeu/cmv/sobra `null` e o % do CMV não vira 0,0%', () => {
+  /**
+   * ⛔⛔⛔ ESTE TESTE NASCEU DE UM DEFEITO QUE SÓ A PROVA EM PROD PEGOU (10/10).
+   *
+   * No período **HOJE** — o estado mais comum da tela, porque a venda do dia só entra na
+   * madrugada — a cascata mostrava `vendeu/cmv/sobra` em *"a apurar"* e o herói em **CORAL
+   * gritando "FALTAM R$ 6.228,48"** (o custo de um dia de casa). ***Ela afirmava um prejuízo
+   * calculado sobre uma sobra que ela própria dizia não saber.***
+   *
+   * ⭐ A régua: o lucro exige AS DUAS PONTAS — plano declarado **E** venda medida.
+   */
+  it('⛔⛔⛔ período SEM venda medida: TUDO "a apurar" — e o herói NÃO grita "FALTAM"', () => {
     const { c } = cascataDe({ custoFixo: 20_000, linhas: [] })
     expect(cartao(c, 'vendeu').valor).toBeNull()
     expect(cartao(c, 'cmv').valor).toBeNull()
     expect(cartao(c, 'cmv').pctDasVendas).toBeNull()
     expect(c.composicao).toBeNull()
+    // ⛔⛔ o defeito de 10/10: o lucro vinha com número e o herói ficava coral
+    expect(cartao(c, 'lucro').valor, 'sem venda medida não dá pra dizer quanto falta').toBeNull()
+    expect(c.heroi.estado).toBe('A_APURAR')
+    expect(c.heroi.rotulo).toBe('Lucro')
   })
 })
 
