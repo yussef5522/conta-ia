@@ -18,6 +18,12 @@
  * onde se acrescenta uma linha.
  */
 
+/**
+ * ⚠️ `cartao-de-dono.ts` é PURO (zero import) — trazê-lo aqui NÃO arrasta o prisma pro bundle
+ * do navegador, que é a razão de a fórmula do equilíbrio ter mudado de arquivo em 07/10.
+ */
+import { pctBR } from './cartao-de-dono'
+
 /** ⭐ as prateleiras de CATEGORIA (compromissos não é categoria — ele é derivado de contrato/fatura) */
 export const PRATELEIRAS = ['CASA', 'BANCO'] as const
 export type Prateleira = (typeof PRATELEIRAS)[number]
@@ -228,7 +234,7 @@ export function praNaoAfundar(
   return {
     porDia,
     porque: null,
-    conta: `${brl(conta.total)} do mês ÷ ${dias} dias ÷ margem de ${(margemPct * 100).toFixed(1)}%`,
+    conta: `${brl(conta.total)} do mês ÷ ${dias} dias ÷ margem de ${pctBR(margemPct)}`,
     totalDoMes: conta.total,
   }
 }
@@ -271,7 +277,7 @@ export function pontoDeEquilibrio(
   return {
     porDia,
     porque: null,
-    conta: `${brl(custoFixoDiario)} por dia ÷ margem de ${(margem.pct * 100).toFixed(1)}%`,
+    conta: `${brl(custoFixoDiario)} por dia ÷ margem de ${pctBR(margem.pct)}`,
   }
 }
 

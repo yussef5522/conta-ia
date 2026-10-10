@@ -27,6 +27,7 @@ import { prisma } from '@/lib/db'
 import { whereFluxoCaixa } from '@/lib/fluxo-caixa/motor'
 // ⚠️ UM formatador de moeda no projeto (ordem do dono: `formatBRL` em toda moeda). As frases
 // desta lib (`conta`, `porque`) vão PRONTAS pra tela, então elas também passam por ele.
+import { pctBR } from './cartao-de-dono'
 import { formatBRL } from '@/lib/format/money'
 
 /** ⭐ a janela da ordem do dono */
@@ -98,7 +99,7 @@ export function avaliarMargem(e: EntradaDaMargem): MargemMedida {
   }
 
   const pct = (e.receita - e.cmv) / e.receita
-  const conta = `(receita ${formatBRL(e.receita)} − CMV ${formatBRL(e.cmv)}) ÷ receita = ${(pct * 100).toFixed(1)}%`
+  const conta = `(receita ${formatBRL(e.receita)} − CMV ${formatBRL(e.cmv)}) ÷ receita = ${pctBR(pct)}`
 
   /**
    * ⛔ Margem ZERO ou NEGATIVA não vira ponto de equilíbrio: a divisão explodiria (ou daria

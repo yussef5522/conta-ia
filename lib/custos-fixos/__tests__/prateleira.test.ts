@@ -224,7 +224,14 @@ describe('⭐ o ponto de equilíbrio herda o "a apurar" das duas pontas', () => 
   it('⭐ com os dois, a conta vai ESCRITA (tela nunca mostra percentual sem régua)', () => {
     const r = pontoDeEquilibrio(2_425.19, { pct: 0.498, porque: null })
     expect(r.porDia).toBeCloseTo(2_425.19 / 0.498, 4)
-    expect(r.conta).toContain('49.8%')
+    /**
+     * ⚠️ INVERTIDO em 10/10 com o motivo escrito, não apagado: ele afirmava `49.8%`, **com
+     * PONTO** — ou seja, codificava o defeito que a prova em prod achou no popover do ⓘ.
+     * ⭐ A metade CERTA dele (*a conta vai ESCRITA, a tela nunca mostra percentual sem régua*)
+     * é o que continua travado aqui.
+     */
+    expect(r.conta, 'o dono escreve com vírgula').toContain('49,8%')
+    expect(r.conta, 'e o ponto não volta').not.toContain('49.8%')
   })
 })
 

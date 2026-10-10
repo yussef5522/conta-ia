@@ -65,6 +65,18 @@ export const SUB_DO_CARTAO: Record<QualCartao, string> = {
 /** ⚠️ o teto que o guard cobra — 5 palavras, as palavras do dono */
 export const MAX_PALAVRAS_DA_SUB = 5
 
+/**
+ * ⭐ O PERCENTUAL EM pt-BR — num lugar só.
+ *
+ * ⚠️⚠️ **ACHADO NA PROVA EM PROD (10/10):** as frases do ⓘ saíam com **`47.7%`, de PONTO** —
+ * três cópias de `(pct * 100).toFixed(1)` em `margem.ts` e `prateleira.ts`, nenhuma trocando
+ * o separador. É pré-existente (vivia escondido num parágrafo de cartão), e a dieta de texto
+ * o pôs no popover, onde ficou visível. *O dono escreve com vírgula.*
+ */
+export function pctBR(pct: number): string {
+  return `${(pct * 100).toFixed(1).replace('.', ',')}%`
+}
+
 export function palavrasDaSub(sub: string): number {
   return sub.trim().split(/\s+/).filter(Boolean).length
 }
@@ -93,7 +105,7 @@ export function linhaDeHonestidade(e: {
   const margem =
     e.margemPct == null
       ? 'margem a apurar'
-      : `margem ${(e.margemPct * 100).toFixed(1).replace('.', ',')}% (CMV por compra)`
+      : `margem ${pctBR(e.margemPct)} (CMV por compra)`
   return `${margem} · ${e.dias} dias corridos`
 }
 
