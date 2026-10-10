@@ -1,174 +1,29 @@
 /**
- * ⭐⭐⭐ O PLACAR DA CASA — 3 cartões e UMA barra (v2, 07/10/2026).
- *
- * ⛔⛔ POR QUE A CASA DE TIJOLOS SVG MORREU: o dono reprovou por ILEGIBILIDADE. E a prova em
- * prod já tinha mostrado o custo estrutural daquele desenho — com a sobra em **152% da casa**
- * a pilha estourava o telhado e os tijolos de cima se sobrepunham; o conserto manteve a área
- * proporcional, mas um desenho que precisa de 8 retângulos empilhados pra dizer *"a casa se
- * pagou e sobrou"* está respondendo a pergunta de forma caríssima. **Três números e uma barra
- * dizem o mesmo em um olhar.**
+ * ⭐⭐ A COBERTURA E OS CARREGADORES — quem pagou a casa, e sobre quanto do dado (v3.1).
  *
  * ⛔⛔⛔ ZERO CONTA NOVA — e isto é o coração do arquivo: ele **TRADUZ a `Casa`**, não recalcula
- * nada. `sobraLiquida`, `custoFixo`, `transbordo`, `falta`, `pctPago` e o `veredito` já vêm
- * decididos por `montarCasa`. Uma régua própria aqui faria o placar e a conta aberta logo
- * abaixo discordarem do mesmo mês — a doença que este módulo mais paga.
- *
- * ⭐ A CONTA DO PLACAR FECHA NA TELA, de propósito: `cartão 1 − cartão 2 = cartão 3`. É por
- * isso que o 1º cartão mostra a sobra **LÍQUIDA** (já abatidos os complementos) e DIZ o
- * abatimento na sublinha — mostrar a bruta faria os três cartões não somarem, e *número sem
- * régua em tela de dinheiro é pior que ausência*.
+ * nada. `sobraLiquida`, `custoFixo`, `cobertura` e o `veredito` já vêm decididos por
+ * `montarCasa`. Uma régua própria aqui faria dois lugares discordarem do mesmo mês — a doença
+ * que este módulo mais paga.
  */
 import { COBERTURA_MINIMA, type Casa } from './casa'
+import { pctInteiroBR } from '@/lib/format/percentual'
 
-export type TomDoResultado = 'PAGOU' | 'EM_OBRA' | 'A_APURAR'
-
-export interface CartaoDoPlacar {
-  rotulo: string
-  /** `null` = **a apurar**. ⛔ Nunca 0,00 — ausência de plano não é casa de graça. */
-  valor: number | null
-  /** a frase que acompanha o número — nunca um total mudo */
-  sublinha: string
-}
-
-export interface BarraDaCasa {
-  /** 0..1 — o pedaço índigo, o que foi pago da casa */
-  pago: number
-  /** 0..1 do comprimento TOTAL da barra — o verde depois da bandeira */
-  transbordo: number
-  /** ⭐ o rótulo do verde: "+37%" — só quando houve transbordo */
-  rotuloTransbordo: string | null
-  /** ⭐ o rótulo do índigo quando a casa NÃO fechou: "68% da casa" */
-  rotuloParcial: string | null
-  /** 🏁 a bandeira aparece no fim do índigo quando a casa fechou */
-  bandeira: boolean
-}
-
-export interface Placar {
-  sobra: CartaoDoPlacar
-  casa: CartaoDoPlacar
-  resultado: CartaoDoPlacar & { tom: TomDoResultado; ressalva: string | null }
-  barra: BarraDaCasa | null
-}
-
-const pct = (n: number) => `${Math.round(n * 100)}%`
-const round2DoPlacar = (n: number) => Math.round((n + 1e-9) * 100) / 100
-const brl = (n: number) =>
-  n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+/** ⚠️ pt-BR com VÍRGULA e sem casa — a régua de percentual do PROJETO, nunca um `toFixed` local */
+const pct = (n: number) => pctInteiroBR(n)
+const round2DoPlacar = (n: number) => Math.round(n * 100) / 100
 
 /**
- * ⚠️ A SUBLINHA DA SOBRA CARREGA AS DUAS RESSALVAS, porque as duas mudam o significado do
- * número: **quanto das vendas foi medido** (a cobertura) e **o que já foi abatido** (o custo
- * dos complementos, que é o achado de 07/10 — R$ 9.255,55 em 7 dias que estavam fora da
- * margem de todo produto).
+ * ⚠️⚠️ `montarPlacar` / `CartaoDoPlacar` / `BarraDaCasa` / `TomDoResultado` MORRERAM em
+ * 10/10/2026 — a CASCATA de 5 cartões substituiu o placar de 3, por ordem escrita do dono
+ * (*"é ele crescido"*). A régua vive em `lib/margem/cascata.ts`.
+ *
+ * ⛔ Eles foram APAGADOS, não deixados sem chamador: *enquanto o componente existe no arquivo,
+ * alguém religa* (a lição do `GruposSugeridos` em 23/09) — e aí a tela voltaria a ter DUAS
+ * apresentações do mesmo dinheiro. ⭐ As ressalvas que viviam na `sublinhaDaSobra` (cobertura,
+ * abatimento dos complementos e o piso *"o CMV acima é o MÍNIMO"*) não se perderam: migraram
+ * pro ⓘ da honestidade da cascata, onde há teste exigindo cada uma.
  */
-function sublinhaDaSobra(casa: Casa): string {
-  const p: string[] = []
-  const cob = casa.cobertura.pct
-  // ⛔ cobertura `null` (período sem venda) não vira "0% das vendas" — ausência não é zero
-  if (cob != null) p.push(`sobra medida em ${pct(cob)} das vendas`)
-  if (casa.complementos.custo > 0) {
-    p.push(`já abatidos ${brl(casa.complementos.custo)} de complementos`)
-  }
-  /**
-   * ⛔⛔ O PISO É DITO AQUI, na sublinha do número que ele afeta. Ocorrência de complemento
-   * sem ficha não entra no custo abatido — então o abatimento é o **mínimo**, e o número
-   * sem essa ressalva seria otimista justo no valor que decide se a casa pagou.
-   */
-  if (casa.complementos.ocorrenciasSemCusto > 0) {
-    p.push(
-      `${casa.complementos.ocorrenciasSemCusto} ocorrências ainda sem ficha — o abatimento acima é o mínimo, não o total`,
-    )
-  }
-  if (p.length === 0) return 'nenhuma venda com custo conhecido no período'
-  return p.join(' · ')
-}
-
-export function montarPlacar(casa: Casa): Placar {
-  const temPlano = casa.custoFixo != null && casa.custoFixo > 0
-
-  const sobra: CartaoDoPlacar = {
-    rotulo: 'O que as vendas deixaram',
-    valor: casa.sobraLiquida,
-    sublinha: sublinhaDaSobra(casa),
-  }
-
-  const cartaoCasa: CartaoDoPlacar = {
-    rotulo: 'A casa custou até aqui',
-    valor: casa.custoFixo,
-    // ⚠️ a composição dos chips vai na sublinha SEMPRE: o mesmo mês custa números diferentes
-    // conforme o dono liga casa/banco/compromissos, e um total mudo aqui seria indefensável
-    sublinha: temPlano
-      ? casa.composicao.texto
-      : 'declare o que cada custo fixo deve custar pra eu dizer o resultado',
-  }
-
-  /**
-   * ⛔⛔ O RESULTADO HERDA A RESSALVA DO VEREDITO — o guard de v1 que não pode cair.
-   * Com cobertura abaixo do mínimo, a tela é PROIBIDA de mostrar um "✓ CASA PAGA" seco:
-   * a certeza seria sobre a metade do dado que dá pra medir.
-   */
-  const resultado: Placar['resultado'] = temPlano
-    ? casa.veredito.estado === 'PAGA'
-      ? {
-          // ⭐ o VEREDITO mora no rótulo (é o que o olho pega primeiro), do jeito que a
-          // referência escreve — não um "resultado" mudo com o número embaixo
-          rotulo: '✓ CASA PAGA — e sobrou',
-          valor: casa.transbordo,
-          tom: 'PAGOU',
-          sublinha: 'daqui pra frente é lucro',
-          ressalva: casa.veredito.ressalva,
-        }
-      : {
-          rotulo: 'FALTAM',
-          valor: casa.falta,
-          tom: 'EM_OBRA',
-          sublinha: 'pra pagar a casa do período',
-          ressalva: casa.veredito.ressalva,
-        }
-    : {
-        rotulo: 'Resultado',
-        valor: null,
-        tom: 'A_APURAR',
-        sublinha: 'sem o plano do mês não dá pra dizer se a casa se pagou',
-        ressalva: casa.veredito.ressalva,
-      }
-
-  /**
-   * ⭐ A BARRA: índigo até a bandeira (100% da casa) e VERDE depois (o transbordo).
-   *
-   * ⚠️ Os dois pedaços são frações do comprimento TOTAL, então eles SOMAM 1 — sem isso a
-   * tela teria que normalizar por conta própria, e aí nasceria a segunda régua do desenho
-   * (foi exatamente assim que a pilha de tijolos estourou o telhado).
-   */
-  let barra: BarraDaCasa | null = null
-  if (temPlano) {
-    const real = casa.sobraLiquida / casa.custoFixo!
-    if (real >= 1) {
-      // ⚠️ o índigo é 1/real do total: com sobra de 152% da casa, a bandeira cai em 66% da
-      // barra e o verde ocupa os 34% restantes — o excedente fica VISÍVEL sem clamp
-      const pago = 1 / real
-      barra = {
-        pago,
-        transbordo: 1 - pago,
-        rotuloTransbordo: `+${Math.round((real - 1) * 100)}%`,
-        rotuloParcial: null,
-        bandeira: true,
-      }
-    } else {
-      barra = {
-        pago: Math.max(0, real),
-        transbordo: 0,
-        rotuloTransbordo: null,
-        rotuloParcial: `${pct(Math.max(0, real))} da casa`,
-        bandeira: false,
-      }
-    }
-  }
-
-  return { sobra, casa: cartaoCasa, resultado, barra }
-}
-
-/* ═════════════════════ A LINHA DA COBERTURA (o pé do placar) ═════════════════════ */
 
 /** ⭐ um pedaço da frase; `forte` é o que a referência põe em `<b>` */
 export interface PedacoDaCobertura {

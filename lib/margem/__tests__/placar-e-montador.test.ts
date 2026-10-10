@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { montarCasa, COBERTURA_MINIMA } from '../casa'
 import { sobrasDoPeriodo, type LinhaParaSobra } from '../sobra'
-import { montarPlacar, montarCarregadores, linhaDaCobertura, CARREGADORES_VISIVEIS } from '../placar'
+import { montarCarregadores, linhaDaCobertura, CARREGADORES_VISIVEIS } from '../placar'
 import { sobraNoCanal, ordenarCanais, CANAIS_SEMEADOS, TAXA_MAXIMA, type CanalDeVenda } from '../canais'
 import { saboresDoTamanho, montarTamanhos, SABORES_SEMEADOS, normalizarTamanho } from '../tamanhos'
 import { montarPizza, ordenarSabores, type SaborDisponivel } from '../montador'
@@ -34,98 +34,27 @@ const casaDe = (opts: { custoFixo: number | null; linhas?: LinhaParaSobra[]; com
     complementos: { custo: opts.comp ?? 0, ocorrenciasComCusto: opts.comp ? 1000 : 0, ocorrenciasSemCusto: 0 },
   })
 
-describe('⛔⛔ O PLACAR — a conta dos 3 cartões FECHA na tela', () => {
-  it('⭐ casa PAGA: sobra − casa = transbordo, ao centavo', () => {
-    const casa = casaDe({ custoFixo: 20_000, comp: 9_255.55 })
-    const p = montarPlacar(casa)
-    expect(p.resultado.tom).toBe('PAGOU')
-    // ⛔ é ESTE fechamento que torna o número defensável: o dono soma na mão e bate
-    expect(p.sobra.valor! - p.casa.valor!).toBeCloseTo(p.resultado.valor!, 2)
-    expect(p.resultado.sublinha).toContain('daqui pra frente é lucro')
-  })
-
-  it('⭐ casa EM OBRA: sobra − casa = −falta (a mesma conta, do outro lado)', () => {
-    const casa = casaDe({ custoFixo: 200_000, comp: 9_255.55 })
-    const p = montarPlacar(casa)
-    expect(p.resultado.tom).toBe('EM_OBRA')
-    expect(p.casa.valor! - p.sobra.valor!).toBeCloseTo(p.resultado.valor!, 2)
-  })
-
-  it('⛔⛔ sem plano declarado: casa e resultado são "a apurar" — NUNCA R$ 0,00', () => {
-    const p = montarPlacar(casaDe({ custoFixo: null }))
-    expect(p.casa.valor).toBeNull()
-    expect(p.resultado.valor).toBeNull()
-    expect(p.resultado.tom).toBe('A_APURAR')
-    // ⚠️ e a barra nem existe: desenhar 0% afirmaria que nada foi pago de uma casa sem valor
-    expect(p.barra).toBeNull()
-    expect(p.casa.sublinha).toContain('declare')
-  })
-
-  it('⛔⛔ a RESSALVA do veredito chega no cartão de resultado (o guard de v1 que não cai)', () => {
-    // ⚠️ a cena é a de prod: cobertura 55%, ABAIXO do mínimo. A fixture dos 4 maiores tem 100%
-    // de cobertura — então o fora-da-obra precisa entrar, senão este teste passaria por um
-    // motivo que prod não tem (os 574 un dentro contra ~470 fora dão os 55% medidos).
-    const casa = casaDe({
-      custoFixo: 20_000,
-      linhas: [...PROD, linha({ chave: 'f:x', nome: 'XIS COMPLETO', vendasQtd: 470, custoUnitario: null, componentesSemCusto: 1 })],
-    })
-    expect(casa.cobertura.pct!).toBeLessThan(COBERTURA_MINIMA)
-    expect(casa.veredito.confiavel).toBe(false)
-    const p = montarPlacar(casa)
-    expect(p.resultado.ressalva).toBe(casa.veredito.ressalva)
-    expect(p.resultado.ressalva).toContain('dá pra medir')
-  })
-
-  it('⭐ a sublinha da sobra DIZ a cobertura e o abatimento dos complementos', () => {
-    const p = montarPlacar(casaDe({ custoFixo: 20_000, comp: 9_255.55 }))
-    expect(p.sobra.sublinha).toMatch(/sobra medida em \d+% das vendas/)
-    // ⚠️ REAPONTADO (v3): a palavra é a da REFERÊNCIA — *"já abatidos R$ 9.256 de
-    // complementos"*. O texto da tela é lei do dono, inclusive no verbo.
-    expect(p.sobra.sublinha).toContain('já abatidos')
-  })
-
-  it('⚠️ cobertura `null` (período sem venda) não vira "0% das vendas"', () => {
-    const p = montarPlacar(casaDe({ custoFixo: 20_000, linhas: [] }))
-    expect(p.sobra.sublinha).not.toContain('0% das vendas')
-    expect(p.sobra.sublinha).toContain('nenhuma venda com custo conhecido')
-  })
-
-  it('⭐ a composição dos chips vai na sublinha da casa — nunca um total mudo', () => {
-    const p = montarPlacar(casaDe({ custoFixo: 20_000 }))
-    expect(p.casa.sublinha).toContain('casa + banco + compromissos')
-  })
-})
-
-describe('⛔⛔ A BARRA — índigo até a bandeira, verde no transbordo, e os pedaços SOMAM 1', () => {
-  it('⭐ com a casa paga, pago + transbordo = 1 e o rótulo diz o excedente', () => {
-    // ⚠️ a cena de prod: sobra 152% da casa
-    const casa = casaDe({ custoFixo: 20_000 })
-    const real = casa.sobraLiquida / 20_000
-    expect(real).toBeGreaterThan(1)
-    const b = montarPlacar(casa).barra!
-    expect(b.pago + b.transbordo).toBeCloseTo(1, 9)
-    expect(b.bandeira).toBe(true)
-    expect(b.rotuloTransbordo).toBe(`+${Math.round((real - 1) * 100)}%`)
-    expect(b.rotuloParcial).toBeNull()
-  })
-
-  it('⭐ em obra: a barra é parcial, sem bandeira, e DIZ o percentual', () => {
-    const b = montarPlacar(casaDe({ custoFixo: 200_000 }))!.barra!
-    expect(b.bandeira).toBe(false)
-    expect(b.transbordo).toBe(0)
-    expect(b.pago).toBeLessThan(1)
-    expect(b.rotuloParcial).toMatch(/^\d+% da casa$/)
-  })
-
-  it('⛔ a barra nunca passa de 1 nem fica negativa', () => {
-    for (const cf of [1, 100, 20_000, 66_487, 1_000_000]) {
-      const b = montarPlacar(casaDe({ custoFixo: cf }))!.barra!
-      expect(b.pago).toBeGreaterThanOrEqual(0)
-      expect(b.pago).toBeLessThanOrEqual(1)
-      expect(b.pago + b.transbordo).toBeLessThanOrEqual(1.000001)
-    }
-  })
-})
+/**
+ * ⚠️⚠️ OS DOIS DESCRIBES DO PLACAR (a conta dos 3 cartões e a barra da casa) FORAM
+ * INVERTIDOS EM 10/10/2026, COM O MOTIVO ESCRITO — não apagados por conveniência.
+ *
+ * Eles afirmavam a régua de `montarPlacar`, que o dono APOSENTOU por ordem escrita: *"a
+ * CASCATA substitui o placar atual (é ele crescido): 5 cartões em linha"*. ⛔ A função morreu
+ * (ver o cabeçalho de `placar.ts`), então um teste que a chame nem compila.
+ *
+ * ⭐ A METADE QUE CONTINUA VALENDO FOI REALOCADA, não perdida — está em
+ * `lib/margem/__tests__/cascata.test.ts`, com os MESMOS números de prod:
+ *   · a conta fecha na tela (lá era `c1 − c2 = c3`; aqui é a cadeia de dois elos)
+ *   · *"a apurar"* nunca vira R$ 0,00 sem plano declarado
+ *   · a RESSALVA do veredito chega no cartão do herói (o guard de v1 que não cai)
+ *   · a composição dos chips vai na sub da casa — nunca um total mudo
+ *   · os pedaços da barra SOMAM 1 por construção
+ *   · cobertura `null` não vira "0% das vendas"
+ *   · as ressalvas dos complementos (abatimento + o piso *"é o MÍNIMO"*) seguem ditas
+ *
+ * ⛔ E a AUSÊNCIA do placar antigo é afirmada em `__tests__/regras-ui/margem-bate-com-a-referencia`
+ * (*"placar antigo de volta = vermelho"*, o vermelho que o dono pediu).
+ */
 
 describe('⛔⛔ QUEM CARREGOU A CASA — o guard do dono sobrevive à lista', () => {
   it('⭐⭐ Σ(carregadores) == sobra BRUTA, com o agrupado desfeito em linhas', () => {

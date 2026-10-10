@@ -126,6 +126,35 @@ export function avaliarMargem(e: EntradaDaMargem): MargemMedida {
  * pra trás mostra a margem DAQUELE período, e não a de hoje aplicada ao passado. Uma régua só,
  * que serve os dois casos.
  */
+/**
+ * ⭐⭐ O CMV POR COMPRA DE UM PERÍODO — o dono único da pergunta (10/10/2026).
+ *
+ * ⛔ Extraído do `medirMargem` porque a tela de Margem precisou do MESMO número noutra
+ * janela (a cascata compara consumo × compra). Uma 2ª soma com o mesmo `where` faria as duas
+ * telas discordarem sobre o que é CMV no primeiro ajuste de régua — e a régua aqui é delicada:
+ * ela usa o `whereFluxoCaixa` (transferência própria fora, conta em aberto fora, conciliada
+ * não conta 2×) e o `dreGroup` que o DONO escolheu, nunca o nome da categoria.
+ *
+ * ⚠️ `medirMargem` segue com a janela FIXA de 30 dias — ela responde *"a margem da empresa"*
+ * pro Custos fixos. Esta função responde *"o CMV das notas NESTE recorte"*, que é outra
+ * pergunta; o que elas compartilham é o `where`, não o período.
+ */
+export async function somarCmvPorCompra(
+  companyId: string,
+  periodo: { de: Date; ate: Date },
+  db: typeof prisma = prisma,
+): Promise<number> {
+  const agg = await db.transaction.aggregate({
+    _sum: { amount: true },
+    where: {
+      ...whereFluxoCaixa(companyId, periodo),
+      type: 'DEBIT',
+      category: { dreGroup: 'CUSTO_PRODUTO_VENDIDO' },
+    },
+  })
+  return agg._sum.amount ?? 0
+}
+
 export async function medirMargem(
   companyId: string,
   fimDaJanela: Date,
@@ -140,10 +169,8 @@ export async function medirMargem(
       _sum: { amount: true },
       where: { ...whereFluxoCaixa(companyId, periodo), type: 'CREDIT', category: { dreGroup: 'RECEITA_BRUTA' } },
     }),
-    db.transaction.aggregate({
-      _sum: { amount: true },
-      where: { ...whereFluxoCaixa(companyId, periodo), type: 'DEBIT', category: { dreGroup: 'CUSTO_PRODUTO_VENDIDO' } },
-    }),
+    // ⭐ a MESMA régua que a cascata da Margem usa — um dono, dois leitores
+    somarCmvPorCompra(companyId, periodo, db),
     db.transaction.findMany({
       where: { ...whereFluxoCaixa(companyId, periodo), type: 'CREDIT', category: { dreGroup: 'RECEITA_BRUTA' } },
       select: { date: true },
@@ -154,7 +181,7 @@ export async function medirMargem(
 
   return avaliarMargem({
     receita: receitaAgg._sum.amount ?? 0,
-    cmv: cmvAgg._sum.amount ?? 0,
+    cmv: cmvAgg,
     diasComReceita,
     diasDaJanela: JANELA_DA_MARGEM_DIAS,
     de,

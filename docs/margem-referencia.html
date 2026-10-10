@@ -29,6 +29,9 @@
   --verde:#1D9E75;  --verde-esc:#0F6E56; --verde-50:#E1F5EE; --verde-900:#04342C;
   --ambar:#E9A23B;  --ambar-esc:#854F0B; --ambar-50:#FAEEDA; --ambar-900:#412402;
   --coral:#E05B5B;  --coral-esc:#A32D2D; --coral-50:#FCEBEB; --coral-900:#501313;
+  /* o par SÓLIDO do herói (10/10): branco sobre o -mid REPROVA WCAG em 6 dos 8 casos */
+  --verde-solid:#0A5E35; --verde-on:#FFFFFF; --verde-on-soft:#E7F7EE;
+  --coral-solid:#8F2327; --coral-on:#FFFFFF; --coral-on-soft:#FDECEC;
   --rosa:#D4518A;   --rosa-50:#FBEAF0;
   --azul:#2E86D9;   --azul-esc:#185FA5; --azul-50:#E6F1FB;
 
@@ -110,28 +113,31 @@ a,[role=button]{cursor:pointer}
 .chegada-foot b{color:var(--text)}
 .chegada-note{padding:0 18px 12px; font-size:11.5px; color:var(--text-3)}
 
-/* ---------- 2. O PLACAR ---------- */
-.placar-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:4px 18px 12px}
-@media (max-width:640px){ .placar-grid{grid-template-columns:1fr} }
-.pcard{background:var(--surface-2); border-radius:var(--radius); padding:13px 15px}
-.pcard .lbl{font-size:12px; color:var(--text-2); font-weight:600}
-.pcard .val{margin-top:4px; font-size:26px; font-weight:700; letter-spacing:-.01em}
-.pcard .sub{margin-top:2px; font-size:11px; color:var(--text-3)}
-.pcard.win{background:var(--verde-50)}
-.pcard.win .lbl{color:var(--verde-esc)}
-.pcard.win .val{color:var(--verde-900)}
-.pcard.win .sub{color:var(--verde-esc)}
-.pcard.falta{background:var(--ambar-50)}
-.pcard.falta .lbl{color:var(--ambar-esc)} .pcard.falta .val{color:var(--ambar-900)} .pcard.falta .sub{color:var(--ambar-esc)}
-.barra-casa{position:relative; display:flex; height:16px; border-radius:999px; overflow:hidden; border:1px solid var(--border); margin:0 18px}
-.barra-casa .casa{background:var(--indigo)}
-.barra-casa .lucro{background:var(--verde)}
-.barra-casa .resto{background:var(--surface-2)}
-.barra-legenda{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:6px 18px 14px; font-size:11.5px; color:var(--text-2)}
-.barra-legenda .l1{color:var(--indigo); font-weight:600}
-.barra-legenda .l2{color:var(--verde-esc); font-weight:600}
-.cobertura-line{padding:9px 18px; border-top:1px solid var(--border); background:var(--surface-2); font-size:12px; color:var(--text-2)}
-.cobertura-line b{color:var(--text)}
+/* ---------- 2. A CASCATA DO MÊS ---------- */
+/* 5 cartões em linha; abaixo de 900px empilham (uma composição, dois tamanhos). */
+.cascata-grid{display:grid; grid-template-columns:1fr; gap:8px; padding:4px 18px 12px}
+@media (min-width:900px){ .cascata-grid{grid-template-columns:repeat(5,1fr)} }
+.ccard{background:var(--surface-2); border-radius:12px; padding:12px 13px}
+.ccard .lbl{font-size:11.5px; color:var(--text-2); font-weight:600}
+.ccard .op{font-size:14px; font-weight:700}
+.ccard .val{margin-top:3px; font-size:22px; font-weight:700; letter-spacing:-.01em}
+/* o % do CMV é o número GIGANTE embaixo do valor */
+.ccard .pct{margin-top:1px; font-size:17px; font-weight:700; color:var(--ambar-esc)}
+.ccard .sub{margin-top:3px; font-size:11px; color:var(--text-3)}
+.ccard.cmv{background:var(--ambar-50)} .ccard.cmv .lbl,.ccard.cmv .val{color:var(--ambar-esc)}
+/* O HERÓI: sólido cheio, número BRANCO. Negativo vira coral "FALTAM". */
+.ccard.heroi{background:var(--verde-solid)} .ccard.heroi .val{font-size:26px; color:var(--verde-on)}
+.ccard.heroi .lbl,.ccard.heroi .sub{color:var(--verde-on-soft)}
+.ccard.faltam{background:var(--coral-solid)} .ccard.faltam .val{font-size:26px; color:var(--coral-on)}
+.ccard.faltam .lbl,.ccard.faltam .sub{color:var(--coral-on-soft)}
+/* A BARRA DE COMPOSIÇÃO: de cada R$ 100 vendidos. Σ=100% POR CONSTRUÇÃO. */
+.composicao{display:flex; height:16px; border-radius:999px; overflow:hidden; border:1px solid var(--border); margin:0 18px}
+.composicao .cmv{background:var(--ambar)} .composicao .casa{background:var(--indigo)} .composicao .lucro{background:var(--verde)}
+.composicao-legenda{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:6px 18px 14px; font-size:11.5px; color:var(--text-2)}
+/* A HONESTIDADE EM UMA LINHA, com o detalhe por TOQUE (nunca hover: no celular não existe). */
+.honestidade{border-top:1px solid var(--border); background:var(--surface-2); padding:9px 18px; font-size:12px; color:var(--text-2)}
+.honestidade b{color:var(--text)}
+.regua-setor{padding:2px 18px 12px; font-size:11px; color:var(--text-3)}
 
 /* ---------- 3. QUEM CARREGOU ---------- */
 .carga-row{display:flex; align-items:center; gap:10px; padding:9px 18px; border-top:1px solid var(--border); font-size:13.5px}
@@ -237,44 +243,71 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
     <div class="chegada-note">é o último dia fechado — o relatório de hoje entra na madrugada</div>
   </section>
 
-  <!-- ===================== 2 · O PLACAR DO PERÍODO ===================== -->
-  <!-- REGRA DE OURO: cartão1 − cartão2 = cartão3, travado em teste. -->
-  <section class="card" aria-label="O placar do período">
+  <!-- ===================== 2 · A CASCATA DO MÊS ===================== -->
+  <!--
+    ⚠️⚠️ ESTA SEÇÃO DERIVA DO PEDIDO ESCRITO DO DONO (10/10/2026), não de um mock desenhado:
+    *"A CASCATA substitui o placar atual (é ele crescido): 5 cartões em linha — VENDEU · − CMV
+    (INSUMOS) · = SOBRA · − A CASA · = LUCRO"*. O placar de 3 cartões que vivia aqui MORREU.
+    Inventar um visual e chamá-lo de "o mock aprovado" é exatamente o erro que o protocolo de
+    10/09 existe pra impedir — então fica declarado de onde esta seção veio.
+
+    REGRA DE OURO (travada em teste): vendeu − cmv = sobra · sobra − casa = lucro.
+    A cadeia fecha POR CONSTRUÇÃO: o CMV é DERIVADO da sobra (`vendeu − sobraTotal`), então o
+    resíduo de centavos cai no número NOVO e nunca na sobra que já está em prod.
+  -->
+  <section class="card" aria-label="A cascata do mês">
     <div class="card-head">
-      <h2>O placar de outubro</h2>
+      <h2>O mês de outubro, em cascata</h2>
       <span class="hint num" data-bind="composicaoChips">custo fixo: casa + banco + compromissos</span>
     </div>
-    <div class="placar-grid">
-      <div class="pcard">
-        <div class="lbl">O que as vendas deixaram</div>
-        <div class="val num" data-bind="sobraLiquida">R$ 57.232</div>
-        <div class="sub num" data-bind="subSobra">sobra medida em 55% das vendas · já abatidos R$ 9.256 de complementos</div>
+    <div class="cascata-grid">
+      <div class="ccard">
+        <div class="lbl">Vendeu</div>
+        <div class="val num" data-bind="vendeu">R$ 126.590</div>
+        <div class="sub">o que o PDV registrou</div>
       </div>
-      <div class="pcard">
-        <div class="lbl">A casa custou até aqui</div>
-        <div class="val num" data-bind="casaPeriodo">R$ 43.599</div>
+      <div class="ccard cmv">
+        <div class="lbl"><span class="op">−</span> CMV (insumos)</div>
+        <div class="val num" data-bind="cmv">R$ 57.235</div>
+        <div class="pct num" data-bind="cmvPct">45,2% das vendas</div>
+        <div class="sub">o que saiu da prateleira</div>
+      </div>
+      <div class="ccard">
+        <div class="lbl"><span class="op">=</span> Sobra</div>
+        <div class="val num" data-bind="sobra">R$ 69.355</div>
+        <div class="sub">vendeu menos o insumo</div>
+      </div>
+      <div class="ccard">
+        <div class="lbl"><span class="op">−</span> A casa</div>
+        <div class="val num" data-bind="casa">R$ 49.828</div>
         <div class="sub">casa + banco + compromissos</div>
       </div>
-      <!-- ESTADO PAGA (verde). Estado NÃO-PAGA: classe .falta, lbl "FALTAM", val "R$ X", sub "pra pagar a casa do período" -->
-      <div class="pcard win">
-        <div class="lbl">✓ CASA PAGA — e sobrou</div>
-        <div class="val num" data-bind="resultado">+R$ 13.632</div>
+      <!-- ESTADO LUCRO (verde sólido). Estado NEGATIVO: classe .faltam, lbl "Faltam", val "R$ X" -->
+      <div class="ccard heroi">
+        <div class="lbl"><span class="op">=</span> Lucro</div>
+        <div class="val num" data-bind="lucro">R$ 19.527</div>
         <div class="sub">daqui pra frente é lucro</div>
       </div>
     </div>
-    <!-- A BARRA ÚNICA: índigo = casa (até a 🏁), verde = transbordo. widths: casa/(casa+lucro) e lucro/(casa+lucro). Σ=100% POR CONSTRUÇÃO. Período não pago: índigo parcial + .resto cinza até 100%. -->
-    <div class="barra-casa" role="img" aria-label="a casa se enchendo: 76% índigo até a bandeira, 24% verde de lucro">
-      <div class="casa" style="width:76%"></div>
-      <div class="lucro" style="width:24%"></div>
+    <div class="composicao" role="img" aria-label="de cada R$ 100 vendidos: 45,2% de CMV, 39,4% de casa, 15,4% de lucro">
+      <div class="cmv" style="width:45.2%"></div>
+      <div class="casa" style="width:39.4%"></div>
+      <div class="lucro" style="width:15.4%"></div>
     </div>
-    <div class="barra-legenda">
-      <span class="l1">a casa se enchendo</span>
-      <span>🏁 a bandeira é 100% = casa paga</span>
-      <span class="l2 num">o verde é o lucro (+31%)</span>
+    <div class="composicao-legenda">
+      <span>de cada R$ 100 vendidos</span>
+      <span class="num">CMV 45,2%</span>
+      <span class="num">casa 39,4%</span>
+      <span class="num">lucro 15,4%</span>
     </div>
-    <div class="cobertura-line num" data-bind="linhaCobertura">
-      cobertura: <b>55% das unidades vendidas têm custo</b> · 49 na obra · 114 fora · acima de <b>80%</b> eu digo <b>o dia em que a casa se pagou</b>
+    <!-- o detalhes abre por TOQUE; dentro dele mora a explicação consumo × compra E o placar do dia -->
+    <div class="honestidade num" data-bind="honestidade">
+      medido em <b>55% das vendas</b> · vendas totais R$ 126.590 · CMV por compra (notas): R$ 258.749 — detalhes ⓘ
+      <div class="cobertura-line num" data-bind="linhaCobertura">
+        cobertura: <b>55% das unidades vendidas têm custo</b> · 49 na obra · 114 fora · acima de <b>80%</b> eu digo <b>o dia em que a casa se pagou</b>
+      </div>
     </div>
+    <div class="regua-setor">pizzaria/lanchonete saudável: CMV 28–35% das vendas</div>
   </section>
 
   <!-- ===================== 3+4 · DUPLA: QUEM CARREGOU | A LIGA (lado a lado em ≥1024px) ===================== -->

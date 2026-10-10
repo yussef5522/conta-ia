@@ -18,7 +18,7 @@
  * valor arbitrário sai **transparente** (a armadilha de 05/10).
  *
  * ⛔⛔ **A TELA NÃO CALCULA NADA DE DINHEIRO.** Sobra, placar, barra, carregadores, cobertura,
- * veredito e a conta da pizza vêm de lib PURA (`montarPlacar`, `montarCarregadores`,
+ * veredito e a conta da pizza vêm de lib PURA (`montarCascata`, `montarCarregadores`,
  * `linhaDaCobertura`, `montarPizza`) — a MESMA que o teste executa. Derivar aqui seria a 2ª
  * resposta pra *"quem paga a casa?"*, e ela divergiria do aviso do sininho.
  *
@@ -39,12 +39,19 @@ import { use, useCallback, useEffect, useState } from 'react'
 import { casaBusca } from '@/lib/busca-texto'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
+import { pctBR, pctInteiroBR } from '@/lib/format/percentual'
+import { valorDoCartao } from '@/lib/custos-fixos/cartao-de-dono'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { EMOJI_DO_SELO, type AbaDaLiga, type SeloDoVeredito } from '@/lib/margem/liga'
 import {
-  linhaDaCobertura, montarCarregadores, montarPlacar,
-  type Carregador, type TomDoResultado,
+  linhaDaCobertura, montarCarregadores,
+  type Carregador,
 } from '@/lib/margem/placar'
+/**
+ * ⭐ A CASCATA — PURA, e por isso pode viver na tela: ela não importa `prisma`. O
+ * `cmvPorCompra` chega pelo payload, não por uma query daqui.
+ */
+import { montarCascata, CMV_SAUDAVEL, type CartaoDaCascata } from '@/lib/margem/cascata'
 import { montarPizza, type PizzaMontada, type SaborDisponivel } from '@/lib/margem/montador'
 import type { CatalogoDoMontador } from '@/lib/margem/leitura-montador'
 import type { TamanhoDePizza } from '@/lib/margem/tamanhos'
@@ -55,8 +62,14 @@ import type { MargemDaTela } from '@/lib/margem/leitura'
 
 type Estado = 'CARREGANDO' | 'FALHOU' | 'OK'
 
+/**
+ * ⛔⛔ O `pct` LOCAL MORREU (10/10) — ele era `(n*100).toFixed(casas)`, **sem vírgula**: com
+ * `casas = 0` o ponto não aparecia, mas qualquer uso com 1 casa saía `47.7%`. É o defeito que
+ * a dieta de ontem deixou visível no ⓘ de Custos fixos, e aqui ele estava armado.
+ * ⭐ Agora vem do dono do PROJETO (`lib/format/percentual`), que as duas telas consomem.
+ */
 const pct = (n: number | null | undefined, casas = 0) =>
-  n == null ? 'a apurar' : `${(n * 100).toFixed(casas)}%`
+  n == null ? 'a apurar' : casas === 0 ? pctInteiroBR(n) : pctBR(n, casas)
 const ddmm = (s: string) => `${s.slice(8, 10)}/${s.slice(5, 7)}`
 
 const PERIODOS: { k: PeriodoDaMargem; r: string }[] = [
@@ -274,7 +287,7 @@ export default function MargemPage({ params }: { params: Promise<{ id: string }>
       {estado === 'OK' && dados && (
         <>
           <LinhaDeChegadaCard d={dados} />
-          <PlacarDaCasa d={dados} />
+          <CascataDoMes d={dados} />
           <Duo>
             <QuemCarregouACasa
               d={dados}
@@ -390,134 +403,182 @@ function LinhaDeChegadaCard({ d }: { d: MargemDaTela }) {
  * ⛔ A barra vem da lib com os dois pedaços somando 1 POR CONSTRUÇÃO — a tela não normaliza
  * nem clampa, que foi exatamente como a antiga pilha de tijolos estourou o telhado.
  */
-function PlacarDaCasa({ d }: { d: MargemDaTela }) {
+function CascataDoMes({ d }: { d: MargemDaTela }) {
   const c = d.casa
-  const p = montarPlacar(c)
+  const casc = montarCascata(c, d.sobras, d.cmvPorCompra > 0 ? d.cmvPorCompra : null)
   const cobertura = linhaDaCobertura(c)
 
   return (
     <Cartao>
       <CabecaDoCartao
-        titulo={`O placar de ${d.janela.rotuloCurto}`}
+        titulo={`O mês de ${d.janela.rotuloCurto}, em cascata`}
         dica={`custo fixo: ${c.composicao.texto}`}
       />
 
-      {/* `.placar-grid` — 3 colunas; abaixo de 640px empilham (REGRA 12, composição única) */}
-      <div className="grid grid-cols-1 gap-[10px] px-[18px] pb-[12px] pt-[4px] sm:grid-cols-3">
-        <CartaoDoPlacar c={p.sobra} />
-        <CartaoDoPlacar c={p.casa} />
-        <CartaoDoPlacar
-          c={p.resultado}
-          tom={p.resultado.tom}
-          ressalva={p.resultado.ressalva}
-          prefixo={p.resultado.tom === 'PAGOU' ? '+' : undefined}
-        />
+      {/*
+        ⛔⛔ A CADEIA GRITA QUANDO NÃO FECHA. `vendeu − cmv = sobra` e `sobra − casa = lucro`
+        fecham por construção (o CMV é derivado da sobra), mas a tela não fia: *número de
+        dinheiro que não fecha com as partes* é a família do cabeçalho que afirmava 69
+        duplicatas com a aba dizendo 0.
+      */}
+      {!casc.fecha && (
+        <p className="mx-[18px] mb-[8px] rounded-[10px] px-[10px] py-[7px] text-[11.5px] font-semibold"
+          style={{ background: 'var(--fam-coral-bg)', color: 'var(--fam-coral-ink)' }}>
+          ⛔ a cascata não fecha: vendeu − CMV deveria dar a sobra, e sobra − casa o lucro
+        </p>
+      )}
+
+      {/* `.cascata-grid` — 5 cartões em linha; abaixo de 900px empilham (REGRA 12, composição única) */}
+      <div className="grid grid-cols-1 gap-[8px] px-[18px] pb-[12px] pt-[4px] sm:grid-cols-2 min-[900px]:grid-cols-5">
+        {casc.cartoes.map((k) => (
+          <CartaoDaCascataNaTela
+            key={k.qual}
+            k={k}
+            ressalva={k.qual === 'lucro' ? c.veredito.ressalva : null}
+          />
+        ))}
       </div>
 
-      {/* `.barra-casa` 16px — índigo = casa (até a 🏁), verde = transbordo, cinza = o que falta */}
-      {p.barra && (
+      {/*
+        ⭐⭐ A BARRA DE COMPOSIÇÃO — *"de cada R$ 100 vendidos"*. Σ = 100% POR CONSTRUÇÃO
+        quando há lucro (vendeu = cmv + casa + lucro). ⛔ Com prejuízo não existe fatia verde,
+        e a barra não finge que existe: os dois pedaços se normalizam pelo total GASTO e o selo
+        coral carrega o que falta.
+      */}
+      {casc.composicao && (
         <>
-          <div
-            className="mx-[18px] flex h-[16px] overflow-hidden rounded-full border"
+          <div className="mx-[18px] flex h-[16px] overflow-hidden rounded-full border"
             style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}
             role="img"
-            aria-label={
-              p.barra.bandeira
-                ? `a casa se enchendo: ${pct(p.barra.pago)} índigo até a bandeira, ${pct(p.barra.transbordo)} verde de lucro`
-                : `a casa se enchendo: ${p.barra.rotuloParcial}`
-            }
+            aria-label={`de cada R$ 100 vendidos: ${casc.composicao.legenda.cmv}, ${casc.composicao.legenda.casa}${casc.composicao.legenda.lucro ? `, ${casc.composicao.legenda.lucro}` : `, sem lucro — ${casc.composicao.faltam}`}`}
           >
-            <div style={{ width: `${Math.max(2, p.barra.pago * 100)}%`, background: 'var(--fam-indigo-mid)' }} />
-            {p.barra.transbordo > 0 && (
-              <div style={{ width: `${p.barra.transbordo * 100}%`, background: 'var(--fam-verde-mid)' }} />
+            <div style={{ width: `${Math.max(2, casc.composicao.cmv * 100)}%`, background: 'var(--fam-ambar-mid)' }} />
+            <div style={{ width: `${Math.max(2, casc.composicao.casa * 100)}%`, background: 'var(--fam-indigo-mid)' }} />
+            {casc.composicao.lucro > 0 && (
+              <div style={{ width: `${casc.composicao.lucro * 100}%`, background: 'var(--fam-verde-mid)' }} />
             )}
           </div>
 
-          <div
-            className="flex flex-wrap justify-between gap-[8px] px-[18px] pb-[14px] pt-[6px] text-[11.5px]"
-            style={{ color: 'var(--prod-secondary)' }}
-          >
-            <span className="font-semibold" style={{ color: 'var(--fam-indigo-mid)' }}>
-              a casa se enchendo
+          <div className="flex flex-wrap items-center justify-between gap-[8px] px-[18px] pb-[14px] pt-[6px] text-[11.5px]"
+            style={{ color: 'var(--prod-secondary)' }}>
+            <span>de cada R$ 100 vendidos</span>
+            <span className="font-semibold tabular-nums" style={{ color: 'var(--fam-ambar-ink)' }}>
+              {casc.composicao.legenda.cmv}
             </span>
-            <span>🏁 a bandeira é 100% = casa paga</span>
-            {p.barra.bandeira ? (
+            <span className="font-semibold tabular-nums" style={{ color: 'var(--fam-indigo-mid)' }}>
+              {casc.composicao.legenda.casa}
+            </span>
+            {casc.composicao.legenda.lucro ? (
               <span className="font-semibold tabular-nums" style={{ color: 'var(--fam-verde-ink)' }}>
-                o verde é o lucro ({p.barra.rotuloTransbordo})
+                {casc.composicao.legenda.lucro}
               </span>
             ) : (
-              <span className="tabular-nums" style={{ color: 'var(--prod-muted)' }}>
-                {p.barra.rotuloParcial} · o cinza é o que falta
+              <span className="rounded px-[6px] py-[2px] font-semibold tabular-nums"
+                style={{ background: 'var(--fam-coral-bg)', color: 'var(--fam-coral-ink)' }}>
+                {casc.composicao.faltam}
               </span>
             )}
           </div>
         </>
       )}
 
-      {/* `.cobertura-line` — o pé do placar: é ela que impede o veredito de ficar seco */}
-      <p
-        className="border-t px-[18px] py-[9px] text-[12px] tabular-nums"
-        style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
-      >
-        {cobertura.map((x, i) =>
-          x.forte ? (
-            <b key={i} style={{ color: 'var(--prod-primary)' }}>{x.texto}</b>
-          ) : (
-            <span key={i}>{x.texto}</span>
-          ),
-        )}
+      {/*
+        ⭐⭐ A HONESTIDADE EM UMA LINHA, com o ⓘ por TOQUE (`<details>`).
+        ⛔ Não é `title`: **tooltip não existe no celular**, e é lá que o dono opera (30/08).
+        ⚠️ E a LINHA DA COBERTURA (o 🏁 dia D e o limiar de 80%) entrou no ⓘ em vez de virar
+        uma 2ª linha repetindo o percentual — ela é a régua de 07/10 e NÃO se perde.
+      */}
+      <details className="group border-t px-[18px] py-[9px]"
+        style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}>
+        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-[6px] text-[12px] tabular-nums"
+          style={{ color: 'var(--prod-secondary)' }}>
+          <span>{casc.honestidade.linha}</span>
+          <span className="font-semibold underline decoration-dotted" style={{ color: 'var(--fam-indigo-mid)' }}>
+            detalhes ⓘ
+          </span>
+        </summary>
+        <div className="mt-[8px] space-y-[6px]">
+          {casc.honestidade.explicacoes.map((e) => (
+            <p key={e.titulo} className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
+              <b style={{ color: 'var(--prod-primary)' }}>{e.titulo}:</b> {e.texto}
+            </p>
+          ))}
+          {/* ⭐ o 🏁 do dia D e o limiar da cobertura — guardados, não jogados fora */}
+          <p className="text-[11.5px] leading-snug tabular-nums" style={{ color: 'var(--prod-secondary)' }}>
+            <b style={{ color: 'var(--prod-primary)' }}>o placar do dia:</b>{' '}
+            {cobertura.map((x, i) => (x.forte ? <b key={i}>{x.texto}</b> : <span key={i}>{x.texto}</span>))}
+          </p>
+        </div>
+      </details>
+
+      {/* ⭐ a régua do setor, miúda — o número vem da constante, nunca digitado na tela */}
+      <p className="px-[18px] pb-[12px] pt-[2px] text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+        {casc.honestidade.reguaDoSetor}
       </p>
     </Cartao>
   )
 }
 
 /**
- * `.pcard` — lbl 12px/600 · val 26px/700 · sub 11px.
+ * ⭐⭐ O CARTÃO DA CASCATA — e só o LUCRO é sólido, de propósito.
  *
- * ⚠️ `valor` nulo vira **"a apurar"**, nunca R$ 0,00 — ausência de plano não é casa de graça.
- * ⛔⛔ E o veredito NUNCA aparece seco sobre dado parcial: a `ressalva` da cobertura vem com
- * ele e a tela é obrigada a desenhá-la (o guard de v1 que não cai).
+ * ⛔ Cinco cartões sólidos fariam o herói deixar de ser herói. O CMV é âmbar pastel (ele é o
+ * número que PEDE atenção, não o que decide), e o LUCRO é **verde-escuro sólido com número
+ * branco** — virando **coral "FALTAM"** no negativo.
+ *
+ * ⛔⛔ O chão sólido é o `-solid`, NUNCA o `-mid`: branco sobre o `-mid` reprova WCAG em 6 dos
+ * 8 casos (medido em 10/10 — verde 3,51:1 e coral 3,91:1 já no tema claro).
  */
-function CartaoDoPlacar({
-  c, tom, ressalva, prefixo,
-}: {
-  c: { rotulo: string; valor: number | null; sublinha: string }
-  tom?: TomDoResultado
-  ressalva?: string | null
-  prefixo?: string
-}) {
-  const vencedor = tom === 'PAGOU'
-  const faltando = tom === 'EM_OBRA'
-  const fundo = vencedor
-    ? 'var(--fam-verde-bg)'
-    : faltando
+function CartaoDaCascataNaTela({ k, ressalva }: { k: CartaoDaCascata; ressalva: string | null }) {
+  const heroi = k.qual === 'lucro'
+  const faltam = heroi && k.rotulo === 'Faltam'
+  const ehCmv = k.qual === 'cmv'
+  const solido = heroi && k.valor != null
+  const fam = faltam ? 'coral' : 'verde'
+
+  const fundo = solido
+    ? `var(--fam-${fam}-solid)`
+    : ehCmv
       ? 'var(--fam-ambar-bg)'
       : 'var(--prod-surface-1)'
-  const tintaForte = vencedor
-    ? 'var(--fam-verde-ink)'
-    : faltando
+  const tintaForte = solido
+    ? `var(--fam-${fam}-on)`
+    : ehCmv
       ? 'var(--fam-ambar-ink)'
       : 'var(--prod-primary)'
-  const tintaFraca = vencedor
-    ? 'var(--fam-verde-ink)'
-    : faltando
+  const tintaFraca = solido
+    ? `var(--fam-${fam}-on-soft)`
+    : ehCmv
       ? 'var(--fam-ambar-ink)'
       : 'var(--prod-secondary)'
 
+  const v = valorDoCartao(k.valor)
   return (
-    <div className="rounded-[12px] px-[15px] py-[13px]" style={{ background: fundo }}>
-      <p className="text-[12px] font-semibold" style={{ color: tintaFraca }}>{c.rotulo}</p>
+    <div className="rounded-[12px] px-[13px] py-[12px]" style={{ background: fundo }}>
+      {/* ⭐ o OPERADOR antes do rótulo — é ele que faz os 5 cartões lerem como uma CONTA */}
+      <p className="flex items-baseline gap-[5px] text-[11.5px] font-semibold" style={{ color: tintaFraca }}>
+        {k.operador && <span className="text-[14px] font-bold tabular-nums">{k.operador}</span>}
+        <span>{k.rotulo}</span>
+      </p>
+      {/* ⭐ 22px+, redondo ao real; o centavo vive no tooltip (a régua de 10/10) */}
       <p
-        className="mt-[4px] text-[26px] font-bold tabular-nums tracking-[-0.01em]"
+        className={`mt-[3px] font-bold tabular-nums tracking-[-0.01em] ${heroi ? 'text-[26px]' : 'text-[22px]'}`}
         style={{ color: tintaForte }}
+        title={v ? `com os centavos: ${v.cheio}` : undefined}
       >
-        {c.valor == null ? 'a apurar' : `${prefixo ?? ''}${formatBRL(c.valor)}`}
+        {v ? v.curto : 'a apurar'}
       </p>
-      <p className="mt-[2px] text-[11px] leading-snug" style={{ color: vencedor || faltando ? tintaFraca : 'var(--prod-muted)' }}>
-        {c.sublinha}
-      </p>
+      {/* ⭐⭐ o % GIGANTE do CMV — embaixo do valor, como o dono pediu */}
+      {k.pctDasVendas && (
+        <p className="mt-[1px] text-[17px] font-bold tabular-nums leading-none" style={{ color: 'var(--fam-ambar-ink)' }}>
+          {k.pctDasVendas}
+        </p>
+      )}
+      <p className="mt-[3px] text-[11px] leading-snug" style={{ color: tintaFraca }}>{k.sub}</p>
+      {/* ⛔ o veredito NUNCA vem seco: a ressalva da cobertura viaja com o herói */}
       {ressalva && (
-        <p className="mt-[4px] text-[11px] leading-snug" style={{ color: 'var(--fam-indigo-mid)' }}>
+        <p className="mt-[4px] text-[11px] leading-snug"
+          style={{ color: solido ? `var(--fam-${fam}-on-soft)` : 'var(--fam-indigo-mid)' }}>
           {ressalva}
         </p>
       )}
@@ -525,16 +586,6 @@ function CartaoDoPlacar({
   )
 }
 
-/* ═══════════════ 3 · QUEM CARREGOU A CASA ═══════════════ */
-
-/**
- * ⚠️ A barra de cada linha é **RELATIVA AO MAIOR, nunca à casa**: com a casa paga, metade das
- * linhas encostaria no fim e a comparação entre produtos — que é a pergunta desta lista —
- * sumiria. O *"% da casa"* continua escrito ao lado, em número, e **pode passar de 100%**.
- *
- * ⭐ A cor da bolinha vem do `familia` do PAYLOAD, que o servidor derivou por `caraDaReceita`.
- * Derivar aqui seria a 2ª tradução de nome → cor, e elas divergiriam no 1º grupo novo do mapa.
- */
 function QuemCarregouACasa({
   d, abrirResto, setAbrirResto, empresaId,
 }: {

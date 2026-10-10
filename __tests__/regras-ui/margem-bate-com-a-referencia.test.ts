@@ -45,6 +45,7 @@ const TELA = semComentarios(ler(R('app/(dashboard)/empresas/[id]/margem/page.tsx
 /** ⭐ as frases de dinheiro moram nas LIBS (quem escreve a frase é quem decide o número) */
 const LIBS = [
   'lib/margem/placar.ts',
+  'lib/margem/cascata.ts',
   'lib/margem/dia.ts',
   'lib/margem/liga.ts',
   'lib/margem/casa.ts',
@@ -137,6 +138,17 @@ const MAPA_DE_TOKENS: Record<string, string> = {
   '--coral-esc': '--fam-coral-ink',
   '--coral-50': '--fam-coral-bg',
   '--coral-900': '--fam-coral-ink',
+  /**
+   * ⚠️ O par SÓLIDO nasceu MEDIDO (10/10): branco sobre o `-mid` dá 3,51:1 no verde e 3,91:1 no
+   * coral já no tema CLARO — reprova WCAG pra texto normal. O `-solid` inverte o CHÃO por tema
+   * mantendo a tinta branca, e é o único chão que o herói da cascata pode ter.
+   */
+  '--verde-solid': '--fam-verde-solid',
+  '--verde-on': '--fam-verde-on',
+  '--verde-on-soft': '--fam-verde-on-soft',
+  '--coral-solid': '--fam-coral-solid',
+  '--coral-on': '--fam-coral-on',
+  '--coral-on-soft': '--fam-coral-on-soft',
   '--rosa': '--fam-rosa-mid',
   '--rosa-50': '--fam-rosa-bg',
   '--azul': '--fam-azul-mid',
@@ -306,7 +318,7 @@ describe('⛔⛔⛔ OS 6 CARTÕES DA REFERÊNCIA — RENDERIZADOS e NA ORDEM', (
    */
   const ANCORAS: { texto: string; componente: string }[] = [
     { texto: 'A LINHA DE CHEGADA', componente: 'LinhaDeChegadaCard' },
-    { texto: 'O placar de', componente: 'PlacarDaCasa' },
+    { texto: 'em cascata', componente: 'CascataDoMes' },
     { texto: 'Quem carregou a casa', componente: 'QuemCarregouACasa' },
     { texto: 'A liga do', componente: 'LigaCard' },
     { texto: 'Monte uma pizza e veja o custo', componente: 'MontadorDePizza' },
@@ -367,6 +379,121 @@ describe('⛔⛔⛔ OS 6 CARTÕES DA REFERÊNCIA — RENDERIZADOS e NA ORDEM', (
   })
 })
 
+/* ═══════════════ 3b. A CASCATA NA TELA — o chão, o grito e o % gigante ═══════════════ */
+
+describe('⛔⛔⛔ A CASCATA — as travas que o dono pediu por escrito (10/10)', () => {
+  const bloco = () => blocoDa('CartaoDaCascataNaTela')
+
+  /**
+   * ⛔⛔ O CHÃO DO HERÓI É O `-solid`, NUNCA o `-mid` — e isso foi MEDIDO em 10/10: branco
+   * sobre o `-mid` dá **3,51:1 no verde e 3,91:1 no coral já no tema CLARO**, reprovando WCAG
+   * pra texto normal (a etiqueta de 11,5px e a sub vivem no mesmo chão). O contraste dos 4
+   * cartões × 2 temas é provado em `dois-temas-na-raiz.test.ts`.
+   */
+  it('⛔⛔ o cartão sólido pinta o chão com `-solid`, nunca com `-mid` nem pastel', () => {
+    const b = bloco()
+    expect(b, 'o chão sólido do herói').toContain('-solid)')
+    expect(b, 'a tinta sobre fundo forte').toContain('-on)')
+    /**
+     * ⚠️ A ASSERÇÃO OLHA O **CHÃO**, não o arquivo: proibir `-mid` em qualquer lugar do cartão
+     * daria falso vermelho na ressalva, que é TEXTO índigo sobre a superfície clara (o
+     * `--indigo` que a própria referência manda). O que reprova WCAG é branco sobre `-mid`
+     * **como fundo** — então a régua morde na declaração do `fundo`.
+     */
+    const chao = b.slice(b.indexOf('const fundo'), b.indexOf('const tintaForte'))
+    expect(chao.length, 'a declaração do chão do cartão não foi achada').toBeGreaterThan(20)
+    expect(chao, 'o -mid como CHÃO não passa em contraste com branco').not.toMatch(/-mid\)/)
+    expect(chao, 'o chão do herói é o degrau sólido').toContain('-solid)')
+  })
+
+  it('⭐ o número do herói é 26px e o dos outros 22px — o pedido do dono (22px+)', () => {
+    const b = bloco()
+    expect(b).toContain('text-[26px]')
+    expect(b).toContain('text-[22px]')
+    expect(b).toContain('tabular-nums')
+  })
+
+  /**
+   * ⛔⛔ O CENTAVO VIVE NO TOOLTIP, o número é REDONDO ao real — a régua de 10/10, pela MESMA
+   * `valorDoCartao` dos cartões de Custos Fixos (régua própria aqui faria duas telas
+   * arredondarem diferente).
+   */
+  it('⛔ o número é redondo e o centavo vai pro tooltip (`valorDoCartao`)', () => {
+    const b = bloco()
+    expect(usosDe(b, 'valorDoCartao'), 'a régua do número redondo').toBeGreaterThan(0)
+    expect(b, 'formatBRL no cartão traria os centavos de volta').not.toContain('formatBRL(')
+    expect(b).toContain('v.cheio')
+  })
+
+  it('⭐⭐ o % GIGANTE do CMV fica EMBAIXO do valor, 17px/700', () => {
+    const b = bloco()
+    const iVal = b.indexOf('text-[22px]')
+    const iPct = b.indexOf('text-[17px]')
+    expect(iPct, 'o % do CMV não está na tela').toBeGreaterThan(-1)
+    expect(iPct, 'o % tem que vir DEPOIS do valor — é ele que o qualifica').toBeGreaterThan(iVal)
+    expect(b).toContain('pctDasVendas')
+  })
+
+  /**
+   * ⛔⛔ A TELA GRITA QUANDO A CADEIA NÃO FECHA. *Número de dinheiro que não fecha com as
+   * partes* é a família do cabeçalho que afirmava 69 duplicatas com a aba dizendo 0 — o
+   * invariante tem que ser VISÍVEL, não só verde no CI.
+   */
+  it('⛔⛔ a tela DESENHA o aviso quando `fecha` é false', () => {
+    const b = blocoDa('CascataDoMes')
+    expect(b, 'o guard da cadeia não aparece na tela').toContain('!casc.fecha')
+    expect(cru(b)).toContain(cru('a cascata não fecha'))
+  })
+
+  /**
+   * ⛔ A TELA NÃO CALCULA DINHEIRO — ela desenha o que `montarCascata` assinou. Uma régua
+   * própria aqui faria a tela e o teste discordarem no 1º caso de borda.
+   */
+  it('⛔⛔ a cascata da tela não faz aritmética de dinheiro por conta própria', () => {
+    const b = blocoDa('CascataDoMes')
+    const corpo = b.slice(b.indexOf('{'), b.indexOf('return ('))
+    expect(corpo, 'a tela voltou a somar/subtrair dinheiro').not.toMatch(/\b(reduce|[-+*/]=)\b/)
+    expect(usosDe(b, 'montarCascata'), 'a tela consome a lib única').toBeGreaterThan(0)
+  })
+
+  it('⭐ a barra de composição e a legenda dos 3 pedaços são desenhadas', () => {
+    const b = blocoDa('CascataDoMes')
+    expect(b).toContain('casc.composicao')
+    expect(b).toContain('legenda.cmv')
+    expect(b).toContain('legenda.casa')
+    expect(b).toContain('legenda.lucro')
+    // ⛔ com prejuízo não há verde: o selo coral carrega o que falta
+    expect(b).toContain('faltam')
+  })
+
+  /**
+   * ⛔⛔ O ⓘ ABRE POR TOQUE (`<details>`), NUNCA por hover — **tooltip não existe no celular**,
+   * e é lá que o dono opera (a cicatriz de 30/08).
+   */
+  it('⛔⛔ o ⓘ da honestidade é `<details>`, não `title`', () => {
+    const b = blocoDa('CascataDoMes')
+    expect(b).toContain('<details')
+    expect(b).toContain('<summary')
+    expect(b).toContain('honestidade.explicacoes')
+  })
+
+  /**
+   * ⭐⭐ A LINHA DA COBERTURA (o 🏁 do dia D e o limiar de 80%) NÃO SE PERDEU: ela virou o que
+   * o ⓘ abre, em vez de uma 2ª linha repetindo o percentual. É a régua de 07/10, e
+   * `linhaDaCobertura` continua viva com os testes dela.
+   */
+  it('⛔ a linha da cobertura segue DESENHADA — dentro do ⓘ', () => {
+    expect(usosDe(blocoDa('CascataDoMes'), 'linhaDaCobertura')).toBeGreaterThan(0)
+  })
+
+  /** ⛔ a ressalva do veredito viaja com o HERÓI — o veredito nunca vem seco (guard de v1) */
+  it('⛔⛔ a ressalva do veredito chega no cartão do lucro', () => {
+    const b = blocoDa('CascataDoMes')
+    expect(b).toContain('veredito.ressalva')
+    expect(bloco(), 'o cartão tem que desenhar a ressalva').toContain('ressalva')
+  })
+})
+
 /* ═══════════════════════════ 4. AS FRASES QUE O ARQUIVO IMPRIME ═══════════════════════════ */
 
 describe('⛔ AS FRASES DA REFERÊNCIA — as duas pontas conferidas', () => {
@@ -380,23 +507,70 @@ describe('⛔ AS FRASES DA REFERÊNCIA — as duas pontas conferidas', () => {
     frase('é o último dia fechado — o relatório de hoje entra na madrugada')
   })
 
-  it('⭐⭐ o placar — e o veredito mora no RÓTULO, do jeito que o arquivo escreve', () => {
-    frase('O placar de')
+  /**
+   * ⚠️⚠️ ESTE BLOCO FOI REAPONTADO EM 10/10, NÃO AFROUXADO. As 5 frases do placar de 3 cartões
+   * (*"O placar de"*, *"O que as vendas deixaram"*, *"A casa custou até aqui"*, *"✓ CASA PAGA —
+   * e sobrou"*, *"pra pagar a casa do período"*) foram **substituídas pela cascata** por ordem
+   * escrita do dono — elas não podem mais estar na referência nem no código, e há um teste
+   * abaixo afirmando essa AUSÊNCIA (senão o placar antigo voltaria sem ninguém ver).
+   */
+  it('⭐⭐ a cascata — os 5 cartões com o operador que faz os números lerem como uma CONTA', () => {
+    frase('em cascata')
     frase('custo fixo:')
-    frase('O que as vendas deixaram')
-    frase('A casa custou até aqui')
-    frase('✓ CASA PAGA — e sobrou')
+    frase('Vendeu')
+    frase('CMV (insumos)')
+    frase('Sobra')
+    frase('A casa')
+    frase('Lucro')
+    frase('Faltam')
+    frase('das vendas')
+    frase('o que saiu da prateleira')
     frase('daqui pra frente é lucro')
-    frase('FALTAM')
-    frase('pra pagar a casa do período')
-    frase('sobra medida em')
-    frase('de complementos')
   })
 
-  it('⭐ a barra única e a legenda dos três pedaços', () => {
-    frase('a casa se enchendo')
-    frase('a bandeira é 100% = casa paga')
-    frase('o verde é o lucro')
+  it('⭐ a barra de composição — de cada R$ 100 vendidos, os três pedaços', () => {
+    frase('de cada R$ 100 vendidos')
+    frase('CMV')
+    frase('casa')
+    frase('lucro')
+  })
+
+  it('⭐⭐ a honestidade numa linha — e a régua do setor', () => {
+    frase('medido em')
+    frase('vendas totais')
+    frase('CMV por compra (notas)')
+    frase('detalhes')
+    /**
+     * ⚠️ A ASSERÇÃO CASA A PARTE FIXA, NÃO OS NÚMEROS — e isso é MAIS forte, não mais frouxo:
+     * a faixa é montada por template a partir de `CMV_SAUDAVEL`, então exigir
+     * *"CMV 28–35%"* contíguo no código obrigaria a tela a DIGITAR o número, que é
+     * exatamente o que `cascata.test.ts` proíbe (*"a régua do setor vem da CONSTANTE"* — a
+     * cicatriz do `TETO = 25` hardcoded). Frase montada por template nunca é contígua.
+     */
+    frase('pizzaria/lanchonete saudável: CMV')
+    frase('das vendas')
+    expect(cru(REFERENCIA), 'a faixa do setor saiu da referência').toContain('cmv 28–35% das vendas')
+  })
+
+  /**
+   * ⛔⛔ O VERMELHO QUE O DONO PEDIU: *"placar antigo de volta = vermelho"*. Sem isto, as 3
+   * frases de cima poderiam conviver com o placar de 3 cartões na mesma tela — duas
+   * apresentações do mesmo dinheiro, que é a doença que esta casa mais paga.
+   */
+  it('⛔⛔ o PLACAR de 3 cartões MORREU — na referência E no código', () => {
+    for (const morta of [
+      'O que as vendas deixaram',
+      'A casa custou até aqui',
+      'CASA PAGA — e sobrou',
+      'pra pagar a casa do período',
+      'a casa se enchendo',
+      'a bandeira é 100% = casa paga',
+    ]) {
+      expect(cru(REFERENCIA), `a frase do placar antigo voltou pra referência: "${morta}"`).not.toContain(cru(morta))
+      expect(cru(CODIGO), `a frase do placar antigo voltou pro código: "${morta}"`).not.toContain(cru(morta))
+    }
+    expect(TELA, 'o componente PlacarDaCasa voltou').not.toContain('function PlacarDaCasa')
+    expect(listaDeRender(), 'o PlacarDaCasa voltou pra lista de render').not.toContain('<PlacarDaCasa')
   })
 
   it('⛔⛔ a LINHA DA COBERTURA — é ela que impede o veredito de ficar seco', () => {

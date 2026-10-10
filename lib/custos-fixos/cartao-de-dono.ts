@@ -17,6 +17,8 @@
  * cheia, quem arredonda é a leitura*).
  */
 
+import { pctBR as pctBRLocal } from '@/lib/format/percentual'
+
 const BRL_REDONDO = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -66,16 +68,12 @@ export const SUB_DO_CARTAO: Record<QualCartao, string> = {
 export const MAX_PALAVRAS_DA_SUB = 5
 
 /**
- * ⭐ O PERCENTUAL EM pt-BR — num lugar só.
- *
- * ⚠️⚠️ **ACHADO NA PROVA EM PROD (10/10):** as frases do ⓘ saíam com **`47.7%`, de PONTO** —
- * três cópias de `(pct * 100).toFixed(1)` em `margem.ts` e `prateleira.ts`, nenhuma trocando
- * o separador. É pré-existente (vivia escondido num parágrafo de cartão), e a dieta de texto
- * o pôs no popover, onde ficou visível. *O dono escreve com vírgula.*
+ * ⚠️ `pctBR` MUDOU DE CASA em 10/10 (pra `lib/format/percentual.ts`) e é RE-EXPORTADO daqui:
+ * a pergunta *"como se escreve percentual"* é do PROJETO, não deste módulo — a tela de Margem
+ * precisou da MESMA régua no mesmo dia, e a 4ª cópia nasceria lá. Os importadores de sempre
+ * seguem funcionando sem saber que ela mudou de lugar (o padrão do `ehSaborDeVerdade`).
  */
-export function pctBR(pct: number): string {
-  return `${(pct * 100).toFixed(1).replace('.', ',')}%`
-}
+export { pctBR } from '@/lib/format/percentual'
 
 export function palavrasDaSub(sub: string): number {
   return sub.trim().split(/\s+/).filter(Boolean).length
@@ -105,7 +103,7 @@ export function linhaDeHonestidade(e: {
   const margem =
     e.margemPct == null
       ? 'margem a apurar'
-      : `margem ${pctBR(e.margemPct)} (CMV por compra)`
+      : `margem ${pctBRLocal(e.margemPct)} (CMV por compra)`
   return `${margem} · ${e.dias} dias corridos`
 }
 

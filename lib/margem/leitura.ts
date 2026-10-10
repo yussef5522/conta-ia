@@ -41,9 +41,25 @@ export interface MargemDaTela {
   nomesPorChave: Record<string, string[]>
   /** ⚠️ o aviso de qualidade de dado: dias em que a razão sabor/pizza é impossível */
   diasComRelatorioSuspeito: { dia: string; pizzas: number; sabores: number; razao: number }[]
+  /**
+   * ⭐ O CMV POR COMPRA (as notas) do MESMO período — a comparação do ⓘ da cascata.
+   *
+   * ⚠️ Vem do dono único (`somarCmvPorCompra`), que o Custos fixos também consome; **a janela
+   * é a do SELETOR**, não os 30 dias fixos do `medirMargem` — são perguntas diferentes.
+   * ⛔ `0` é um FATO aqui ("nenhuma nota de custo no período"), mas a tela diz "a apurar"
+   * quando não há nota nenhuma, pra não afirmar CMV zero.
+   */
+  cmvPorCompra: number
 }
 
 import { ehPizza, ehSaborDeVerdade, vereditoDoDia, PISO_DE_PIZZAS } from '@/lib/stock/vendas/razao-sabor-pizza'
+/**
+ * ⚠️ `custos-fixos/margem.ts` importa `prisma` no topo — seguro AQUI (`leitura.ts` é
+ * servidor). ⛔ A TELA nunca importa dele: é por isso que `cascata.ts` é PURA e recebe o
+ * `cmvPorCompra` por parâmetro (a lição de 07/10, quando a fórmula do equilíbrio mudou de
+ * arquivo pra não arrastar o prisma pro bundle do navegador).
+ */
+import { somarCmvPorCompra } from '@/lib/custos-fixos/margem'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const iso = (d: Date) => d.toISOString().slice(0, 10)
@@ -76,7 +92,7 @@ export async function lerMargem(
     meses.add(new Date(t).toISOString().slice(0, 7))
   }
 
-  const [hub, ctx, custoDe, custosFixos, canaisDb, compLinhas, mapComp] = await Promise.all([
+  const [hub, ctx, custoDe, custosFixos, canaisDb, compLinhas, mapComp, cmvPorCompra] = await Promise.all([
     hubCardapio(companyId, { de: janela.deUtc, ate: janela.ateUtc }, db),
     montarCtx(companyId, db),
     custoMedioPorItem(db, companyId),
@@ -99,6 +115,8 @@ export async function lerMargem(
       where: { companyId },
       select: { nomeSuitable: true, fichaId: true },
     }),
+    // ⭐ o CMV das NOTAS no mesmo recorte — pelo dono único, nunca por um `where` copiado
+    somarCmvPorCompra(companyId, { de: janela.deUtc, ate: janela.ateUtc }, db),
   ])
 
   // ─────────── as sobras (a porta única) ───────────
@@ -220,5 +238,6 @@ export async function lerMargem(
       .sort((a, b) => b.ocorrencias - a.ocorrencias),
     nomesPorChave: Object.fromEntries(nomesPorChave),
     diasComRelatorioSuspeito,
+    cmvPorCompra,
   }
 }

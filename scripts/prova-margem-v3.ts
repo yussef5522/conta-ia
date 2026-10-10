@@ -18,7 +18,8 @@ import { signToken } from '@/lib/auth'
 import { exigirEmpresaNesteBanco } from '@/lib/scripts/prova-banco'
 import { lerMargem } from '@/lib/margem/leitura'
 import { lerMontador } from '@/lib/margem/leitura-montador'
-import { montarPlacar, montarCarregadores, linhaDaCobertura } from '@/lib/margem/placar'
+import { montarCarregadores, linhaDaCobertura } from '@/lib/margem/placar'
+import { montarCascata } from '@/lib/margem/cascata'
 import { montarPizza } from '@/lib/margem/montador'
 import { lerReferenciaVisual } from '@/lib/referencias/visual'
 
@@ -101,7 +102,7 @@ async function main() {
   /** ⭐ cada peça é conferida nos DOIS lados: na REFERÊNCIA e no BUNDLE que prod serve */
   const SECOES: { secao: string; pecas: string[] }[] = [
     { secao: '1 · LINHA DE CHEGADA', pecas: ['A LINHA DE CHEGADA', 'casa do dia', 'sobra do dia', 'daqui pra frente cada venda'] },
-    { secao: '2 · O PLACAR', pecas: ['O placar de', 'custo fixo:', 'O que as vendas deixaram', 'A casa custou', 'a casa se enchendo', 'a bandeira é 100%', 'o verde é o lucro', 'cobertura:', 'o dia em que a casa se pagou'] },
+    { secao: '2 · A CASCATA', pecas: ['em cascata', 'custo fixo:', 'CMV (insumos)', 'das vendas', 'de cada R$ 100 vendidos', 'medido em', 'CMV por compra (notas)', 'pizzaria/lanchonete saudável', 'cobertura:', 'o dia em que a casa se pagou'] },
     { secao: '3 · QUEM CARREGOU', pecas: ['Quem carregou a casa', 'toque abre a ficha', 'ver todos', 'fora da obra', 'sabores sem ficha', 'criar fichas sobe a cobertura'] },
     { secao: '4 · A LIGA', pecas: ['A liga do', 'selo = veredito', 'encheu o caixa', 'melhor margem', 'mais vendidos', 'MEDIANA do'] },
     { secao: '5 · MONTADOR', pecas: ['Monte uma pizza e veja o custo', 'nada grava, nada baixa', 'custo da pizza', 'vendendo a', '1 ocorr', 'sabor — escolher', 'toque e escolha', 'escolher o sabor da fatia', 'sem ficha'] },
@@ -164,25 +165,29 @@ async function main() {
   // ⛔ `.duo .card{margin-bottom:0}` — sem ele a coluna curta empurra a linha seguinte
   console.log(`  ${cssPlano.includes('margin-bottom:0px') || cssPlano.includes('margin-bottom:0') ? '✓' : '⛔'} a margem do cartão DENTRO da dupla é zerada em ≥1024`)
 
-  /* ═════════════ 4. O PLACAR FECHA, A BARRA SOMA 100 ═════════════ */
-  console.log('\n═══ 4. O PLACAR E A BARRA, no dado real')
+  /* ═════════════ 4. A CASCATA FECHA, A COMPOSIÇÃO SOMA 100 ═════════════ */
+  console.log('\n═══ 4. A CASCATA E A COMPOSIÇÃO, no dado real')
   const m = await lerMargem(CO, 'MES', new Date(), {}, prisma)
-  const p = montarPlacar(m.casa)
-  console.log(`  [${p.sobra.rotulo}] ${brl(p.sobra.valor)}`)
-  console.log(`       ${p.sobra.sublinha}`)
-  console.log(`  [${p.casa.rotulo}] ${brl(p.casa.valor)} · ${p.casa.sublinha}`)
-  console.log(`  [${p.resultado.rotulo}] ${p.resultado.tom === 'PAGOU' ? '+' : ''}${brl(p.resultado.valor)} · ${p.resultado.sublinha}`)
-  if (p.resultado.ressalva) console.log(`       ressalva: ${p.resultado.ressalva}`)
-  const fecha =
-    p.sobra.valor != null && p.casa.valor != null && p.resultado.valor != null &&
-    Math.abs(Math.abs(p.sobra.valor - p.casa.valor) - p.resultado.valor) < 0.02
-  console.log(`  ⛔ cartão1 − cartão2 = cartão3? ${fecha ? '⭐ FECHA' : 'NÃO FECHA'}`)
-  if (p.barra) {
-    const soma = (p.barra.pago + p.barra.transbordo) * 100
-    console.log(`  BARRA  índigo ${(p.barra.pago * 100).toFixed(1)}% + verde ${(p.barra.transbordo * 100).toFixed(1)}% = ${soma.toFixed(1)}% ${Math.abs(soma - 100) < 0.05 ? '⭐ SOMA 100' : '⛔ NÃO SOMA 100'}`)
-    console.log(`         bandeira ${p.barra.bandeira} · ${p.barra.rotuloTransbordo ?? p.barra.rotuloParcial}`)
+  const casc = montarCascata(m.casa, m.sobras, m.cmvPorCompra > 0 ? m.cmvPorCompra : null)
+  for (const c of casc.cartoes) {
+    const op = c.operador ? `${c.operador} ` : '  '
+    console.log(`  ${op}[${c.rotulo}] ${brl(c.valor)}${c.pctDasVendas ? ` · ${c.pctDasVendas}` : ''}`)
+    console.log(`       ${c.sub}`)
   }
-  console.log(`  COBERTURA (o pé do placar): ${linhaDaCobertura(m.casa).map((x) => (x.forte ? `**${x.texto}**` : x.texto)).join('')}`)
+  console.log(`  HERÓI ${casc.heroi.estado} · ${casc.heroi.rotulo} ${brl(casc.heroi.valor)}`)
+  if (m.casa.veredito.ressalva) console.log(`       ressalva: ${m.casa.veredito.ressalva}`)
+  // ⛔ a cadeia, conferida pela MESMA saída que a tela desenha
+  console.log(`  ⛔ vendeu − cmv = sobra · sobra − casa = lucro? ${casc.fecha ? '⭐ FECHA' : '⛔ NÃO FECHA'}`)
+  if (casc.composicao) {
+    const c = casc.composicao
+    const soma = (c.cmv + c.casa + c.lucro) * 100
+    console.log(`  COMPOSIÇÃO  ${c.legenda.cmv} + ${c.legenda.casa} + ${c.legenda.lucro ?? '(sem lucro)'} = ${soma.toFixed(1)}% ${Math.abs(soma - 100) < 0.05 ? '⭐ SOMA 100' : '⛔ NÃO SOMA 100'}`)
+    if (c.faltam) console.log(`              selo coral: ${c.faltam}`)
+  }
+  console.log(`  HONESTIDADE: ${casc.honestidade.linha}`)
+  for (const e of casc.honestidade.explicacoes) console.log(`     ⓘ ${e.titulo}: ${e.texto}`)
+  console.log(`  ${casc.honestidade.reguaDoSetor}`)
+  console.log(`  COBERTURA (dentro do ⓘ): ${linhaDaCobertura(m.casa).map((x) => (x.forte ? `**${x.texto}**` : x.texto)).join('')}`)
 
   /* ═════════════ 5. QUEM CARREGOU — Σ fecha, agregado, bolinha ═════════════ */
   console.log('\n═══ 5. QUEM CARREGOU A CASA')

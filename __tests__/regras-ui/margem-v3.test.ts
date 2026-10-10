@@ -106,21 +106,24 @@ describe('⛔ UMA COMPOSIÇÃO, DOIS VIEWPORTS (REGRA 12)', () => {
   })
 
   /**
-   * ⚠️⚠️ TESTE REAPONTADO, COM O MOTIVO ESCRITO (07/10, v2). Ele travava a pilha de tijolos
-   * contra a sobreposição do telhado — e **os tijolos SVG morreram**. A régua que sobreviveu é
-   * a mesma pergunta num desenho mais simples: *"o que foi pago não pode passar do total da
-   * barra"* — e ela agora mora em `montarPlacar`, PURA e testada (`pago + transbordo = 1`).
+   * ⚠️⚠️ REAPONTADO TRÊS VEZES, COM O MOTIVO ESCRITO EM CADA — e a PERGUNTA nunca mudou:
+   * *"a tela não normaliza nem clampa a barra por conta própria"*.
+   *  · v1: travava a pilha de tijolos contra a sobreposição do telhado (os tijolos morreram)
+   *  · v2: virou a barra da casa (`pago + transbordo = 1`, em `montarPlacar`)
+   *  · 10/10: virou a BARRA DE COMPOSIÇÃO (`cmv + casa + lucro = 1`, em `montarCascata`) —
+   *    o placar de 3 cartões foi aposentado por ordem escrita do dono.
    *
-   * ⛔ O que o guard de TELA afirma é que ela **não tem clamp próprio**: se ela normalizasse
-   * por conta, nasceria a 2ª régua do desenho, que é exatamente como a pilha estourou.
+   * ⛔ Régua própria na tela nasceria como a 2ª régua do desenho, que é exatamente como a
+   * pilha de tijolos estourou em 07/10.
    */
   it('⛔⛔ a BARRA vem da lib — a tela não normaliza nem clampa por conta própria', () => {
-    const bloco = blocoDa('PlacarDaCasa')
-    expect(bloco).toContain('p.barra.pago')
-    expect(bloco).toContain('p.barra.transbordo')
-    expect(bloco).toContain('p.barra.bandeira')
-    // ⛔ nenhum Math.min/max sobre a largura da barra na tela
-    expect(bloco).not.toMatch(/Math\.min\([^)]*barra/)
+    const bloco = blocoDa('CascataDoMes')
+    expect(bloco).toContain('casc.composicao.cmv')
+    expect(bloco).toContain('casc.composicao.casa')
+    expect(bloco).toContain('casc.composicao.lucro')
+    // ⛔ nenhum clamp/normalização própria sobre os pedaços
+    expect(bloco).not.toMatch(/Math\.min\([^)]*composicao/)
+    expect(bloco).not.toMatch(/composicao\.\w+\s*\/\s*/)
     // ⚠️ e nada de `* H` (o jeito antigo, que fazia a pilha passar do telhado)
     expect(bloco).not.toMatch(/pctDaSobra \* H/)
   })
@@ -152,11 +155,14 @@ describe('⛔⛔ A TELA NÃO CALCULA DINHEIRO — ela desenha o payload', () => 
   })
 
   it('⭐ a tela usa o VEREDITO e a RESSALVA do servidor, nunca compara por conta própria', () => {
-    // ⚠️ REAPONTADO (v2): a ressalva mudou de casa — ela viaja no `montarPlacar` e é desenhada
-    // pelo cartão de resultado. A régua é a MESMA: a tela não pode mostrar "pagou" seco.
-    expect(usosDe(tela, 'montarPlacar')).toBeGreaterThan(0)
-    expect(tela).toContain('ressalva={p.resultado.ressalva}')
-    expect(blocoDa('CartaoDoPlacar')).toContain('{ressalva}')
+    /**
+     * ⚠️ REAPONTADO (10/10): a ressalva mudou de casa — do cartão de resultado do placar pro
+     * cartão do LUCRO (o herói da cascata). A régua é a MESMA e é a de v1: **a tela não pode
+     * mostrar "pagou" seco** sobre dado parcial.
+     */
+    expect(usosDe(tela, 'montarCascata')).toBeGreaterThan(0)
+    expect(tela).toContain('c.veredito.ressalva')
+    expect(blocoDa('CartaoDaCascataNaTela')).toContain('{ressalva}')
     // ⛔ comparar sobra com custo fixo aqui seria a 2ª régua do "pagou"
     expect(tela).not.toMatch(/sobraLiquida\s*>=?\s*/)
   })
@@ -216,12 +222,18 @@ describe('⭐ A TELA DIZ A COMPOSIÇÃO DOS CHIPS, e o veredito nunca vem seco',
      * mesma — *o complemento nunca é um abatimento mudo* — e quem escreve a frase virou a lib,
      * que é onde ela dá pra EXECUTAR em teste.
      */
-    const pl = semComentarios(ler(R('lib/margem/placar.ts')))
-    expect(pl).toContain('já abatidos')
-    expect(pl).toContain('de complementos')
-    // ⚠️ e o PISO é dito: o abatimento é o mínimo, não o total
-    expect(pl).toContain('ocorrenciasSemCusto')
-    expect(pl).toContain('é o mínimo, não o total')
+    /**
+     * ⚠️⚠️ REAPONTADO (10/10): a `sublinhaDaSobra` do placar MORREU com ele. A régua é a
+     * mesma — *o complemento nunca é um abatimento mudo* — e a frase migrou pro ⓘ da cascata,
+     * que é onde ela faz sentido agora: **o complemento É parte do CMV**, então a ressalva
+     * fica no número que ele compõe, não na sobra. Executada em `cascata.test.ts`.
+     */
+    const cs = semComentarios(ler(R('lib/margem/cascata.ts')))
+    expect(cs).toContain('entram no CMV')
+    expect(cs).toContain('complementos')
+    // ⚠️ e o PISO é dito: o CMV é o mínimo, não o total
+    expect(cs).toContain('ocorrenciasSemCusto')
+    expect(cs).toContain('é o MÍNIMO, não o total')
   })
 
   it('⭐ a cobertura e o placar aparecem — o dia D nunca sozinho', () => {
@@ -307,26 +319,30 @@ describe('⛔⛔⛔ A CASA DE TIJOLOS SVG MORREU — e não pode ressuscitar', (
     expect(tela).not.toMatch(/y -= h/)
   })
 
-  it('⭐ no lugar dele: 3 cartões + a barra, e os três cartões vêm da MESMA lib', () => {
-    const bloco = blocoDa('PlacarDaCasa')
-    expect(bloco).toContain('montarPlacar')
-    expect(bloco).toContain('c={p.sobra}')
-    expect(bloco).toContain('c={p.casa}')
-    expect(bloco).toContain('c={p.resultado}')
+  /**
+   * ⚠️ REAPONTADO (10/10): eram 3 cartões + a barra da casa; agora são **5 cartões + a barra
+   * de composição**, por ordem escrita do dono (*"é ele crescido"*). A pergunta não mudou:
+   * *"os cartões vêm da MESMA lib"* — régua própria na tela seria a 2ª resposta do mês.
+   */
+  it('⭐ no lugar dele: a CASCATA de 5 cartões, todos da MESMA lib', () => {
+    const bloco = blocoDa('CascataDoMes')
+    expect(usosDe(bloco, 'montarCascata')).toBeGreaterThan(0)
+    expect(bloco).toContain('casc.cartoes.map')
     // ⚠️ no celular os cartões EMPILHAM (REGRA 12) — uma composição só, o CSS escolhe
-    expect(bloco).toMatch(/grid-cols-1[^"]*sm:grid-cols-3/)
+    expect(bloco).toMatch(/grid-cols-1[^"]*min-\[900px\]:grid-cols-5/)
   })
 
-  it('⭐ a barra tem a bandeira e o verde do transbordo', () => {
-    const bloco = blocoDa('PlacarDaCasa')
-    expect(bloco).toContain('🏁')
+  it('⭐ a barra de composição tem os 3 pedaços e o selo coral do prejuízo', () => {
+    const bloco = blocoDa('CascataDoMes')
+    expect(bloco).toContain('--fam-ambar-mid')
+    expect(bloco).toContain('--fam-indigo-mid')
     expect(bloco).toContain('--fam-verde-mid')
-    expect(bloco).toContain('rotuloTransbordo')
+    expect(bloco).toContain('faltam')
   })
 
   it('⛔⛔ "a apurar" NUNCA vira R$ 0,00 no cartão', () => {
-    const bloco = blocoDa('CartaoDoPlacar')
-    expect(bloco).toMatch(/c\.valor == null \? 'a apurar'/)
+    const bloco = blocoDa('CartaoDaCascataNaTela')
+    expect(bloco).toMatch(/'a apurar'/)
   })
 })
 
