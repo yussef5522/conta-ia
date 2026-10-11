@@ -23,6 +23,7 @@ import { use, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Store, Loader2 } from 'lucide-react'
 import { valorDoCartao } from '@/lib/custos-fixos/cartao-de-dono'
+import { formatBRL } from '@/lib/format/money'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { mesCorrente, mesVizinho, rotuloDoMes } from '@/lib/periodo/mes-corrente'
 import { MIN_AMOSTRAS_DO_DIA } from '@/lib/vendas/dia-a-dia'
@@ -433,6 +434,17 @@ function LinhaDaFonte({ d }: { d: Payload }) {
   if (c.peloExtrato > 0) partes.push(`${c.peloExtrato} estimado(s) pelo extrato`)
   if (c.pedemImport > 0) partes.push(`${c.pedemImport} sem import`)
 
+  /**
+   * ⭐⭐ A COMPOSIÇÃO — e ela nasceu de uma DIVERGÊNCIA MEDIDA em prod (10/10), não de gosto:
+   * esta tela soma **produtos + complementos** e a CENTRAL DE IMPORTAÇÃO mostra **só produtos**
+   * (dia 06/10: R$ 17.102,63 × R$ 15.873,77). ⛔ As duas estão certas sobre a pergunta DELAS;
+   * errado era nenhuma DIZER qual soma — *"número sem régua em tela de dinheiro é pior que
+   * ausência"*, e duas telas com números diferentes pro mesmo dia é a doença que esta casa
+   * mais paga (os 111 alarmes falsos, os três agostos).
+   */
+  const prod = d.dias.reduce((a, x) => a + (x.produtos ?? 0), 0)
+  const comp = d.dias.reduce((a, x) => a + (x.complementos ?? 0), 0)
+
   return (
     <details className="border-t px-[18px] py-[9px]" style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}>
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-[6px] text-[12px] tabular-nums" style={{ color: 'var(--prod-secondary)' }}>
@@ -455,6 +467,17 @@ function LinhaDaFonte({ d }: { d: Payload }) {
           <b style={{ color: 'var(--prod-primary)' }}>a composição por meio</b> vem sempre do extrato: o
           PDV diz o que foi vendido, não por onde o dinheiro entrou.
         </p>
+        {comp > 0 && (
+          <p className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
+            <b style={{ color: 'var(--prod-primary)' }}>o que este total soma:</b>{' '}
+            produtos {formatBRL(prod)} + complementos {formatBRL(comp)} ={' '}
+            <b style={{ color: 'var(--prod-primary)' }}>{formatBRL(prod + comp)}</b>. Os complementos
+            são os adicionais cobrados à parte (borda, bebida escolhida, upgrade de tamanho) — os
+            que já vêm no preço do produto entram no relatório a R$ 0,00 e não somam.{' '}
+            <b style={{ color: 'var(--prod-primary)' }}>A central de importação mostra só os
+            produtos</b>, então o número dela é menor — é a mesma venda, outra pergunta.
+          </p>
+        )}
         {d.moduleInicio && (
           <p className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-muted)' }}>
             antes de {ddmm(d.moduleInicio)} o sistema não tem dado de venda —{' '}

@@ -392,3 +392,64 @@ describe('⛔⛔ hoje aberto ≠ sem dado', () => {
     expect(c.valor).toBeCloseTo(soma, 2)
   })
 })
+
+/**
+ * ⛔⛔⛔ AS DUAS DEFINIÇÕES, NOMEADAS — a divergência tela × central (10/10).
+ *
+ * **Medido em prod no dia 06/10:** a TELA DE VENDAS diz **R$ 17.102,63** e a CENTRAL DE
+ * IMPORTAÇÃO diz **R$ 15.873,77**. A diferença é **R$ 1.228,86 = os COMPLEMENTOS**.
+ *
+ * ⚠️⚠️ E O DONO PEDIU QUE AS DUAS BATESSEM NO VALOR R$ 18.743,90 — **que não existe em fonte
+ * nenhuma** (medido: produtos 15.873,77 · complementos 1.228,86 · soma 17.102,63 · extrato
+ * 15.926,36). Então o guard trava o que dá pra defender: **a composição**, com cada lado
+ * dizendo o que soma.
+ *
+ * ⛔⛔ E EU NÃO ESCOLHI QUAL É "O FATURAMENTO" — a composição medida aponta pra adicional
+ * cobrado à parte (borda R$ 22–35, bebida escolhida, upgrade de tamanho), **31 das 80 linhas
+ * do dia estão a R$ 0,00** (inclusas no preço, não somam), e os **R$ 1.286,31 (10,5%)** em
+ * nomes que vivem nos DOIS relatórios são justamente os que o dono **já decidiu em 02/09**
+ * serem vendas distintas (*"a mesma garrafa, uma por caminho"*). ⚠️ O extrato **não serve de
+ * juiz** nesta janela: ele é recebimento com defasagem (D+1 e bloco), por isso existe o V6
+ * com as bordas nomeadas. **Decidir por ele seria inventar a intenção do dono.**
+ */
+describe('⛔⛔ a composição do total — o que a tela soma, dito', () => {
+  it('⭐ o dia carrega produtos e complementos separados, e eles SOMAM o total', () => {
+    const pdv = new Map([['2026-10-06', { total: 17_102.63, unidades: 515, produtos: 15_873.77, complementos: 1_228.86 }]])
+    const d = diaDe(montarDias({
+      de: '2026-10-06', ate: '2026-10-06', pdv, extrato: [],
+      hoje: '2026-10-10', moduleInicio: '2026-08-01',
+    }), '2026-10-06')
+    expect(d.produtos).toBeCloseTo(15_873.77, 2)
+    expect(d.complementos).toBeCloseTo(1_228.86, 2)
+    expect((d.produtos ?? 0) + (d.complementos ?? 0)).toBeCloseTo(d.total!, 2)
+  })
+
+  /**
+   * ⛔ O NÚMERO DA CENTRAL É DERIVÁVEL DO PAYLOAD — é isso que permite a tela EXPLICAR a
+   * divergência em vez de o dono descobrir sozinho comparando duas telas.
+   */
+  it('⛔ Σ(produtos) == o que a central mostra · Σ(total) == o que a tela mostra', () => {
+    const pdv = new Map([
+      ['2026-10-06', { total: 17_102.63, unidades: 515, produtos: 15_873.77, complementos: 1_228.86 }],
+      ['2026-10-07', { total: 16_225.45, unidades: 431, produtos: 15_207.36, complementos: 1_018.09 }],
+    ])
+    const dias = montarDias({
+      de: '2026-10-06', ate: '2026-10-07', pdv, extrato: [],
+      hoje: '2026-10-10', moduleInicio: '2026-08-01',
+    })
+    const somaProd = dias.reduce((a, x) => a + (x.produtos ?? 0), 0)
+    const somaTudo = dias.reduce((a, x) => a + (x.total ?? 0), 0)
+    expect(somaProd, 'a definição da CENTRAL').toBeCloseTo(31_081.13, 2)
+    expect(somaTudo, 'a definição da TELA').toBeCloseTo(33_328.08, 2)
+    const c = montarCartoes({ dias, hoje: '2026-10-10', ehMesInteiro: false, diasSemanaPassada: [] })
+      .find((x) => x.qual === 'periodo')!
+    expect(c.valor, 'o cartão fecha com a definição da TELA').toBeCloseTo(somaTudo, 2)
+  })
+
+  it('⚠️ dia que veio do EXTRATO não tem composição (o extrato não separa)', () => {
+    const d = diaDe(base({ pdv: new Map() }), '2026-10-06')
+    expect(d.fonte).toBe('EXTRATO')
+    expect(d.produtos).toBeNull()
+    expect(d.complementos).toBeNull()
+  })
+})

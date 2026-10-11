@@ -138,7 +138,13 @@ export async function GET(request: NextRequest, { params }: Params) {
       }))
 
     const moduleInicio = primeira ? dia(primeira.vigenteDe) : null
-    const mapaPdv = new Map([...pdv].map(([k, v]) => [k, { total: v.total, unidades: v.unidades }]))
+    /**
+     * ⭐ A COMPOSIÇÃO VIAJA (10/10) — `totaisDoPdvPorDia` separa produtos de complementos, e
+     * jogar isso fora aqui era o motivo de a tela não poder DIZER o que ela soma (a
+     * divergência medida contra a central: R$ 17.102,63 × R$ 15.873,77 no dia 06/10).
+     */
+    const mapaPdv = new Map([...pdv].map(([k, v]) =>
+      [k, { total: v.total, unidades: v.unidades, produtos: v.produtos, complementos: v.complementos }]))
 
     const dias = montarDias({
       de: r.de, ate: r.ate, pdv: mapaPdv, extrato: paraExtrato(vs), hoje, moduleInicio,
@@ -151,7 +157,8 @@ export async function GET(request: NextRequest, { params }: Params) {
     const diasSemanaPassada = montarDias({
       de: segPassada,
       ate: dia(new Date(dt(segAtual).getTime() - DIA_MS)),
-      pdv: new Map([...pdvPassada].map(([k, v]) => [k, { total: v.total, unidades: v.unidades }])),
+      pdv: new Map([...pdvPassada].map(([k, v]) =>
+        [k, { total: v.total, unidades: v.unidades, produtos: v.produtos, complementos: v.complementos }])),
       extrato: paraExtrato(vsPassada),
       hoje,
       moduleInicio,

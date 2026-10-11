@@ -57,6 +57,9 @@ export interface DiaDeVenda {
    * (o relatório do PDV entra na madrugada — a cicatriz do import de 08/10).
    */
   pedeImport: boolean
+  /** ⭐ a composição do número, quando a fonte é o PDV — `null` no extrato (ele não separa) */
+  produtos: number | null
+  complementos: number | null
   /** quando a célula aponta pro bloco do extrato: `'2026-10-02→2026-10-04'` */
   noBloco: string | null
   /** intensidade 0..1 pro mapa de calor — escala do PRÓPRIO recorte */
@@ -88,7 +91,17 @@ export interface MontarDiasInput {
   /** `YYYY-MM-DD` INCLUSIVO — é o recorte que o dono escolheu na tela */
   ate: string
   /** o que o PDV registrou, por dia */
-  pdv: Map<string, { total: number; unidades: number }>
+  /**
+   * ⚠️ A COMPOSIÇÃO VIAJA JUNTO (10/10) — e ela nasceu de uma divergência medida em prod:
+   * a TELA DE VENDAS soma **produtos + complementos** e a CENTRAL DE IMPORTAÇÃO mostra **só
+   * produtos** (R$ 17.102,63 × R$ 15.873,77 no dia 06/10). ⛔ As duas estão certas sobre a
+   * pergunta DELAS; errado era nenhuma das duas DIZER qual soma — *"número sem régua em tela
+   * de dinheiro é pior que ausência"*, e duas telas com números diferentes pro mesmo dia é a
+   * doença que esta casa mais paga.
+   *
+   * ⭐ `totaisDoPdvPorDia` já separa os dois; era este mapa que jogava a separação fora.
+   */
+  pdv: Map<string, { total: number; unidades: number; produtos?: number; complementos?: number }>
   /** o que o extrato atribuiu (dia único ou bloco) */
   extrato: EntradaDoExtrato[]
   /** `YYYY-MM-DD` de hoje no fuso de quem olha */
@@ -171,6 +184,8 @@ export function montarDias(i: MontarDiasInput): DiaDeVenda[] {
       fonte,
       estimado: fonte === 'EXTRATO' || fonte === 'BLOCO',
       unidades: p?.unidades ?? null,
+      produtos: p?.produtos ?? null,
+      complementos: p?.complementos ?? null,
       /**
        * ⭐ *"dia de venda sem import"* = o extrato viu dinheiro daquele dia (direto ou em
        * bloco) e o PDV não entrou. ⚠️ E só cobra depois de o dia acabar.
