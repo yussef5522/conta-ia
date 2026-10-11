@@ -14,6 +14,7 @@ import { prisma } from '@/lib/db'
 import type { PrismaClient } from '@prisma/client'
 import { exigirEmpresaNesteBanco } from '@/lib/scripts/prova-banco'
 import { signToken } from '@/lib/auth'
+import { confirmarPedido } from '@/lib/stock/producao/confirmar-pedido'
 import { criarOrdem, explodirSeparacao } from '@/lib/stock/producao/ordens'
 import { fiscalDeOrdens } from '@/lib/stock/producao/fiscal-dos-lotes'
 import { filaDeConferencia, ordenarCartoes } from '@/lib/stock/producao/fila-de-conferencia'
@@ -110,8 +111,15 @@ async function main() {
         where: { companyId: EMPRESA, fichaId: ficha.id, versao: ficha.versaoAtual }, select: { loteBase: true },
       })).loteBase
 
-      const semR = await criarOrdem({ companyId: EMPRESA, fichaId: ficha.id, escalaReceitas: esc, pedidoUnidades: 200, dataProducao: new Date(), userId: dono.id }, db)
-      const comR = await criarOrdem({ companyId: EMPRESA, fichaId: ficha.id, escalaReceitas: esc, pedidoUnidades: 200, retalhoKg: 9.2, dataProducao: new Date(), userId: dono.id }, db)
+      /**
+       * ⚠️ ATUALIZADO EM 11/10 — a criação deixou de perguntar quantidade. O pedido (e o retalho)
+       * passam pelo writer único `confirmarPedido`, que é o caminho REAL da tela agora. ⭐ A
+       * prova fica MAIS forte: ela exercita os dois gestos, não um atalho que a tela não usa.
+       */
+      const semR = await criarOrdem({ companyId: EMPRESA, fichaId: ficha.id, dataProducao: new Date(), userId: dono.id }, db)
+      await confirmarPedido({ companyId: EMPRESA, ordemId: semR.ordemId, unidades: 200, userId: dono.id }, db)
+      const comR = await criarOrdem({ companyId: EMPRESA, fichaId: ficha.id, dataProducao: new Date(), userId: dono.id }, db)
+      await confirmarPedido({ companyId: EMPRESA, ordemId: comR.ordemId, unidades: 200, retalhoKg: 9.2, userId: dono.id }, db)
       console.log(`  duas ordens de 200: sem retalho ${semR.ordemId} · com 9,2 kg ${comR.ordemId}`)
 
       /** ⭐⭐ A SEPARAÇÃO NÃO MUDA — a lei de 03/10 */

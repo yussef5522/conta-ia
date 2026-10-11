@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { criarOrdem, OrdemError, explodirSeparacao } from '../ordens'
+import { confirmarPedido } from '../confirmar-pedido'
 import { filaDeConferencia } from '../fila-de-conferencia'
 import { fiscalDeOrdens } from '../fiscal-dos-lotes'
 import { produzirAvisosDeRetalho } from '@/lib/avisos/produtores/retalho'
@@ -74,7 +75,8 @@ afterEach(async () => {
     prisma.stockOrdemRetalho, prisma.stockFichaRetalho, prisma.aviso,
     prisma.stockConclusaoCarimbo, prisma.stockProducaoConclusao, prisma.stockMovement,
     prisma.stockOrdemEtapa, prisma.stockFichaComponente, prisma.stockFichaVersao,
-    prisma.stockFicha, prisma.stockProductionOrder, prisma.stockOrdemMeta, prisma.stockItem,
+    prisma.stockFicha, prisma.stockProductionOrder, prisma.stockOrdemPedidoDeclarado,
+    prisma.stockOrdemMeta, prisma.stockItem,
     prisma.stockSaldoCache,
   ]) {
     await (t as { deleteMany: (a: unknown) => Promise<unknown> }).deleteMany({ where: { companyId } })
@@ -82,23 +84,41 @@ afterEach(async () => {
   await prisma.company.deleteMany({ where: { id: companyId } })
 })
 
-const criar = (fichaId: string, pedido: number, retalhoKg?: number) =>
-  criarOrdem(
-    { companyId, fichaId, escalaReceitas: pedido / 10, pedidoUnidades: pedido, retalhoKg, dataProducao: new Date() },
-    prisma,
-  )
+/**
+ * ⚠️⚠️ ATUALIZADO EM 11/10 — **o gesto virou DOIS, e a prova ficou mais forte.**
+ *
+ * Até 10/10 a quantidade (e o retalho) eram perguntados na CRIAÇÃO. O dono achou o fantasma
+ * (*"quantidade perguntada 2×, e o 1º número assombra a tela"*): agora criar é enxuto e a
+ * pergunta — número **e** retalho — vive na página da ordem, com o writer único
+ * `confirmarPedido`. O helper passou a exercitar **os dois gestos**, que é o caminho real.
+ */
+const criar = async (fichaId: string, pedido: number, retalhoKg?: number) => {
+  const o = await criarOrdem({ companyId, fichaId, dataProducao: new Date() }, prisma)
+  await confirmarPedido({ companyId, ordemId: o.ordemId, unidades: pedido, retalhoKg: retalhoKg ?? null }, prisma)
+  return o
+}
 
 describe('⛔⛔ O RETALHO SÓ EXISTE NA RECEITA MARCADA', () => {
   it('⛔⛔ receita NÃO marcada RECUSA o retalho — e quem recusa é o SERVIDOR', async () => {
-    const ordensAntes = await prisma.stockProductionOrder.count({ where: { companyId } })
-    await expect(criar(fichaOutra, 100, 5)).rejects.toThrow(OrdemError)
+    const { ordemId } = await criarOrdem({ companyId, fichaId: fichaOutra, dataProducao: new Date() }, prisma)
+    await expect(
+      confirmarPedido({ companyId, ordemId, unidades: 100, retalhoKg: 5 }, prisma),
+    ).rejects.toThrow(OrdemError)
     /**
-     * ⛔⛔ **E NADA FICA GRAVADO PELA METADE — este é o achado da prova em prod (09/10).** A 1ª
-     * versão checava a config DEPOIS do `create`: a rota devolvia 422 e **a ordem ficava no
-     * banco**, em PLANEJADA, sem nada. A contabilidade de escrita da prova pegou (531 → 532).
+     * ⛔⛔ **E NADA FICA GRAVADO PELA METADE — o achado da prova em prod (09/10), agora um
+     * degrau acima.** A 1ª versão daquele dia checava a config DEPOIS do `create` da ordem: a
+     * rota devolvia 422 e a ordem ficava no banco em PLANEJADA, vazia (a contabilidade de
+     * escrita da prova pegou, 531 → 532).
+     *
+     * ⚠️ Com a pergunta na página da ordem, a ordem **existe legitimamente** (ela nasceu de um
+     * gesto próprio, que deu certo). O que não pode ficar pela metade é **o PEDIDO** — e por
+     * isso a config é conferida ANTES de a meta, o rastro ou a escala serem tocados.
      */
     expect(await prisma.stockOrdemRetalho.count({ where: { companyId } })).toBe(0)
-    expect(await prisma.stockProductionOrder.count({ where: { companyId } }), 'a ordem ficou gravada pela metade').toBe(ordensAntes)
+    expect(await prisma.stockOrdemMeta.count({ where: { companyId, ordemId } }), 'a meta ficou gravada pela metade').toBe(0)
+    expect(await prisma.stockOrdemPedidoDeclarado.count({ where: { companyId, ordemId } })).toBe(0)
+    const o = await prisma.stockProductionOrder.findUniqueOrThrow({ where: { id: ordemId }, select: { escalaReceitas: true } })
+    expect(o.escalaReceitas, 'a escala não pode ter andado').toBe(1)
   })
 
   it('⭐ a receita marcada aceita e GRAVA com rastro', async () => {

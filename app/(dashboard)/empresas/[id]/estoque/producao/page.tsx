@@ -8,17 +8,12 @@ import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 // ⚠️ "×" SAIU DA TELA (01/09, decisão do dono): *"a pessoa fala em porções e em kg, nunca
 // em '×'"*. O `escalaReceitas` continua no banco e no motor — só não aparece mais.
-import { eficienciaMedia } from '@/lib/stock/producao/previsao-rendimento'
-import { escalaDoPedido } from '@/lib/stock/producao/escala-da-ordem'
-import { avisosDaEscala } from '@/lib/stock/producao/escala-do-pedido'
-import { fraseDoRetalho } from '@/lib/stock/producao/retalho'
-import { listaDoQueVaiSeparar } from '@/lib/stock/producao/lista-da-separacao'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
-import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio, BarChart3, ArrowRight, CalendarDays, Beef, Wheat, Scissors, ChefHat, Flame, Gauge, Clock, Milk, Pizza, Drumstick, Ham, Slice, Droplet, Egg, Carrot, AlertTriangle } from 'lucide-react'
+import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio, BarChart3, CalendarDays, Beef, Wheat, Scissors, ChefHat, Flame, Gauge, Clock, Milk, Pizza, Drumstick, Ham, Slice, Droplet, Egg, Carrot, AlertTriangle } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
 import { formatarDuracao } from '@/lib/format/duracao'
 import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
@@ -31,6 +26,7 @@ import { usePermissoes } from '@/lib/hooks/use-permissoes'
  * nem divide por conta própria. Quatro telas mostram pedido; quatro `Math.round` divergiriam.
  */
 import { fmtPedido, pilulaDoPedido } from '@/lib/stock/producao/pedido-na-tela'
+import type { OrigemDoPedido } from '@/lib/stock/producao/pedido-da-ordem'
 import type { Quantidade } from '@/lib/stock/producao/desempenho'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
@@ -41,7 +37,16 @@ interface Setor { id: string; nome: string; ativo: boolean }
 interface Painel { emAberto: number; valorEmProducao: number; concluidasNoPeriodo: number; valorProduzidoNoPeriodo: number; rendimentoPeriodo: number | null; lotesNaMedia: number; faixaRendimento: string; abertasDeOntem: number }
 type Aberta = Ordem & { deOntem?: boolean }
 /** ⭐ o que a rota passou a mandar pro mock v3 (quem/começou/pedido) */
-interface Contexto { pedido: number | null; pedidoOrigem: 'DECLARADO' | 'DERIVADO' | null; quem: string[]; comecouEm: string | null }
+/**
+ * ⚠️⚠️ A ORIGEM **DERIVA DO TIPO DA LIB** (`OrigemDoPedido`), não de uma união escrita à mão.
+ *
+ * Esta linha tinha `'DECLARADO' | 'DERIVADO'` digitado, e ao nascer o `AGUARDANDO` (11/10) o
+ * `tsc` acusou *"esta comparação não tem sobreposição"* — ou seja, **a tela não conseguia nem
+ * mencionar o estado novo**. É a dívida registrada em 01/09 (*"interface escrita à mão sobre
+ * payload é promessa, não prova"*) cobrando: foi assim que o `bankAccount.name` derrubou a
+ * carteira com `tsc` verde. Derivando, valor novo no servidor aparece aqui de graça.
+ */
+interface Contexto { pedido: number | null; pedidoOrigem: OrigemDoPedido | null; quem: string[]; comecouEm: string | null }
 interface PedidoFeito { pedido: number | null; origem: 'DECLARADO' | 'DERIVADO' | null }
 interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string; pct: number | null; faixa: string; motivo: string | null; selo: 'FICHA' | 'SEM_DADO'
   /**
@@ -238,6 +243,12 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
   const [contexto, setContexto] = useState<Record<string, Contexto>>({})
   const [pedidoFeito, setPedidoFeito] = useState<Record<string, PedidoFeito>>({})
   /**
+   * ⭐ O PEDIDO RESOLVIDO de cada ordem da lista (11/10) — vem do SERVIDOR, pelo dono único.
+   * ⛔ Derivar `escala × loteBase` aqui seria a 2ª régua do pedido, e ela diria *"1 lote"* na
+   * ordem recém-criada (escala no default) como se fosse o número que o dono pediu.
+   */
+  const [pedidoDasOrdens, setPedidoDasOrdens] = useState<Record<string, { pedido: number | null; origem: OrigemDoPedido | null }>>({})
+  /**
    * ⭐⭐ A RECEITA DAS CONCLUÍDAS vem resolvida POR ID (05/10). ⛔ Antes a lista montava nome e
    * unidade a partir do `ordens`, que é **truncado em 200 encerradas** — e com 30 dias de
    * período isso deixava 200 das 379 linhas com nome "—", sem logo e sem pílula.
@@ -270,7 +281,7 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
       setOrdens(j.ordens ?? []); setSugestoes(j.sugestoes ?? [])
       setPainel(j.painel ?? null); setAbertas(j.abertas ?? []); setConcluidas(j.concluidas ?? [])
       setContexto(j.contexto ?? {}); setPedidoFeito(j.pedidoDasConcluidas ?? {}); setHoje(j.hoje ?? null)
-      setReceitaConcl(j.receitaDasConcluidas ?? {})
+      setReceitaConcl(j.receitaDasConcluidas ?? {}); setPedidoDasOrdens(j.pedidoDasOrdens ?? {})
     }).catch(() => setOrdens(null))
   }
   useEffect(() => { setMostrar(PAGINA); carregar() }, [id, periodo, custom]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -279,7 +290,16 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
     setCriando(s.fichaId)
     try {
       const hoje = diaEmSaoPaulo()
-      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fichaId: s.fichaId, escalaReceitas: s.escalaSugerida ?? 1, dataProducao: hoje }) })
+      /**
+       * ⭐⭐ A SUGESTÃO MANDA A ESCALA DELA, E ISSO **NÃO É UMA 2ª PERGUNTA** (11/10).
+       *
+       * ⚠️ `escalaReceitas` aqui é um **PLANO** do mín/máx, não um pedido declarado: a ordem
+       * nasce sem `stock_ordem_meta`, então o `pedidoDaOrdem` a devolve **AGUARDANDO** e a
+       * página abre na pergunta do mesmo jeito. ⭐ `origem: 'SUGESTAO'` é o que faz a tela da
+       * pergunta mostrar *"o mín/máx sugeriu ~N"* — **ao lado do campo, nunca dentro dele**
+       * (*"número sugerido vira número confirmado sem ninguém contar"*).
+       */
+      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fichaId: s.fichaId, escalaReceitas: s.escalaSugerida ?? 1, origem: 'SUGESTAO', dataProducao: hoje }) })
       const j = await r.json().catch(() => null)
       if (r.ok && j?.ordemId) window.location.href = `/empresas/${id}/estoque/producao/${j.ordemId}`
     } finally { setCriando(null) }
@@ -333,7 +353,15 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
             style={{ color: 'var(--prod-muted)' }}><UserPlus className="h-3.5 w-3.5" /> Equipe</a>
           <button onClick={() => baixarCsv(`ordens-producao-${hojeArquivo()}`,
             ['Produto', 'Quanto', 'Data', 'Setor', 'Estado'],
-            ordens.map((o) => [o.nomeProduzido, `${o.escalaReceitas * o.loteBase} ${o.unidadeProduzido}`, fmtDia(o.dataProducao), o.setorNome ?? '', o.estado]))}
+            /**
+              * ⚠️ O CSV LÊ O MESMO PEDIDO RESOLVIDO da tela (11/10) — arquivo com um número e
+              * tela com outro é a divergência que ninguém descobre até alguém somar no Excel.
+              */
+            ordens.map((o) => {
+              const p = pedidoDasOrdens[o.id]
+              const t = p?.origem === 'AGUARDANDO' || p?.pedido == null ? null : fmtPedido(p.pedido, o.unidadeProduzido)
+              return [o.nomeProduzido, t == null ? 'a definir' : `${t} ${o.unidadeProduzido}`, fmtDia(o.dataProducao), o.setorNome ?? '', o.estado]
+            }))}
             disabled={ordens.length === 0}
             className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] disabled:opacity-40"
             style={{ color: 'var(--prod-muted)' }}><Download className="h-3.5 w-3.5" /> CSV</button>
@@ -545,82 +573,41 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
 }
 
 type CampoO = 'produto' | 'escala' | 'data' | 'setor' | 'estado'
-function Secao({ titulo, ordens, id }: { titulo: string; ordens: Ordem[]; id: string }) {
-  const { col, dir, alternar, ordenar } = useSort<CampoO>('data', 'desc')
-  const lista = ordenar(ordens, (o, c) => (
-    c === 'produto' ? o.nomeProduzido : c === 'escala' ? o.escalaReceitas * o.loteBase : c === 'data' ? o.dataProducao
-      : c === 'setor' ? (o.setorNome ?? '') : o.estado
-  ))
-  return (
-    <div>
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">{titulo} ({ordens.length})</h2>
-      <Card><CardContent className="p-0">
-        <table className="density-normal hidden w-full sm:table">
-          <thead className="group/thead"><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
-            <SortableTh campo="produto" col={col} dir={dir} onSort={alternar}>Produto</SortableTh>
-            <SortableTh campo="escala" col={col} dir={dir} onSort={alternar} align="right">Quanto</SortableTh>
-            <SortableTh campo="data" col={col} dir={dir} onSort={alternar}>Data</SortableTh>
-            <SortableTh campo="setor" col={col} dir={dir} onSort={alternar}>Setor</SortableTh>
-            <SortableTh campo="estado" col={col} dir={dir} onSort={alternar}>Estado</SortableTh>
-            <th className="w-10 px-3 py-2" />
-          </tr></thead>
-          <tbody>
-            {lista.map((o) => {
-              const e = ESTADO[o.estado] ?? { label: o.estado, cls: 'bg-slate-100 text-slate-600' }
-              return (
-                <tr key={o.id} className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50">
-                  <td className="px-3 py-0 text-[13px]"><a href={`/empresas/${id}/estoque/producao/${o.id}`} className="font-medium hover:underline" style={{ color: 'var(--prod-primary)' }}>{o.nomeProduzido}</a></td>
-                  <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-500">{fmtQtd(o.escalaReceitas * o.loteBase)} {o.unidadeProduzido}</td>
-                  <td className="whitespace-nowrap px-3 py-0 text-[13px] tabular-nums text-slate-500">{fmtDia(o.dataProducao)}</td>
-                  <td className="px-3 py-0 text-[13px] text-slate-500">{o.setorNome ?? '—'}</td>
-                  <td className="px-3 py-0"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${e.cls}`}>{e.label}</span></td>
-                  <td className="px-3 py-0 text-right"><a href={`/empresas/${id}/estoque/producao/${o.id}`}><ChevronRight className="h-4 w-4 text-slate-300" /></a></td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-        <div className="divide-y divide-slate-50 sm:hidden">
-          {lista.map((o) => {
-            const e = ESTADO[o.estado] ?? { label: o.estado, cls: 'bg-slate-100 text-slate-600' }
-            return (
-              <a key={o.id} href={`/empresas/${id}/estoque/producao/${o.id}`} className="block p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="truncate text-sm font-medium text-slate-900">{o.nomeProduzido}</p>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${e.cls}`}>{e.label}</span>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">{fmtQtd(o.escalaReceitas * o.loteBase)} {o.unidadeProduzido} · {fmtDia(o.dataProducao)}{o.setorNome ? ` · ${o.setorNome}` : ''}</p>
-              </a>
-            )
-          })}
-        </div>
-      </CardContent></Card>
-    </div>
-  )
-}
-
+/**
+ * ⛔⛔ `Secao` FOI APAGADA EM 11/10 — ela tinha **ZERO chamador** (as listas vivas são
+ * `ListaAbertas` e `ListaConcluidas`) e era o último lugar que imprimia `escalaReceitas ×
+ * loteBase` **cru** como se fosse o pedido.
+ *
+ * ⚠️ Não bastava consertar o número dela: *enquanto o componente existe no arquivo, alguém
+ * religa* — foi assim que o `GruposSugeridos` do cardápio voltou (23/09). Apagar é o que
+ * torna o fantasma inalcançável.
+ */
 function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; fichaInicial?: string | null; onCriada: (ordemId: string) => void; onFechar: () => void }) {
   const [fichas, setFichas] = useState<FichaOpt[]>([])
   const [setores, setSetores] = useState<Setor[]>([])
   const [fichaId, setFichaId] = useState(fichaInicial ?? '')
-  // ⭐ o dono pensa em UNIDADES ("faz 200 porções"); a escala é derivada na hora de gravar.
-  const [quanto, setQuanto] = useState('')
   const [data, setData] = useState('')
   const [setorId, setSetorId] = useState('')
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+
   /**
-   * ⭐⭐ O RETALHO DE ONTEM (09/10) — a pergunta só existe em receita MARCADA.
+   * ⛔⛔⛔ **A QUANTIDADE SAIU DAQUI EM 11/10 — e o retalho junto com ela.**
    *
-   * ⛔⛔ **A AUSÊNCIA DA PERGUNTA VEM DA AUSÊNCIA DO DADO:** a rota devolve `{aceita:false}`
-   * pra toda ficha não marcada, e aí não há o que desenhar. Um `if (nome === 'massa')` aqui
-   * seria régua de tela sobre texto livre — a cicatriz da conta `'sicredi '`.
-   * ⚠️ `retalho` NASCE VAZIO e `temRetalho` nasce `null` (nem sim nem não): pré-preencher é
-   * confirmar um número que ninguém pesou, e o retalho é medido TODO DIA.
+   * **Defeito do dono:** *"a quantidade é perguntada 2× — na criação E depois de criar — e
+   * números diferentes deixam o 1º assombrando a tela."* Ele estava certo, e o mecanismo era
+   * pior que divergência de dado: o 2º campo (*"Quero fazer"*, na página da ordem) **só mexia
+   * em estado local** — recalculava a separação e **nunca regravava a meta nem a escala**. Quem
+   * separava obedecia ao número novo; quem IMPRIMIA (cabeçalho, home, lista, relatórios) seguia
+   * no da criação, porque todos leem o banco.
+   *
+   * ⭐ **A pergunta é UMA, no lugar certo: DEPOIS de criar, onde dá pra ver a prateleira.** Lá o
+   * dono digita o número e vê, a cada dígito, o que vai sair da câmara **contra o que tem** —
+   * decisão que aqui era impossível, porque esta tela não carrega saldo nenhum.
+   *
+   * ⚠️ E **o aviso do ato da criação (`avisosDaEscala`, 03/10) foi COM ela**, não morreu: ele é
+   * sobre o NÚMERO, então vive onde o número é digitado. *Remoção sem realocação é perda.*
    */
-  const [cfgRetalho, setCfgRetalho] = useState<{ aceita: boolean; pesoUnidadeG?: number; ultimoKg?: number | null } | null>(null)
-  const [temRetalho, setTemRetalho] = useState<'NAO' | 'SIM' | null>(null)
-  const [retalho, setRetalho] = useState('')
 
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/fichas`).then((r) => r.json())
@@ -631,98 +618,24 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
     fetch(`/api/empresas/${id}/estoque/setores`).then((r) => r.json()).then((j) => setSetores(j.setores ?? [])).catch(() => {})
   }, [id])
 
-  /**
-   * ⭐ a config do retalho segue a FICHA escolhida — e **zera o que foi digitado** ao trocar.
-   * ⚠️ Sem o reset, trocar de receita carregaria "9,2 kg" pra uma massa que não é aquela: o
-   * número ficaria na tela sem a pergunta, e entraria no POST se a nova também aceitasse.
-   */
-  useEffect(() => {
-    setCfgRetalho(null); setTemRetalho(null); setRetalho('')
-    if (!fichaId) return
-    let vivo = true
-    fetch(`/api/empresas/${id}/estoque/producao/retalho?ficha=${fichaId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (vivo && j) setCfgRetalho(j) })
-      .catch(() => {})
-    return () => { vivo = false }
-  }, [id, fichaId])
-
   const ficha = fichas.find((f) => f.id === fichaId) ?? null
-  /** ⭐ ESPELHO, não régua: só pra tela DIZER quanto a cozinha vem rendendo. */
-  const espelho = ficha ? eficienciaMedia({ teorico: ficha.loteBase, medido: ficha.rendimentoMedio, lotes: ficha.rendimentoLotes }) : null
-
-  /**
-   * ⭐⭐ O GUARD DO ATO DA CRIAÇÃO (item 4b, 03/10) — pega ANTES de separar, não no mês
-   * seguinte. O caso que o criou: ordem de 10 beef de xis propondo material pra ~6,7.
-   *
-   * ⛔⛔ **A SEPARAÇÃO É `escalaDoPedido` — ficha × pedido, sem rendimento** (decisão do dono,
-   * 03/10). A medição não aparece em nenhuma multiplicação/divisão daqui; ela só alimenta a
-   * FRASE do aviso.
-   *
-   * ⚠️ A régua mora em `avisosDaEscala` (lib PURA), nunca aqui: *regra que vive num
-   * componente é regra que ninguém prova* — este projeto roda sem jsdom (a lição do prefill
-   * do cardápio, 28/08).
-   */
-  const alvoNum = Number(quanto.replace(',', '.'))
-  const maiorDose = (ficha?.componentes ?? []).reduce<{ nome: string; dose: number } | null>(
-    (m, c) => (!m || c.qtdPlanejada > m.dose ? { nome: c.nome, dose: c.qtdPlanejada } : m), null)
-  const avisos = ficha && alvoNum > 0
-    ? avisosDaEscala({
-        pedido: alvoNum,
-        loteBase: ficha.loteBase, unidadeLoteBase: ficha.unidadeLoteBase,
-        unidadeProduto: ficha.unidadeProduzido, maiorDose, espelho,
-      })
-    : []
-
-  /**
-   * ⭐⭐ O QUE VAI SAIR DA CÂMARA — item 2 do dono: *"a lista do que VAI SEPARAR do estoque
-   * (componente a componente, da ficha × pedido) ANTES de confirmar"*.
-   *
-   * ⛔ A régua mora na LIB pura (`listaDoQueVaiSeparar`), que chama a PORTA — a tela só desenha.
-   * Multiplicar aqui seria a segunda conta da separação: a tela prometeria um material e a
-   * ordem separaria outro.
-   */
-  const vaiSair = ficha?.componentes?.length && alvoNum > 0
-    ? listaDoQueVaiSeparar(
-        ficha.componentes.map((c) => ({
-          itemId: c.itemId, nome: c.nome, unidade: c.unidade, porLote: c.qtdPlanejada, custoMedio: c.custoMedio,
-        })),
-        alvoNum,
-        ficha.loteBase,
-      )
-    : null
-
-  /**
-   * ⭐⭐ A FRASE CURTA — *"vai sair ~205 UN no total"* (pedido literal do dono).
-   * ⛔ A conta mora na LIB (`fraseDoRetalho`), nunca aqui: *regra que vive num componente é
-   * regra que ninguém prova* — este projeto roda sem jsdom.
-   */
-  const retalhoKgNum = Number(retalho.replace(',', '.'))
-  const fraseRetalho = ficha && temRetalho === 'SIM'
-    ? fraseDoRetalho({
-        pedido: alvoNum > 0 ? alvoNum : null,
-        kg: retalhoKgNum > 0 ? retalhoKgNum : null,
-        pesoUnidadeG: cfgRetalho?.pesoUnidadeG ?? null,
-        unidade: ficha.unidadeProduzido,
-      })
-    : null
 
   const criar = async () => {
     setErro(null)
-    const alvo = Number(quanto.replace(',', '.'))
     if (!fichaId || !ficha) return setErro('Escolha a ficha.')
-    if (!(alvo > 0)) return setErro('Diga quanto você quer produzir.')
-    // a escala continua sendo o que o banco guarda — só não é mais o que se digita
-    const esc = escalaDoPedido({ pedido: alvo, loteBase: ficha.loteBase })
-    if (esc == null || !(esc > 0)) return setErro('Não consegui converter — confira o lote base da ficha.')
     if (!data) return setErro('Informe a data de produção.')
     setBusy(true)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        fichaId, escalaReceitas: esc, dataProducao: data, setorId: setorId || null, pedidoUnidades: alvo,
-        /** ⚠️ "não tem" manda o campo AUSENTE — ausência é a resposta, e o CHECK exige kg > 0 */
-        retalhoKg: temRetalho === 'SIM' && retalhoKgNum > 0 ? retalhoKgNum : undefined,
-      }) })
+      /**
+       * ⛔⛔ **O CORPO NÃO MANDA QUANTIDADE** — e o schema da rota é `.strict()`, então mandar
+       * passaria a ser 400 com o nome do campo, nunca um valor recortado em silêncio. A ordem
+       * nasce PLANEJADA com `escalaReceitas` no default 1 do banco (a coluna é NOT NULL com
+       * CHECK > 0 — "sem quantidade" não é representável ali) e **AGUARDANDO** o pedido.
+       */
+      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fichaId, dataProducao: data, setorId: setorId || null }),
+      })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui criar.'); return }
       onCriada(j.ordemId)
@@ -740,80 +653,6 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
             <label className="flex-1 min-w-[200px] text-xs text-slate-500">Ficha (o que produzir)
               <select value={fichaId} onChange={(e) => setFichaId(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 py-2 px-3 text-sm"><option value="">escolher…</option>{fichas.map((f) => <option key={f.id} value={f.id}>{f.nomeProduzido}</option>)}</select>
             </label>
-            {/**
-              * ⭐⭐ O CAMPO DO PEDIDO, GRANDE E CLARO (item 2 do dono, 04/10) — *"quero
-              * produzir: 80 UN"*. É a pergunta da tela, então é o maior elemento dela.
-              *
-              * ⚠️ E a UNIDADE fica do lado, grande: foi a unidade escondida que deixou 37
-              * fichas declarando lote em KG num produto contado em UN sem ninguém reparar.
-              */}
-            <label className="text-xs text-slate-500">Quero produzir
-              <div className="mt-1 flex items-center gap-2">
-                <input value={quanto} onChange={(e) => setQuanto(e.target.value)} inputMode="decimal" placeholder="80" className="block w-32 rounded-lg border border-slate-300 py-2 px-3 text-[22px] font-medium tabular-nums text-slate-900" />
-                <span className="text-[17px] font-medium text-slate-500">{ficha?.unidadeProduzido ?? ''}</span>
-              </div>
-              {/* ⭐ A conta é SEMPRE a ficha (03/10). O espelho vai ao lado, como informação. */}
-              <span className="mt-1 block text-[11px] font-normal text-slate-400">
-                pela receita da ficha{espelho ? ` · seus últimos ${espelho.lotes} lotes renderam ${Math.round(espelho.pct * 100)}%` : ' · eficiência: a apurar'}
-              </span>
-            </label>
-          </div>
-          {/**
-            * ⭐⭐⭐ "TEM RETALHO DE ONTEM?" — SÓ na receita marcada (09/10, Parte 1).
-            *
-            * ⛔ Nasce SEM resposta (nem sim nem não) e o campo nasce VAZIO. ⚠️ E o lembrete é
-            * DISCRETO de propósito: ele serve pra o dono reconhecer uma grandeza absurda
-            * (92 onde costuma ser 9,2), nunca pra poupar a pesagem.
-            */}
-          {cfgRetalho?.aceita && (
-            <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}>
-              <p className="text-[12.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
-                Tem retalho de ontem? Quer adicionar na receita?
-              </p>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => { setTemRetalho('NAO'); setRetalho('') }}
-                  className="rounded-lg px-2.5 py-1.5 text-[12px]"
-                  style={temRetalho === 'NAO'
-                    ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)', fontWeight: 600 }
-                    : { border: '1px solid var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
-                  Não tem
-                </button>
-                <button type="button" onClick={() => setTemRetalho('SIM')}
-                  className="rounded-lg px-2.5 py-1.5 text-[12px]"
-                  style={temRetalho === 'SIM'
-                    ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)', fontWeight: 600 }
-                    : { border: '1px solid var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
-                  Sim
-                </button>
-                {temRetalho === 'SIM' && (
-                  <label className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--prod-muted)' }}>
-                    quantos kg
-                    <input value={retalho} onChange={(e) => setRetalho(e.target.value)} inputMode="decimal"
-                      placeholder="9,2"
-                      className="h-9 w-24 rounded-lg border px-2 text-[15px] tabular-nums"
-                      style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)', background: 'var(--prod-bg)' }} />
-                    kg
-                  </label>
-                )}
-              </div>
-              {temRetalho === 'SIM' && cfgRetalho.ultimoKg != null && (
-                <p className="mt-1 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-                  da última vez: {cfgRetalho.ultimoKg.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg
-                </p>
-              )}
-              {/** ⭐ A FRASE CURTA, e ela é a ÚNICA resposta da tela a este campo */}
-              {fraseRetalho && (
-                <p className="mt-1.5 text-[12.5px] font-medium tabular-nums" style={{ color: 'var(--fam-indigo-ink)' }}>
-                  {fraseRetalho}
-                </p>
-              )}
-              {/** ⚠️ a separação NÃO muda, e a tela DIZ — senão o dono espera mais material na câmara */}
-              <p className="mt-1 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-                o material que sai da câmara continua sendo o do pedido — o retalho já está na cozinha
-              </p>
-            </div>
-          )}
-          <div className="flex flex-wrap items-end gap-3">
             <label className="text-xs text-slate-500">Data de produção
               <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm" />
             </label>
@@ -824,92 +663,25 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
             <a href="/equipe?filtro=cozinha" className="inline-flex items-center gap-1 pb-2 text-[11px] text-slate-400 hover:text-slate-600"><Settings className="h-3 w-3" /> setores e equipe</a>
           </div>
           {/**
-            * ⭐⭐ A LISTA DO QUE SAI — ela vem ANTES dos avisos de propósito: é a resposta à
-            * pergunta que o dono acabou de fazer ("quero 80"), e o aviso é a ressalva. Dizer a
-            * ressalva antes da resposta manda ele procurar no lugar errado (16/09).
+            * ⭐ A TELA DIZ O QUE VEM DEPOIS — senão criar sem quantidade parece um formulário
+            * pela metade. ⚠️ E ela nomeia o ganho (ver a prateleira), não só o passo.
             */}
-          {vaiSair && vaiSair.linhas.length > 0 && (
-            <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: 'rgba(0,0,0,0.08)' }}>
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  vai sair do estoque pra este pedido
-                </p>
-                <p className="text-[13px] tabular-nums text-slate-600">
-                  {/* ⚠️ total só quando TODOS têm custo — parcial com cara de total é a
-                      mentira mais fácil numa tela de dinheiro (a régua do "a definir") */}
-                  {vaiSair.custoTotal != null
-                    ? formatBRL(vaiSair.custoTotal)
-                    : `custo a definir · ${vaiSair.semCusto} componente(s) sem custo médio`}
-                </p>
-              </div>
-              <div className="mt-1.5 overflow-x-auto">
-                <table className="density-normal w-full">
-                  <tbody>
-                    {vaiSair.linhas.map((l, i) => (
-                      <tr key={l.itemId} style={{ background: i % 2 === 1 ? '#FAF9F6' : undefined }}>
-                        <td className="px-2 py-0 text-[13px] text-slate-800">{l.nome}</td>
-                        <td className="px-2 py-0 text-right text-[13px] font-medium tabular-nums text-slate-900">
-                          {l.quantidade == null ? '—' : fmtQtd(l.quantidade)} {l.unidade}
-                        </td>
-                        <td className="hidden px-2 py-0 text-right text-[12px] tabular-nums text-slate-400 sm:table-cell">
-                          {fmtQtd(l.porLote)} {l.unidade} por receita
-                        </td>
-                        <td className="px-2 py-0 text-right text-[12px] tabular-nums text-slate-500">
-                          {l.custoTotal == null ? 'a definir' : formatBRL(l.custoTotal)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-          {avisos.length > 0 && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">confira antes de criar</p>
-              <ul className="mt-1 space-y-1">
-                {avisos.map((a) => (
-                  <li key={a.motivo} className="text-xs leading-snug text-amber-900">
-                    · {a.frase}
-                    {/**
-                      * ⭐⭐ O ATALHO QUE O DONO PEDIU — e ele é a METADE QUE FALTA do aviso.
-                      *
-                      * ⛔ Este aviso existe desde 03/10 e dizia o problema **sem dizer onde
-                      * resolver**: o dono lia "o lote base não diz quantas UN saem de uma
-                      * receita" e ficava com o problema na mão. É a família da *"porta sem
-                      * maçaneta"*, que esta casa já pagou 11 vezes — alarme sem porta é
-                      * alarme que se aprende a ignorar.
-                      *
-                      * ⚠️ Vai SÓ no `LOTE_NAO_COMPARAVEL`: o `MEDIA_DESTOA` não se resolve
-                      * convertendo lote nenhum (é eficiência, e a decisão lá é outra).
-                      */}
-                    {a.motivo === 'LOTE_NAO_COMPARAVEL' && fichaId && (
-                      <a
-                        href={`/empresas/${id}/estoque/fichas/conversao?ficha=${fichaId}`}
-                        className="ml-1 inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
-                      >
-                        corrigir o lote desta ficha <ArrowRight className="h-3 w-3" />
-                      </a>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {/* ⛔ AVISA, NÃO BLOQUEIA: travar pararia a cozinha por ficha mal declarada
-                  (são 36 de 43 hoje) — a régua do FREIO da contagem e da sanidade do import. */}
-              <p className="mt-1.5 text-[11px] text-amber-700">Dá pra criar assim mesmo — o aviso é pra você conferir a ficha.</p>
-            </div>
-          )}
+          <p className="text-[12px] leading-snug" style={{ color: 'var(--prod-muted)' }}>
+            Criar abre a ordem na pergunta <b style={{ color: 'var(--prod-secondary)' }}>&ldquo;quantas unidades produzir?&rdquo;</b> — lá
+            você digita o número e vê, a cada dígito, o que sai da câmara e o que tem na prateleira.
+          </p>
           {erro && <p className="text-xs text-rose-600">{erro}</p>}
           <button onClick={criar} disabled={busy} /**
             * ⚠️⚠️ **ESTE HEX FICA, E O MOTIVO É UM ACHADO (item 4b, 09/10).** Trocá-lo por
             * `--prod-acao-bg` faz o guard do mock morder: ele conta *"cor forte preenchida"* e
-            * exige DOIS primários — este botão seria o TERCEIRO. ⛔ Ele JÁ era um terceiro
-            * primário forte; só era **invisível pro guard**, que conta TOKEN e não hex.
-            * ⚠️ Consequência: ele não inverte no tema escuro. **Decisão do dono** — ou o botão
-            * do formulário desce pra contorno, ou a régua passa a admitir o primário do
-            * formulário (que não compete na tela principal, porque só existe com o form aberto).
+            * passaria de 2 pra 3. O botão JÁ era um terceiro primário forte — só era invisível
+            * pro guard, que conta TOKEN e não hex. **Decisão do dono** se ele desce pra contorno
+            * ou se a régua passa a admitir o primário do formulário (que só existe com o form
+            * aberto, então não compete na tela principal).
             */
-            className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Criar ordem</button>
+            className="w-full rounded-lg bg-[#185FA5] py-2 text-sm font-medium text-white disabled:opacity-50">
+            {busy ? 'Criando…' : 'Criar ordem →'}
+          </button>
         </>
       )}
     </CardContent></Card>
@@ -1017,7 +789,16 @@ function ListaAbertas({ id, ordens, ctx, deOntem, soDeOntem, onFiltrarOntem }: {
               {/* ⭐⭐ O PEDIDO GRANDE — e ordem antiga sem pedido DIZ isso, em muted discreto */}
               <span className="w-full shrink-0 pl-11 text-right lg:w-auto lg:pl-0">
                 {c?.pedido == null ? (
-                  <span className="text-[13px]" style={{ color: 'var(--prod-muted)' }}>sem pedido</span>
+                  /**
+                   * ⭐ DUAS AUSÊNCIAS DIFERENTES, DUAS FRASES (11/10): `AGUARDANDO` é a ordem
+                   * recém-criada esperando a pergunta — *"pedido a definir"* **convida**; já
+                   * *"sem pedido"* é a ordem velha, que nasceu antes do campo existir e nunca
+                   * vai ter um. Dizer "sem pedido" na ordem nova faria o estado normal parecer
+                   * defeito, e o dono iria procurar o que consertar.
+                   */
+                  <span className="text-[13px]" style={{ color: c?.pedidoOrigem === 'AGUARDANDO' ? 'var(--fam-indigo-mid)' : 'var(--prod-muted)' }}>
+                    {c?.pedidoOrigem === 'AGUARDANDO' ? 'pedido a definir →' : 'sem pedido'}
+                  </span>
                 ) : (
                   <span className="num text-[16px] font-medium" style={{ color: 'var(--prod-primary)' }}>
                     {/* ⭐ REDONDO aqui também (v4): "toda tela que mostra pedido em UN" */}

@@ -17,18 +17,24 @@ import { contextoDasAbertas, pedidoPorOrdem } from '../contexto-das-abertas'
 const CNPJ = '75757575000256'
 let companyId = ''
 
-async function ordem(opts: { escala: number; loteBase: number; meta?: number }) {
+/**
+ * ⚠️ O `estado` viaja no objeto desde 11/10 — e a ordem aqui nasce **EM_PRODUCAO** de
+ * propósito: é o estado em que o pedido ou já foi declarado ou nasceu antes do campo
+ * (DERIVADO). A ordem **PLANEJADA sem meta** tem um caso próprio no fim do describe, porque
+ * ali a resposta honesta é **AGUARDANDO**, não um número.
+ */
+async function ordem(opts: { escala: number; loteBase: number; meta?: number; estado?: string }) {
   const o = await prisma.stockProductionOrder.create({
     data: {
       companyId, fichaId: 'f1', versaoFicha: 1, itemProduzidoId: 'it1',
       dataProducao: new Date('2026-10-04T15:00:00.000Z'),
-      escalaReceitas: opts.escala, estado: 'EM_PRODUCAO',
+      escalaReceitas: opts.escala, estado: opts.estado ?? 'EM_PRODUCAO',
     },
   })
   if (opts.meta != null) {
     await prisma.stockOrdemMeta.create({ data: { companyId, ordemId: o.id, unidades: opts.meta } })
   }
-  return { id: o.id, escalaReceitas: opts.escala, loteBase: opts.loteBase }
+  return { id: o.id, escalaReceitas: opts.escala, loteBase: opts.loteBase, estado: opts.estado ?? 'EM_PRODUCAO' }
 }
 
 /** uma etapa INICIADA, com participante(s) */
@@ -77,6 +83,18 @@ describe('⭐⭐ o PEDIDO vem da porta única, com a ORIGEM dita', () => {
     const ctx = await contextoDasAbertas(companyId, [o], prisma)
     expect(ctx[o.id].pedido).toBe(150)
     expect(ctx[o.id].pedidoOrigem).toBe('DERIVADO')
+  })
+
+  /**
+   * ⭐⭐ A ORDEM RECÉM-CRIADA (11/10): `escalaReceitas` é o DEFAULT 1 do banco, não um pedido.
+   * Chamar isso de DERIVADO faria a lista imprimir **"pedido 1 lote"** numa ordem que ainda vai
+   * abrir na pergunta — e foi um número desse tipo que assombrou a tela por meses.
+   */
+  it('⭐⭐ PLANEJADA sem meta: AGUARDANDO — a lista diz "pedido a definir", não 1', async () => {
+    const o = await ordem({ escala: 1, loteBase: 1, estado: 'PLANEJADA' })
+    const ctx = await contextoDasAbertas(companyId, [o], prisma)
+    expect(ctx[o.id].pedido).toBeNull()
+    expect(ctx[o.id].pedidoOrigem).toBe('AGUARDANDO')
   })
 
   it('⛔ nem meta nem ficha utilizável: `null` — a tela diz "sem pedido", nunca 0', async () => {
@@ -144,7 +162,7 @@ describe('⛔⛔ zero N+1: as consultas NÃO crescem com o número de ordens', (
       let n = 0
       // ⭐ o evento 'query' é tipado quando o log está declarado no construtor
       db.$on('query', () => { n++ })
-      const ordens: { id: string; escalaReceitas: number; loteBase: number }[] = []
+      const ordens: { id: string; escalaReceitas: number; loteBase: number; estado: string }[] = []
       for (let i = 0; i < quantas; i++) {
         const o = await ordem({ escala: 1, loteBase: 10, meta: 10 })
         await etapaIniciada(o.id, 1, '2026-10-04T12:00:00.000Z', [`p${i}`])
@@ -170,7 +188,10 @@ describe('⛔⛔ zero N+1: as consultas NÃO crescem com o número de ordens', (
 describe('⭐ o pedido das CONCLUÍDAS é a mesma porta (puro)', () => {
   it('⭐ DECLARADO e DERIVADO, sem banco', () => {
     const r = pedidoPorOrdem(
-      [{ id: 'a', escalaReceitas: 2, loteBase: 100 }, { id: 'b', escalaReceitas: 3, loteBase: 50 }],
+      [
+        { id: 'a', escalaReceitas: 2, loteBase: 100, estado: 'CONCLUIDA' },
+        { id: 'b', escalaReceitas: 3, loteBase: 50, estado: 'CONCLUIDA' },
+      ],
       [{ ordemId: 'a', unidades: 180 }],
     )
     expect(r.a).toEqual({ pedido: 180, origem: 'DECLARADO' })

@@ -215,51 +215,71 @@ describe('⭐ 2 TEMAS e UMA COMPOSIÇÃO', () => {
 
 describe('⛔⛔⛔ A PERGUNTA DO RETALHO SÓ EXISTE NA RECEITA MARCADA', () => {
   /**
-   * ⛔⛔ **REGRA 11 do dono: a pergunta aparecendo em receita não marcada = vermelho.**
+   * ⚠️⚠️ REAPONTADO EM 11/10 — **A PERGUNTA MUDOU DE CASA, A RÉGUA NÃO.**
    *
-   * ⭐ E a trava é a FORMA: o bloco inteiro é gateado por `cfgRetalho?.aceita`, que vem da
-   * ROTA — e a rota devolve `{aceita:false}` sem peso e sem último kg pra toda ficha não
-   * marcada. *A ausência da pergunta vem da ausência do DADO.*
+   * O retalho era perguntado na CRIAÇÃO da ordem. O dono achou o fantasma da quantidade
+   * (*"perguntada 2×, e o 1º número assombra a tela"*) e a decisão foi: **a pergunta é UMA, na
+   * página da ordem, onde dá pra ver a prateleira** — e o retalho vem junto do número, porque é
+   * a mesma pergunta (*"quanto vai sair deste lote?"*).
+   *
+   * ⛔ Então este bloco passou a ler a **ORDEM**. E ele é de DOIS LADOS: a pergunta existe lá
+   * **E** saiu daqui — *guard que só afirma a remoção aprovaria o dia em que ela sumisse de
+   * todo lugar*, e guard que só afirma a presença aprovaria a pergunta duplicada.
+   *
+   * ⭐ A trava continua sendo a FORMA: o bloco é gateado pelo DADO da config (que a rota só
+   * devolve pra ficha marcada), nunca pelo nome da receita.
    */
+  it('⛔⛔ a pergunta SAIU da criação e MORA na ordem (os dois lados)', () => {
+    expect(ler(HOME), 'a pergunta do retalho voltou pra criação — são 2 lugares de novo')
+      .not.toMatch(/retalho/i)
+    expect(ler(ORDEM), 'a pergunta do retalho sumiu da ordem').toMatch(/Tem retalho de ontem\?/)
+  })
+
   it('⛔⛔ o bloco é gateado pela config, nunca pelo nome da receita', () => {
-    const s = ler(HOME)
-    expect(s, 'a pergunta do retalho saiu da tela').toMatch(/Tem retalho de ontem\?/)
+    const s = ler(ORDEM)
     const i = s.indexOf('Tem retalho de ontem?')
+    expect(i, 'a pergunta existe').toBeGreaterThan(0)
     const antes = s.slice(Math.max(0, i - 400), i)
-    expect(antes, 'o bloco deixou de ser gateado pela config').toMatch(/\{cfgRetalho\?\.aceita && \(/)
+    expect(antes, 'o bloco deixou de ser gateado pela config').toMatch(/\{retalho\?\.aceita && \(/)
     /** ⛔ régua por NOME seria texto livre decidindo — a cicatriz da conta 'sicredi ' */
     expect(s, 'a tela passou a decidir retalho pelo nome da receita')
       .not.toMatch(/metade de bolinha|nomeProduzido.*retalho|retalho.*nomeProduzido/i)
   })
 
   it('⛔ o campo NASCE VAZIO e sem resposta — nunca pré-preenchido', () => {
-    const s = ler(HOME)
+    const s = ler(ORDEM)
     expect(s).toMatch(/useState<'NAO' \| 'SIM' \| null>\(null\)/)
-    expect(s).toMatch(/const \[retalho, setRetalho\] = useState\(''\)/)
-    /** ⚠️ e trocar de ficha ZERA o que foi digitado */
-    expect(s).toMatch(/setCfgRetalho\(null\); setTemRetalho\(null\); setRetalho\(''\)/)
+    expect(s).toMatch(/const \[retalhoKg, setRetalhoKg\] = useState\(''\)/)
+    /**
+     * ⚠️ E CONFIRMAR o pedido ZERA a resposta. Na criação quem zerava era a troca de ficha;
+     * aqui a ordem tem UMA ficha, então o momento de limpar é o gesto — senão a resposta do
+     * lote anterior sobreviveria numa correção.
+     */
+    expect(s).toMatch(/setTemRetalho\(null\); setRetalhoKg\(''\)/)
   })
 
   it('⭐ o lembrete é discreto, e é LEMBRETE — não valor do campo', () => {
-    const s = ler(HOME)
-    expect(s).toMatch(/da última vez: \{cfgRetalho\.ultimoKg/)
-    expect(s, 'o último kg virou valor do campo').not.toMatch(/setRetalho\(String\(cfgRetalho/)
+    const s = ler(ORDEM)
+    expect(s).toMatch(/da última vez: \{formatarQtd\(retalho\.ultimoKg/)
+    expect(s, 'o último kg virou valor do campo').not.toMatch(/setRetalhoKg\(String\(retalho/)
   })
 
   it('⭐⭐ a frase curta vem da LIB, não de uma conta na tela', () => {
-    const s = ler(HOME)
+    const s = ler(ORDEM)
     expect(usosDe(s, 'fraseDoRetalho'), 'a tela parou de usar a lib da frase').toBeGreaterThan(0)
     /** ⛔ conta própria na tela prometeria um total que o fiscal não usa */
     expect(s, 'a tela voltou a dividir por 1000 na mão').not.toMatch(/\* 1000\) \/|\/ 200\b/)
   })
 
   it('⭐ a tela DIZ que a separação não muda', () => {
-    expect(ler(HOME)).toMatch(/o material que sai da câmara continua sendo o do pedido/)
+    expect(ler(ORDEM)).toMatch(/o material que sai da câmara continua sendo o do pedido/)
   })
 
   it('⭐ e manda o kg no POST só quando a resposta foi SIM', () => {
-    const s = ler(HOME)
-    expect(s).toMatch(/retalhoKg: temRetalho === 'SIM' && retalhoKgNum > 0 \? retalhoKgNum : undefined/)
+    const s = ler(ORDEM)
+    expect(s, 'a resposta "não tem" tem que virar `null`, que APAGA o retalho anterior')
+      .toMatch(/const kg = temRetalho === 'SIM' \? valorQtd\(retalhoKg\) : null/)
+    expect(s).toMatch(/retalhoKg: kg && kg > 0 \? kg : null/)
   })
 })
 

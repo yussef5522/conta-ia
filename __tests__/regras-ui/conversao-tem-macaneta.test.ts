@@ -22,6 +22,17 @@ const semComentario = (src: string) =>
 const TELA_DA_VARREDURA = 'app/(dashboard)/empresas/[id]/estoque/fichas/conversao/page.tsx'
 const TELA_DAS_RECEITAS = 'app/(dashboard)/empresas/[id]/estoque/producao/receitas/page.tsx'
 const TELA_DA_PRODUCAO = 'app/(dashboard)/empresas/[id]/estoque/producao/page.tsx'
+/**
+ * ⚠️⚠️ REAPONTADO EM 11/10 — **o AVISO mudou de tela COM o número.**
+ *
+ * O `avisosDaEscala` nasceu no ATO DA CRIAÇÃO (03/10), porque a quantidade era digitada lá. Com
+ * a pergunta única indo pra página da ordem, o aviso foi junto: *o aviso vive onde o número é
+ * digitado* — deixá-lo na criação (que não pergunta mais quantidade) o tornaria inalcançável, e
+ * aí a maçaneta que este arquivo existe pra garantir estaria pendurada no nada.
+ *
+ * ⭐ A PERGUNTA do guard não mudou: *o aviso que diz o problema tem que oferecer a saída*.
+ */
+const TELA_DA_ORDEM = 'app/(dashboard)/empresas/[id]/estoque/producao/[ordemId]/page.tsx'
 const ROTA_DA_FILA = 'app/api/empresas/[id]/estoque/fichas/conversao/route.ts'
 const ROTA_DO_GESTO = 'app/api/empresas/[id]/estoque/fichas/[fichaId]/conversao/route.ts'
 
@@ -31,8 +42,11 @@ describe('⭐⭐ a maçaneta existe — nos dois pontos que o dono pediu', () =>
   })
 
   it('⭐⭐ o AVISO DA ORDEM carrega o gesto (era ele que dizia o problema sem a saída)', () => {
-    const tela = semComentario(ler(TELA_DA_PRODUCAO))
+    const tela = semComentario(ler(TELA_DA_ORDEM))
     expect(tela, 'o aviso LOTE_NAO_COMPARAVEL tem que oferecer o caminho').toContain('estoque/fichas/conversao')
+    // ⛔ e os dois lados: ele SAIU da criação junto com o campo de quantidade
+    expect(semComentario(ler(TELA_DA_PRODUCAO)), 'o aviso voltou pra criação, que não pergunta mais quantidade')
+      .not.toContain('estoque/fichas/conversao')
     /**
      * ⚠️ E o atalho é CONDICIONAL ao motivo certo: o `MEDIA_DESTOA` não se resolve convertendo
      * lote nenhum, e oferecer ali mandaria o dono pro lugar errado (a lição de 16/09 —
@@ -73,7 +87,7 @@ describe('⭐⭐ a maçaneta existe — nos dois pontos que o dono pediu', () =>
    * `href=` —, nunca a vizinhança de caracteres.*
    */
   it('⛔ nenhum dos caminhos é hover-only (no celular não existe hover — a lição de 30/08)', () => {
-    for (const rel of [TELA_DAS_RECEITAS, TELA_DA_PRODUCAO]) {
+    for (const rel of [TELA_DAS_RECEITAS, TELA_DA_ORDEM]) {
       const tela = semComentario(ler(rel))
       // ⭐ só as ocorrências que são DESTINO de link, não a URL do fetch
       /**

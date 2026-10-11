@@ -19,15 +19,20 @@
  */
 
 import type { PrismaClient, Prisma } from '@prisma/client'
-import { pedidoDaOrdem } from './pedido-da-ordem'
+import { pedidoDaOrdem, type OrigemDoPedido } from './pedido-da-ordem'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
 export interface ContextoDaAberta {
   /** quantas unidades o dono pediu — `null` quando não dá pra dizer */
   pedido: number | null
-  /** ⚠️ DECLARADO = ele digitou; DERIVADO = calculado pela ficha (ordem antiga) */
-  pedidoOrigem: 'DECLARADO' | 'DERIVADO' | null
+  /**
+   * ⚠️ DECLARADO = ele declarou nesta ordem · DERIVADO = calculado pela ficha (ordem antiga) ·
+   * **AGUARDANDO = a pergunta ainda não foi feita** (11/10) — e aí `pedido` é `null`, nunca
+   * `escala × loteBase`: a home dizendo *"1 lote esperado"* numa ordem recém-criada seria o
+   * número da criação assombrando a lista, que é exatamente o defeito que o sprint matou.
+   */
+  pedidoOrigem: OrigemDoPedido | null
   /** quem está com a mão na massa (quem TOCOU o iniciar) — pode ser dupla */
   quem: string[]
   /** ISO do 1º toque no iniciar nesta ordem — `null` quando ninguém começou ainda */
@@ -38,6 +43,8 @@ export interface OrdemPraContexto {
   id: string
   escalaReceitas: number
   loteBase: number
+  /** ⭐ o estado — é ele que separa `AGUARDANDO` (ainda não perguntei) de `DERIVADO` (ordem velha) */
+  estado: string
 }
 
 export async function contextoDasAbertas(
@@ -104,6 +111,7 @@ export async function contextoDasAbertas(
       meta: metaPorOrdem.get(o.id) ?? null,
       escala: o.escalaReceitas,
       loteBase: o.loteBase,
+      estado: o.estado,
     })
     const c = ctx.get(o.id)
     out[o.id] = {
@@ -128,11 +136,11 @@ export async function contextoDasAbertas(
 export function pedidoPorOrdem(
   ordens: OrdemPraContexto[],
   metas: { ordemId: string; unidades: number }[],
-): Record<string, { pedido: number | null; origem: 'DECLARADO' | 'DERIVADO' | null }> {
+): Record<string, { pedido: number | null; origem: OrigemDoPedido | null }> {
   const metaPorOrdem = new Map(metas.map((m) => [m.ordemId, m.unidades]))
-  const out: Record<string, { pedido: number | null; origem: 'DECLARADO' | 'DERIVADO' | null }> = {}
+  const out: Record<string, { pedido: number | null; origem: OrigemDoPedido | null }> = {}
   for (const o of ordens) {
-    const p = pedidoDaOrdem({ meta: metaPorOrdem.get(o.id) ?? null, escala: o.escalaReceitas, loteBase: o.loteBase })
+    const p = pedidoDaOrdem({ meta: metaPorOrdem.get(o.id) ?? null, escala: o.escalaReceitas, loteBase: o.loteBase, estado: o.estado })
     out[o.id] = { pedido: p.unidades, origem: p.origem }
   }
   return out

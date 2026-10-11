@@ -29,9 +29,16 @@ import { EtapasDaOrdem } from '@/components/estoque/etapas-da-ordem'
 import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, X, Tag, Pencil } from 'lucide-react'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 import { avisoDeEtapasAbertas } from '@/lib/stock/producao/aviso-etapas-abertas'
+import type { OrigemDoPedido } from '@/lib/stock/producao/pedido-da-ordem'
+import { tabelaDaPergunta, rotuloDoConfirmar, vereditoDaLinha } from '@/lib/stock/producao/pergunta-do-pedido'
+import { avisosDaEscala } from '@/lib/stock/producao/escala-do-pedido'
+import { fraseDoRetalho } from '@/lib/stock/producao/retalho'
+import { sanitizarQtd, valorQtd } from '@/lib/stock/quantidade'
 
 interface Linha { itemId: string; nome: string; unidade: string; unidadeControle: string; porLote: number; qtdPlanejada: number; qtdSeparada: number; qtdConsumida: number; saldoDisponivel: number; custoMedio: number | null; fichaIdComponente: string | null }
-interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null; versaoFicha: number; fichaId: string }
+interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number;
+  /** ⭐ a unidade do lote base — o `avisosDaEscala` compara com a do produto (ver a lib) */
+  unidadeLoteBase: string; estado: string; dataProducao: string; setorNome: string | null; versaoFicha: number; fichaId: string }
 /**
  * ⭐ O CARIMBO vem do SERVIDOR, derivado da tabela de conferência — a tela nunca o deduz.
  * ⚠️ `null` só acontece se a rota ficar atrás num deploy; o leitor devolve AGUARDANDO pra
@@ -97,16 +104,36 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
    * ⛔ Resolver aqui seria a 2ª resposta pra *"qual é o pedido?"*: a tela diria um número e a
    * eficiência (que sai da mesma lib, no servidor) compararia com outro.
    */
-  const [pedido, setPedido] = useState<{ unidades: number | null; origem: 'DECLARADO' | 'DERIVADO' | null; comoSoube: string | null } | null>(null)
+  /**
+   * ⚠️ A ORIGEM **DERIVA DO TIPO DA LIB** — esta união estava digitada à mão e, ao nascer o
+   * `AGUARDANDO`, a tela não conseguiria nem mencioná-lo (é a dívida de 01/09: *"interface
+   * escrita à mão sobre payload é promessa, não prova"*).
+   */
+  const [pedido, setPedido] = useState<{ unidades: number | null; origem: OrigemDoPedido | null; comoSoube: string | null } | null>(null)
   const [diaQueContinua, setDiaQueContinua] = useState('')
   // ⛔ as etapas ABERTAS: concluir por aqui vai LEVÁ-LAS junto, sem tempo medido. O
   // encarregado tem que saber ANTES de apertar — escolha consciente, não efeito colateral.
   const [etapasAbertas, setEtapasAbertas] = useState<EtapaAbertaNaTela[]>([])
   const [rendimentoMedio, setRendimentoMedio] = useState<number | null>(null)
   const [rendimentoLotes, setRendimentoLotes] = useState(0)
-  // ⭐ "quero fazer N" — o sentido PRINCIPAL do dono ("faz 200 porções" → quantos kg pegar).
-  // Vazio = quem manda são as linhas de insumo (o outro sentido).
-  const [querFazer, setQuerFazer] = useState('')
+  /**
+   * ⭐⭐ O CAMPO DA PERGUNTA ÚNICA (11/10) — *"quantas unidades produzir?"*.
+   *
+   * ⚠️ Ele NASCE VAZIO, inclusive na correção: pré-preencher com o pedido anterior é confirmar
+   * um número sem recontar (*"número sugerido vira número confirmado sem ninguém contar"* — a
+   * régua do campo de conclusão, 05/10). O valor anterior aparece **ao lado**, como referência.
+   */
+  const [quanto, setQuanto] = useState('')
+  /** ⭐ a correção aberta na MESMA tela (o dono pediu: *"pela MESMA tela"*) */
+  const [corrigindoPedido, setCorrigindoPedido] = useState(false)
+  /**
+   * ⭐ o retalho de ontem — a pergunta mudou da criação pra cá (junto do número, porque é a
+   * MESMA decisão). ⚠️ `temRetalho` nasce `null` (nem sim nem não) e o kg nasce VAZIO.
+   */
+  const [temRetalho, setTemRetalho] = useState<'NAO' | 'SIM' | null>(null)
+  const [retalhoKg, setRetalhoKg] = useState('')
+  const [retalho, setRetalho] = useState<{ aceita: boolean; pesoUnidadeG?: number; ultimoKg?: number | null; declaradoKg?: number | null } | null>(null)
+  const [rastroPedido, setRastroPedido] = useState<Array<{ unidades: number; correcao: boolean; quem: string | null; quando: string }>>([])
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}`).then((r) => r.json()).then((j) => {
     if (!j.ordem) { setOrdem(null); return }
@@ -114,6 +141,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
     setConclusoes(j.conclusoes ?? []); setColaboradores(j.colaboradores ?? []); setRendimentoMedio(j.rendimentoMedio ?? null); setRendimentoLotes(j.rendimentoLotes ?? 0)
     setParada(j.parada ?? null)
     setPedido(j.pedido ?? null)
+    setRetalho(j.retalho ?? null); setRastroPedido(j.rastroPedido ?? [])
     if (j.ordem.estado === 'PLANEJADA') setSep(Object.fromEntries((j.linhas ?? []).map((l: Linha) => [l.itemId, String(l.qtdPlanejada)])))
   }).catch(() => setOrdem(null))
   useEffect(() => { carregar() }, [id, ordemId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -126,6 +154,36 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui.'); return false }
       carregar(); return true
     } catch { setErro('Falha de conexão.'); return false } finally { setBusy(false) }
+  }
+
+  /**
+   * ⭐⭐⭐ O GESTO DA PERGUNTA ÚNICA — e ele tem **ROTA PRÓPRIA**, não o `/acao`.
+   *
+   * ⛔ Declarar o pedido não é uma transição de estado da ordem (separar/iniciar/cancelar):
+   * é a ESCRITA do que o dono quer, e ela tem um writer único (`confirmarPedido`) que grava
+   * a meta, o rastro e a escala na MESMA transação. Enfiá-la no `/acao` faria o switch dos
+   * gestos virar o 2º lugar que escreve o pedido — exatamente o fantasma que morreu hoje.
+   *
+   * ⚠️ `retalhoKg` só viaja quando a resposta é **SIM com kg** — `null` APAGA o retalho de uma
+   * declaração anterior (corrigir pra "não tem" tem que tirar o bônus), e por isso a ausência
+   * da resposta nunca pode ser confundida com um "não".
+   */
+  const confirmarPedido = async () => {
+    const un = valorQtd(quanto)
+    if (un == null || !(un > 0)) { setErro('Diga quantas unidades produzir.'); return }
+    const kg = temRetalho === 'SIM' ? valorQtd(retalhoKg) : null
+    setBusy(true); setErro(null)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/pedido`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unidades: un, retalhoKg: kg && kg > 0 ? kg : null }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui gravar o pedido.'); return }
+      /** ⭐ a página vira a ordem normal de hoje: a pergunta sai da tela e a separação entra */
+      setCorrigindoPedido(false); setQuanto(''); setTemRetalho(null); setRetalhoKg('')
+      carregar()
+    } catch { setErro('Falha de conexão.') } finally { setBusy(false) }
   }
 
   const parseNum = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
@@ -144,6 +202,56 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
     return escalaDoConsumo(linhas.map((l) => ({ qtd: parseNum(sep[l.itemId]), porLote: l.porLote })))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linhas, sep, ordem])
+
+  /**
+   * ⭐⭐⭐ A PERGUNTA ÚNICA (11/10) — *"quantas unidades produzir?"*.
+   *
+   * ⛔ A tabela vem da LIB (`tabelaDaPergunta`), que chama a **porta da separação**
+   * (`insumoDoPedido`). Multiplicar `dose × pedido` aqui seria a 2ª conta: a tela prometeria um
+   * material e a ordem separaria outro — e o dono descobriria com a carne na mão.
+   */
+  const aguardando = pedido?.origem === 'AGUARDANDO'
+  const perguntando = ordem?.estado === 'PLANEJADA' && (aguardando || corrigindoPedido)
+  const pedidoNum = valorQtd(quanto)
+  const tabela = useMemo(
+    () => tabelaDaPergunta(
+      linhas.map((l) => ({
+        itemId: l.itemId, nome: l.nome, unidade: l.unidade,
+        porLote: l.porLote, saldo: l.saldoDisponivel, custoMedio: l.custoMedio,
+      })),
+      pedidoNum, ordem?.loteBase ?? 1,
+    ),
+    [linhas, pedidoNum, ordem?.loteBase],
+  )
+  /**
+   * ⭐⭐ O AVISO DO ATO DA CRIAÇÃO (03/10) **MUDOU DE TELA COM O NÚMERO** — ele é sobre o
+   * pedido, então vive onde o pedido é digitado. *Remoção sem realocação é perda*, e deixá-lo na
+   * criação (que não pergunta mais quantidade) o tornaria inalcançável.
+   */
+  const maiorDose = useMemo(
+    () => linhas.reduce<{ nome: string; dose: number } | null>(
+      (m, c) => (!m || c.porLote > m.dose ? { nome: c.nome, dose: c.porLote } : m), null),
+    [linhas],
+  )
+  const avisosPergunta = useMemo(
+    () => (ordem && pedidoNum != null && pedidoNum > 0
+      ? avisosDaEscala({
+          pedido: pedidoNum, loteBase: ordem.loteBase, unidadeLoteBase: ordem.unidadeLoteBase,
+          unidadeProduto: ordem.unidadeProduzido, maiorDose, espelho,
+        })
+      : []),
+    [ordem, pedidoNum, maiorDose, espelho],
+  )
+  /** ⭐ a frase curta do retalho — *"vai sair ~246 UN no total"* (a conta mora na lib) */
+  const fraseRet = useMemo(
+    () => (ordem && retalho?.aceita && temRetalho === 'SIM'
+      ? fraseDoRetalho({
+          pedido: pedidoNum, kg: valorQtd(retalhoKg),
+          pesoUnidadeG: retalho.pesoUnidadeG ?? null, unidade: ordem.unidadeProduzido,
+        })
+      : null),
+    [ordem, retalho, temRetalho, pedidoNum, retalhoKg],
+  )
 
   const previsao = useMemo(
     () => (escalaAtual == null || !ordem ? null : preverSaida(escalaAtual, { teorico: ordem.loteBase, medido: rendimentoMedio, lotes: rendimentoLotes })),
@@ -380,7 +488,197 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
         </div>
       )}
 
-      {/* separação */}
+      {/* ⭐⭐⭐ A PERGUNTA ÚNICA DO PEDIDO (11/10) — "quantas unidades produzir?" */}
+      {perguntando && (
+        <Card style={{ borderColor: 'var(--fam-indigo-mid)' }}><CardContent className="space-y-4 p-4">
+          <div>
+            <p className="text-[17px] font-medium" style={{ color: 'var(--prod-primary)' }}>
+              Quantas unidades produzir?
+            </p>
+            <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+              {corrigindoPedido
+                ? 'corrigir o pedido — ainda dá, porque nada foi separado'
+                : 'a prateleira está do lado: digite e confira o que vai sair'}
+            </p>
+          </div>
+
+          {/* ⭐ O CAMPO GRANDE (24px tabular) — nasce VAZIO, mesmo na correção */}
+          <div className="flex items-end gap-2">
+            <input
+              aria-label="quantas unidades produzir"
+              inputMode="decimal" autoFocus
+              value={quanto}
+              onChange={(e) => setQuanto(sanitizarQtd(e.target.value, ordem.unidadeProduzido))}
+              placeholder="0"
+              className="w-[160px] rounded-md px-3 py-2 text-[24px] font-medium tabular-nums outline-none"
+              style={{ border: '1px solid var(--prod-line)', background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }}
+            />
+            <span className="pb-2 text-[14px]" style={{ color: 'var(--prod-muted)' }}>{ordem.unidadeProduzido}</span>
+          </div>
+
+          {/* ⭐⭐ A TABELA AO VIVO — INSUMO · VAI TIRAR · NA PRATELEIRA · veredito.
+              ⛔ "vai tirar" vem da PORTA DA SEPARAÇÃO (tabelaDaPergunta → insumoDoPedido):
+                 nunca uma 2ª derivação, senão a tela promete um material e a ordem separa outro. */}
+          <div className="overflow-hidden rounded-md" style={{ border: '1px solid var(--prod-line)' }}>
+            <table className="density-normal w-full">
+              <thead>
+                <tr style={{ background: 'var(--prod-surface-1)' }}>
+                  <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>insumo</th>
+                  <th className="px-3 py-2 text-right text-[11px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>vai tirar</th>
+                  <th className="px-3 py-2 text-right text-[11px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>na prateleira</th>
+                  <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>dá?</th>
+                </tr>
+              </thead>
+              <tbody style={{ opacity: tabela.semNumero ? 0.45 : 1 }}>
+                {tabela.linhas.map((l) => {
+                  const v = vereditoDaLinha(l)
+                  return (
+                    <tr key={l.itemId} style={v.falta ? { background: 'var(--fam-coral-bg)' } : undefined}>
+                      <td className="px-3 py-0 text-[13px]" style={{ color: 'var(--prod-primary)' }}>{l.nome}</td>
+                      <td className="px-3 py-0 text-right text-[13px] tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+                        {l.quantidade == null ? '—' : formatarQtd(l.quantidade, l.unidade)}
+                      </td>
+                      <td className="px-3 py-0 text-right text-[13px] tabular-nums" style={{ color: 'var(--prod-secondary)' }}>
+                        {l.saldo == null ? '—' : formatarQtd(l.saldo, l.unidade)}
+                      </td>
+                      <td className="px-3 py-0 text-[13px]" style={{ color: v.falta ? 'var(--fam-coral-ink)' : 'var(--prod-secondary)' }}>
+                        {v.texto}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ⛔ FALTA NÃO BLOQUEIA — a regra da separação de hoje fica como está (ela grava o
+              movimento negativo); a tela só mostra ANTES o que antes se descobria depois. */}
+          {tabela.faltando > 0 && (
+            <p className="text-[12.5px]" style={{ color: 'var(--fam-coral-ink)' }}>
+              {tabela.faltando === 1 ? 'Falta 1 insumo' : `Faltam ${tabela.faltando} insumos`} — dá pra confirmar assim mesmo;
+              a separação registra o que sair e o saldo fica negativo até a compra entrar.
+            </p>
+          )}
+          {tabela.semCusto > 0 && (
+            <p className="text-[12px]" style={{ color: 'var(--prod-muted)' }}>
+              {tabela.semCusto} insumo(s) sem custo médio — o custo deste lote sai incompleto.
+            </p>
+          )}
+
+          {/* ⭐ O RETALHO vem AQUI, junto do número (saiu da criação) */}
+          {retalho?.aceita && (
+            <div className="space-y-2 rounded-md p-3" style={{ background: 'var(--fam-indigo-bg)' }}>
+              <p className="text-[13px] font-medium" style={{ color: 'var(--fam-indigo-ink)' }}>
+                Tem retalho de ontem? Quer adicionar na receita?
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => { setTemRetalho('NAO'); setRetalhoKg('') }}
+                  className="rounded-md px-2.5 py-1 text-[12.5px]"
+                  style={{
+                    border: '1px solid var(--prod-line)',
+                    background: temRetalho === 'NAO' ? 'var(--prod-acao-bg)' : 'transparent',
+                    color: temRetalho === 'NAO' ? 'var(--prod-acao-ink)' : 'var(--prod-secondary)',
+                  }}>
+                  Não tem
+                </button>
+                <button type="button" onClick={() => setTemRetalho('SIM')}
+                  className="rounded-md px-2.5 py-1 text-[12.5px]"
+                  style={{
+                    border: '1px solid var(--prod-line)',
+                    background: temRetalho === 'SIM' ? 'var(--prod-acao-bg)' : 'transparent',
+                    color: temRetalho === 'SIM' ? 'var(--prod-acao-ink)' : 'var(--prod-secondary)',
+                  }}>
+                  Sim
+                </button>
+                {temRetalho === 'SIM' && (
+                  <span className="flex items-center gap-1.5">
+                    <input aria-label="quantos kg de retalho" inputMode="decimal"
+                      value={retalhoKg} onChange={(e) => setRetalhoKg(sanitizarQtd(e.target.value, 'KG'))}
+                      placeholder="0"
+                      className="w-[88px] rounded-md px-2 py-1 text-[13px] tabular-nums outline-none"
+                      style={{ border: '1px solid var(--prod-line)', background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }} />
+                    <span className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>kg</span>
+                  </span>
+                )}
+              </div>
+              {/* ⚠️ NUNCA pré-preenchido: ele pesa todo dia. O "da última vez" só serve pra
+                  reconhecer grandeza absurda (92 onde é 9,2). */}
+              {retalho.ultimoKg != null && temRetalho === 'SIM' && (
+                <p className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                  da última vez: {formatarQtd(retalho.ultimoKg, 'KG')}
+                </p>
+              )}
+              {fraseRet && (
+                <p className="text-[12.5px]" style={{ color: 'var(--fam-indigo-ink)' }}>{fraseRet}</p>
+              )}
+              {/** ⚠️ a separação NÃO muda, e a tela DIZ — senão o dono espera mais material na câmara */}
+              <p className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                o material que sai da câmara continua sendo o do pedido — o retalho já está na cozinha
+              </p>
+            </div>
+          )}
+
+          {/* ⭐ OS AVISOS DO ATO — mudaram de tela COM o número (remoção sem realocação é perda) */}
+          {avisosPergunta.map((a) => (
+            <div key={a.motivo} className="rounded-md p-3 text-[12.5px]"
+              style={{ background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
+              {a.frase}
+              {/**
+                * ⚠️ O ATALHO vai SÓ no `LOTE_NAO_COMPARAVEL`: o `MEDIA_DESTOA` não se resolve
+                * convertendo lote nenhum (lá a decisão é de ficha, não de rótulo de unidade).
+                * ⭐ Sem ele o aviso diz o problema e não diz onde resolver — foi a 11ª volta
+                * da "porta sem maçaneta" na criação, e ela não volta aqui.
+                */}
+              {a.motivo === 'LOTE_NAO_COMPARAVEL' && (
+                <a href={`/empresas/${id}/estoque/fichas/conversao?ficha=${ordem.fichaId}`}
+                  className="ml-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] font-medium underline"
+                  style={{ color: 'var(--fam-ambar-ink)' }}>
+                  corrigir o lote desta ficha
+                </a>
+              )}
+            </div>
+          ))}
+
+          {erro && <p className="text-[12.5px]" style={{ color: 'var(--fam-coral-ink)' }}>{erro}</p>}
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* ⭐ O WRITER ÚNICO: este botão é o ÚNICO caminho que grava a meta + a escala */}
+            <button
+              onClick={confirmarPedido}
+              disabled={busy || pedidoNum == null || !(pedidoNum > 0)}
+              className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium disabled:opacity-40"
+              style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {rotuloDoConfirmar(pedidoNum, ordem.unidadeProduzido)}
+            </button>
+            {corrigindoPedido && (
+              <button onClick={() => { setCorrigindoPedido(false); setQuanto('') }}
+                className="h-9 rounded-md px-3 text-[13px]"
+                style={{ border: '1px solid var(--prod-line)', color: 'var(--prod-secondary)' }}>
+                deixar como está
+              </button>
+            )}
+          </div>
+
+          {/* ⭐ O RASTRO — quem declarou e quando (a meta tem `criadoEm DEFAULT now()`, então
+              sem esta lista a correção deixaria o "quem·quando" na PRIMEIRA declaração) */}
+          {rastroPedido.length > 0 && (
+            <div className="space-y-0.5 pt-1" style={{ borderTop: '1px solid var(--prod-line)' }}>
+              {rastroPedido.map((r, i) => (
+                <p key={i} className="pt-1 text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                  {r.correcao ? 'corrigido pra ' : 'pedido '}
+                  <strong style={{ color: 'var(--prod-secondary)' }}>{fmtPedido(r.unidades, ordem.unidadeProduzido)} {ordem.unidadeProduzido}</strong>
+                  {r.quem ? ` por ${r.quem}` : ''} · {new Date(r.quando).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                </p>
+              ))}
+            </div>
+          )}
+        </CardContent></Card>
+      )}
+
+      {/* separação — ⛔ ESCONDIDA enquanto a pergunta está na tela: até declarar o pedido
+          não existe "o que separar" (a escala é o DEFAULT 1 do banco, não um pedido). */}
+      {!perguntando && (<>
       <Card><CardContent className="p-0">
         <div className="flex items-center justify-between p-4" style={{ borderBottom: '1px solid var(--prod-line)' }}>
           {/* ⭐ o TÍTULO diz o fato: o insumo SAIU da prateleira (não "está reservado") */}
@@ -393,68 +691,24 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
           </button>
         </div>
 
-        {/* ⭐⭐ OS DOIS CAMPOS LIGADOS — o pedido central do dono (01/09):
-            *"eu falo pro funcionário 'faz 200 porções'. Ele precisa saber QUANTOS KG PEGAR.
-            Hoje ele faz a conta de cabeça e depois digita o kg. O sistema tem que fazer a conta."*
-            Digitar em cima preenche TODAS as linhas de insumo; digitar numa linha recalcula
-            o de cima. Mesma régua nos dois sentidos, senão a ida-e-volta não fecha. */}
-        {planejada && (
-          <div className="border-b border-[var(--prod-line)] bg-[var(--prod-surface-1)] p-4 print:hidden">
-            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-              <label className="text-xs text-[var(--prod-muted)]">
-                Quero fazer
-                <div className="mt-1 flex items-center gap-1.5">
-                  <input
-                    value={querFazer}
-                    onChange={(e) => {
-                      setQuerFazer(e.target.value)
-                      const alvo = parseNum(e.target.value)
-                      if (!(alvo > 0) || !ordem) return
-                      // ⭐ o de cima manda: cada linha recebe o SEU insumo pra esse alvo
-                      // ⛔ pela FICHA (dose × pedido ÷ loteBase) — sem rendimento no meio
-                      setSep(Object.fromEntries(linhas.map((l) => {
-                        const q = insumoDoPedido({ pedido: alvo, loteBase: ordem.loteBase }, l.porLote)
-                        return [l.itemId, q == null ? '' : String(q).replace('.', ',')]
-                      })))
-                    }}
-                    inputMode="decimal" placeholder="200"
-                    className="w-28 rounded-lg border border-[var(--prod-line-strong)] py-1.5 px-2 text-right text-base font-semibold tabular-nums"
-                  />
-                  <span className="text-sm text-[var(--prod-muted)]">{ordem.unidadeProduzido}</span>
-                </div>
-              </label>
-
-              <div className="min-w-[15rem] text-xs">
-                <p className="text-[var(--prod-muted)]">Preciso tirar</p>
-                <p className="mt-1 text-sm font-semibold tabular-nums text-[var(--prod-primary)]">
-                  {linhas.length === 0 ? '—' : linhas.map((l) => `${formatarQtd(parseNum(sep[l.itemId]), l.unidade)} de ${l.nome.toLowerCase()}`).join(' · ')}
-                </p>
-                {/* ⛔ A frase diz a VERDADE da conta: é a receita. O espelho vem depois. */}
-                <p className="mt-0.5 text-[11px] text-[var(--prod-muted)]">
-                  pela receita da ficha
-                  {espelho
-                    ? ` · seus últimos ${espelho.lotes} lotes renderam ${(espelho.pct * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}% dela`
-                    : rendimentoLotes === 1
-                      ? ' · 1 lote ainda não é média'
-                      : ' · eficiência: a apurar'}
-                </p>
-              </div>
-
-              {previsao && (
-                <div className="ml-auto text-right text-xs">
-                  <p className="text-[var(--prod-muted)]">Com isso deve sair</p>
-                  <p className="text-lg font-semibold tabular-nums text-[var(--prod-primary)]">
-                    ~{num(Math.round(previsao.esperadoDaFicha))} <span className="text-sm font-normal text-[var(--prod-muted)]">{ordem.unidadeProduzido}</span>
-                  </p>
-                  {/* ⭐ ESPELHO: o que a sua média diria — informação, não meta. */}
-                  {previsao.medido != null && espelho && (
-                    <p className="text-[11px] text-[var(--prod-muted)]">~{num(Math.round(previsao.medido))} pela sua média de {espelho.lotes} lotes</p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/**
+          * ⛔⛔⛔ **O CAMPO "QUERO FAZER" MORREU AQUI (11/10) — ELE ERA O FANTASMA.**
+          *
+          * **Defeito do dono:** *"a quantidade é perguntada 2× — na criação E depois de criar — e
+          * números diferentes deixam o 1º assombrando a tela."* O mecanismo, lido no código: este
+          * campo recalculava `sep` (as linhas de separação) **em estado local** e **nunca
+          * regravava a meta nem a escala**. Digitar 20 fazia a cozinha separar material pra 20
+          * enquanto o cabeçalho, a home, a lista e os relatórios seguiam imprimindo **30** —
+          * todos leem o pedido do banco.
+          *
+          * ⭐ Agora a pergunta é **UMA** (`<PerguntaDoPedido>`, logo abaixo), ela **GRAVA** pelo
+          * writer único, e ela mostra a prateleira — que é por isso que ela mora aqui e não na
+          * criação: aquela tela não carrega saldo nenhum.
+          *
+          * ⚠️ **A EDIÇÃO POR LINHA FICA** e não é um 2º campo de pedido: ali o dono ajusta *o
+          * que REALMENTE tirou da câmara*, que é outro fato (e é o que mantém o invariante P1
+          * honesto). O que não existe mais é um segundo lugar que responda *"quanto produzir"*.
+          */}
         {/**
           * ⭐⭐⭐ UMA COLUNA SÓ (item 3, decisão do dono): *"as colunas PLANEJADO × EM PRODUÇÃO
           * morrem — eram o mesmo número"*. E é verdade medida: fora do estado PLANEJADA, o
@@ -532,6 +786,28 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
           </span>
           <span className="num font-medium" style={{ color: 'var(--prod-primary)' }}>{formatBRL(custoSeparado)}</span>
         </div>
+        {/**
+          * ⭐⭐ O ESPELHO DA SEPARAÇÃO — *"com isso deve sair ~N"* (REALOCADO, 11/10).
+          *
+          * ⚠️ É o sentido INVERSO da pergunta do pedido: ali o dono diz as unidades e a tela
+          * mostra o material; aqui ele ajusta o material (o que REALMENTE tirou da câmara) e a
+          * tela mostra quantas unidades aquilo dá. **São duas perguntas, não duas contas** —
+          * e esta sobreviveu à morte do campo "Quero fazer" porque *remoção sem realocação é
+          * perda*: sem ela, mexer numa linha deixaria de ter resposta na tela.
+          *
+          * ⛔ Ela NUNCA grava nem sugere pedido — é leitura do que já está nas linhas.
+          */}
+        {planejada && previsao && (
+          <div className="px-4 pb-4 text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+            {/* ⚠️ a MEDIDA ganha quando existe, e a tela DIZ qual régua usou — espelho sem
+                nome faria o dono comparar dois números sem saber de onde vieram */}
+            Com isso deve sair{' '}
+            <strong style={{ color: 'var(--prod-secondary)' }}>
+              ~{num(Math.round(previsao.medido ?? previsao.esperadoDaFicha))} {ordem.unidadeProduzido}
+            </strong>
+            {previsao.medido != null ? ' (pela sua média)' : ' (pelo que a receita promete)'}
+          </div>
+        )}
       </CardContent></Card>
 
       {/* dependência entre ordens: componente PRODUZIDO faltando → "produzir antes" (aviso + link, sem orquestração automática) */}
@@ -583,6 +859,21 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmar separação
             </button>
           )}
+          {/**
+            * ⭐⭐ CORRIGIR O PEDIDO — *"ATÉ separar, o pedido pode ser corrigido pela MESMA
+            * tela; DEPOIS de separada, não — a separação já obedeceu"* (o dono, 11/10).
+            *
+            * ⛔ Ele REABRE o MESMO componente da pergunta (não existe um 2º campo de pedido):
+            * era o 2º lugar de perguntar que criou o fantasma. E `quanto` nasce VAZIO de
+            * propósito — número pré-preenchido vira número confirmado sem ninguém conferir.
+            */}
+          {planejada && pedido?.origem === 'DECLARADO' && (
+            <button onClick={() => { setQuanto(''); setCorrigindoPedido(true); setErro(null) }} disabled={busy}
+              className="rounded-lg border px-4 py-2 text-[13px] disabled:opacity-50"
+              style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
+              Corrigir o pedido
+            </button>
+          )}
           {separada && (
             <button onClick={() => acao({ acao: 'iniciar' })} disabled={busy}
               className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60"
@@ -606,6 +897,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
           </button>
         </div>
       )}
+      </>)}
 
       {/* ⭐⭐ ETAPAS — quem faz cada parte (06/09). Fica ANTES da conclusão porque é o
           trabalho acontecendo; a conclusão é o fecho. */}
@@ -829,7 +1121,8 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, etapasAbertas, quem
   /** ⭐ os nomes vêm DAS ETAPAS (o payload que o componente de etapas já buscou) */
   quemProduziu: string[]
   nomeProduzido: string
-  pedido: { unidades: number | null; origem: 'DECLARADO' | 'DERIVADO' | null } | null
+  /** ⚠️ DERIVA do tipo da lib — ver o bloco do `pedido` acima (a dívida de 01/09) */
+  pedido: { unidades: number | null; origem: OrigemDoPedido | null } | null
   /**
    * ⭐⭐ O CUSTO DO LOTE VEM DE CIMA — é **o MESMO número** do rodapé do cartão de insumos
    * (`custoSeparado`). Recalculá-lo aqui seria a 2ª conta do mesmo dinheiro, e as duas

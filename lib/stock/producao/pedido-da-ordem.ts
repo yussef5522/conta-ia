@@ -30,7 +30,28 @@
 import { saidaEsperadaDaFicha } from './escala-da-ordem'
 import { fmtPedido, pilulaDoPedido } from './pedido-na-tela'
 
-export type OrigemDoPedido = 'DECLARADO' | 'DERIVADO'
+/**
+ * ⭐⭐⭐ `AGUARDANDO` NASCEU EM 11/10 — e ele existe porque a PERGUNTA mudou de lugar.
+ *
+ * **Defeito do dono:** a quantidade era perguntada **DUAS vezes** — na criação e, de novo, no
+ * campo *"Quero fazer"* da página da ordem. ⛔ E o 2º campo **só mexia em estado local**: ele
+ * recalculava a separação e **nunca regravava a meta nem a escala**, então o número da criação
+ * continuava impresso no cabeçalho, na home, na lista e nos relatórios. *O 1º número ficava
+ * assombrando a tela.* Agora a pergunta é **UMA**, DEPOIS de criar, onde dá pra ver a prateleira.
+ *
+ * ⛔⛔ **E "AINDA NÃO PERGUNTEI" NÃO PODE SER LIDO COMO "O PEDIDO É `escala × loteBase`".** A
+ * ordem nasce com `escalaReceitas = 1` (default do banco — a coluna é NOT NULL com CHECK > 0),
+ * então o DERIVADO devolveria *"pedido 1 lote"*: um número que ninguém pediu, com cara de
+ * pedido. É a família do *"pedido 0"* e do *"sem contagem" × zero* — **ausência de resposta não
+ * é uma resposta**.
+ *
+ * ⚠️ **O DERIVADO CONTINUA HONESTO ONDE ELE NASCEU:** as ordens que já rodaram (CONCLUIDA,
+ * CANCELADA) sem meta são as 474 que nasceram antes do campo existir, e ali `escala × loteBase`
+ * é o melhor disponível. **Só `PLANEJADA` sem meta é "aguardando"** — e isso foi MEDIDO, não
+ * suposto: em prod há **0 ordens abertas** hoje (578 ordens, todas CONCLUIDA ou CANCELADA),
+ * então nenhuma ordem antiga muda de leitura por causa desta régua.
+ */
+export type OrigemDoPedido = 'DECLARADO' | 'DERIVADO' | 'AGUARDANDO'
 
 export interface PedidoResolvido {
   /** quantas unidades do produto a ordem pediu; `null` quando não dá pra dizer */
@@ -47,6 +68,14 @@ export interface EntradaDoPedido {
   escala: number
   /** o `loteBase` da VERSÃO que a ordem congelou */
   loteBase: number
+  /**
+   * ⭐ o estado da ordem — é ele que separa *"ainda não perguntei"* de *"nasceu antes do campo"*.
+   *
+   * ⚠️ **OBRIGATÓRIO de propósito:** opcional faria todo chamador que esquecesse cair no
+   * DERIVADO em silêncio, que é exatamente o fantasma que esta régua existe pra matar. Com ele
+   * obrigatório, o `tsc` acha os chamadores — a REGRA 4 de graça.
+   */
+  estado: string
 }
 
 /**
@@ -59,7 +88,16 @@ export interface EntradaDoPedido {
  */
 export function pedidoDaOrdem(e: EntradaDoPedido): PedidoResolvido {
   if (e.meta != null && e.meta > 0) {
-    return { unidades: e.meta, origem: 'DECLARADO', comoSoube: 'você pediu esta quantidade ao criar a ordem' }
+    return { unidades: e.meta, origem: 'DECLARADO', comoSoube: 'você declarou esta quantidade nesta ordem' }
+  }
+  /**
+   * ⛔⛔ A PERGUNTA AINDA NÃO FOI FEITA — e a tela DIZ isso, nunca inventa um número.
+   *
+   * ⚠️ Vem ANTES do derivado de propósito: numa ordem recém-criada o `escala` é o **default 1**
+   * do banco, e o derivado imprimiria *"1 lote esperado"* como se fosse o pedido.
+   */
+  if (e.estado === 'PLANEJADA') {
+    return { unidades: null, origem: 'AGUARDANDO', comoSoube: 'a ordem abre na pergunta — diga quantas unidades produzir' }
   }
   const derivado = saidaEsperadaDaFicha(e.escala, e.loteBase)
   if (derivado != null && derivado > 0) {

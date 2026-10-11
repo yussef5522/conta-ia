@@ -8,22 +8,39 @@
 import { describe, it, expect } from 'vitest'
 import { pedidoDaOrdem, fraseDoCiclo } from '../pedido-da-ordem'
 
+/**
+ * ⚠️ `estado` é OBRIGATÓRIO desde 11/10 — e isso é o ponto, não cerimônia: sem ele o
+ * resolvedor não consegue distinguir *"a ordem ainda vai declarar"* (**AGUANDANDO**, que abre
+ * na pergunta) de *"nasceu antes do campo e a ficha calculou"* (**DERIVADO**, as 471 de prod).
+ * O tipo exigir o estado foi o que fez o `tsc` achar TODOS os chamadores (REGRA 4 de graça).
+ *
+ * ⛔ O default aqui é **CONCLUIDA** de propósito: é o estado da esmagadora maioria das ordens
+ * antigas, que são justamente as que o DERIVADO existe pra cobrir.
+ */
+const ENCERRADA = 'CONCLUIDA'
+
 describe('⭐⭐ pedidoDaOrdem — o DECLARADO manda, o DERIVADO cobre, e a origem vai junto', () => {
   it('⭐ com meta registrada: DECLARADO, e é o número que o dono digitou', () => {
-    const p = pedidoDaOrdem({ meta: 80, escala: 80, loteBase: 1 })
+    const p = pedidoDaOrdem({ meta: 80, escala: 80, loteBase: 1, estado: ENCERRADA })
     expect(p).toMatchObject({ unidades: 80, origem: 'DECLARADO' })
-    expect(p.comoSoube).toContain('você pediu')
+    /**
+     * ⚠️ A FRASE MUDOU em 11/10 (*"você declarou esta quantidade nesta ordem"*), e o motivo é
+     * o lugar: ela nasceu quando o pedido era digitado na CRIAÇÃO (*"você pediu"* fazia
+     * sentido ali) e agora a declaração acontece NA ORDEM. O que o teste afirma segue o
+     * mesmo: o DECLARADO diz, com palavras, que **o dono** é a fonte do número.
+     */
+    expect(p.comoSoube).toContain('você declarou')
   })
 
   it('⭐⭐ sem meta: DERIVADO da ficha pela PORTA, e a tela sabe que é derivado', () => {
     // é o estado das 471 ordens de prod hoje
-    const p = pedidoDaOrdem({ meta: null, escala: 80, loteBase: 1 })
+    const p = pedidoDaOrdem({ meta: null, escala: 80, loteBase: 1, estado: ENCERRADA })
     expect(p).toMatchObject({ unidades: 80, origem: 'DERIVADO' })
     expect(p.comoSoube).toContain('calculado pela ficha')
   })
 
   it('⭐ a MAIONESE derivada: escala 3,4989 × lote 2,858 = 10 KG', () => {
-    const p = pedidoDaOrdem({ meta: null, escala: 3.4989, loteBase: 2.858 })
+    const p = pedidoDaOrdem({ meta: null, escala: 3.4989, loteBase: 2.858, estado: ENCERRADA })
     expect(p.unidades).toBeCloseTo(10, 3)
     expect(p.origem).toBe('DERIVADO')
   })
@@ -39,8 +56,8 @@ describe('⭐⭐ pedidoDaOrdem — o DECLARADO manda, o DERIVADO cobre, e a orig
   it('⭐⭐⭐ nas ordens NOVAS o derivado == o declarado, por construção', () => {
     for (const [pedido, loteBase] of [[80, 1], [10, 2.858], [137.5, 0.5], [1, 12]] as const) {
       const escala = Math.round((pedido / loteBase + 1e-9) * 1e4) / 1e4
-      const comMeta = pedidoDaOrdem({ meta: pedido, escala, loteBase })
-      const semMeta = pedidoDaOrdem({ meta: null, escala, loteBase })
+      const comMeta = pedidoDaOrdem({ meta: pedido, escala, loteBase, estado: ENCERRADA })
+      const semMeta = pedidoDaOrdem({ meta: null, escala, loteBase, estado: ENCERRADA })
       expect(comMeta.unidades).toBe(pedido)
       expect(semMeta.unidades, `pedido ${pedido} / lote ${loteBase}`).toBeCloseTo(pedido, 3)
       // ⭐ o que muda é só a ORIGEM — e é por isso que ela tem que aparecer
@@ -50,14 +67,37 @@ describe('⭐⭐ pedidoDaOrdem — o DECLARADO manda, o DERIVADO cobre, e a orig
   })
 
   it('⛔ sem meta e sem lote utilizável: `null`, NUNCA zero', () => {
-    expect(pedidoDaOrdem({ meta: null, escala: 0, loteBase: 1 })).toMatchObject({ unidades: null, origem: null })
-    expect(pedidoDaOrdem({ meta: null, escala: 10, loteBase: 0 })).toMatchObject({ unidades: null, origem: null })
-    expect(pedidoDaOrdem({ meta: 0, escala: 0, loteBase: 0 }).unidades).toBeNull()
+    expect(pedidoDaOrdem({ meta: null, escala: 0, loteBase: 1, estado: ENCERRADA })).toMatchObject({ unidades: null, origem: null })
+    expect(pedidoDaOrdem({ meta: null, escala: 10, loteBase: 0, estado: ENCERRADA })).toMatchObject({ unidades: null, origem: null })
+    expect(pedidoDaOrdem({ meta: 0, escala: 0, loteBase: 0, estado: ENCERRADA }).unidades).toBeNull()
+  })
+
+  /**
+   * ⭐⭐⭐ O ESTADO QUE MATOU O FANTASMA (11/10).
+   *
+   * ⚠️ A ordem NOVA nasce com `escalaReceitas = 1` (o DEFAULT do banco, porque a coluna é NOT
+   * NULL com `CHECK > 0` — *"sem pedido" não é representável nela*). Se o DERIVADO mandasse
+   * aqui, a tela imprimiria **"pedido 1 lote"** — um número que ninguém pediu, na tela em que
+   * o dono ainda vai dizer quanto quer. O `AGUARDANDO` existe pra a ausência ter NOME.
+   *
+   * ⛔ E a ordem das regras importa: AGUARDANDO vem ANTES do DERIVADO.
+   */
+  it('⭐⭐⭐ PLANEJADA sem meta: AGUARDANDO — a ordem abre na pergunta, nunca em "pedido 1"', () => {
+    const p = pedidoDaOrdem({ meta: null, escala: 1, loteBase: 1, estado: 'PLANEJADA' })
+    expect(p).toMatchObject({ unidades: null, origem: 'AGUARDANDO' })
+    expect(p.comoSoube).toContain('diga quantas unidades')
+    // ⛔ o contrafactual: com a régua VELHA (derivado sempre) ela diria 1
+    expect(p.unidades).not.toBe(1)
+  })
+
+  it('⭐ PLANEJADA COM meta já declarada: DECLARADO (a pergunta já foi respondida)', () => {
+    const p = pedidoDaOrdem({ meta: 30, escala: 30, loteBase: 1, estado: 'PLANEJADA' })
+    expect(p).toMatchObject({ unidades: 30, origem: 'DECLARADO' })
   })
 
   it('⛔ meta zerada ou negativa não vira DECLARADO (cai no derivado)', () => {
-    expect(pedidoDaOrdem({ meta: 0, escala: 80, loteBase: 1 }).origem).toBe('DERIVADO')
-    expect(pedidoDaOrdem({ meta: -5, escala: 80, loteBase: 1 }).origem).toBe('DERIVADO')
+    expect(pedidoDaOrdem({ meta: 0, escala: 80, loteBase: 1, estado: ENCERRADA }).origem).toBe('DERIVADO')
+    expect(pedidoDaOrdem({ meta: -5, escala: 80, loteBase: 1, estado: ENCERRADA }).origem).toBe('DERIVADO')
   })
 })
 

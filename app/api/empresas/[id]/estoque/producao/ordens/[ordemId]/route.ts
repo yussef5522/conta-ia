@@ -9,6 +9,8 @@ import { explodirSeparacao, OrdemError } from '@/lib/stock/producao/ordens'
 import { listConclusoes, rendimentoMedidoDaFicha } from '@/lib/stock/producao/conclusao'
 import { pedidoDaOrdem } from '@/lib/stock/producao/pedido-da-ordem'
 import { carimbosDasConclusoes } from '@/lib/stock/producao/conferencia'
+import { configDeRetalho, ultimoRetalhoDaFicha, retalhoDasOrdens } from '@/lib/stock/producao/retalho'
+import { rastroDoPedido } from '@/lib/stock/producao/confirmar-pedido'
 
 interface Params { params: Promise<{ id: string; ordemId: string }> }
 
@@ -70,6 +72,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       meta: meta?.unidades ?? null,
       escala: ordem.escalaReceitas,
       loteBase: ordem.loteBase,
+      estado: ordem.estado,
     })
 
     // `lotes` vai junto: a tela precisa dizer "média de 4 lotes" e só adota a medida com 2+
@@ -83,7 +86,45 @@ export async function GET(request: NextRequest, { params }: Params) {
     const carimbos = await carimbosDasConclusoes(companyId, conclusoes.map((c) => c.id), prisma)
     const conclusoesComSelo = conclusoes.map((c) => ({ ...c, conferencia: carimbos.get(c.id) ?? null }))
 
-    return NextResponse.json({ ordem, linhas, conclusoes: conclusoesComSelo, colaboradores, rendimentoMedio: medido.media, rendimentoLotes: medido.lotes, parada, pedido })
+    /**
+     * ⭐⭐ A PERGUNTA DO RETALHO MUDOU PRA CÁ (11/10) — ela saiu da criação e vem junto do número,
+     * porque é a MESMA decisão (*"quanto vou produzir, contando o que sobrou de ontem"*).
+     *
+     * ⛔ **Só consulta quando a ordem está PLANEJADA**: é o único estado em que a pergunta
+     * existe. Pagar 2 queries em TODA abertura de ordem concluída seria a lição dos 4.909 ms
+     * (28/09) em versão pequena — e esta tela abre muitas vezes por dia.
+     *
+     * ⚠️ E `aceita: false` **não manda peso nem último kg**: a ausência da pergunta tem que vir
+     * da ausência do DADO, não de um `if` na tela que alguém remove num refactor (a régua que a
+     * rota `/retalho` já escreve).
+     */
+    const planejada = ordem.estado === 'PLANEJADA'
+    const cfgRetalho = planejada ? (await configDeRetalho(companyId, [ordem.fichaId], prisma)).get(ordem.fichaId) : undefined
+    const [ultimo, jaDeclarado, rastro] = planejada
+      ? await Promise.all([
+          cfgRetalho?.aceita ? ultimoRetalhoDaFicha(companyId, ordem.fichaId, prisma) : Promise.resolve(null),
+          retalhoDasOrdens(companyId, [ordemId], prisma),
+          rastroDoPedido(companyId, ordemId, prisma),
+        ])
+      : [null, new Map(), []]
+    const retalho = !planejada || !cfgRetalho?.aceita
+      ? { aceita: false as const }
+      : {
+          aceita: true as const,
+          pesoUnidadeG: cfgRetalho.pesoUnidadeG,
+          /** ⚠️ o LEMBRETE, nunca o valor do campo: ele nasce VAZIO (ordem do dono, 09/10) */
+          ultimoKg: ultimo?.kg ?? null,
+          /** ⭐ o que ESTA ordem já declarou — pra a correção abrir com a resposta anterior à vista */
+          declaradoKg: jaDeclarado.get(ordemId)?.kg ?? null,
+        }
+
+    return NextResponse.json({
+      ordem, linhas, conclusoes: conclusoesComSelo, colaboradores,
+      rendimentoMedio: medido.media, rendimentoLotes: medido.lotes, parada, pedido,
+      retalho,
+      /** ⭐ quem declarou quanto, e quando — a 1ª vez e cada correção (append-only) */
+      rastroPedido: rastro,
+    })
   } catch (e) {
     if (e instanceof OrdemError) return NextResponse.json({ erro: e.message }, { status: 404 })
     throw e

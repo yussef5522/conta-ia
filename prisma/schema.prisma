@@ -5013,6 +5013,25 @@ model StockOrdemMeta {
   @@map("stock_ordem_meta")
 }
 
+/// ⭐⭐ O RASTRO de cada declaração de pedido (11/10/2026) — APPEND-ONLY.
+///
+/// A `StockOrdemMeta` guarda o pedido de HOJE (é o que todo leitor usa); esta guarda a HISTÓRIA:
+/// quem declarou quanto, quando, e se foi a 1ª vez ou uma correção.
+///
+/// ⛔ Sem unique por ordem de propósito: duas linhas é o caso normal (declarou 30, corrigiu 20).
+model StockOrdemPedidoDeclarado {
+  id             String   @id @default(cuid())
+  companyId      String
+  ordemId        String
+  unidades       Float
+  correcao       Boolean  @default(false)
+  declaradoPorId String?
+  declaradoEm    DateTime @default(now())
+
+  @@index([companyId, ordemId])
+  @@map("stock_ordem_pedido_declarado")
+}
+
 // ⭐⭐⭐ O PLANO DA ETAPA — DIA PRÓPRIO + QUEM PODE VER (15/09/2026).
 //
 // **Duas dores reais de operação, do dono:**

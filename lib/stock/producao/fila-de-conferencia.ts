@@ -118,7 +118,7 @@ export async function filaDeConferencia(
   const [ordens, colabs, fiscais] = await Promise.all([
     db.stockProductionOrder.findMany({
       where: { companyId, id: { in: ordemIds } },
-      select: { id: true, itemProduzidoId: true, fichaId: true, versaoFicha: true, escalaReceitas: true },
+      select: { id: true, itemProduzidoId: true, fichaId: true, versaoFicha: true, escalaReceitas: true, estado: true },
     }),
     db.stockColaborador.findMany({ where: { companyId }, select: { id: true, nome: true } }),
     fiscalDeOrdens(companyId, ordemIds, db),
@@ -159,6 +159,12 @@ export async function filaDeConferencia(
       meta: metaDe.get(c.ordemId) ?? null,
       escala: o.escalaReceitas,
       loteBase: loteDe.get(`${o.fichaId}:${o.versaoFicha}`) ?? 0,
+      /**
+       * ⚠️ Aqui a ordem SEMPRE já produziu (a fila é de conclusões), então nunca é `PLANEJADA`
+       * e nunca cai em `AGUARDANDO` — mas o campo vai pelo valor REAL, nunca cravado: cravar
+       * `'CONCLUIDA'` seria uma afirmação da minha cabeça num lugar que já tem o dado.
+       */
+      estado: o.estado,
     })
     const f = fiscais.get(c.ordemId)
     const minutos = Math.max(0, Math.round((agora.getTime() - c.criadoEm.getTime()) / 60000))

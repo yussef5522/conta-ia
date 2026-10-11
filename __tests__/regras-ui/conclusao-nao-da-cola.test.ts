@@ -112,14 +112,24 @@ describe('⛔⛔⛔ NENHUM número esperado na mão de quem declara', () => {
    * se ele deixasse de ser gateado, apareceria ao lado do campo de declarar — e a régua de
    * segurança morreria sem ninguém tocar na modal.
    */
+  /**
+   * ⚠️⚠️ REAPONTADO EM 11/10 — e a PERGUNTA não mudou: *"o «deve sair» só aparece em
+   * PLANEJADA"*. O que mudou é onde ele mora: com a morte do campo *"Quero fazer"* (o fantasma
+   * do pedido), o espelho foi **REALOCADO** pro rodapé do cartão de separação — *remoção sem
+   * realocação é perda* —, e o gate virou `{planejada && previsao && (`.
+   *
+   * ⛔ A asserção passou a ser ESTRUTURAL (o gate IMEDIATAMENTE antes do bloco), em vez de
+   * casar o literal `{planejada && (` — literal quebra no primeiro refactor legítimo, e
+   * *grep não distingue "refatorei" de "quebrei"*.
+   */
   it('⛔⛔ o "deve sair" da separação é gateado por `planejada`', () => {
     const t = tela()
     const i = t.indexOf('Com isso deve sair')
     expect(i, 'o bloco da separação existe').toBeGreaterThan(0)
-    const gate = t.lastIndexOf('{planejada && (', i)
-    expect(gate, 'ele está dentro do gate de PLANEJADA').toBeGreaterThan(0)
+    const gate = t.lastIndexOf('{planejada &&', i)
+    expect(gate, 'ele está dentro de um gate de PLANEJADA').toBeGreaterThan(0)
     // ⚠️ e o gate é ANTES do bloco, sem um `)}` fechando no meio
-    expect(t.slice(gate, i), 'o gate não fecha antes do bloco').not.toContain(')}\n      {')
+    expect(t.slice(gate, i), 'o gate não fecha antes do bloco').not.toContain(')}')
   })
 })
 

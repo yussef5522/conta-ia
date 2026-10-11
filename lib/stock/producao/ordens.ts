@@ -45,7 +45,19 @@ export const TIPO_GERACAO = 'PRODUCAO_GERACAO'
 export interface CriarOrdemInput {
   companyId: string
   fichaId: string
-  escalaReceitas: number
+  /**
+   * ⚠️⚠️ OPCIONAL DESDE 11/10 — **a criação deixou de perguntar quantidade** (decisão do dono:
+   * *"pergunta UMA vez, no lugar certo = DEPOIS de criar, onde dá pra ver a prateleira"*).
+   *
+   * Ausente → a coluna fica no **default 1** do banco (ela é NOT NULL com CHECK > 0, então
+   * "sem quantidade" não é representável ali) e a ordem nasce **AGUARDANDO** o pedido: quem
+   * grava a quantidade de verdade é o `confirmarPedido`, o writer único.
+   *
+   * ⭐ Quem ainda manda é a **SUGESTÃO de mín/máx** (`origem: 'SUGESTAO'`), e ali é um **PLANO**,
+   * não um pedido declarado — a tela da pergunta mostra como *"o mín/máx sugeriu ~N"*, nunca
+   * pré-preenchido (*"número sugerido vira número confirmado sem ninguém contar"*).
+   */
+  escalaReceitas?: number
   dataProducao: Date
   setorId?: string | null
   colaboradorId?: string | null
@@ -53,98 +65,56 @@ export interface CriarOrdemInput {
   observacao?: string | null
   userId?: string
   /**
-   * ⭐⭐ O PEDIDO EM UNIDADES DO PRODUTO — *"quero produzir: 80 UN"* (item 2 do dono, 04/10).
+   * ⛔⛔⛔ `pedidoUnidades` E `retalhoKg` **SAÍRAM DAQUI EM 11/10** — e saíram do TIPO, não de um
+   * `if`: chamar `criarOrdem` com um pedido deixou de **compilar** (REGRA 5 — disciplina virada
+   * impossibilidade).
    *
-   * ⛔⛔ **É ELE que faltava ser GRAVADO.** `stock_ordem_meta` existe desde 13/09 com DOIS
-   * leitores e **zero writers** — 0 linhas em 471 ordens —, então o *"pedido 130 → entregue 137
-   * (105%)"* do relatório por tarefa nunca tinha um pedido pra comparar. *Campo que ninguém
-   * escreve é promessa que a tela não cumpre.*
+   * **Por quê:** a quantidade era perguntada 2× (na criação e no campo *"Quero fazer"* da página
+   * da ordem) e **o 2º campo não escrevia nada** — só estado local. Quem separava obedecia ao
+   * número novo e quem IMPRIMIA (cabeçalho, home, lista, relatórios) seguia no da criação. *O 1º
+   * número ficava assombrando a tela.*
    *
-   * ⚠️ OPCIONAL de propósito: `escalaReceitas` continua sendo o que a ordem grava e o que a
-   * separação usa. O pedido é o que o DONO disse — e nem todo caminho tem um (a sugestão de
-   * min/máx calcula a escala, ela não "pede" nada). Sem ele, quem responde é o DERIVADO de
-   * `pedidoDaOrdem`, marcado como tal.
+   * ⭐ Os dois agora vivem em `confirmarPedido` (`confirmar-pedido.ts`), que grava meta + escala
+   * + retalho **na mesma transação** e deixa rastro de quem declarou.
    */
-  pedidoUnidades?: number | null
-  /**
-   * ⭐⭐ O RETALHO DE ONTEM, EM KG (09/10/2026) — *"tem retalho de ontem? quer adicionar na
-   * receita?"*.
-   *
-   * ⛔ **OPCIONAL, e "não tem" NÃO grava linha:** ausência é a resposta. ⚠️ E ele **não muda a
-   * separação**: o material que sai da câmara continua sendo `ficha × pedido` pela porta única
-   * (lei de 03/10). O retalho soma no RENDIMENTO ESPERADO e no FISCAL, nada mais.
-   */
-  retalhoKg?: number | null
 }
 
 export async function criarOrdem(input: CriarOrdemInput, db: Db = defaultPrisma): Promise<{ ordemId: string }> {
-  if (!(input.escalaReceitas > 0)) throw new OrdemError('Diga quanto você quer produzir (maior que zero).')
+  /**
+   * ⚠️ Escala ausente é LEGÍTIMA (a criação não pergunta mais) e cai no 1 — mas escala **negativa
+   * ou zero** continua sendo recusada: ali não é ausência, é um número errado, e o CHECK do banco
+   * recusaria com uma mensagem que o dono não entende.
+   */
+  if (input.escalaReceitas != null && !(input.escalaReceitas > 0)) {
+    throw new OrdemError('A escala tem que ser maior que zero.')
+  }
   const ficha = await db.stockFicha.findFirst({ where: { id: input.fichaId, companyId: input.companyId }, select: { id: true, itemProduzidoId: true, versaoAtual: true, ativo: true } })
   if (!ficha) throw new OrdemError('Ficha não encontrada.')
   if (!ficha.ativo) throw new OrdemError('Essa ficha está inativa.')
 
   /**
-   * ⭐⭐ O RETALHO SÓ ENTRA NA RECEITA QUE O DONO MARCOU — e a conferência é **ANTES** de a
-   * ordem nascer.
-   *
-   * ⛔⛔ **QUEM RECUSA É O SERVIDOR, não a tela.** A pergunta só aparece em ficha com
-   * `aceitaRetalho`, mas esconder o campo é combinado: a rota pode ser chamada por outro
-   * caminho (script, cliente copiado, tela em cache) e aí um retalho entraria numa receita que
-   * não tem retalho — afrouxando o fiscal dela em silêncio. É a régua do FREIO da contagem
-   * (23/08): *aviso que vive no componente some no dia em que a rota for chamada por fora*.
-   *
-   * ⚠️⚠️ **E A ORDEM DELE É O ACHADO DA PROVA EM PROD (09/10).** A 1ª versão checava DEPOIS do
-   * `create`: a rota devolvia **422** e **a ordem ficava gravada** — recusa com estado pela
-   * metade, o pior dos dois mundos (o dono vê "não deu" e tem um lote fantasma em PLANEJADA).
-   * A prova pegou pela contabilidade de escrita (531 → 532 ordens), não por um teste meu.
+   * ⛔⛔ A CONFERÊNCIA DO RETALHO MUDOU DE CASA EM 11/10 — ela vive em `confirmarPedido`, junto
+   * da pergunta. ⚠️ **E a régua NÃO afrouxou:** quem recusa continua sendo o SERVIDOR (esconder
+   * o campo é combinado — a rota pode ser chamada por script, cliente copiado ou tela em cache,
+   * e aí um retalho afrouxaria o fiscal de outra receita em silêncio). O que mudou é ONDE a
+   * pergunta é feita, não quem a valida.
    */
-  const temRetalho = input.retalhoKg != null && input.retalhoKg > 0
-  if (temRetalho) {
-    const cfg = (await configDeRetalho(input.companyId, [ficha.id], db)).get(ficha.id)
-    if (!cfg?.aceita) {
-      throw new OrdemError(
-        'Esta receita não aceita retalho — o retalho só entra em receita marcada (hoje, a massa de pizza).',
-      )
-    }
-  }
-
   const ordem = await db.stockProductionOrder.create({
     data: {
       companyId: input.companyId, fichaId: ficha.id, versaoFicha: ficha.versaoAtual, itemProduzidoId: ficha.itemProduzidoId,
       setorId: input.setorId ?? null, colaboradorId: input.colaboradorId ?? null, dataProducao: input.dataProducao,
-      escalaReceitas: input.escalaReceitas, origem: input.origem ?? 'MANUAL', observacao: input.observacao ?? null,
+      escalaReceitas: input.escalaReceitas ?? 1, origem: input.origem ?? 'MANUAL', observacao: input.observacao ?? null,
       estado: 'PLANEJADA', criadoPorId: input.userId ?? null,
     },
   })
   /**
-   * ⭐⭐ O PEDIDO VIRA LINHA AQUI — o writer que a tabela esperava desde 13/09.
+   * ⛔⛔⛔ **A META E O RETALHO NÃO NASCEM MAIS AQUI** (11/10) — a ordem nasce PLANEJADA e **sem
+   * pedido**, e o `pedidoDaOrdem` a devolve como `AGUARDANDO`.
    *
-   * ⚠️ Grava **logo depois da ordem e antes das etapas**: se falhasse, a ordem existiria sem
-   * meta — que é exatamente o estado das 471 de hoje, e o `pedidoDaOrdem` cobre com o DERIVADO.
-   * Degrada, não quebra. ⛔ E é `create` simples, não upsert: o `@@unique(companyId, ordemId)`
-   * torna a meta duplicada **impossível**, e a ordem acabou de nascer — não há o que atualizar.
+   * ⚠️ Era aqui que o `stock_ordem_meta` era gravado desde 04/10. Mantê-lo faria a criação
+   * responder a quantidade **de novo**, e aí a pergunta da página seria a segunda — exatamente o
+   * fantasma que o dono mandou matar. O writer único é o `confirmarPedido`.
    */
-  if (input.pedidoUnidades != null && input.pedidoUnidades > 0) {
-    await db.stockOrdemMeta.create({
-      data: {
-        companyId: input.companyId,
-        ordemId: ordem.id,
-        unidades: input.pedidoUnidades,
-        registradoPorId: input.userId ?? null,
-      },
-    })
-  }
-  /** ⭐ o retalho de ontem — a config já foi conferida ANTES de a ordem nascer (ver acima) */
-  if (temRetalho) {
-    await db.stockOrdemRetalho.create({
-      data: {
-        companyId: input.companyId,
-        ordemId: ordem.id,
-        kg: input.retalhoKg!,
-        declaradoPorId: input.userId ?? null,
-      },
-    })
-  }
   // ⭐ as etapas nascem COM a ordem (snapshot do método da versão). Receita sem etapa
   // declarada vira UMA etapa "produção" — a régua mora em `resolverEtapas`, num lugar só.
   const versao = await db.stockFichaVersao.findFirst({
@@ -433,6 +403,16 @@ export interface OrdemView {
   dataProducao: string
   escalaReceitas: number // ⚠️ fica no MOTOR e no banco; a TELA fala em unidades, nunca em "×"
   loteBase: number // ⭐ o rendimento TEÓRICO da ficha: quantas unidades por 1× a receita
+  /**
+   * ⭐ a UNIDADE do lote base (11/10) — ela é o que o `avisosDaEscala` compara com a unidade do
+   * produto pra denunciar o `LOTE_NAO_COMPARAVEL` (*"o lote base não diz quantas UN saem de uma
+   * receita, e é ele que divide o seu pedido"*).
+   *
+   * ⚠️ Veio pro payload porque o aviso **mudou de tela**: ele nasceu na criação (03/10) e, com a
+   * quantidade passando a ser perguntada na página da ordem, ele foi junto — *o aviso vive onde
+   * o número é digitado*. Sem este campo a tela não tinha como fazer a pergunta.
+   */
+  unidadeLoteBase: string
   estado: string
   origem: string
   observacao: string | null
@@ -445,13 +425,17 @@ export async function getOrdem(companyId: string, ordemId: string, db: Db = defa
     db.stockItem.findFirst({ where: { companyId, id: o.itemProduzidoId }, select: { nome: true, unidadeControle: true } }),
     o.setorId ? db.stockSetor.findFirst({ where: { companyId, id: o.setorId }, select: { nome: true } }) : Promise.resolve(null),
     // a versão TRAVADA na ordem — o teórico tem que ser o da época, não o da ficha de hoje
-    db.stockFichaVersao.findFirst({ where: { companyId, fichaId: o.fichaId, versao: o.versaoFicha }, select: { loteBase: true } }),
+    db.stockFichaVersao.findFirst({ where: { companyId, fichaId: o.fichaId, versao: o.versaoFicha }, select: { loteBase: true, unidadeLoteBase: true } }),
   ])
   return {
     id: o.id, fichaId: o.fichaId, versaoFicha: o.versaoFicha, itemProduzidoId: o.itemProduzidoId,
     nomeProduzido: prod?.nome ?? '(item removido)', unidadeProduzido: prod?.unidadeControle ?? '—',
     setorId: o.setorId, setorNome: setor?.nome ?? null, dataProducao: o.dataProducao.toISOString(),
-    escalaReceitas: o.escalaReceitas, loteBase: versao?.loteBase ?? 1, estado: o.estado, origem: o.origem, observacao: o.observacao,
+    escalaReceitas: o.escalaReceitas, loteBase: versao?.loteBase ?? 1,
+    /** ⚠️ sem a versão, cai na unidade do PRODUTO — e aí o aviso se cala em vez de acusar
+     *  divergência inventada contra uma string vazia (*"não sei" nunca vira "está errado"*) */
+    unidadeLoteBase: versao?.unidadeLoteBase ?? prod?.unidadeControle ?? '—',
+    estado: o.estado, origem: o.origem, observacao: o.observacao,
   }
 }
 
@@ -475,14 +459,22 @@ export async function receitaDasOrdens(
   companyId: string,
   ordemIds: string[],
   db: Db = defaultPrisma,
-): Promise<Record<string, { nome: string; unidade: string; escalaReceitas: number; loteBase: number }>> {
-  const out: Record<string, { nome: string; unidade: string; escalaReceitas: number; loteBase: number }> = {}
+): Promise<Record<string, { nome: string; unidade: string; escalaReceitas: number; loteBase: number; estado: string }>> {
+  /**
+   * ⭐ O `estado` VAI JUNTO (11/10) porque o `pedidoDaOrdem` passou a precisar dele pra separar
+   * *"ainda não perguntei"* (`AGUARDANDO`) de *"nasceu antes do campo"* (`DERIVADO`).
+   *
+   * ⚠️ Ele sai do REGISTRO, nunca cravado como `'CONCLUIDA'` pelo chamador: a lista de
+   * conclusões inclui **produção PARCIAL**, e nela a ordem segue `EM_PRODUCAO`. Cravar seria
+   * uma afirmação da minha cabeça num lugar que já tem o dado.
+   */
+  const out: Record<string, { nome: string; unidade: string; escalaReceitas: number; loteBase: number; estado: string }> = {}
   const ids = [...new Set(ordemIds)]
   if (!ids.length) return out
 
   const ordens = await db.stockProductionOrder.findMany({
     where: { companyId, id: { in: ids } },
-    select: { id: true, fichaId: true, versaoFicha: true, itemProduzidoId: true, escalaReceitas: true },
+    select: { id: true, fichaId: true, versaoFicha: true, itemProduzidoId: true, escalaReceitas: true, estado: true },
   })
   if (!ordens.length) return out
 
@@ -508,6 +500,7 @@ export async function receitaDasOrdens(
       escalaReceitas: o.escalaReceitas,
       /** ⚠️ `1` como piso é o mesmo default do `ordemView` — versão sumida não zera o pedido */
       loteBase: loteDe.get(`${o.fichaId}#${o.versaoFicha}`) ?? 1,
+      estado: o.estado,
     }
   }
   return out

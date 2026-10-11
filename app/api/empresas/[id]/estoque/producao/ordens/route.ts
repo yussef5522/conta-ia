@@ -104,7 +104,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       })
     : []
   const pedidoDasConcluidas = pedidoPorOrdem(
-    Object.entries(receitaDasConcluidas).map(([id, r]) => ({ id, escalaReceitas: r.escalaReceitas, loteBase: r.loteBase })),
+    Object.entries(receitaDasConcluidas).map(([id, r]) => ({ id, escalaReceitas: r.escalaReceitas, loteBase: r.loteBase, estado: r.estado })),
     metasDasConclusoes,
   )
 
@@ -124,8 +124,32 @@ export async function GET(request: NextRequest, { params }: Params) {
     doDia.map((c) => ({ unidades: c.qtdGerada, unidade: unidadePorOrdem.get(c.ordemId) ?? 'UN' })),
   )
 
+  /**
+   * ⭐⭐ O PEDIDO DE **TODA** ORDEM DA LISTA (11/10) — resolvido pelo dono único.
+   *
+   * ⛔⛔ A tabela e os cards imprimiam `escalaReceitas × loteBase` **cru**, sem dizer que era
+   * derivado. Com a criação deixando de perguntar quantidade, a ordem nasce com escala **1**
+   * (default do banco) e a lista passaria a dizer *"1 lote"* como se fosse o pedido — **um
+   * fantasma novo, no lugar do que o sprint acabou de matar**. Agora a lista mostra o pedido
+   * resolvido, e `AGUARDANDO` aparece como *"a definir"*, nunca como número.
+   *
+   * ⚠️ Em LOTE (1 consulta pras N ordens), nunca uma por ordem — a lição dos 4.909 ms (28/09)
+   * numa tela que o dono abre todo dia.
+   */
+  const metasDaLista = ordens.length
+    ? await prisma.stockOrdemMeta.findMany({
+        where: { companyId, ordemId: { in: ordens.map((o) => o.id) } },
+        select: { ordemId: true, unidades: true },
+      })
+    : []
+  const pedidoDasOrdens = pedidoPorOrdem(
+    ordens.map((o) => ({ id: o.id, escalaReceitas: o.escalaReceitas, loteBase: o.loteBase, estado: o.estado })),
+    metasDaLista,
+  )
+
   return NextResponse.json({
     ordens, sugestoes, painel, abertas, contexto, pedidoDasConcluidas, receitaDasConcluidas,
+    pedidoDasOrdens,
     /** ⚠️ `lotes` é a contagem de conclusões de hoje — a frase usa o TEXTO por unidade */
     hoje: { dia: hoje, produzido: produzidoHoje, lotes: doDia.length },
     concluidas: concluidas.map((c) => {
@@ -147,36 +171,35 @@ export async function GET(request: NextRequest, { params }: Params) {
   })
 }
 
+/**
+ * ⛔⛔⛔ **`pedidoUnidades` E `retalhoKg` SAÍRAM DESTE SCHEMA EM 11/10** — a criação deixou de
+ * perguntar quantidade (decisão do dono: a pergunta é UMA, na página da ordem, onde dá pra ver
+ * a prateleira). Quem recebe os dois é `POST .../ordens/[ordemId]/pedido`.
+ *
+ * ⚠️ E o schema é `.strict()` de propósito: mandar `pedidoUnidades` aqui passa a dar **400 que
+ * diz o campo**, nunca um `pedidoUnidades` recortado em silêncio pelo zod. É a cicatriz de
+ * 25/09 (`z.enum` repetido à mão deixou 2 gestos mortos por dias) do outro lado — ali o campo
+ * sumia calado; aqui ele é recusado com nome.
+ */
 const criarSchema = z.object({
   fichaId: z.string().min(1),
-  escalaReceitas: z.number().positive(),
-  // ⛔ NÃO é `.min(1)` — foi ele que aceitou "0202-09-18" e sumiu com um lote (19/09)
+  /**
+   * ⭐ a escala continua aceita pra a SUGESTÃO de mín/máx (`origem: 'SUGESTAO'`), que é um
+   * PLANO. ⚠️ Ausente = a ordem nasce no default 1 e **AGUARDANDO** o pedido.
+   */
+  escalaReceitas: z.number().positive().optional(),
+  /**
+   * ⛔⛔ O FORMATO AQUI É A PORTA DO ANO 202 (19/09) — `.min(1)` aceita qualquer texto, e um
+   * `<input type="date">` que sai com um zero a mais manda `"0202-09-18"`. A ordem nasceu com
+   * data no ano 202, foi pro fim da lista ordenada e **sumiu de todas as telas**, com R$ 42,18
+   * de insumo preso. Reposto, o guard `ordem-tem-casa` fica vermelho.
+   */
   dataProducao: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Escolha a data no calendário (ano com 4 dígitos).'),
   setorId: z.string().nullable().optional(),
-  observacao: z.string().max(500).nullable().optional(),
-  /**
-   * ⭐⭐ O PEDIDO EM UNIDADES (item 2 do dono, 04/10) — *"quero produzir: 80 UN"*.
-   *
-   * ⚠️ **OPCIONAL no schema, e isso é o que mantém o caminho antigo vivo.** A sugestão de
-   * min/máx cria ordem com a escala calculada e não "pede" nada; a cozinha pelo tablet
-   * também não. Exigir aqui quebraria os dois — e quem cobre a ausência é o DERIVADO de
-   * `pedidoDaOrdem`, **marcado como derivado**, nunca fingindo ser declarado.
-   *
-   * ⛔ E ele NÃO substitui `escalaReceitas`: a separação continua sendo ficha × pedido pela
-   * porta única (a decisão de 03/10). Este campo é o que o DONO DISSE, pra tela e relatório
-   * terem contra o que comparar o produzido.
-   */
-  pedidoUnidades: z.number().positive().max(1_000_000).nullable().optional(),
-  /**
-   * ⭐⭐ O RETALHO DE ONTEM, EM KG (09/10) — *"[Não tem] / [Sim, __ KG]"*.
-   *
-   * ⚠️ `.positive()` é o que faz *"não tem"* **não gravar nada**: a tela manda o campo ausente,
-   * e ausência é a resposta. ⛔ E o teto de 1.000 kg não é cosmético: um dedo escorregando num
-   * zero (92 onde era 9,2) afrouxaria o fiscal em 4.600 unidades — o aviso de sanidade cobre o
-   * absurdo plausível, e este teto cobre o impossível.
-   */
-  retalhoKg: z.number().positive().max(1000).nullable().optional(),
-})
+  colaboradorId: z.string().nullable().optional(),
+  origem: z.enum(['MANUAL', 'SUGESTAO']).optional(),
+  observacao: z.string().nullable().optional(),
+}).strict()
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params

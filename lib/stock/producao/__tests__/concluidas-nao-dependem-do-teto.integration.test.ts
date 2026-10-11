@@ -101,7 +101,10 @@ describe('⛔⛔⛔ 201 ordens encerradas — o teto corta a lista, nunca a linh
     const { pedidoPorOrdem } = await import('../contexto-das-abertas')
     const { fmtPedido, pilulaDoPedido } = await import('../pedido-na-tela')
     const r = await receitaDasOrdens(companyId, [o.id], prisma)
-    const ped = pedidoPorOrdem([{ id: o.id, escalaReceitas: r[o.id].escalaReceitas, loteBase: r[o.id].loteBase }], [])
+    const ped = pedidoPorOrdem(
+      /** ⚠️ `estado` vem do REGISTRO (11/10) — aqui CONCLUIDA, e é ele que separa o DERIVADO
+       *  legítimo das ordens antigas do AGUARDANDO de uma recém-criada */
+      [{ id: o.id, escalaReceitas: r[o.id].escalaReceitas, loteBase: r[o.id].loteBase, estado: r[o.id].estado }], [])
     expect(ped[o.id].pedido).toBeCloseTo(84.8608, 4)
     expect(ped[o.id].origem, 'sem meta declarada, o pedido é DERIVADO — e a pílula vale igual').toBe('DERIVADO')
     expect(fmtPedido(ped[o.id].pedido, r[o.id].unidade)).toBe('85')
