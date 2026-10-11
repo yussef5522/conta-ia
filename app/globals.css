@@ -606,6 +606,16 @@
   --fam-azul-solid:   #17398c; --fam-azul-on:   #ffffff; --fam-azul-on-soft:   #e8effd;
   --fam-verde-solid:  #0a5e35; --fam-verde-on:  #ffffff; --fam-verde-on-soft:  #e7f7ee;
   --fam-coral-solid:  #8f2327; --fam-coral-on:  #ffffff; --fam-coral-on-soft:  #fdecec;
+  /* ⭐⭐ ÂMBAR ENTROU EM 10/10 — o 4º cartão de VENDAS v4 ("SEMANA ATUAL", pedido escrito
+     do dono: *"âmbar-escuro"*). ⛔⛔ ELE NÃO EXISTIA, e isso era defeito LIVE: a tela pintava
+     `var(--fam-ambar-solid)`, o token não resolvia, o chão saía TRANSPARENTE e o número
+     BRANCO ficava sobre o fundo da página — ilegível. **Achado na prova em prod**, medindo
+     o CSS servido token a token; nenhum teste o pegaria, porque o guard cobria 4 famílias.
+     ⚠️ CONTRASTE MEDIDO (WCAG 2.1, relative luminance): branco sobre `#92400e` = **7,09:1**
+     (AA normal pede 4,5) e a etiqueta `#fdf0da` sobre ele = **6,30:1**. ⛔ O `--fam-ambar-mid`
+     (`#c47b0a`) com branco dá **3,2:1** e REPROVA — é a mesma lição de 10/10 que tirou o
+     `-mid` do chão dos outros quatro. */
+  --fam-ambar-solid:  #92400e; --fam-ambar-on:  #ffffff; --fam-ambar-on-soft:  #fdf0da;
 }
 
 .dark {
@@ -614,6 +624,9 @@
   --fam-azul-solid:   #14244f; --fam-azul-on:   #ffffff; --fam-azul-on-soft:   #6aa0fb;
   --fam-verde-solid:  #11291f; --fam-verde-on:  #ffffff; --fam-verde-on-soft:  #3ecf8e;
   --fam-coral-solid:  #2d1618; --fam-coral-on:  #ffffff; --fam-coral-on-soft:  #ff6369;
+  /* ⭐ ÂMBAR no escuro — branco sobre `#2e1c06` = **16,34:1**; o vivo `#e8a33d` da etiqueta
+     sobre ele = **7,57:1**. Mesmo desenho dos outros quatro: o CHÃO inverte, a TINTA fica. */
+  --fam-ambar-solid:  #2e1c06; --fam-ambar-on:  #ffffff; --fam-ambar-on-soft:  #e8a33d;
 }
 
 /* ⭐ A LINHA EDITORIAL do topo — itálico serifado, a "calma editorial" do Mercury.

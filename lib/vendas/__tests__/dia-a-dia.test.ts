@@ -331,3 +331,64 @@ describe('⭐ a semana é SEG→DOM (a do calendário brasileiro)', () => {
     expect(segundaDaSemana('2026-10-05')).toBe('2026-10-05')
   })
 })
+
+/**
+ * ⛔⛔ O ESTADO DE HOJE — achado na PROVA EM PROD de 10/10, não em teste.
+ *
+ * O dia corrente, antes do import da madrugada, caía no default `SEM_DADO` e a célula dizia
+ * ***"sem dado"*** — que se lê como **"não houve venda"** no dia em que a loja está vendendo.
+ * ⚠️ É a família do *"sem contagem" × zero* do estoque: **ausência de MEDIÇÃO não é ausência
+ * de FATO**, e a tela tem que dizer qual das duas é.
+ */
+describe('⛔⛔ hoje aberto ≠ sem dado', () => {
+  it('⭐ o dia de HOJE sem import é HOJE_ABERTO, nunca SEM_DADO', () => {
+    const d = diaDe(base({ pdv: new Map(), extrato: [], hoje: '2026-10-06' }), '2026-10-06')
+    expect(d.fonte).toBe('HOJE_ABERTO')
+    expect(d.total).toBeNull()
+    // ⛔ e ele não cobra import: o relatório do PDV entra de madrugada
+    expect(d.pedeImport).toBe(false)
+  })
+
+  it('⭐ dia PASSADO sem nada e antes do módulo continua SEM_DADO (o estado honesto dele)', () => {
+    const d = montarDias({
+      de: '2026-07-20', ate: '2026-07-22', pdv: new Map(), extrato: [],
+      hoje: '2026-10-10', moduleInicio: '2026-08-01',
+    })
+    expect(diaDe(d, '2026-07-21').fonte).toBe('SEM_DADO')
+  })
+
+  it('⛔ e HOJE com import é PDV — o estado novo não atropela a medição', () => {
+    const d = diaDe(base({ hoje: '2026-10-06' }), '2026-10-06')
+    expect(d.fonte).toBe('PDV')
+    expect(d.total).toBeCloseTo(17_102.63, 2)
+  })
+
+  /**
+   * ⛔⛔ E ELE NÃO ENTRA NA MÉDIA DO DIA TÍPICO — dia pela metade puxaria a média do
+   * dia-da-semana pra baixo, e é justamente o número que o dono usa pra comparar.
+   */
+  it('⛔⛔ o dia de HOJE não conta como amostra — nem pelo EXTRATO', () => {
+    /**
+     * ⚠️ ESTE TESTE ME CORRIGIU: eu queria provar o `HOJE_ABERTO` e o cenário fez o dia de
+     * hoje virar `EXTRATO` (o dinheiro do dia já começou a cair). ⭐ E aí apareceu o caso
+     * que importa mais — **dia de hoje COM número parcial puxando a média pra baixo**. A
+     * régua é sobre o DIA, nunca sobre a fonte.
+     */
+    const dias = base({ pdv: pdvDe(['2026-10-05']), hoje: '2026-10-06' })
+    expect(diaDe(dias, '2026-10-06').fonte, 'o extrato do dia já caiu em parte').toBe('EXTRATO')
+    const ter = diaTipico(dias).find((x) => x.rotulo === 'terça')!
+    expect(ter.amostras, 'a terça de hoje está pela metade — não é amostra').toBe(0)
+
+    // ⭐ e o CONTRAFACTUAL: amanhã, com o dia fechado, ela passa a contar
+    const amanha = base({ pdv: pdvDe(['2026-10-05']), hoje: '2026-10-07' })
+    expect(diaTipico(amanha).find((x) => x.rotulo === 'terça')!.amostras).toBe(1)
+  })
+
+  it('⛔ e o VOLUME de hoje continua contado no cartão do período', () => {
+    const dias = base({ hoje: '2026-10-06' })
+    const c = montarCartoes({ dias, hoje: '2026-10-06', ehMesInteiro: true, diasSemanaPassada: [] })
+      .find((x) => x.qual === 'periodo')!
+    const soma = dias.filter((d) => d.total != null).reduce((a, d) => a + d.total!, 0)
+    expect(c.valor).toBeCloseTo(soma, 2)
+  })
+})

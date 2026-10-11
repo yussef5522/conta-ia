@@ -27,7 +27,17 @@
 import { pctBR } from '@/lib/format/percentual'
 
 /** ⭐ de onde o número daquele dia veio — e é ele que decide o `~` na tela */
-export type FonteDoDia = 'PDV' | 'EXTRATO' | 'BLOCO' | 'SEM_DADO' | 'FUTURO'
+/**
+ * ⛔⛔ `HOJE_ABERTO` É ESTADO PRÓPRIO, e ele nasceu de um defeito achado na prova em prod
+ * (10/10): o dia de HOJE, antes do import da madrugada, caía no default `SEM_DADO` e a
+ * célula dizia ***"sem dado"*** — que se lê como **"não houve venda"** no dia em que a loja
+ * está vendendo. ⚠️ É a família do *"sem contagem" × zero* do estoque: ausência de MEDIÇÃO
+ * não é ausência de FATO, e a tela tem que dizer qual das duas é.
+ *
+ * ⭐ E ele não pede import (o relatório do PDV entra na madrugada — a mesma razão do gate
+ * das 10h do aviso de import torto), nem entra na média do dia típico.
+ */
+export type FonteDoDia = 'PDV' | 'EXTRATO' | 'BLOCO' | 'SEM_DADO' | 'FUTURO' | 'HOJE_ABERTO'
 
 export interface DiaDeVenda {
   /** `YYYY-MM-DD` */
@@ -147,6 +157,9 @@ export function montarDias(i: MontarDiasInput): DiaDeVenda[] {
       noBloco = `${bl.inicio}→${bl.fim}`
     } else if (dia > i.hoje) {
       fonte = 'FUTURO'
+    } else if (dia === i.hoje) {
+      // ⭐ o dia está CORRENDO — a loja vende agora e o import entra de madrugada
+      fonte = 'HOJE_ABERTO'
     } else if (antesDoInicio) {
       fonte = 'SEM_DADO'
     }
@@ -393,8 +406,18 @@ export function diaTipico(dias: DiaDeVenda[]): BarraDoDiaTipico[] {
     { rotulo: 'quinta', dows: [4] },
     { rotulo: 'fim de semana', dows: [5, 6, 0] },
   ]
+  /**
+   * ⛔⛔ O DIA DE HOJE FICA FORA DA MÉDIA, qualquer que seja a fonte — **ele está pela metade
+   * por construção**. Achado na prova em prod de 10/10: com o extrato do próprio dia já
+   * parcialmente caído, a terça de hoje entrava como amostra e **puxava a média da terça pra
+   * baixo** — justo o número que o dono usa pra comparar o dia dele. ⚠️ A régua é sobre o
+   * DIA, não sobre a fonte: `HOJE_ABERTO` sem número e `EXTRATO` com número parcial são o
+   * mesmo problema. ⭐ E o VOLUME do dia continua contado no cartão do período; o que não
+   * entra é a média — a mesma separação do *"lote relâmpago"* da produção.
+   */
+  const medidos = dias.filter((d) => !d.hoje)
   const out = grupos.map((g) => {
-    const vs = dias.filter((d) => d.total != null && g.dows.includes(d.diaDaSemana)).map((d) => d.total!)
+    const vs = medidos.filter((d) => d.total != null && g.dows.includes(d.diaDaSemana)).map((d) => d.total!)
     /**
      * ⛔ A AMOSTRA DO FDS É POR **SEMANA**, não por dia: 3 dias de um fim de semana só são
      * uma observação do comportamento de fim de semana, não três.

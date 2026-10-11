@@ -32,8 +32,15 @@ function corpoDoCartao(): string {
 }
 
 describe('⛔⛔ 1. O CHÃO É SÓLIDO — pastel no cartão é vermelho', () => {
-  it('⭐ o par `solid`/`on`/`on-soft` existe pras 4 famílias, nos DOIS temas', () => {
-    for (const f of ['indigo', 'azul', 'verde', 'coral']) {
+  /**
+   * ⚠️⚠️ PASSOU DE 4 PRA 5 FAMÍLIAS EM 10/10, e o motivo foi um DEFEITO LIVE: o 4º cartão
+   * do VENDAS v4 pinta `--fam-ambar-solid` e **o token não existia** — chão transparente com
+   * número BRANCO em cima. O guard cobria 4 famílias, então nada ficou vermelho; quem achou
+   * foi a prova em prod medindo o CSS servido. ***Lista de famílias à mão envelhece no dia em
+   * que uma tela nova usa a quinta.***
+   */
+  it('⭐ o par `solid`/`on`/`on-soft` existe pras 5 famílias, nos DOIS temas', () => {
+    for (const f of ['indigo', 'azul', 'verde', 'coral', 'ambar']) {
       for (const d of ['solid', 'on', 'on-soft']) {
         const n = (CSS.match(new RegExp(`--fam-${f}-${d}:`, 'g')) ?? []).length
         expect(n, `--fam-${f}-${d} precisa existir no :root E no .dark`).toBe(2)

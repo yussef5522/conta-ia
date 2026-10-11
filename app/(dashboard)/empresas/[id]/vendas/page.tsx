@@ -388,6 +388,25 @@ function Celula({ x, empresaId }: { x: DiaDeVenda; empresaId: string }) {
     )
   }
 
+  /**
+   * ⭐ HOJE AINDA ABERTO — o estado que nasceu da prova em prod (10/10). A célula dizia
+   * *"sem dado"* no dia em que a loja está vendendo; agora ela diz o que está acontecendo.
+   * ⛔ E ela NÃO pede import: o relatório do PDV entra na madrugada.
+   */
+  if (x.fonte === 'HOJE_ABERTO') {
+    return (
+      <span
+        className="flex min-h-[54px] flex-col justify-between rounded-[8px] border px-[5px] py-[4px]"
+        style={{ borderColor: 'var(--fam-indigo-mid)', background: 'var(--fam-indigo-bg)' }}
+      >
+        <span className="text-[10.5px] font-semibold tabular-nums" style={{ color: 'var(--fam-indigo-ink)' }}>{n}</span>
+        <span className="text-[10px] leading-tight" style={{ color: 'var(--fam-indigo-ink)' }}>
+          vendendo agora
+        </span>
+      </span>
+    )
+  }
+
   // futuro / antes do início do módulo
   const futuro = x.fonte === 'FUTURO'
   return (
