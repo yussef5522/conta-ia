@@ -2682,8 +2682,102 @@ VendaDiaria 194 · movimentos 7187 · imports 35 — ⭐ ZERO ESCRITA (só GET)
 📋 **FICA PRO DONO:**
 1. **Abrir a tela no celular e no notebook, nos dois temas** — a prova mede o que prod serve (as 11 peças, os 10 tokens nos dois mapas, zero hex no chunk), mas **o olho é dele**; screenshot segue indisponível (extensão do Chrome desligada).
 2. ⚠️⚠️ **O R$ 18.743,90 QUE ELE CITOU NÃO EXISTE EM FONTE NENHUMA** (medido: produtos 15.873,77 · complementos 1.228,86 · soma 17.102,63 · extrato 15.926,36 · e varrido em `VendaDiaria`, linhas declaradas e transações). O guard trava o **invariante mais forte** (a composição fecha, e Σ produtos == a central) em vez do número.
-3. **A DECISÃO: o total da tela deve somar os complementos?** Hoje soma, e o ⓘ diz a conta. O mapa está medido acima; a palavra é dele.
+3. ✅ **A DECISÃO foi tomada em 11/10: o total soma os complementos, nas DUAS telas** — ver a seção logo abaixo. A central passou a mostrar os dois Σ e o guard do dono fecha ao centavo nos 9 dias.
 4. ⚠️ **Dia de venda sem import: ZERO em outubro** — os 9 dias têm PDV, então a célula *"importar ⚠"* está construída e testada e **não dispara com o dado de hoje**. Ela acende sozinha no 1º dia que passar sem o relatório.
+
+
+## 📏💵 "VENDEU" = PRODUTOS + COMPLEMENTOS NAS DUAS TELAS · E A FAIXA VENDIDO × RECEBIDO (11/10/2026)
+
+**Decisão do dono, e ela fecha a pergunta nº 3 que o v4 deixou aberta:** *"«VENDEU» = produtos + complementos cobrados — o dinheiro que o cliente pagou. A CENTRAL passa a mostrar os DOIS Σ no cabeçalho de cada dia: mesma definição nas duas telas, divergência de aparência morta."*
+
+### ⛔⛔ PARTE 1 — A DIVERGÊNCIA ERA DE DEFINIÇÃO, NÃO DE NÚMERO
+
+```
+dia 06/10   a TELA de vendas    R$ 17.102,63   ← produtos + complementos
+            a CENTRAL           R$ 15.873,77   ← só produtos
+            a diferença          R$ 1.228,86   = os COMPLEMENTOS
+```
+**As duas estavam certas sobre a pergunta DELAS; o que não existia era UMA definição.** O `valor` da central virou o **TOTAL** e o cabeçalho diz a conta (*"produtos R$ X · complementos R$ Y · total R$ Z"*). ⚠️ *Duas telas com números diferentes pro mesmo dia é a doença que esta casa mais paga.*
+
+**⭐⭐ E O DINHEIRO VEM DO DONO ÚNICO, nunca de uma soma local.** A tentação era acrescentar `valorTotal` ao `select` dos complementos e somar no laço que já existia — barato e errado: seria a **2ª derivação** de *"quanto vendeu no dia"*, ao lado da que a tela de Vendas usa, e as duas divergiriam no 1º caso de borda (import estornado, convenção de hora). A central passou a consumir `totaisDoPdvPorDia`, e o `Acc` do laço **perdeu o campo `valor`** — somar ali virou impossível, não combinado (REGRA 5).
+
+**⛔⛔ MAS A CONFERÊNCIA DO ARQUIVO CONTINUA SÓ DE PRODUTOS — e isso é o ponto fino.** `conferencia.somaGravada` compara com o Σ que o **arquivo de produtos declara**; trocá-la pelo total faria a central **acusar divergência em TODO dia com complemento** — alarme falso diário, e *alarme falso repetido é como um alarme morre* (os 111 de 26/08). **Duas perguntas, dois nomes.**
+
+### ⭐⭐⭐ PARTE 2 — A FAIXA, E A RÉGUA FOI ESCOLHIDA MEDINDO
+
+Sob os 4 cartões, obedecendo o seletor: **VENDIDO (PDV) → JÁ RECEBIDO (verde) → A CAMINHO (âmbar)**, com barra de proporção.
+
+**⚠️⚠️ HAVIA DUAS RÉGUAS POSSÍVEIS E O RETRATO DECIDIU — medido em prod antes de escrever a lib:**
+```
+VENDIDO (PDV)                            R$ 186.940,50
+(a) recebido por COMPETÊNCIA              R$ 144.196,87   a caminho  R$ 42.743,63
+(b) recebido por CAIXA (caiu no período)  R$ 158.613,79   a caminho  R$ 28.326,71
+                                           diferença entre as réguas: R$ 14.416,92
+```
+**Ficou a (a), COMPETÊNCIA, e o motivo é que só nela a conta É VERDADEIRA.** A pergunta do dono é sobre **as vendas DESTE período**: quanto DELAS já caiu. Em (b) o `vendido − recebido` subtrai grandezas de **vendas diferentes** (o caixa do período inclui o repasse de setembro e exclui o de outubro que cai em novembro), e o resultado **não significa "falta chegar"** — seria um número plausível e sem sentido, que é o pior tipo.
+
+**⛔⛔ O VENDIDO É PARÂMETRO — somar por fora é IMPOSSÍVEL, não proibido.** `montarFaixa` **não tem `dias` na assinatura**; o número vem do cartão *"mês até agora"* (`cartoes.find(c => c.qual === 'periodo')`). *Dois números pro mesmo fato na mesma tela, a dez centímetros um do outro, é como a confiança se perde.*
+
+**⛔⛔⛔ NUNCA DECOMPÕE O "A CAMINHO".** Dizer *"R$ X de cartão a receber"* exigiria saber qual parte é repasse pendente e qual é extrato que falta importar — **e o sistema não tem esse dado**. A frase diz **as duas causas** e para; `fracaoRecebida` é clampada 0..1 **só pra a barra** (o número continua o real), e o objeto **não tem campo de decomposição** pra alguém desenhar.
+
+**⚠️⚠️ E A RESSALVA DO DONO (*"recebido > vendido"*) É REAL — com a causa que ele não nomeou.** Não é o repasse da semana anterior: **é o BLOCO**. A `VendaDiaria` do cartão cobre sex+sáb+dom numa linha só (medido: `02→04/10 CARTAO R$ 23.908,49`) e, pela régua de **SOBREPOSIÇÃO**, entra INTEIRA em qualquer recorte que toque esses dias. Num recorte de 1 dia o recebido passa o vendido com folga. ⛔ Não é defeito: é a granularidade do que o banco informa — a tela mostra normal e o ⓘ explica, *"nunca esconder"*.
+
+**⭐ ZERO MOTOR NOVO:** a classificação *"este crédito é venda?"* é o `computeExpectedVendas` (só com `RegraRecebimento` e só categoria `RECEITA_BRUTA` — **pela CATEGORIA do dono, nunca pelo memo do banco**). `recebido.ts` **LÊ** a `VendaDiaria` que aquele motor gravou e soma. ⭐ O dinheiro do cofre entra de graça (é uma `RegraRecebimento` DINHEIRO D+1 como as outras). ⚠️ E o **estorno já vem com sinal** no `valorLiquido` — por isso **não existe campo `tipo`** na interface: ele seria um campo que o próximo leitor acharia que precisa checar, e aí subtrairia duas vezes.
+
+### ⭐⭐ A SOBREPOSIÇÃO GANHOU CONSUMIDOR (e o arquivo não tinha nenhum)
+
+⚠️⚠️ **`lib/vendas/janela-mes.ts` estava SEM UM ÚNICO CHAMADOR DE CÓDIGO:** a tela antiga morreu no v4 e os outros dois leitores (o **juiz** e o **recompute**) reescreviam a sobreposição **à mão no `where`**, com comentários apontando pra ele. ***Dono declarado sem consumidor é dono que ninguém obedece*** — e foi exatamente a divergência entre esses leitores que escondeu **R$ 43.106,03** em 25/08 e produziu **111 alarmes falsos** em 26/08. Nasceu `whereCruzaOMes` (o fragmento do `where`) e a rota **consome o dono**; um teste simula o filtro com a semântica exata dos operadores e exige o **MESMO conjunto, linha a linha**.
+
+### ⚠️⚠️ REGRA 11 — 10 DEFEITOS REPOSTOS, E O DO VENDIDO VEIO VERDE
+
+| defeito reposto | vermelhos |
+|---|---|
+| **o vendido somado por fora na ROTA** (o vermelho nº 1 do dono) | **1** |
+| **a faixa somando na TELA** | ⛔ **VERDE** → depois do aperto: **1** |
+| **decomposição inventada do "a caminho"** (nº 2) | **2** |
+| **a central sem os dois Σ** (nº 3) | **1** |
+| a central voltando a mostrar só produtos | 3 |
+| a conferência comparando o TOTAL (o alarme falso diário) | 1 |
+| pertencimento no lugar da sobreposição | 2 |
+| a ressalva do extrato atrasado sumindo | 1 |
+| a 2ª soma renascendo na central | 1 |
+
+⛔⛔ **O da faixa passou VERDE porque eu proibia a FORMA que imaginei** (`.reduce(... total)` e `d.dias`) **e repus o defeito com outra** (`f.porMeio.reduce(...)`). ***Guard que proíbe uma forma aprova a próxima.*** ⭐ O que morde é exigir a **PROCEDÊNCIA do número exibido**: o `valorDoCartao` do vendido tem que receber **`f.vendido`** — qualquer soma local deixa de casar.
+
+⚠️ **E O GUARD DA CASA `sem-data-fixa-no-futuro` PEGOU O MEU TESTE NOVO** (`ate: 2026-11-01` em posição de relógio). Trocado pelo **dono da pergunta** (`janelaDoMes('2026-10')`), que devolve a MESMA janela e **mata o literal** — REGRA 4 de brinde: o fim-exclusivo do mês deixou de ser escrito à mão no teste.
+
+### PROVADO EM PROD, NAVEGANDO, NOS DOIS VIEWPORTS × DOIS TEMAS (zero escrita)
+
+```
+⭐⭐ O GUARD DO DONO — 9 de 9 dias FECHAM AO CENTAVO, e a composição soma o total em 9 de 9
+   09/10  Vendas R$ 18.936,61 × central R$ 18.936,61   [produtos 17.525,03 + complementos 1.411,58]
+   06/10  Vendas R$ 17.102,63 × central R$ 17.102,63   [produtos 15.873,77 + complementos 1.228,86]
+   03/10  Vendas R$ 30.999,79 × central R$ 30.999,79   [produtos 28.988,60 + complementos 2.011,19]
+
+A FAIXA, pela ROTA REAL — e o vendido == o cartão nos 5 recortes:
+   mês          01→31/10   vendido 186.940,50 · recebido 144.196,87 · a caminho  42.743,63
+                "cartão a receber · ou extrato ainda não importado (está em 10/10)"
+                PIX 71.841,03 · CARTAO 46.700,56 · DINHEIRO 25.655,28  ⭐ fecha com o recebido
+   dia          11→11/10   "sem venda medida no período — a apurar"   ⭐ nunca R$ 0,00
+   semana       05→11/10   vendido  80.740,48 · recebido  60.154,83 · a caminho  20.585,65
+   1 dia livre  06→06/10   vendido  17.102,63 · recebido  15.926,36 · a caminho   1.176,27
+   faixa livre  15/09→02/10 vendido 344.249,47 · recebido 331.122,04 · a caminho 13.127,43
+   ⛔ a frase carrega valor em R$? ✓ NÃO (decomposição inventada: nenhuma)
+
+TELA DE VENDAS    celular 200/81ms · desktop 200/54ms · 844 KB · 7/7 peças nos dois
+CENTRAL           celular 200/135ms · desktop 200/46ms · 905 KB · os 3 Σ nos dois
+TOKENS            8 tokens × claro E escuro no CSS servido (2.591 regras recortadas)
+VendaDiaria 194 · movimentos 7.190 · linhas 2.936 · comp 2.874 · arquivos 4  ⭐ ZERO ESCRITA
+```
+
+**⚠️⚠️ E A MINHA SONDA ERROU TRÊS VEZES, cada uma com cara de defeito de prod:** (a) procurei **"A CAMINHO"/"JÁ RECEBIDO"** em CAIXA ALTA e os rótulos são **minúsculos** (o uppercase é CSS) → ⛔ em 2 peças de uma tela certa; (b) `css.indexOf(':root')` **não é "o mapa claro"** — o CSS servido tem **4 `:root` e 442 `.dark`** (utilitários `dark\:`), então o indexOf pegava outra regra → **⛔ nos 8 tokens**; o certo é recortar o **corpo de CADA regra** e perguntar quais seletores **definem** o token (a cicatriz de 10/10, repetida); (c) chutei **`?modo=dia`** e o parâmetro é **`?periodo=DIA`** → os três recortes vinham idênticos e eu quase reportei *"a faixa não obedece o seletor"* numa rota correta. ***Sonda errada dá um vermelho tão convincente quanto um defeito real*** — e chutar nome de parâmetro é a forma mais barata de produzir um.
+
+**950 arquivos · 12.619 verdes · TS 0 · migration NENHUMA · deploy 4/4 (`3LIvGsiF012FF4F2sgC2c`) · Δ chunks +8 KB.**
+
+📋 **FICA PRO DONO:**
+1. **Abrir as duas telas lado a lado, no celular e no notebook, nos dois temas** — a prova mede o que prod serve (as 7 peças da faixa, os 3 Σ da central, os 8 tokens nos dois mapas), mas **o olho é dele**; screenshot segue indisponível.
+2. ⚠️ **O caso "dia sem extrato inflando o a caminho" NÃO dispara com o dado de hoje** — o extrato vai até **10/10** e os 9 dias com PDV são 01→09/10, então todos têm extrato. O que dispara hoje é a **ressalva do extrato atrasado** no recorte do mês (*"está em 10/10"*), que é a mesma régua de honestidade. O caso estrito acende sozinho no 1º dia com PDV depois do corte do extrato.
+3. ⚠️ **A diferença entre as duas réguas de recebido é R$ 14.416,92** (competência 144.196,87 × caixa 158.613,79). A faixa usa competência, e o ⓘ explica. Se um dia ele quiser ver o caixa do período, é tela nova — **nunca o mesmo número com duas contas**.
 
 ## 💰 CMV NA CASA — O PLACAR VIROU A CASCATA DO MÊS (10/10/2026)
 
