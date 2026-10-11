@@ -2557,6 +2557,134 @@ marcações 26→26 · planos 38→38 · chips 1→1 · ⭐ ZERO ESCRITA
 
 📋 **FICA PRO DONO:** abrir a tela no celular e no notebook, **nos dois temas**, com o olho dele — a prova mede o que prod serve (tokens nos dois mapas, zero hex, as 10 peças), mas screenshot está indisponível (extensão do Chrome desligada). ⚠️ E um detalhe do dado de hoje, que **não é defeito**: o **EQUILÍBRIO e o PRA NÃO AFUNDAR mostram o mesmo R$ 13.055** porque os 3 chips estão ligados — o 3º obedece aos chips e o 4º soma tudo sempre, então eles **convergem** nesse estado. Desligar um chip separa os dois na hora.
 
+## 📈 VENDAS v4 — A TELA ABRE NO MÊS DE HOJE E O PDV É A VERDADE (10/10/2026)
+
+**Reforma do dono:** *"abre no mês errado, cartões fracos, muita conversa"*. E o item 0 (retrato antes da 1ª linha) mudou o desenho duas vezes.
+
+### ⛔⛔⛔ O RETRATO — e o mês literal cravado era o defeito inteiro
+
+```
+a tela:  const [mes, setMes] = useState('2026-08')
+         // comentário original: "o do início do sistema (agosto) — a Cacula só tem agosto"
+```
+
+**Em outubro ela abria DOIS MESES NO PASSADO** — e pior: a **ROTA já tinha o default certo** e era sobrescrita pelo `?mes=2026-08` que a própria tela mandava. ⭐ ***Data fixa não é default: é uma data que o calendário alcança*** — a mesma classe da **REGRA 12 de 01/09** (`sem-data-fixa-no-futuro`), do lado do passado. ⚠️ E o comentário dizia a verdade **da época em que foi escrito**; foi o calendário que o tornou falso.
+
+**O resto do retrato:** a tela tirava **tudo** do extrato (`~estimado` em todo número) e o import do PDV **já oferecia o dia a dia** — `stock_venda_linha` + `stock_venda_complemento_linha`, com meta, autor e hora. ⭐ **A fonte boa já estava no banco e ninguém a lia.**
+
+### ⭐⭐ O PDV MANDA — e as duas fontes medem COISAS DIFERENTES
+
+```
+02/10 sex   PDV R$ 21.687,63  ·  extrato R$ 36.835,34   ← o extrato traz o BLOCO do fds
+06/10 ter   PDV R$ 15.873,77  ·  extrato R$ 15.926,36   ← dia normal: batem de perto
+```
+
+O PDV diz **o que foi vendido naquele dia**; o extrato diz **o que CAIU atribuído a ele** pela régua de recebimento — e o cartão liquida **sex+sáb+dom junto na segunda**. ⭐ É por isso que o PDV manda: com ele, cada dia é o dia.
+
+**⛔⛔ E O BLOCO NÃO SE DIVIDE POR 3.** Sem import, o número daquele dia **não existe** — o banco não diz quanto é de cada. A célula aponta pro bloco (`noBloco`) em vez de mostrar um terço: *"saldo não se chuta"*. ⚠️ Foi assim que o item 5 (matar o bloco agrupado) e o item 3 (extrato como fallback) deixaram de colidir — **com PDV cada dia é seu; sem PDV dentro de um bloco, a célula aponta pro bloco, nunca inventa um terço.**
+
+**⭐ `lib/stock/vendas/total-do-pdv.ts` mora no módulo de ESTOQUE** (o precedente do `nota-de-origem.ts`): quem conhece aquelas tabelas é ele, e `lib/vendas/` consome o resultado. ⚠️ A leitura é por **FAIXA do dia** (`gte: de, lt: ate`) porque os dois writers usam convenções de hora diferentes — complemento grava **00:00:00Z** e linha grava **15:00:00Z**. ***Comparar timestamp exato acerta um writer e erra o outro***, a cicatriz de 14/09 e de 08/10.
+
+### ⭐⭐ UM RELÓGIO SÓ MANDA — dia, semana e mês no SERVIDOR
+
+Default = **mês de HOJE, no fuso do BRASIL** (às 00h30 de São Paulo o servidor em UTC já diz o mês anterior). ⛔⛔ E os chips **DIA** e **SEMANA** são resolvidos na ROTA, não no cliente: se a tela mandasse `de=<hoje do navegador>`, **um aparelho com a hora torta pediria um dia e receberia outro marcado como `hoje`** — a célula "hoje" acenderia num dia e o recorte seria de outro. É a régua da casa, e o tablet com hora atrasada já custou um cronômetro parado em 00:00 (08/09).
+
+### ⭐ OS 4 CARTÕES — e a projeção pondera o dia da semana
+
+(a) **MÊS ATÉ AGORA** índigo · (b) **NO RITMO, O MÊS FECHA EM ~** azul · (c) **MELHOR DIA ★** verde · (d) **SEMANA ATUAL** âmbar, com *"vs semana passada"* que **acende sozinha**.
+
+**⛔ A projeção é pela média POR DIA-DA-SEMANA, e o dado prova por quê:** no outubro real o **sábado vende 2,6× a segunda** (30.999 contra 12.147). Média simples projetaria o mês que acaba em domingo igual ao que acaba em terça. ⚠️ **Dia-da-semana sem amostra → "a apurar" com o porquê**, nunca um número: projeção inventada sai **plausível**, que é o pior tipo de erro. ⛔ E a comparação de semana é **até o mesmo dia da semana** — comparar 3 dias com 7 diria *"caiu 55%"* numa quarta normal.
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU DOIS DEFEITOS QUE TESTE NENHUM PEGARIA
+
+**1. O TOKEN DO 4º CARTÃO NÃO EXISTIA.** A tela pinta `var(--fam-ambar-solid)` e o trio sólido de 10/10 criou **índigo, azul, verde e coral — não âmbar**. Chão **transparente** com número **BRANCO** em cima: ilegível. ⚠️ **O guard cobria 4 famílias**, então nada ficou vermelho; quem achou foi a medição do CSS **servido**, token a token. ⭐ **Contraste MEDIDO:** branco sobre `#92400e` = **7,09:1** (AA pede 4,5), etiqueta `#fdf0da` sobre ele = **6,30:1**; no escuro **16,34:1** e **7,57:1**. O `--fam-ambar-mid` (`#c47b0a`) dá **3,2:1** e **REPROVA** — a mesma lição que tirou o `-mid` do chão dos outros quatro. **O guard passou de 4 pra 5 famílias**, porque ***lista de famílias à mão envelhece no dia em que uma tela usa a quinta***.
+
+**2. A CÉLULA DE HOJE DIZIA "SEM DADO"** — no dia em que a loja está vendendo. O dia corrente caía no default `SEM_DADO`, que **se lê como "não houve venda"**. Virou estado próprio (`HOJE_ABERTO`, *"vendendo agora"*). ⚠️ É a família do *"sem contagem" × zero* do estoque: **ausência de MEDIÇÃO não é ausência de FATO**.
+
+**⭐⭐ E O TESTE DO ESTADO NOVO ACHOU ALGO MELHOR QUE EU PROCURAVA:** o dia de hoje **pelo EXTRATO** entrava na média do dia típico **com número parcial**, puxando pra baixo justo o número que o dono usa pra comparar. A régua passou a ser sobre o **DIA**, nunca sobre a fonte — **o volume continua contado no cartão; só a média fica de fora**, a mesma separação do *"lote relâmpago"* da produção.
+
+### ⛔⛔ A DIVERGÊNCIA TELA × CENTRAL — e eu NÃO escolhi por ele
+
+```
+dia 06/10   a TELA de vendas      R$ 17.102,63   ← produtos + complementos
+            a CENTRAL de import   R$ 15.873,77   ← só produtos
+            a diferença            R$ 1.228,86   = os COMPLEMENTOS
+```
+
+**As duas estão certas sobre a pergunta DELAS; errado era nenhuma DIZER qual soma.** A composição agora **viaja no payload** (`totaisDoPdvPorDia` já separava; era o mapa da rota que jogava fora) e o **ⓘ diz a conta**. ⚠️ *"Número sem régua em tela de dinheiro é pior que ausência"*, e duas telas com números diferentes pro mesmo dia é a doença que esta casa mais paga.
+
+**⛔⛔ E A MEDIÇÃO NÃO DECIDE QUAL É "O FATURAMENTO" — por isso é decisão do dono:**
+- a composição aponta pra **adicional cobrado à parte** (borda R$ 22–35, bebida escolhida, upgrade de tamanho) e **31 das 80 linhas** do dia estão a **R$ 0,00** (inclusas no preço, não somam);
+- **R$ 1.286,31 (10,5%)** estão em nomes que vivem nos **DOIS** relatórios — e sobre esses o dono **já decidiu em 02/09** que são vendas distintas (*"a mesma garrafa, uma por caminho"*);
+- ⚠️⚠️ **o extrato NÃO serve de juiz nesta janela** — minha 1ª tentativa o usou e a premissa caiu: ele é **recebimento com defasagem** (D+1 e bloco), e por isso existe o **V6** com as bordas nomeadas. Σ(01–09/10): extrato 144.196,87 · produtos 174.744,80 · produtos+complementos 186.940,50. **Decidir por ele seria inventar a intenção do dono.**
+
+### ⭐⭐ A RÉGUA DA SOBREPOSIÇÃO GANHOU CONSUMIDOR
+
+⚠️⚠️ **`lib/vendas/janela-mes.ts` estava SEM UM ÚNICO CHAMADOR DE CÓDIGO:** a tela antiga morreu no v4 e os outros dois leitores (o **juiz** e o **recompute**) reescreviam a sobreposição **à mão no `where`**, deixando ali só comentários apontando pra ele. ***Dono declarado sem consumidor é dono que ninguém obedece*** — e foi exatamente a divergência entre esses leitores que escondeu **R$ 43.106,03** em 25/08 e produziu **111 alarmes falsos** em 26/08, **as duas vezes pela mesma causa: um leitor corrigido, o outro não**.
+
+⭐ Nasceu `whereCruzaOMes` (o fragmento do `where`) e a rota **consome o dono**. ⛔ A régua não atravessa a query como predicado, então **duas formas, uma decisão** — e um teste simula o filtro com a semântica exata dos operadores e exige o **MESMO conjunto, linha a linha**, nos dois meses, com o bloco de borda dentro.
+
+### ⚠️ REGRA 11 — 6 DEFEITOS REPOSTOS, TODOS VERMELHOS
+
+| defeito reposto | vermelhos |
+|---|---|
+| **a âncora no mês velho de volta na TELA** (o defeito de hoje) | **1** |
+| **a âncora no mês velho de volta na ROTA** | **4** |
+| **o bloco fds agrupado de volta** (dia dentro do bloco perde a célula) | **8** |
+| **parágrafo no cartão** (4º `<p>`) | **1** |
+| **`~` em dia COM import** | **1** |
+| o extrato ganhando do PDV | **4** |
+
+**Baseline 0 · restaurado 0** — a sonda não se envenenou. ⚠️ O backup é pela **chave do caminho inteiro**: a cicatriz de 09/10 (duas telas se chamam `page.tsx`, o 2º `cp` sobrescreveu o 1º e inflou a contagem em 7).
+
+**⚠️⚠️ E DUAS ASSERÇÕES MINHAS NASCERAM LARGAS DEMAIS, as duas corrigidas:**
+1. **proibir a frase `"sex+sáb+dom"`** deu **falso vermelho contra a tela CERTA** — as duas ocorrências vivas são a **explicação honesta** (o `title` da célula e o ⓘ), não o card agrupado. ⛔ Proibir a frase me obrigaria a **apagar a explicação** pra o guard ficar verde, trocando um bloco mentiroso por um **buraco mudo**. O que morde é **estrutural**: `col-span-3` proibido, 31 células no mês, as 3 do fds distintas com números distintos.
+2. o guard da casa `sem-data-fixa-no-futuro` **me pegou** com `2026-10-11T02:00:00Z` em posição de relógio. ⭐ Ele estava certo: ali o `agora` só alimenta funções puras, **mas a FORMA importa** — e a âncora foi pro passado (`2026-10-01T02:00:00Z` = 30/09 23h em SP), que prova a **mesma** borda e ainda atravessa a virada do mês.
+
+### ⚠️ TRÊS CLASSES DE FALSO VERMELHO NA MINHA SONDA, as três nomeadas
+
+1. **os rótulos dos cartões nascem no SERVIDOR** e chegam prontos no payload — procurá-los no bundle do cliente acusa tela correta (a cicatriz de 20/09). *No bundle se mede o que o CLIENTE desenha; o que o servidor manda se mede no PAYLOAD.*
+2. **`<details` não existe minificado** (o JSX compila pra `"details"`), e **o chão é TEMPLATE** (`var(--fam-${familia}-solid)`) — o minificador parte a string.
+3. **`folha.split('.dark')[0]` não é "o mapa claro"**: o CSS servido é minificado e a ordem das regras não é a do fonte — deu **10 falsos vermelhos**. O certo é recortar o **corpo de cada regra**. ⚠️ E `sm:hidden`/hex se medem no **chunk DESTA tela**, nunca no bundle da página (que junta o shell): *"achado não atribuível não é achado"*.
+
+### PROVADO EM PROD, NAVEGANDO, NOS DOIS VIEWPORTS (REGRA 12)
+
+```
+ITEM 1  sem parâmetro → recorte 2026-10-01→2026-10-31 · hoje 2026-10-10
+        ⭐ mês do Brasil agora 2026-10 == o que a rota devolveu
+ITEM 4  [indigo] Mês até agora      R$ 186.940,50 · 9 dias vendidos
+        [azul  ] No ritmo, fecha em ~R$ 624.629,66 · 9 medidos + 21 pela média do dia da semana
+        [verde ] Melhor dia ★        R$  30.999,79 · sábado 03/10
+        [ambar ] Semana atual        R$  80.740,48 · −1,7% vs semana passada
+ITEM 3+5  31 células · PDV 9 · extrato 0 · pedem import 0
+        ⛔ Σ(dias do calendário) == cartão MÊS ATÉ AGORA → ⭐ FECHA
+        ⛔ dia com import mostrando ~ : 0 ✓   ⛔ bloco agrupado: MORREU ✓
+        10/10 HOJE_ABERTO ← hoje   (era "sem dado")
+ITEM 2  dia → 10/10 · semana → 05→10/10 (R$ 80.740,48) · 1 dia livre → 06/10 (R$ 17.102,63)
+        faixa livre 15/09→02/10 → 18 células · R$ 344.249,47
+06/10   tela R$ 17.102,63 = produtos R$ 15.873,77 + complementos R$ 1.228,86
+        ⛔ a composição SOMA o total → ⭐ FECHA
+        ⛔ Σ(produtos) == o que a central mostra → ⭐ BATE
+ITEM 6  PIX 49,8% · CARTAO 32,4% · DINHEIRO 17,8%  (Σ = 100%)
+        dia típico: só a quinta tem média (2 amostras) — o resto "a apurar", honesto
+
+celular 200 em 37ms · desktop 200 em 40ms · bundle 840 KB nos dois
+  ✓ 11/11 peças · ✓ 5/5 frases MORTAS fora · ✓ UMA composição (só-celular: 0)
+  ✓ hex de cor cravado no chunk DESTA tela: 0
+  ✓ os 10 tokens nos DOIS mapas do CSS servido (inclusive o âmbar novo)
+VendaDiaria 194 · movimentos 7187 · imports 35 — ⭐ ZERO ESCRITA (só GET)
+```
+
+**948 arquivos · 12.586 verdes · TS 0 · migration NENHUMA · deploys 4/4 (`nu8XWSYw-DRVCNLbYLgbe`, `bb5QJlE2VxuhGG_e1hRiF`, `O6DkfvBWvL8-d3ZsGfV-E`) · Δ chunks −8 KB.**
+
+⚠️ **DÍVIDA REGISTRADA (selo no arquivo, padrão de 15/09):** `lib/vendas/resumo-periodo.ts` ficou **sem chamador** — o v4 matou o modelo que ele agrega (`Unidade.isBloco`, o bloco agregado como unidade de exibição). ⛔ **Não foi apagado por uma razão medida:** o teste dele trava **números REAIS de agosto que não estão travados em lugar nenhum** (o bloco de borda 31/07–02/08 = R$ 58.852,69 e os dias de 03 a 11/08); o golden trava só os **três** dias que o dono conferiu. **Fecha quando** esses números forem realocados num teste do v4.
+
+📋 **FICA PRO DONO:**
+1. **Abrir a tela no celular e no notebook, nos dois temas** — a prova mede o que prod serve (as 11 peças, os 10 tokens nos dois mapas, zero hex no chunk), mas **o olho é dele**; screenshot segue indisponível (extensão do Chrome desligada).
+2. ⚠️⚠️ **O R$ 18.743,90 QUE ELE CITOU NÃO EXISTE EM FONTE NENHUMA** (medido: produtos 15.873,77 · complementos 1.228,86 · soma 17.102,63 · extrato 15.926,36 · e varrido em `VendaDiaria`, linhas declaradas e transações). O guard trava o **invariante mais forte** (a composição fecha, e Σ produtos == a central) em vez do número.
+3. **A DECISÃO: o total da tela deve somar os complementos?** Hoje soma, e o ⓘ diz a conta. O mapa está medido acima; a palavra é dele.
+4. ⚠️ **Dia de venda sem import: ZERO em outubro** — os 9 dias têm PDV, então a célula *"importar ⚠"* está construída e testada e **não dispara com o dado de hoje**. Ela acende sozinha no 1º dia que passar sem o relatório.
+
 ## 💰 CMV NA CASA — O PLACAR VIROU A CASCATA DO MÊS (10/10/2026)
 
 **Ordem escrita do dono:** *"A CASCATA substitui o placar atual (é ele crescido): 5 cartões em linha — VENDEU · − CMV (INSUMOS) · = SOBRA · − A CASA · = LUCRO"*. **ZERO conta nova:** o CMV por consumo é a **MESMA soma de custos que já produz a sobra**.
