@@ -319,7 +319,22 @@ export function CentralDeImportView({
               >
                 {d.buraco
                   ? d.frase
-                  : `${num(d.unidades)} un · ${brl(d.valor)} · ${d.arquivos} arquivo${d.arquivos === 1 ? '' : 's'} · ${d.frase}`}
+                  /**
+                   * ⭐⭐ OS DOIS Σ NO CABEÇALHO (ordem do dono, 10/10) — *"mesma definição nas
+                   * duas telas, divergência de aparência morta"*.
+                   *
+                   * ⛔ O que havia aqui era um `valor` só, e ele era **só produtos** — então o
+                   * dono lia R$ 15.873,77 nesta tela e R$ 17.102,63 na de Vendas, pro MESMO
+                   * dia, sem nada explicando. Agora os três números estão à vista e a conta
+                   * se fecha no olho: produtos + complementos = total.
+                   *
+                   * ⚠️ O complemento só aparece quando EXISTE: `· complementos R$ 0,00` em
+                   * todo dia sem adicional seria ruído, e ruído é como um número para de ser
+                   * lido. **Dia sem complemento mostra só o total**, que ali é o mesmo número.
+                   */
+                  : `${num(d.unidades)} un · ${d.valorComplementos > 0
+                      ? `produtos ${brl(d.valorProdutos)} · complementos ${brl(d.valorComplementos)} · total ${brl(d.valor)}`
+                      : brl(d.valor)} · ${d.arquivos} arquivo${d.arquivos === 1 ? '' : 's'} · ${d.frase}`}
               </span>
               {d.buraco ? (
                 <span className="whitespace-nowrap text-[12px] font-bold" style={{ color: 'var(--fam-coral-ink)' }}>importar este dia →</span>

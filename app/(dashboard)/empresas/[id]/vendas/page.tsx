@@ -24,10 +24,18 @@ import Link from 'next/link'
 import { Store, Loader2 } from 'lucide-react'
 import { valorDoCartao } from '@/lib/custos-fixos/cartao-de-dono'
 import { formatBRL } from '@/lib/format/money'
+// ⛔ pctBR é o dono único do percentual com VÍRGULA — ponto vira o `47.7%` de 10/10
+import { pctBR } from '@/lib/format/percentual'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { mesCorrente, mesVizinho, rotuloDoMes } from '@/lib/periodo/mes-corrente'
 import { MIN_AMOSTRAS_DO_DIA } from '@/lib/vendas/dia-a-dia'
 import type { CartaoDeVendas, DiaDeVenda, FatiaDoMeio, BarraDoDiaTipico } from '@/lib/vendas/dia-a-dia'
+/**
+ * ⚠️ O TIPO DA FAIXA **DERIVA DA LIB**, nunca reescrito aqui — é a dívida de 01/09
+ * (*"interface escrita à mão sobre payload é promessa, não prova"*), que já derrubou a
+ * carteira de empréstimos com `tsc` verde e esvaziou dois widgets do PF em silêncio.
+ */
+import type { FaixaVendidoRecebido } from '@/lib/vendas/recebido'
 
 type Estado = 'CARREGANDO' | 'FALHOU' | 'OK'
 type Periodo = 'DIA' | 'SEMANA' | 'MES' | 'DATAS'
@@ -41,6 +49,7 @@ interface Payload {
   meios: FatiaDoMeio[]
   diaTipico: BarraDoDiaTipico[]
   cobertura: { comPdv: number; peloExtrato: number; pedemImport: number }
+  faixa: FaixaVendidoRecebido
 }
 
 const PERIODOS: { k: Periodo; r: string }[] = [
@@ -202,6 +211,7 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
       {estado === 'OK' && d && (
         <>
           <OsQuatroCartoes cartoes={d.cartoes} />
+          <FaixaRecebido f={d.faixa} />
           <Calendario d={d} empresaId={id} />
           <Duo>
             <Meios meios={d.meios} />
@@ -221,6 +231,116 @@ function rotuloDaJanela(d: Payload): string {
 }
 
 /* ═══════════════════════════ OS 4 CARTÕES SÓLIDOS ═══════════════════════════ */
+
+/**
+ * ⭐⭐⭐ A FAIXA "VENDIDO × RECEBIDO" — *"vendi X, já me pagaram Y, falta Z chegar"*.
+ *
+ * ⛔⛔ O `vendido` vem do CARTÃO (via payload), **nunca somado aqui**: é o vermelho que o dono
+ * nomeou. Dois números pro mesmo fato na MESMA tela, a dez centímetros um do outro, é como a
+ * confiança numa tela de dinheiro se perde.
+ *
+ * ⚠️ TODO número é redondo na frente com o centavo no `title` (a régua de 10/10) e toda cor
+ * vem de TOKEN — zero hex, os dois temas de graça.
+ */
+function FaixaRecebido({ f }: { f: FaixaVendidoRecebido }) {
+  const v = f.vendido == null ? null : valorDoCartao(f.vendido)
+  const r = valorDoCartao(f.recebido)
+  const a = f.aCaminho == null ? null : valorDoCartao(Math.abs(f.aCaminho))
+  const negativo = f.aCaminho != null && f.aCaminho < 0
+  const pct = f.fracaoRecebida == null ? null : pctBR(f.fracaoRecebida)
+
+  return (
+    <section
+      className="mb-[12px] rounded-xl border px-[16px] py-[12px]"
+      style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}
+    >
+      <div className="flex flex-wrap items-end gap-x-[22px] gap-y-[8px]">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
+            vendido {f.extratoAte && <span className="font-normal normal-case">(PDV)</span>}
+          </p>
+          <p className="text-[22px] font-bold tabular-nums" style={{ color: 'var(--prod-primary)' }}
+             title={v?.cheio}>
+            {v ? v.curto : 'a apurar'}
+          </p>
+        </div>
+        <span className="pb-[6px] text-[16px]" style={{ color: 'var(--prod-muted)' }}>→</span>
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--fam-verde-ink)' }}>
+            já recebido{pct ? ` · ${pct}` : ''}
+          </p>
+          <p className="text-[22px] font-bold tabular-nums" style={{ color: 'var(--fam-verde-ink)' }}
+             title={r?.cheio}>
+            {r ? r.curto : '—'}
+          </p>
+        </div>
+        <span className="pb-[6px] text-[16px]" style={{ color: 'var(--prod-muted)' }}>→</span>
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--fam-ambar-ink)' }}>
+            {negativo ? 'recebido a mais' : 'a caminho'}
+          </p>
+          <p className="text-[22px] font-bold tabular-nums" style={{ color: 'var(--fam-ambar-ink)' }}
+             title={a?.cheio}>
+            {a ? a.curto : 'a apurar'}
+          </p>
+        </div>
+      </div>
+
+      {/* ⭐ a barra de proporção — verde o que caiu, âmbar o que falta */}
+      {f.fracaoRecebida != null && (
+        <div className="mt-[10px] flex h-[8px] overflow-hidden rounded-full" style={{ background: 'var(--fam-ambar-bg)' }}>
+          <div style={{ width: `${f.fracaoRecebida * 100}%`, background: 'var(--fam-verde-mid)' }} />
+        </div>
+      )}
+
+      <p className="mt-[8px] text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
+        {f.frase}
+      </p>
+
+      <details className="mt-[6px]">
+        <summary
+          className="cursor-pointer list-none text-[11.5px] font-semibold underline decoration-dotted"
+          style={{ color: 'var(--fam-indigo-mid)' }}
+        >
+          como eu conto o recebido ⓘ
+        </summary>
+        <div className="mt-[6px] space-y-[5px]">
+          <p className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
+            <b style={{ color: 'var(--prod-primary)' }}>recebido</b> é o dinheiro de venda que caiu
+            na conta e pertence a este período — PIX, repasse de cartão e o dinheiro do cofre, pela
+            regra de recebimento de cada conta. Quem decide que um crédito é venda é a{' '}
+            <b style={{ color: 'var(--prod-primary)' }}>categoria</b> que você deu, nunca o texto do
+            banco.
+          </p>
+          <p className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
+            <b style={{ color: 'var(--prod-primary)' }}>a caminho</b> é vendido − recebido. Não dá
+            pra dizer quanto é cartão ainda não repassado e quanto é extrato que falta importar —
+            então a tela não divide: ela diz as duas causas.
+          </p>
+          {f.blocoAtravessaBorda && (
+            <p className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
+              <b style={{ color: 'var(--prod-primary)' }}>por que o recebido pode passar o vendido:</b>{' '}
+              o cartão liquida sex+sáb+dom num depósito só, e esse depósito entra inteiro em
+              qualquer recorte que toque esses dias. Num recorte curto ele pesa mais que a venda do
+              próprio recorte.
+            </p>
+          )}
+          {f.extratoAte && (
+            <p className="text-[11.5px] leading-snug" style={{ color: 'var(--fam-ambar-ink)' }}>
+              ⚠️ o extrato está importado até {ddmm(f.extratoAte)} — o que caiu depois disso ainda
+              não entrou no recebido.
+            </p>
+          )}
+          {f.porMeio.length > 0 && (
+            <p className="text-[11.5px] leading-snug tabular-nums" style={{ color: 'var(--prod-muted)' }}>
+              {f.porMeio.map((m) => `${m.meio.toLowerCase()} ${formatBRL(m.valor)}`).join(' · ')}
+            </p>
+          )}
+        </div>
+      </details>
+    </section>
+  )
+}
 
 function OsQuatroCartoes({ cartoes }: { cartoes: CartaoDeVendas[] }) {
   return (

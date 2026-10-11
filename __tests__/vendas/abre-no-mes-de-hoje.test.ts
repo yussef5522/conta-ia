@@ -275,3 +275,116 @@ describe('⛔⛔⛔ 3. OS VERMELHOS DA TELA (os outros três que o dono nomeou)'
     expect(blocos, 'bloco só-celular = 2ª composição pra manter').toBe(0)
   })
 })
+
+/**
+ * ⛔⛔⛔ A FAIXA "VENDIDO × RECEBIDO" NA TELA (10/10/2026) — os 3 vermelhos do dono.
+ *
+ * ⚠️ Estrutural e assumido como tal (o projeto roda em `environment: node`, sem jsdom): o que
+ * é COMPORTAMENTO está executado em `lib/vendas/__tests__/recebido.test.ts` e o ENCAIXE com o
+ * motor em `__tests__/vendas/vendeu-e-a-mesma-coisa-nas-duas-telas.test.ts`. O que estas
+ * asserções travam é a TELA — e sem elas o motor estaria em prod e inalcançável, que é a
+ * "porta sem maçaneta" que esta casa já pagou onze vezes.
+ */
+describe('⛔⛔⛔ a faixa VENDIDO × RECEBIDO', () => {
+  const faixa = () => {
+    const i = TELA.indexOf('function FaixaRecebido')
+    expect(i, 'o componente da faixa existe').toBeGreaterThan(-1)
+    const resto = TELA.slice(i + 1)
+    const j = resto.indexOf('\nfunction ')
+    return j === -1 ? resto : resto.slice(0, j)
+  }
+
+  it('⭐ a faixa é RENDERIZADA, logo abaixo dos 4 cartões', () => {
+    const lista = TELA.slice(TELA.indexOf('<OsQuatroCartoes'), TELA.indexOf('<Calendario'))
+    expect(lista, 'a faixa entra entre os cartões e o calendário').toContain('<FaixaRecebido')
+  })
+
+  /**
+   * ⛔⛔ O VERMELHO DO DONO: *"vendido somado por fora = vermelho"*. ⭐ E a trava mais forte é
+   * de ASSINATURA: `montarFaixa` recebe `vendido` e **não recebe `dias`** — somar na faixa é
+   * impossível, não proibido (REGRA 5).
+   */
+  it('⛔⛔ o vendido vem do CARTÃO — a faixa não soma dia nenhum', () => {
+    const c = faixa()
+    /**
+     * ⚠️⚠️ ESTA ASSERÇÃO VEIO **VERDE** NA 1ª VERSÃO (REGRA 11), e a lição é a de sempre: eu
+     * proibia a FORMA que imaginei (`.reduce(... total)` e `d.dias`) e repus o defeito com
+     * outra (`f.porMeio.reduce(...)`). ***Guard que proíbe uma forma aprova a próxima.***
+     *
+     * ⭐ O que morde é exigir a PROCEDÊNCIA do número exibido: o `valorDoCartao` do vendido
+     * tem que receber **`f.vendido`**, que é o que a rota tirou do cartão. Qualquer soma
+     * local — por dia, por meio, por o que for — deixa de casar.
+     */
+    expect(c, 'o vendido exibido tem que vir do payload, não de uma soma local')
+      .toMatch(/valorDoCartao\(f\.vendido\)/)
+    expect(c, 'nenhum reduce dentro da faixa').not.toContain('.reduce(')
+    // ⭐ e a ROTA tira o número do cartão, nunca de uma 2ª soma
+    expect(ROTA, 'o vendido sai do cartão do período')
+      .toContain("cartoes.find((c) => c.qual === 'periodo')?.valor")
+  })
+
+  /**
+   * ⛔⛔ *"decomposição inventada do «a caminho» = vermelho"*. O detector é ESTRUTURAL: nenhum
+   * rótulo que reparta o a-caminho pode existir na tela — lista de frases proibidas envelhece
+   * no dia em que alguém escrever uma nova.
+   */
+  it('⛔⛔ a tela NÃO reparte o "a caminho"', () => {
+    const c = faixa()
+    for (const inventada of ['aCaminhoCartao', 'aCaminhoSemExtrato', 'aCaminhoPix', 'de cartão a receber R$']) {
+      expect(c, `decomposição inventada: ${inventada}`).not.toContain(inventada)
+    }
+    // ⭐ o que existe é a FRASE do servidor, desenhada como veio
+    expect(c, 'a frase vem do servidor').toContain('{f.frase}')
+  })
+
+  it('⭐ os três números: vendido · já recebido · a caminho', () => {
+    const c = faixa()
+    expect(c).toContain('vendido')
+    expect(c).toContain('já recebido')
+    expect(c).toContain('a caminho')
+    // ⚠️ e o "recebido a mais" existe pro caso negativo — nunca escondido
+    expect(c, 'recebido > vendido aparece normal').toContain('recebido a mais')
+  })
+
+  it('⛔ número redondo na frente, centavo no tooltip (a régua de 10/10)', () => {
+    const c = faixa()
+    expect(usosDe(c, 'valorDoCartao'), 'a régua do número redondo').toBeGreaterThan(0)
+    expect(c, 'title com o centavo').toContain('.cheio')
+  })
+
+  it('⛔ o percentual sai em pctBR — ponto vira o `47.7%` de 10/10', () => {
+    const c = faixa()
+    expect(usosDe(c, 'pctBR'), 'o dono único do percentual').toBeGreaterThan(0)
+    expect(c, 'a tela voltou a formatar percentual na mão').not.toContain('toFixed(1)')
+  })
+
+  it('⛔ a cor vem de TOKEN — os dois temas de graça', () => {
+    const c = faixa()
+    expect(c, 'o verde do recebido').toContain('--fam-verde-ink')
+    expect(c, 'o âmbar do a caminho').toContain('--fam-ambar-ink')
+    expect((c.match(/#[0-9a-fA-F]{6}\b/g) ?? []), 'hex cravado na faixa').toHaveLength(0)
+  })
+
+  /**
+   * ⛔⛔ A HONESTIDADE DO EXTRATO ATRASADO, e ela é NECESSÁRIA hoje: medido em prod, o extrato
+   * das contas de venda vai até **09/10** e o recorte do mês vai até 31/10.
+   */
+  it('⛔⛔ a tela DIZ até quando o extrato alcança', () => {
+    const c = faixa()
+    expect(c).toContain('f.extratoAte')
+    expect(c, 'a frase que explica').toContain('extrato está importado até')
+  })
+
+  it('⭐ e o ⓘ é `<details>` (toque), nunca `title` — tooltip não existe no celular', () => {
+    const c = faixa()
+    expect(c).toContain('<details')
+    expect(c).toContain('como eu conto o recebido')
+    // ⭐ a explicação do bloco só aparece quando ele de fato atravessa a borda
+    expect(c).toContain('f.blocoAtravessaBorda')
+  })
+
+  it('⭐ o tipo da faixa DERIVA da lib — a dívida de 01/09 não volta', () => {
+    expect(TELA, 'interface escrita à mão sobre payload é promessa, não prova')
+      .toContain("import type { FaixaVendidoRecebido } from '@/lib/vendas/recebido'")
+  })
+})

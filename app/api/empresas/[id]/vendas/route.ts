@@ -20,6 +20,7 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { mesCorrente, janelaDoMes, hojeBrasil } from '@/lib/periodo/mes-corrente'
 import { totaisDoPdvPorDia } from '@/lib/stock/vendas/total-do-pdv'
 import { whereCruzaOMes } from '@/lib/vendas/janela-mes'
+import { montarFaixa } from '@/lib/vendas/recebido'
 import {
   montarDias, montarCartoes, composicaoPorMeio, diaTipico, segundaDaSemana,
   type EntradaDoExtrato,
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     const segAtual = segundaDaSemana(hoje)
     const segPassada = dia(new Date(dt(segAtual).getTime() - 7 * DIA_MS))
 
-    const [primeira, pdv, vs, pdvPassada, vsPassada] = await Promise.all([
+    const [primeira, pdv, vs, pdvPassada, vsPassada, ultimaLinha] = await Promise.all([
       // Início do módulo = 1ª vigência do perfil. Sem perfil → null (célula "sem dado").
       prisma.regraRecebimento.findFirst({
         where: { companyId }, orderBy: { vigenteDe: 'asc' }, select: { vigenteDe: true },
@@ -126,6 +127,21 @@ export async function GET(request: NextRequest, { params }: Params) {
       prisma.vendaDiaria.findMany({
         where: { companyId, ...whereCruzaOMes(dt(segPassada), dt(segAtual)) },
         select: { dataCompetencia: true, dataCompetenciaFim: true, meio: true, valorLiquido: true },
+      }),
+      /**
+       * ⭐ ATÉ QUANDO O EXTRATO ALCANÇA — a honestidade do item 1 do dono.
+       *
+       * ⚠️ É a última linha das contas que TÊM regra de recebimento (as de venda), não de
+       * qualquer conta: o extrato do cofre andar até hoje não diz nada sobre o repasse do
+       * cartão. Medido em prod: banrisul/sicredi/stone em **09/10** com o recorte do mês
+       * indo até 31/10 — a ressalva é NECESSÁRIA hoje, não hipotética.
+       */
+      prisma.transaction.findFirst({
+        where: { bankAccount: { companyId }, bankAccountId: { in: (
+          await prisma.regraRecebimento.findMany({ where: { companyId }, select: { bankAccountId: true } })
+        ).map((r) => r.bankAccountId) } },
+        orderBy: { date: 'desc' },
+        select: { date: true },
       }),
     ])
 
@@ -164,12 +180,31 @@ export async function GET(request: NextRequest, { params }: Params) {
       moduleInicio,
     })
 
+    const cartoes = montarCartoes({ dias, hoje, ehMesInteiro: r.ehMesInteiro, diasSemanaPassada })
+
+    /**
+     * ⭐⭐⭐ A FAIXA "VENDIDO × RECEBIDO" — e o `vendido` vem do CARTÃO, nunca de uma 2ª soma.
+     *
+     * ⛔⛔ É o vermelho que o dono nomeou (*"vendido somado por fora = vermelho"*): se a faixa
+     * somasse os dias por conta própria, ela e o cartão "mês até agora" divergiriam no 1º caso
+     * de borda — e seriam **dois números pro mesmo fato na MESMA tela**, a dez centímetros um
+     * do outro. ***Dono único, sempre.***
+     */
+    const vendido = cartoes.find((c) => c.qual === 'periodo')?.valor ?? null
+
     return NextResponse.json({
       recorte: { de: r.de, ate: r.ate, mes: r.mes, ehMesInteiro: r.ehMesInteiro },
+      faixa: montarFaixa({
+        vendido,
+        linhas: vs,
+        de: r.de,
+        ate: r.ate,
+        extratoAte: ultimaLinha ? dia(ultimaLinha.date) : null,
+      }),
       hoje,
       moduleInicio,
       dias,
-      cartoes: montarCartoes({ dias, hoje, ehMesInteiro: r.ehMesInteiro, diasSemanaPassada }),
+      cartoes,
       /** ⚠️ o MEIO só existe no extrato — o PDV não diz por onde o dinheiro entrou */
       meios: composicaoPorMeio(paraExtrato(vs)),
       diaTipico: diaTipico(dias),

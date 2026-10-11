@@ -20,6 +20,7 @@
  * importou é pior que rótulo ausente.
  */
 import type { PrismaClient } from '@prisma/client'
+import { totaisDoPdvPorDia } from './total-do-pdv'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { ehPizza, ehSaborDeVerdade, vereditoDoDia, ROTULO_DO_SELO, SELOS_QUE_PEDEM_ACAO, type SeloDoDia } from './razao-sabor-pizza'
 
@@ -60,7 +61,23 @@ export interface DiaDaCentral {
   razao: number | null
   frase: string
   unidades: number
+  /**
+   * ⭐⭐⭐ `valor` É O TOTAL — **produtos + complementos cobrados** (decisão do dono, 10/10:
+   * *"VENDEU = produtos + complementos cobrados — o dinheiro que o cliente pagou"*).
+   *
+   * ⛔⛔ ANTES ELE ERA **SÓ PRODUTOS**, e isso fazia esta tela e a de Vendas mostrarem
+   * números DIFERENTES pro mesmo dia (06/10: R$ 15.873,77 aqui × R$ 17.102,63 lá). As duas
+   * estavam certas sobre a pergunta delas; o que não existia era **uma definição só**.
+   * ***Duas telas com números diferentes pro mesmo dia é a doença que esta casa mais paga.***
+   *
+   * ⭐ E o dinheiro vem do **DONO ÚNICO** (`totaisDoPdvPorDia`), nunca de uma soma local:
+   * somá-lo aqui seria a 2ª derivação da mesma pergunta, e ela divergiria no 1º caso de
+   * borda — é a lição dos 7 detectores de par e dos três agostos.
+   */
   valor: number
+  /** ⭐ a composição, pra a tela DIZER a conta em vez de o dono descobrir comparando telas */
+  valorProdutos: number
+  valorComplementos: number
   pizzas: number
   sabores: number
   /** quantos relatórios entraram neste dia (0, 1 ou 2) */
@@ -117,7 +134,7 @@ export async function lerCentralDeImport(
   const de = new Date(Date.UTC(ano, m - 1, 1))
   const ate = new Date(Date.UTC(ano, m, 1))
 
-  const [imports, linhas, comp, arquivos, mapa, users, vendaDiaria] = await Promise.all([
+  const [imports, linhas, comp, arquivos, mapa, users, vendaDiaria, totaisPdv] = await Promise.all([
     db.stockVendaImport.findMany({ where: { companyId, data: { gte: de, lt: ate } } }),
     db.stockVendaLinha.findMany({
       where: { companyId, data: { gte: de, lt: ate } },
@@ -134,6 +151,16 @@ export async function lerCentralDeImport(
       where: { companyId, dataCompetencia: { lt: ate } },
       select: { dataCompetencia: true, dataCompetenciaFim: true },
     }),
+    /**
+     * ⭐⭐ O DINHEIRO VEM DAQUI, não de uma soma local (decisão de desenho, 10/10).
+     *
+     * ⛔ A tentação era acrescentar `valorTotal` ao `select` dos complementos e somar no laço
+     * logo abaixo — barato e errado: seria a **2ª derivação** de *"quanto vendeu no dia"*, ao
+     * lado da que a tela de Vendas usa. ⚠️ E as duas divergiriam no 1º caso de borda (import
+     * estornado, convenção de hora), que é exatamente como esta tela e a de Vendas passaram a
+     * mostrar números diferentes pro MESMO dia.
+     */
+    totaisDoPdvPorDia(companyId, de, ate, db),
   ])
   const nomeUser = new Map(users.map((u) => [u.id, (u.name ?? u.email).trim()]))
   const temMapa = new Set(mapa.map((x) => x.nomeSuitable))
@@ -141,7 +168,6 @@ export async function lerCentralDeImport(
   // ─────────── agrega por dia ───────────
   type Acc = {
     unidades: number
-    valor: number
     linhas: number
     pizzas: number
     sabores: number
@@ -150,7 +176,7 @@ export async function lerCentralDeImport(
     primeiraLinhaComp: Date | null
   }
   const porDia = new Map<string, Acc>()
-  const zero = (): Acc => ({ unidades: 0, valor: 0, linhas: 0, pizzas: 0, sabores: 0, ocorrencias: 0, semDestino: 0, primeiraLinhaComp: null })
+  const zero = (): Acc => ({ unidades: 0, linhas: 0, pizzas: 0, sabores: 0, ocorrencias: 0, semDestino: 0, primeiraLinhaComp: null })
   const pega = (d: string) => {
     if (!porDia.has(d)) porDia.set(d, zero())
     return porDia.get(d)!
@@ -159,7 +185,6 @@ export async function lerCentralDeImport(
   for (const l of linhas) {
     const a = pega(ISO(l.data))
     a.unidades += l.quantidade
-    a.valor += l.valorTotal
     a.linhas += 1
     if (ehPizza(l.nomeSuitable)) a.pizzas += l.quantidade
     if (!temMapa.has(l.nomeSuitable)) a.semDestino += 1
@@ -232,8 +257,24 @@ export async function lerCentralDeImport(
         : null
     const quando = fonteAutor?.importadoEm ?? imp?.criadoEm ?? a.primeiraLinhaComp ?? null
 
+    const t = totaisPdv.get(dia)
+    const vProd = round2(t?.produtos ?? 0)
+    const vComp = round2(t?.complementos ?? 0)
+
     const somaArquivo = arqProd?.somaValor ?? null
-    const somaGravada = round2(a.valor)
+    /**
+     * ⛔⛔⛔ A CONFERÊNCIA CONTINUA SENDO **SÓ DE PRODUTOS** — e isso NÃO é esquecimento da
+     * definição nova: ela compara o gravado com o `somaValor` que **o arquivo de PRODUTOS
+     * declarou**. Pôr o total aqui faria a conferência comparar maçã com laranja e **acusar
+     * divergência em TODO dia que tem complemento** — alarme falso diário, e *"alarme falso
+     * repetido é como um alarme morre"*.
+     *
+     * ⚠️ O relatório de complementos **não declara total** (`somaValor` é `null` ali: 34% das
+     * linhas valem R$ 0,00, sabor incluso no preço), então não existe lado do arquivo pra
+     * conferir contra. **Duas perguntas, dois nomes:** `valor` é *"quanto vendeu"* · esta é
+     * *"o arquivo de produtos bate com as linhas de produto?"*.
+     */
+    const somaGravada = vProd
 
     return {
       dia,
@@ -242,7 +283,10 @@ export async function lerCentralDeImport(
       razao: v.razao,
       frase: v.frase,
       unidades: a.unidades,
-      valor: somaGravada,
+      // ⭐ "VENDEU" = produtos + complementos cobrados (a definição do dono, 10/10)
+      valor: round2(vProd + vComp),
+      valorProdutos: vProd,
+      valorComplementos: vComp,
       pizzas: a.pizzas,
       sabores: a.sabores,
       arquivos: (temProdutos ? 1 : 0) + (temCompNoDia.has(dia) ? 1 : 0),
