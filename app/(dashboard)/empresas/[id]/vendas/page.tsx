@@ -1,561 +1,577 @@
 'use client'
 
-// VENDAS FASE 1 item 6 — tela /vendas, Blocos 1 (número grande) + 2 (calendário).
-// Tudo ~ESTIMADO por enquanto (extrato-inferido): til + cor de estimativa, distinta
-// de confirmado (que ainda não existe). Comparação SDLW/SWLY = "a apurar" (só 6 dias
-// de histórico). Foco agosto: dias antes de 12/08 = "antes do início do sistema"
-// (distinto de sem-venda). Fim de semana num card só; composição no clique.
+/**
+ * ⭐⭐⭐ VENDAS v4 — ABRE NO MÊS DE HOJE, PDV É A VERDADE (10/10/2026).
+ *
+ * **Reforma do dono:** *"abre no mês errado, cartões fracos, muita conversa"*.
+ *
+ * ⛔⛔⛔ O BUG QUE MOTIVOU: a tela tinha `useState('2026-08')` — um **mês LITERAL cravado**,
+ * com o comentário *"o do início do sistema (agosto) — a Cacula só tem agosto"*. Em outubro
+ * ela abria **dois meses no passado**, e a rota (que já tinha o default certo) era
+ * sobrescrita pelo `?mes=2026-08` que a tela mandava. ***Data fixa não é default: é uma data
+ * que o calendário alcança*** — a mesma classe da REGRA 12 de 01/09.
+ *
+ * ⭐⭐ ZERO CONTA NOVA NESTA TELA. Os 4 cartões, o calendário, os meios e o dia típico vêm
+ * PRONTOS de `lib/vendas/dia-a-dia.ts`; a escolha PDV×extrato por dia mora lá. Uma régua
+ * própria aqui faria a célula e o cartão discordarem do mesmo dia.
+ *
+ * ⚠️ A ROUPA É A DA OPÇÃO A (10/10): 4 cartões SÓLIDOS, número branco redondo ao real com o
+ * centavo no tooltip, por TOKEN (zero hex) — e o chão é o `-solid`, nunca o `-mid` (branco
+ * sobre ele reprova WCAG em 6 dos 8 casos).
+ */
+import { use, useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
+import { Store, Loader2 } from 'lucide-react'
+import { valorDoCartao } from '@/lib/custos-fixos/cartao-de-dono'
+import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
+import { mesCorrente, mesVizinho, rotuloDoMes } from '@/lib/periodo/mes-corrente'
+import { MIN_AMOSTRAS_DO_DIA } from '@/lib/vendas/dia-a-dia'
+import type { CartaoDeVendas, DiaDeVenda, FatiaDoMeio, BarraDoDiaTipico } from '@/lib/vendas/dia-a-dia'
 
-import { useEffect, useState, useMemo, use } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-import {
-  CalendarDays, Info, ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
-  Store, CalendarRange, CalendarCheck, CreditCard,
-} from 'lucide-react'
-import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
-import { resumoSemana, resumoMes, type Unidade } from '@/lib/vendas/resumo-periodo'
+type Estado = 'CARREGANDO' | 'FALHOU' | 'OK'
+type Periodo = 'DIA' | 'SEMANA' | 'MES' | 'DATAS'
 
-interface DiaVenda { total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean }
-interface Bloco { inicio: string; fim: string; total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean; incluiMesAnterior?: boolean }
-interface Balde { samples: number; total: number; media: number }
-interface PerfilSemana { SEG: Balde; TER: Balde; QUA: Balde; QUI: Balde; FDS: Balde }
-interface LancamentoOrigem { transactionId: string; dataEntrada: string; contaId: string; contaNome: string; descricao: string; valor: number; motivo: string }
-interface DetalheDia { de: string; ate: string; total: number; meios: { meio: string; valor: number; lancamentos: LancamentoOrigem[] }[]; aguardando: { meio: string; contaNome: string; chegaEm: string; frase: string }[] }
-interface VendasData { mes: string; moduleInicio: string | null; hoje: string; dias: Record<string, DiaVenda>; blocos: Bloco[]; perfilSemana: PerfilSemana | null }
-
-// Ordem fixa do maior pro menor típico (como o dono pensa), não alfabética.
-const MEIO_ORDER = ['CARTAO', 'PIX', 'DINHEIRO', 'OUTRO']
-const ordenarMeios = (pm: Record<string, number>): [string, number][] =>
-  Object.entries(pm).sort((a, b) => {
-    const ia = MEIO_ORDER.indexOf(a[0]), ib = MEIO_ORDER.indexOf(b[0])
-    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
-  })
-const MIN_AMOSTRAS = 2 // < isso → "a apurar"
-const MEIO_COR: Record<string, string> = { CARTAO: 'bg-sky-500', PIX: 'bg-emerald-500', DINHEIRO: 'bg-amber-500', OUTRO: 'bg-slate-400' }
-
-const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-// O card do fim de semana = o bloco (cartão) + os dias únicos que ele engloba
-// (PIX/dinheiro de 14,15,16). Total 62.090,93, não só o bloco 28.422,17.
-function fimDeSemanaAgg(data: VendasData, bloco: Bloco): { total: number; porMeio: Record<string, number> } {
-  const porMeio: Record<string, number> = { ...bloco.porMeio }
-  let total = bloco.total
-  let cur = parseDia(bloco.inicio)
-  const fim = parseDia(bloco.fim)
-  while (cur.getTime() <= fim.getTime()) {
-    const k = cur.toISOString().slice(0, 10)
-    const d = data.dias[k]
-    if (d) { total += d.total; for (const [m, v] of Object.entries(d.porMeio)) porMeio[m] = (porMeio[m] ?? 0) + v }
-    cur = new Date(cur.getTime() + 86400000)
-  }
-  return { total: Math.round((total + 1e-9) * 100) / 100, porMeio }
-}
-const DOW = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
-const MESNOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
-const parseDia = (s: string) => new Date(s + 'T12:00:00Z')
-const fmtDiaCurto = (s: string) => { const d = parseDia(s); return `${DOW[d.getUTCDay()]} ${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}` }
-// dd/MM do início do módulo — NUNCA literal na tela: a janela mudou de 12/08 pra
-// 01/08 em 25/08 e cinco textos ficaram mentindo. A fonte é o `moduleInicio` da API.
-const fmtDDMM = (s: string | null) => { if (!s) return '—'; const d = parseDia(s); return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}` }
-
-/** Navegação de mês na barra de filtro — só UI, a API já aceitava ?mes=. */
-const mesVizinho = (mes: string, delta: number) => {
-  const [a, m] = mes.split('-').map(Number)
-  const d = new Date(Date.UTC(a, m - 1 + delta, 1))
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+interface Payload {
+  recorte: { de: string; ate: string; mes: string | null; ehMesInteiro: boolean }
+  hoje: string
+  moduleInicio: string | null
+  dias: DiaDeVenda[]
+  cartoes: CartaoDeVendas[]
+  meios: FatiaDoMeio[]
+  diaTipico: BarraDoDiaTipico[]
+  cobertura: { comPdv: number; peloExtrato: number; pedemImport: number }
 }
 
-type Toggle = 'DIA' | 'SEMANA' | 'MES'
-const MEIO_LABEL: Record<string, string> = { CARTAO: 'Cartão', PIX: 'PIX', DINHEIRO: 'Dinheiro', OUTRO: 'Outro' }
+const PERIODOS: { k: Periodo; r: string }[] = [
+  { k: 'DIA', r: 'dia' },
+  { k: 'SEMANA', r: 'semana' },
+  { k: 'MES', r: 'mês' },
+  { k: 'DATAS', r: '📅 datas' },
+]
+
+const DIA_MS = 86_400_000
+const dt = (s: string) => new Date(`${s}T00:00:00.000Z`)
+const ddmm = (s: string) => `${s.slice(8, 10)}/${s.slice(5, 7)}`
+const DOW_CURTO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
+
+const MEIO_ROTULO: Record<string, string> = {
+  PIX: 'PIX', CARTAO: 'cartão', DINHEIRO: 'dinheiro', OUTRO: 'outros',
+}
+const MEIO_FAMILIA: Record<string, string> = {
+  PIX: 'azul', CARTAO: 'indigo', DINHEIRO: 'verde', OUTRO: 'ambar',
+}
+
+/**
+ * ⭐ O RECORTE QUE A TELA PEDE — uma função, nunca lógica solta no `useCallback`.
+ *
+ * ⛔⛔ DIA e SEMANA mandam o **NOME do período**, nunca a data: quem sabe que dia é hoje é o
+ * SERVIDOR (*"o cronômetro é da tela, o instante é do servidor"*). Calcular aqui faria um
+ * aparelho com a hora torta pedir um dia e receber outro marcado como `hoje`.
+ */
+export function recorteDoChip(
+  p: Periodo,
+  mes: string,
+  datas: { de: string; ate: string },
+): Record<string, string> {
+  if (p === 'MES') return { mes }
+  if (p === 'DIA' || p === 'SEMANA') return { periodo: p }
+  return datas.de && datas.ate ? { de: datas.de, ate: datas.ate } : {}
+}
 
 export default function VendasPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const [data, setData] = useState<VendasData | null>(null)
-  const [erro, setErro] = useState<string | null>(null)
-  const [toggle, setToggle] = useState<Toggle>('SEMANA')
-  const [sel, setSel] = useState<{ tipo: 'dia' | 'bloco'; key: string } | null>(null)
 
-  // Mês default: o do início do sistema (agosto) — a Cacula só tem agosto.
-  const [mes, setMes] = useState('2026-08')
+  /**
+   * ⛔⛔ O DEFAULT É O MÊS DE HOJE, SEMPRE — nunca o último mês com dado, nunca um literal.
+   * `mesCorrente()` é o dono da pergunta (e usa o fuso do Brasil, senão no dia 1º às 00h30
+   * de São Paulo a tela abriria no mês anterior).
+   */
+  const [mes, setMes] = useState(() => mesCorrente())
+  const [periodo, setPeriodo] = useState<Periodo>('MES')
+  const [de, setDe] = useState('')
+  const [ate, setAte] = useState('')
+  const [estado, setEstado] = useState<Estado>('CARREGANDO')
+  const [erro, setErro] = useState('')
+  const [dados, setDados] = useState<Payload | null>(null)
 
-  useEffect(() => {
-    setData(null); setErro(null)
-    fetch(`/api/empresas/${id}/vendas?mes=${mes}`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Falha ao carregar'))))
-      .then(setData)
-      .catch((e) => setErro(e.message))
-  }, [id, mes])
+  const carregar = useCallback(async () => {
+    setEstado('CARREGANDO')
+    // ⚠️ DATAS sem as duas pontas não chama a rota — e a tela DIZ o que falta
+    if (periodo === 'DATAS' && (!de || !ate)) { setEstado('OK'); return }
+    const q = new URLSearchParams(recorteDoChip(periodo, mes, { de, ate }))
+    const r = await fetchComTimeout(`/api/empresas/${id}/vendas?${q}`)
+    if (!r.ok) { setErro(r.erro ?? 'erro desconhecido'); setEstado('FALHOU'); return }
+    setDados(r.data as Payload)
+    setEstado('OK')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, mes, periodo, de, ate])
 
-  // Unidades de EXIBIÇÃO: dias de semana avulsos + GRUPO de fim de semana (bloco +
-  // dias que ele engloba, merged). Sem double-count (bloco=cartão, dias=PIX/dinheiro,
-  // disjuntos). Usado pro toggle e é a mesma lógica do calendário.
-  // ⚠️⚠️ O SOMATÓRIO É SÓ AGOSTO PURO (26/08). O bloco que COMEÇA no mês anterior
-  // (31/07–02/08) é exibido — isso está certo —, mas NÃO PODE ENTRAR NA SOMA: ele
-  // contém venda de julho e não é separável. Somá-lo fez a tela mostrar 595 mil num
-  // mês de 380 mil. O fix da sobreposição resolveu a EXIBIÇÃO e vazou pro TOTAL.
-  // Mesmo padrão das exclusões do Fluxo de Caixa: visível, fora da soma, explicado.
-  const unidades = useMemo(() => {
-    if (!data) return []
-    const blocosDoMes = data.blocos.filter((b) => !b.incluiMesAnterior)
-    // só os blocos DO MÊS "cobrem" dias — o bloco de borda não engole 01 e 02/08,
-    // que são dias de agosto de pleno direito (dinheiro e PIX do mesmo dia).
-    const cobertos = new Set<string>()
-    for (const b of blocosDoMes) { let c = parseDia(b.inicio); const f = parseDia(b.fim); while (c.getTime() <= f.getTime()) { cobertos.add(c.toISOString().slice(0, 10)); c = new Date(c.getTime() + 86400000) } }
-    const us: { inicio: string; fim: string; total: number; porMeio: Record<string, number>; isBloco: boolean }[] = []
-    for (const [d, v] of Object.entries(data.dias)) if (!cobertos.has(d)) us.push({ inicio: d, fim: d, total: v.total, porMeio: v.porMeio, isBloco: false })
-    for (const b of blocosDoMes) { const ag = fimDeSemanaAgg(data, b); us.push({ inicio: b.inicio, fim: b.fim, total: ag.total, porMeio: ag.porMeio, isBloco: true }) }
-    return us.sort((a, b) => (a.fim < b.fim ? -1 : 1))
-  }, [data])
+  useEffect(() => { void carregar() }, [carregar])
 
-  /** O bloco de borda, à parte — exibido, nunca somado. */
-  const bordaJulho = useMemo(() => {
-    const b = (data?.blocos ?? []).filter((x) => x.incluiMesAnterior)
-    return b.length ? { total: b.reduce((s, x) => s + x.total, 0), blocos: b } : null
-  }, [data])
-
-  const bloco1 = useMemo(() => {
-    if (!data || unidades.length === 0) return null
-    if (toggle === 'MES') return resumoMes(unidades, mes, data.moduleInicio)
-    if (toggle === 'SEMANA') return resumoSemana(unidades)
-    // DIA — última unidade (dia ou bloco de fim de semana)
-    const u = unidades[unidades.length - 1]
-    const label = u.isBloco ? `Fim de semana ${fmtDiaCurto(u.inicio)}–${fmtDiaCurto(u.fim)}` : fmtDiaCurto(u.inicio)
-    return { label, total: u.total, porMeio: u.porMeio }
-  }, [data, unidades, toggle, mes])
-
-  // Composição do MÊS por meio (bloco 4) — soma dias + blocos.
-  const composicaoMes = useMemo(() => {
-    if (!data) return { total: 0, porMeio: {} as Record<string, number> }
-    const pm: Record<string, number> = {}
-    const add = (o: Record<string, number>) => { for (const [m, v] of Object.entries(o)) pm[m] = (pm[m] ?? 0) + v }
-    for (const d of Object.values(data.dias)) add(d.porMeio)
-    // ⚠️ sem o bloco de borda — ver `unidades` acima (só agosto puro entra na soma)
-    for (const b of data.blocos.filter((x) => !x.incluiMesAnterior)) add(b.porMeio)
-    const total = Object.values(pm).reduce((s, v) => s + v, 0)
-    return { total: Math.round((total + 1e-9) * 100) / 100, porMeio: pm }
-  }, [data])
-
-  // Cards do topo — os MESMOS agregados do número grande (helpers puros acima).
-  const cards = useMemo(() => {
-    if (!data) return null
-    const semana = resumoSemana(unidades)
-    const mesAgora = resumoMes(unidades, mes, data.moduleInicio)
-    const pm = composicaoMes.porMeio
-    return { semana, mesAgora, fds: data.perfilSemana?.FDS ?? null, porMeio: pm }
-  }, [data, unidades, mes, composicaoMes])
-
-  // ⚠️ HOOKS FICAM AQUI, ANTES DOS EARLY RETURNS ABAIXO.
-  // Em 25/08 estes 4 nasceram DEPOIS do `if (!data) return` e derrubaram a tela:
-  // na 1ª renderização o componente retornava cedo e registrava N hooks; quando o
-  // fetch voltava, passava dos returns e registrava N+4 → "Rendered more hooks than
-  // during the previous render". É o MESMO bug da ordem de produção (21/08).
-  const [meioAberto, setMeioAberto] = useState<string | null>(null)
-  const [detalhe, setDetalhe] = useState<DetalheDia | null>(null)
-  const [carregandoDet, setCarregandoDet] = useState(false)
-
-  // troca de dia fecha o meio aberto e recarrega o rastro
-  useEffect(() => {
-    setMeioAberto(null)
-    setDetalhe(null)
-    if (!sel) return
-    const [de, ate] = sel.tipo === 'dia' ? [sel.key, sel.key] : sel.key.split('|')
-    setCarregandoDet(true)
-    fetch(`/api/empresas/${id}/vendas/dia?de=${de}&ate=${ate}`)
-      .then((r) => r.json()).then((j) => setDetalhe(j.detalhe ?? null))
-      .catch(() => setDetalhe(null))
-      .finally(() => setCarregandoDet(false))
-  }, [sel, id])
-
-  if (erro) return <div className="p-6 text-sm text-rose-600">Erro: {erro}</div>
-  if (!data) return <div className="p-6 text-sm text-muted-foreground">Carregando vendas…</div>
-
-  const selData: { total: number; porMeio: Record<string, number>; titulo: string } | null = (() => {
-    if (!sel) return null
-    if (sel.tipo === 'dia') { const v = data.dias[sel.key]; return v ? { total: v.total, porMeio: v.porMeio, titulo: fmtDiaCurto(sel.key) } : null }
-    const b = data.blocos.find((x) => `${x.inicio}|${x.fim}` === sel.key)
-    if (!b) return null
-    const ag = fimDeSemanaAgg(data, b)
-    return { total: ag.total, porMeio: ag.porMeio, titulo: `Fim de semana ${fmtDiaCurto(b.inicio)} – ${fmtDiaCurto(b.fim)}` }
-  })()
-
-  const outrosMeios = ordenarMeios(cards?.porMeio ?? {}).slice(1)
+  const d = dados
 
   return (
-    <div className="space-y-4">
-      {/* ── CABEÇALHO DE UMA LINHA (molde CaP) ── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Store className="h-5 w-5 text-muted-foreground" />
-        <h1 className="text-base font-semibold">Vendas</h1>
-        <span className="hidden text-xs text-slate-400 lg:inline">
-          quando a venda aconteceu, não quando o dinheiro chegou
-        </span>
-        <span className="ml-auto rounded-full bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
-          ~estimado pelo extrato
-        </span>
-      </div>
-
-      {/* ── BARRA ÚNICA DE FILTRO (h-9, molde CaP) ── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex h-9 items-center rounded-md border p-0.5 text-xs">
-          {(['DIA', 'SEMANA', 'MES'] as Toggle[]).map((t) => (
-            <button key={t} onClick={() => setToggle(t)}
-              className={`h-8 rounded px-3 transition-colors ${toggle === t ? 'bg-sky-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}>
-              {t === 'DIA' ? 'Dia' : t === 'SEMANA' ? 'Semana' : 'Mês'}
-            </button>
-          ))}
-        </div>
-        <div className="inline-flex h-9 items-center gap-1 rounded-md border px-1">
-          <button onClick={() => setMes(mesVizinho(mes, -1))} aria-label="Mês anterior"
-            className="flex h-7 w-7 items-center justify-center rounded hover:bg-muted"><ChevronLeft className="h-4 w-4" /></button>
-          <span className="min-w-[104px] text-center text-xs font-medium tabular-nums">
-            {MESNOME[Number(mes.split('-')[1]) - 1]} {mes.split('-')[0]}
-          </span>
-          <button onClick={() => setMes(mesVizinho(mes, 1))} aria-label="Próximo mês"
-            className="flex h-7 w-7 items-center justify-center rounded hover:bg-muted"><ChevronRight className="h-4 w-4" /></button>
-        </div>
-        <span className="text-xs text-muted-foreground">vs período anterior: <span className="italic">a apurar</span></span>
-      </div>
-
-      {/* ── CARDS DE RESUMO (StatCard compartilhado — mesmos tamanhos das irmãs) ── */}
-      <StatCardGrid>
-        <StatCard tone="sky" icon={CalendarRange} label="Semana atual"
-          value={cards?.semana ? `~${brl(cards.semana.total)}` : 'sem dado'}
-          sub={cards?.semana?.label ?? 'nenhuma competência no mês'} />
-        <StatCard tone="sky" icon={CalendarDays} label="Mês até agora"
-          value={`~${brl(cards?.mesAgora.total ?? 0)}`}
-          sub={`desde ${fmtDDMM(data.moduleInicio)} · ${unidades.length} dias/blocos`} />
-        <StatCard tone="violet" icon={CalendarCheck} label="Perfil fim de semana"
-          value={cards?.fds && cards.fds.samples >= MIN_AMOSTRAS ? `~${brl(cards.fds.media)}` : 'a apurar'}
-          sub={cards?.fds ? `${cards.fds.samples} fim(ns) de semana na média` : '—'} />
-        <StatCard tone="emerald" icon={CreditCard}
-          label={`${MEIO_LABEL[ordenarMeios(cards?.porMeio ?? {})[0]?.[0]] ?? 'Meios'} no mês`}
-          value={brl(ordenarMeios(cards?.porMeio ?? {})[0]?.[1] ?? 0)}
-          sub={outrosMeios.map(([m, v]) => `${MEIO_LABEL[m] ?? m} ${brl(v)}`).join(' · ') || 'sem composição'} />
-      </StatCardGrid>
-
-      {/* BLOCO 1 — número grande do período escolhido */}
-      <Card>
-        <CardContent className="py-4">
-          {bloco1 ? (
-            <>
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{bloco1.label}</p>
-              <p className="mt-0.5 text-3xl font-semibold tabular-nums text-sky-700 dark:text-sky-400">
-                <span className="align-top text-xl text-sky-400">~</span>{brl(bloco1.total)}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                {ordenarMeios(bloco1.porMeio).map(([m, v]) => (
-                  <span key={m}>{MEIO_LABEL[m] ?? m}: <span className="tabular-nums text-foreground">{brl(v)}</span></span>
-                ))}
-              </div>
-            </>
-          ) : (
-            <p className="text-xl font-medium text-muted-foreground">Sem vendas no período</p>
-          )}
-          {bordaJulho && (
-            <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-              Fora deste total: <b>{brl(bordaJulho.total)}</b> do fim de semana que começa em julho —
-              inclui venda de julho e não é separável (aparece no calendário, marcado).
+    <div className="mx-auto max-w-[1440px] px-[28px] pt-[22px] pb-[64px] max-[700px]:px-[14px] max-[700px]:pb-[56px] max-[700px]:pt-[16px]">
+      {/* ─────────── CABEÇALHO DE UMA LINHA (a dieta de 10/10) ─────────── */}
+      <div className="mb-[14px] flex flex-wrap items-end justify-between gap-[10px]">
+        <div className="flex items-center gap-[8px]">
+          <Store className="h-5 w-5" style={{ color: 'var(--fam-indigo-mid)' }} />
+          <div>
+            <h1 className="text-[20px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
+              Vendas
+            </h1>
+            <p className="mt-[2px] text-[13px] tabular-nums" style={{ color: 'var(--prod-secondary)' }}>
+              {d ? rotuloDaJanela(d) : '…'}
             </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-[6px]">
+          {/* ‹ › continua pra passear no calendário */}
+          {periodo === 'MES' && (
+            <span className="flex items-center gap-[2px]">
+              <Chip on={false} onClick={() => setMes(mesVizinho(mes, -1))} rotulo="mês anterior">‹</Chip>
+              <span className="px-[6px] text-[12.5px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
+                {rotuloDoMes(mes)}
+              </span>
+              <Chip on={false} onClick={() => setMes(mesVizinho(mes, 1))} rotulo="mês seguinte">›</Chip>
+            </span>
           )}
-          <p className="mt-3 text-[11px] text-muted-foreground">Comparação semana passada / ano passado: <span className="italic">a apurar</span> (histórico desde {fmtDDMM(data.moduleInicio)}).</p>
-        </CardContent>
-      </Card>
+          {PERIODOS.map((p) => (
+            <Chip key={p.k} on={periodo === p.k} onClick={() => setPeriodo(p.k)}>
+              {p.r}{periodo === p.k && p.k !== 'DATAS' ? ' ✓' : ''}
+            </Chip>
+          ))}
+          {periodo === 'DATAS' && (
+            <span className="flex items-center gap-1">
+              <label className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                de
+                <input
+                  type="date" value={de} onChange={(e) => setDe(e.target.value)}
+                  className="ml-1 rounded-[8px] border px-1.5 py-[3px] text-[12.5px]"
+                  style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
+                />
+              </label>
+              <label className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                até
+                <input
+                  type="date" value={ate} onChange={(e) => setAte(e.target.value)}
+                  className="ml-1 rounded-[8px] border px-1.5 py-[3px] text-[12.5px]"
+                  style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
+                />
+              </label>
+            </span>
+          )}
+        </div>
+      </div>
 
-      {/* BLOCO 2 — calendário */}
-      <Card>
-        <CardContent className="py-4">
-          <div className="mb-1 flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-medium">{MESNOME[Number(mes.split('-')[1]) - 1]} de {mes.split('-')[0]}</h2>
-          </div>
-          <p className="mb-3 flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Info className="h-3 w-3" /> O sistema de vendas começou em <b className="mx-1">{fmtDDMM(data.moduleInicio)}</b> — dias antes disso não têm dado de venda (não é loja fechada).
+      {estado === 'CARREGANDO' && (
+        <Cartao>
+          <p className="flex items-center gap-[8px] px-[18px] py-5 text-[13px]" style={{ color: 'var(--prod-muted)' }}>
+            <Loader2 className="h-4 w-4 animate-spin" /> lendo o período…
           </p>
-          {/* ⚠️ BLOCO QUE COMEÇA NO MÊS ANTERIOR — a sexta cai fora da grade, então o
-              card não cabe numa célula. Fica aqui em cima, com o aviso: o depósito de
-              segunda junta sexta+sábado+domingo e o banco NÃO diz qual real é de qual
-              dia — não dá pra separar a parte que é do mês passado. */}
-          {data.blocos.filter((b) => b.incluiMesAnterior).map((b) => {
-            const selKey = `${b.inicio}|${b.fim}`
-            const on = sel?.tipo === 'bloco' && sel.key === selKey
-            const mesAnt = MESNOME[parseDia(b.inicio).getUTCMonth()]
-            return (
-              <button key={selKey} onClick={() => setSel(on ? null : { tipo: 'bloco', key: selKey })}
-                className={`mb-3 w-full rounded-md border border-amber-300 bg-amber-50 p-2 text-left transition-colors hover:bg-amber-100 ${on ? 'ring-2 ring-amber-500' : ''}`}>
-                <div className="text-[10px] text-amber-800">fim de semana {fmtDDMM(b.inicio)}–{fmtDDMM(b.fim)} · sex+sáb+dom</div>
-                <div className="text-sm font-semibold tabular-nums text-amber-900">~{brl(b.total)}</div>
-                <div className="mt-0.5 text-[10px] text-amber-700">
-                  inclui venda de fim de {mesAnt} — <b>não somado no total do mês</b>. O depósito de
-                  segunda junta sexta+sábado+domingo e o banco não diz qual real é de qual dia.
-                </div>
-              </button>
-            )
-          })}
-          <Calendario data={data} onSel={setSel} sel={sel} />
-          <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-muted-foreground">
-            <Legenda cls="bg-sky-100 border-sky-300" txt="~venda estimada" />
-            <Legenda cls="bg-emerald-500/80 border-emerald-600" txt="venda confirmada (fase 2)" />
-            <Legenda cls="bg-slate-100 border-slate-200 border-dashed" txt="aguardando (dinheiro não chegou)" />
-            <Legenda cls="bg-slate-50 border-slate-200 opacity-50" txt={`antes do início (${fmtDDMM(data.moduleInicio)})`} />
+        </Cartao>
+      )}
+
+      {estado === 'FALHOU' && (
+        <Cartao>
+          <div className="space-y-2 px-[18px] py-5">
+            <p className="text-[13px] font-medium" style={{ color: 'var(--fam-coral-ink)' }}>
+              Não consegui carregar: {erro}
+            </p>
+            <button
+              type="button" onClick={() => void carregar()}
+              className="rounded-[8px] px-2.5 py-1 text-[12.5px] font-medium"
+              style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}
+            >
+              tentar de novo
+            </button>
           </div>
-        </CardContent>
-      </Card>
+        </Cartao>
+      )}
 
-      {/* BLOCO 3 — perfil da semana */}
-      <Card>
-        <CardContent className="py-4">
-          <h2 className="mb-1 text-sm font-medium">Perfil da semana</h2>
-          <p className="mb-3 text-[11px] text-muted-foreground">Quanto um dia típico vende, na média. Precisa de pelo menos {MIN_AMOSTRAS} semanas por dia — até lá, <span className="italic">a apurar</span>.</p>
-          <PerfilSemanaBloco perfil={data.perfilSemana} />
-        </CardContent>
-      </Card>
+      {estado === 'OK' && periodo === 'DATAS' && (!de || !ate) && (
+        <Cartao>
+          <p className="px-[18px] py-5 text-[13px]" style={{ color: 'var(--prod-muted)' }}>
+            Escolha as duas datas acima — pode ser um dia só.
+          </p>
+        </Cartao>
+      )}
 
-      {/* BLOCO 4 — composição por meio (do mês) */}
-      <Card>
-        <CardContent className="py-4">
-          <h2 className="mb-1 text-sm font-medium">Composição por meio · {MESNOME[Number(mes.split('-')[1]) - 1]}</h2>
-          <p className="mb-3 text-[11px] text-muted-foreground">Bruto, taxa e líquido por adquirente chegam na fase 2. Estornos aparecem como faixa negativa (0 por enquanto).</p>
-          {composicaoMes.total > 0 ? (
-            <>
-              <div className="flex h-4 w-full overflow-hidden rounded-full">
-                {ordenarMeios(composicaoMes.porMeio).map(([m, v]) => (
-                  <div key={m} className={MEIO_COR[m] ?? 'bg-slate-400'} style={{ width: `${(v / composicaoMes.total) * 100}%` }} title={`${MEIO_LABEL[m] ?? m}: ${brl(v)}`} />
-                ))}
-              </div>
-              <div className="mt-3 space-y-1.5">
-                {ordenarMeios(composicaoMes.porMeio).map(([m, v]) => (
-                  <div key={m} className="flex items-center gap-2 text-[13px]">
-                    <span className={`inline-block h-3 w-3 rounded-sm ${MEIO_COR[m] ?? 'bg-slate-400'}`} />
-                    <span className="w-24 text-muted-foreground">{MEIO_LABEL[m] ?? m}</span>
-                    <span className="font-medium tabular-nums">{brl(v)}</span>
-                    <span className="text-[11px] text-muted-foreground">({Math.round((v / composicaoMes.total) * 100)}%)</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 flex items-center justify-between border-t pt-2">
-                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Total do mês</span>
-                <span className="text-sm font-semibold tabular-nums text-sky-700 dark:text-sky-400">~{brl(composicaoMes.total)}</span>
-              </div>
-            </>
-          ) : <p className="text-sm text-muted-foreground">Sem vendas no mês.</p>}
-        </CardContent>
-      </Card>
-
-      {/* BLOCO 6 — período e comparação */}
-      <Card>
-        <CardContent className="py-4">
-          <h2 className="mb-1 text-sm font-medium">Comparações</h2>
-          <p className="mb-3 text-[11px] text-muted-foreground">Semana × semana passada, mês × mês anterior, trimestre, ano × ano. Ligam quando houver histórico suficiente.</p>
-          <div className="space-y-1.5 text-[13px]">
-            {[
-              ['Esta semana × semana passada (SDLW)', 'a apurar — 1ª semana'],
-              ['Este mês × mês anterior', `a apurar — só agosto (desde ${fmtDDMM(data.moduleInicio)})`],
-              ['Trimestre', 'a apurar'],
-              ['Este ano × ano passado (SWLY)', 'a apurar — precisa de 12 meses'],
-            ].map(([k, v]) => (
-              <div key={k} className="flex justify-between border-b pb-1.5 last:border-0">
-                <span className="text-muted-foreground">{k}</span>
-                <span className="italic text-slate-500">{v}</span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Composição do dia/bloco selecionado */}
-      {selData && (
-        <Card className="border-sky-200 bg-sky-50/40">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">{selData.titulo}</h3>
-              <button onClick={() => setSel(null)} className="text-xs text-muted-foreground hover:text-foreground">fechar ✕</button>
-            </div>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-sky-700 dark:text-sky-400"><span className="align-top text-lg text-sky-400">~</span>{brl(selData.total)}</p>
-            {/* Cada meio ABRE nos lançamentos que o compõem — dia → lançamento → extrato.
-                Somado não se audita: quando o número parece errado, o dono desce até a
-                origem, igual ao estoque faz de movimento → nota. */}
-            <div className="mt-2 space-y-1 text-[13px]">
-              {ordenarMeios(selData.porMeio).map(([m, v]) => {
-                const aberto = meioAberto === m
-                const det = detalhe?.meios.find((x) => x.meio === m)
-                return (
-                  <div key={m} className="rounded-md border border-transparent hover:border-sky-200">
-                    <button onClick={() => setMeioAberto(aberto ? null : m)}
-                      className="flex w-full items-center justify-between px-1 py-0.5 text-left">
-                      <span className="flex items-center gap-1 text-muted-foreground">
-                        {aberto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                        {MEIO_LABEL[m] ?? m}
-                      </span>
-                      <span className="tabular-nums">{brl(v)}</span>
-                    </button>
-
-                    {aberto && (
-                      <div className="space-y-1.5 border-t border-sky-100 px-2 py-2">
-                        {carregandoDet && <p className="text-xs text-muted-foreground">carregando lançamentos…</p>}
-                        {!carregandoDet && (det?.lancamentos.length ?? 0) === 0 && (
-                          <p className="text-xs text-muted-foreground">Sem lançamento vinculado — este valor não tem origem rastreada no extrato.</p>
-                        )}
-                        {det?.lancamentos.map((l) => (
-                          <div key={l.transactionId} className="rounded bg-white/70 px-2 py-1.5">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="truncate text-xs font-medium">{l.descricao}</p>
-                                <p className="text-[11px] text-muted-foreground">
-                                  entrou {fmtDiaCurto(l.dataEntrada)} · {l.contaNome}
-                                </p>
-                              </div>
-                              <span className="shrink-0 text-xs font-medium tabular-nums">{brl(l.valor)}</span>
-                            </div>
-                            <p className="mt-0.5 text-[11px] italic text-sky-700">{l.motivo}</p>
-                            {l.contaId && (
-                              <a href={`/empresas/${id}/contas/${l.contaId}/transacoes?tx=${l.transactionId}`}
-                                className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-sky-600 hover:underline">
-                                ver no extrato <ExternalLink className="h-3 w-3" />
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Regra do fim de semana: o que AINDA não caiu */}
-            {(detalhe?.aguardando.length ?? 0) > 0 && (
-              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5">
-                {detalhe!.aguardando.map((a) => (
-                  <p key={a.meio} className="text-[11px] text-amber-900">
-                    <b>{MEIO_LABEL[a.meio] ?? a.meio} aguardando:</b> {a.frase}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            <p className="mt-2 text-[11px] text-muted-foreground italic">Composição estimada pelo extrato. Contagem por operação chega na fase 2 (adquirente).</p>
-          </CardContent>
-        </Card>
+      {estado === 'OK' && d && (
+        <>
+          <OsQuatroCartoes cartoes={d.cartoes} />
+          <Calendario d={d} empresaId={id} />
+          <Duo>
+            <Meios meios={d.meios} />
+            <DiaTipico barras={d.diaTipico} />
+          </Duo>
+        </>
       )}
     </div>
   )
 }
 
-function PerfilSemanaBloco({ perfil }: { perfil: PerfilSemana | null }) {
-  if (!perfil) return <p className="text-sm text-muted-foreground">Perfil não configurado.</p>
-  const dias: [string, Balde][] = [
-    ['Seg', perfil.SEG], ['Ter', perfil.TER], ['Qua', perfil.QUA], ['Qui', perfil.QUI], ['Fim de semana', perfil.FDS],
-  ]
-  const maxMedia = Math.max(1, ...dias.filter(([, b]) => b.samples >= MIN_AMOSTRAS).map(([, b]) => b.media))
+/** ⭐ o rótulo do recorte, derivado — NUNCA um "desde 01/08" literal (a cicatriz de 25/08) */
+function rotuloDaJanela(d: Payload): string {
+  if (d.recorte.de === d.recorte.ate) return ddmm(d.recorte.de)
+  if (d.recorte.ehMesInteiro && d.recorte.mes) return rotuloDoMes(d.recorte.mes)
+  return `${ddmm(d.recorte.de)} a ${ddmm(d.recorte.ate)}`
+}
+
+/* ═══════════════════════════ OS 4 CARTÕES SÓLIDOS ═══════════════════════════ */
+
+function OsQuatroCartoes({ cartoes }: { cartoes: CartaoDeVendas[] }) {
   return (
-    <div className="space-y-2">
-      {dias.map(([label, b]) => {
-        const apurar = b.samples < MIN_AMOSTRAS
-        return (
-          <div key={label} className="flex items-center gap-3 text-[13px]">
-            <span className="w-28 shrink-0 text-muted-foreground">{label}</span>
-            <div className="relative h-6 flex-1 overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
-              {!apurar && <div className="h-full bg-sky-400/70" style={{ width: `${(b.media / maxMedia) * 100}%` }} />}
-              <span className="absolute inset-0 flex items-center px-2 text-xs">
-                {apurar
-                  ? <span className="italic text-slate-400">a apurar ({b.samples} de {MIN_AMOSTRAS} semana{b.samples === 1 ? '' : 's'})</span>
-                  : <span className="tabular-nums font-medium text-sky-900">~{brl(b.media)} <span className="text-[10px] text-muted-foreground font-normal">({b.samples} semanas)</span></span>}
-              </span>
-            </div>
+    <div className="mb-[12px] grid grid-cols-1 gap-[8px] sm:grid-cols-2 lg:grid-cols-4">
+      {cartoes.map((c) => (
+        <CartaoSolido key={c.qual} c={c} />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * ⭐⭐ O CARTÃO — 3 LINHAS, chão SÓLIDO, número BRANCO redondo ao real.
+ *
+ * ⛔⛔ O chão é o `-solid`, NUNCA o `-mid`: branco sobre o `-mid` dá **3,51:1 no verde e
+ * 3,91:1 no coral já no tema CLARO** (medido em 10/10), e a etiqueta de 11px vive no mesmo
+ * chão. ⚠️ E o número vem de `valorDoCartao` — o dono único do *"redondo na frente, centavo
+ * no tooltip"*; formatar na mão aqui traria os centavos de volta.
+ *
+ * ⛔ UM `<p>` pro número, com o TEXTO mudando — dois `<p>` em ramos exclusivos dariam 4 tags
+ * e o guard do *"máximo 3 parágrafos"* teria que ser afrouxado, parando de morder o
+ * parágrafo de volta, que é justamente o vermelho que ele existe pra dar.
+ */
+function CartaoSolido({ c }: { c: CartaoDeVendas }) {
+  const v = valorDoCartao(c.valor)
+  return (
+    <div className="rounded-xl p-3.5" style={{ background: `var(--fam-${c.familia}-solid)` }}>
+      <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: `var(--fam-${c.familia}-on-soft)` }}>
+        {c.rotulo}
+      </p>
+      <p
+        className={`mt-1 font-bold leading-none ${v ? 'text-[30px] tabular-nums' : 'text-[22px]'}`}
+        style={{ color: `var(--fam-${c.familia}-on)` }}
+        title={v ? `com os centavos: ${v.cheio}` : undefined}
+      >
+        {v ? v.curto : 'a apurar'}
+      </p>
+      {/*
+        3 · UMA sub. ⭐ O `delta` ACENDE SOZINHO quando o histórico existir — sem ele a linha
+        continua dizendo o recorte, nunca um "a apurar" ocupando espaço de graça.
+      */}
+      <p className="mt-1.5 text-[11px] leading-snug" style={{ color: `var(--fam-${c.familia}-on-soft)` }}>
+        {c.delta ?? c.sub}
+      </p>
+    </div>
+  )
+}
+
+/* ═══════════════════════════ O CALENDÁRIO MAPA DE CALOR ═══════════════════════════ */
+
+/**
+ * ⭐⭐ UMA CÉLULA POR DIA, SEMPRE — o bloco agrupado *"fim de semana 2–4"* MORREU.
+ *
+ * ⛔⛔ E o que sobrevive dele é a VERDADE que ele representava: quando o dia do fds não tem
+ * import, o número DELE não existe (o cartão liquida sex+sáb+dom junto e o banco não diz
+ * quanto é de cada). A célula aponta pro bloco em vez de mostrar um terço inventado.
+ */
+function Calendario({ d, empresaId }: { d: Payload; empresaId: string }) {
+  const dias = d.dias
+  if (dias.length === 0) return null
+
+  /** ⚠️ semana SEG→DOM, a do calendário brasileiro */
+  const off = (dt(dias[0].dia).getUTCDay() + 6) % 7
+  const celulas: (DiaDeVenda | null)[] = [...Array<null>(off).fill(null), ...dias]
+  const semanas: (DiaDeVenda | null)[][] = []
+  for (let i = 0; i < celulas.length; i += 7) semanas.push(celulas.slice(i, i + 7))
+
+  return (
+    <Cartao>
+      <CabecaDoCartao
+        titulo="O calendário do período"
+        dica="mais escuro = vendeu mais · ★ é o recorde · toque abre o dia"
+      />
+      <div className="px-[18px] pb-[6px]">
+        <div className="mb-[4px] grid grid-cols-7 gap-[4px]">
+          {['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'].map((x) => (
+            <p key={x} className="text-center text-[10.5px] font-semibold uppercase" style={{ color: 'var(--prod-muted)' }}>
+              {x}
+            </p>
+          ))}
+        </div>
+        {semanas.map((sem, i) => (
+          <div key={i} className="mb-[4px] grid grid-cols-7 gap-[4px]">
+            {sem.map((x, j) =>
+              x == null
+                ? <span key={`v${j}`} />
+                : <Celula key={x.dia} x={x} empresaId={empresaId} />,
+            )}
           </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function Legenda({ cls, txt }: { cls: string; txt: string }) {
-  return <span className="inline-flex items-center gap-1"><span className={`inline-block h-3 w-3 rounded border ${cls}`} /> {txt}</span>
-}
-
-// Calendário: semanas seg-dom. Fim de semana com bloco → card único (span 3).
-function Calendario({ data, onSel, sel }: { data: VendasData; onSel: (s: { tipo: 'dia' | 'bloco'; key: string } | null) => void; sel: { tipo: 'dia' | 'bloco'; key: string } | null }) {
-  const [ano, mes] = data.mes.split('-').map(Number)
-  const inicio = data.moduleInicio
-  const hoje = data.hoje
-  const diasNoMes = new Date(Date.UTC(ano, mes, 0)).getUTCDate()
-  const d1 = new Date(Date.UTC(ano, mes - 1, 1))
-  const offset = (d1.getUTCDay() + 6) % 7 // seg=0 — quantas células vazias antes do dia 1
-  const maxVenda = Math.max(1, ...Object.values(data.dias).map((v) => v.total))
-
-  // Mapa: 'YYYY-MM-DD' → bloco que o cobre (pro span do fim de semana).
-  const blocoDoDia: Record<string, Bloco> = {}
-  for (const b of data.blocos) {
-    let cur = parseDia(b.inicio)
-    const fim = parseDia(b.fim)
-    while (cur.getTime() <= fim.getTime()) { blocoDoDia[cur.toISOString().slice(0, 10)] = b; cur = new Date(cur.getTime() + 86400000) }
-  }
-
-  // Constrói a sequência de células (offset vazio + dias 1..N).
-  const celulas: (string | null)[] = [...Array(offset).fill(null), ...Array.from({ length: diasNoMes }, (_, i) => `${ano}-${String(mes).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`)]
-
-  const rows: (string | null)[][] = []
-  for (let i = 0; i < celulas.length; i += 7) rows.push(celulas.slice(i, i + 7))
-
-  return (
-    <div className="space-y-1.5">
-      <div className="grid grid-cols-7 gap-1.5 text-center text-[10px] uppercase tracking-wide text-muted-foreground">
-        {['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'].map((d) => <div key={d}>{d}</div>)}
+        ))}
       </div>
-      {rows.map((row, ri) => <SemanaRow key={ri} row={row} inicio={inicio} hoje={hoje} data={data} blocoDoDia={blocoDoDia} maxVenda={maxVenda} onSel={onSel} sel={sel} />)}
-    </div>
+
+      {/* ⭐ A COBERTURA numa linha miúda — é ela que explica o `~` sem gritar */}
+      <LinhaDaFonte d={d} />
+    </Cartao>
   )
 }
 
-function SemanaRow({ row, inicio, hoje, data, blocoDoDia, maxVenda, onSel, sel }: any) {
-  // Se as colunas sex/sáb/dom (índices 4,5,6) são cobertas por UM bloco, renderiza
-  // Mon-Thu + card único de fim de semana (span 3).
-  const sexKey = row[4], sabKey = row[5], domKey = row[6]
-  const bloco = sexKey && blocoDoDia[sexKey]
-  const blocoCobreFDS = bloco && sabKey && domKey && blocoDoDia[sabKey] === bloco && blocoDoDia[domKey] === bloco
+function Celula({ x, empresaId }: { x: DiaDeVenda; empresaId: string }) {
+  const n = Number(x.dia.slice(8, 10))
 
-  return (
-    <div className="grid grid-cols-7 gap-1.5">
-      {row.map((key: string | null, ci: number) => {
-        if (blocoCobreFDS && ci === 4) {
-          const selKey = `${bloco.inicio}|${bloco.fim}`
-          const on = sel?.tipo === 'bloco' && sel.key === selKey
-          const ag = fimDeSemanaAgg(data, bloco)
-          return (
-            <button key={ci} onClick={() => onSel(on ? null : { tipo: 'bloco', key: selKey })}
-              className={`col-span-3 rounded-md border border-sky-300 bg-sky-100 p-2 text-left transition-colors hover:bg-sky-200 ${on ? 'ring-1 ring-sky-500' : ''}`}>
-              <div className="text-[10px] text-sky-700">fim de semana {parseDia(bloco.inicio).getUTCDate()}–{parseDia(bloco.fim).getUTCDate()} · sex+sáb+dom</div>
-              <div className="text-[13px] font-semibold tabular-nums text-sky-800">~{brl(ag.total)}</div>
-            </button>
-          )
-        }
-        if (blocoCobreFDS && (ci === 5 || ci === 6)) return null // absorvido pelo span
-        return <DiaCel key={ci} dayKey={key} inicio={inicio} hoje={hoje} data={data} maxVenda={maxVenda} onSel={onSel} sel={sel} />
-      })}
-    </div>
-  )
-}
-
-function DiaCel({ dayKey, inicio, hoje, data, maxVenda, onSel, sel }: any) {
-  if (!dayKey) return <div />
-  const n = parseDia(dayKey).getUTCDate()
-  const venda: DiaVenda | undefined = data.dias[dayKey]
-  const preInicio = inicio && dayKey < inicio
-  const futuro = dayKey > hoje
-  const on = sel?.tipo === 'dia' && sel.key === dayKey
-
-  if (venda) {
-    const intensidade = Math.min(1, venda.total / maxVenda)
-    const bg = intensidade > 0.66 ? 'bg-sky-200' : intensidade > 0.33 ? 'bg-sky-100' : 'bg-sky-50'
+  // ⭐ dia que PEDE IMPORT: tracejado, clicável, levando à central
+  if (x.pedeImport) {
     return (
-      <button onClick={() => onSel(on ? null : { tipo: 'dia', key: dayKey })}
-        className={`rounded-md border border-sky-300 p-2 text-left transition-colors hover:bg-sky-200 ${bg} ${on ? 'ring-1 ring-sky-500' : ''}`}>
-        <div className="text-[10px] text-muted-foreground">{n}</div>
-        <div className="text-[13px] font-semibold tabular-nums text-sky-800">~{brl(venda.total)}</div>
-      </button>
+      <Link
+        href={`/empresas/${empresaId}/estoque/vendas?aba=processados#dia-${x.dia}`}
+        className="flex min-h-[54px] flex-col justify-between rounded-[8px] border border-dashed px-[5px] py-[4px] text-left"
+        style={{ borderColor: 'var(--fam-ambar-mid)', background: 'var(--fam-ambar-bg)' }}
+        title={`${DOW_CURTO[x.diaDaSemana]} ${ddmm(x.dia)} — sem import do PDV`}
+      >
+        <span className="text-[10.5px] font-semibold tabular-nums" style={{ color: 'var(--fam-ambar-ink)' }}>{n}</span>
+        <span className="text-[10px] font-semibold leading-tight" style={{ color: 'var(--fam-ambar-ink)' }}>
+          importar ⚠
+        </span>
+      </Link>
     )
   }
-  if (preInicio) return <div className="rounded-md border border-slate-200 bg-slate-50 p-2 opacity-50"><div className="text-[10px] text-slate-400">{n}</div></div>
-  if (!futuro && inicio && dayKey >= inicio) return <div className="rounded-md border border-dashed border-slate-200 p-2"><div className="text-[10px] text-slate-400">{n}</div><div className="text-[9px] text-slate-400">aguardando</div></div>
-  return <div className="rounded-md border border-transparent p-2"><div className="text-[10px] text-slate-300">{n}</div></div>
+
+  // ⭐ dia com número — PDV é liso, extrato leva `~`
+  if (x.total != null) {
+    const v = valorDoCartao(x.total)
+    /**
+     * ⚠️ A INTENSIDADE É DO PRÓPRIO RECORTE (escala relativa ao recorde), e o mínimo de 0,12
+     * existe pra o dia que vendeu pouco não desaparecer: célula invisível se lê como
+     * "não vendeu", que é outra coisa.
+     */
+    const alpha = 0.12 + x.calor * 0.88
+    return (
+      <Link
+        href={`/empresas/${empresaId}/estoque/vendas?aba=processados#dia-${x.dia}`}
+        className="flex min-h-[54px] flex-col justify-between rounded-[8px] px-[5px] py-[4px] text-left"
+        style={{
+          background: `color-mix(in srgb, var(--fam-indigo-solid) ${Math.round(alpha * 100)}%, var(--prod-surface-1))`,
+          outline: x.hoje ? '2px solid var(--fam-azul-mid)' : undefined,
+        }}
+        title={`${DOW_CURTO[x.diaDaSemana]} ${ddmm(x.dia)} · ${v?.cheio ?? ''}${x.unidades != null ? ` · ${x.unidades} un` : ''}`}
+      >
+        <span
+          className="flex items-center justify-between text-[10.5px] font-semibold tabular-nums"
+          style={{ color: alpha > 0.55 ? 'var(--fam-indigo-on)' : 'var(--prod-secondary)' }}
+        >
+          <span>{n}</span>
+          {x.recorde && <span aria-label="recorde do período">★</span>}
+        </span>
+        <span
+          className="text-[11px] font-bold leading-tight tabular-nums"
+          style={{ color: alpha > 0.55 ? 'var(--fam-indigo-on)' : 'var(--prod-primary)' }}
+        >
+          {x.estimado ? '~' : ''}{v?.curto ?? '—'}
+        </span>
+      </Link>
+    )
+  }
+
+  // ⚠️ dentro de um bloco do extrato e sem import: o número do DIA não existe
+  if (x.fonte === 'BLOCO') {
+    return (
+      <span
+        className="flex min-h-[54px] flex-col justify-between rounded-[8px] border px-[5px] py-[4px]"
+        style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}
+        title="o cartão liquidou sex+sáb+dom junto — sem o import do PDV não dá pra separar os dias"
+      >
+        <span className="text-[10.5px] font-semibold tabular-nums" style={{ color: 'var(--prod-muted)' }}>{n}</span>
+        <span className="text-[10px] leading-tight" style={{ color: 'var(--prod-muted)' }}>no bloco</span>
+      </span>
+    )
+  }
+
+  // futuro / antes do início do módulo
+  const futuro = x.fonte === 'FUTURO'
+  return (
+    <span
+      className="flex min-h-[54px] flex-col justify-between rounded-[8px] border px-[5px] py-[4px]"
+      style={{ borderColor: futuro ? 'transparent' : 'var(--prod-line)', background: 'transparent' }}
+    >
+      <span className="text-[10.5px] tabular-nums" style={{ color: 'var(--prod-muted)', opacity: futuro ? 0.5 : 1 }}>{n}</span>
+      {!futuro && <span className="text-[10px] leading-tight" style={{ color: 'var(--prod-muted)' }}>sem dado</span>}
+    </span>
+  )
+}
+
+/**
+ * ⭐⭐ A LINHA DA FONTE — a honestidade numa linha, com o ⓘ por TOQUE.
+ *
+ * ⛔⛔ `<details>`, NUNCA `title`: **tooltip não existe no celular**, e é lá que o dono opera
+ * (a cicatriz de 30/08). O que pode ir pro `title` é o que REPETE um número já visível (os
+ * centavos da célula) — a régua completa fica a um toque.
+ */
+function LinhaDaFonte({ d }: { d: Payload }) {
+  const c = d.cobertura
+  const partes = [`${c.comPdv} dia(s) do PDV`]
+  if (c.peloExtrato > 0) partes.push(`${c.peloExtrato} estimado(s) pelo extrato`)
+  if (c.pedemImport > 0) partes.push(`${c.pedemImport} sem import`)
+
+  return (
+    <details className="border-t px-[18px] py-[9px]" style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface-1)' }}>
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-[6px] text-[12px] tabular-nums" style={{ color: 'var(--prod-secondary)' }}>
+        <span>{partes.join(' · ')}</span>
+        <span className="font-semibold underline decoration-dotted" style={{ color: 'var(--fam-indigo-mid)' }}>
+          de onde vem o número ⓘ
+        </span>
+      </summary>
+      <div className="mt-[8px] space-y-[6px]">
+        <p className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
+          <b style={{ color: 'var(--prod-primary)' }}>o número liso:</b> veio do relatório do PDV que
+          você importou naquele dia — é o que foi vendido, dia por dia.
+        </p>
+        <p className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
+          <b style={{ color: 'var(--prod-primary)' }}>o número com ~:</b> veio do EXTRATO, pela regra de
+          recebimento (quando o dinheiro cai). Ele acerta o total do período, mas o cartão liquida
+          sex+sáb+dom junto — então nesses dias o valor de cada um não é separável sem o import.
+        </p>
+        <p className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
+          <b style={{ color: 'var(--prod-primary)' }}>a composição por meio</b> vem sempre do extrato: o
+          PDV diz o que foi vendido, não por onde o dinheiro entrou.
+        </p>
+        {d.moduleInicio && (
+          <p className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-muted)' }}>
+            antes de {ddmm(d.moduleInicio)} o sistema não tem dado de venda —{' '}
+            <b>não é loja fechada</b>, é ausência de registro.
+          </p>
+        )}
+      </div>
+    </details>
+  )
+}
+
+/* ═══════════════════════════ AS SEÇÕES DE BAIXO ═══════════════════════════ */
+
+/** ⭐ UMA barra — PIX · cartão · dinheiro, Σ = 100% por construção, pctBR com vírgula */
+function Meios({ meios }: { meios: FatiaDoMeio[] }) {
+  if (meios.length === 0) {
+    return (
+      <Cartao>
+        <CabecaDoCartao titulo="Como entrou o dinheiro" dica="do extrato" />
+        <p className="px-[18px] pb-[14px] text-[12px]" style={{ color: 'var(--prod-muted)' }}>
+          nenhuma entrada no período
+        </p>
+      </Cartao>
+    )
+  }
+  return (
+    <Cartao>
+      <CabecaDoCartao titulo="Como entrou o dinheiro" dica="do extrato · o PDV não diz o meio" />
+      <div
+        className="mx-[18px] flex h-[16px] overflow-hidden rounded-full border"
+        style={{ borderColor: 'var(--prod-line)' }}
+        role="img"
+        aria-label={meios.map((m) => `${MEIO_ROTULO[m.meio] ?? m.meio} ${m.rotulo}`).join(', ')}
+      >
+        {meios.map((m) => (
+          <div
+            key={m.meio}
+            style={{ width: `${m.pct * 100}%`, background: `var(--fam-${MEIO_FAMILIA[m.meio] ?? 'ambar'}-mid)` }}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-[10px] px-[18px] pb-[14px] pt-[6px] text-[11.5px]">
+        {meios.map((m) => (
+          <span key={m.meio} className="flex items-center gap-[4px] tabular-nums">
+            <span className="h-[8px] w-[8px] rounded-full" style={{ background: `var(--fam-${MEIO_FAMILIA[m.meio] ?? 'ambar'}-mid)` }} />
+            <b style={{ color: 'var(--prod-primary)' }}>{m.rotulo}</b>
+            <span style={{ color: 'var(--prod-secondary)' }}>{MEIO_ROTULO[m.meio] ?? m.meio}</span>
+          </span>
+        ))}
+      </div>
+    </Cartao>
+  )
+}
+
+/** ⭐ O DIA TÍPICO — barras horizontais; "a apurar" honesto abaixo de 2 semanas de amostra */
+function DiaTipico({ barras }: { barras: BarraDoDiaTipico[] }) {
+  return (
+    <Cartao>
+      <CabecaDoCartao titulo="O dia típico" dica={`média por dia da semana · mínimo ${MIN_AMOSTRAS_DO_DIA} semanas`} />
+      <div className="space-y-[7px] px-[18px] pb-[14px]">
+        {barras.map((b) => {
+          const v = valorDoCartao(b.media)
+          return (
+            <div key={b.rotulo} className="flex items-center gap-[8px]">
+              <span className="w-[86px] shrink-0 text-[12px]" style={{ color: 'var(--prod-secondary)' }}>{b.rotulo}</span>
+              <span className="h-[12px] flex-1 overflow-hidden rounded-full" style={{ background: 'var(--prod-surface-1)' }}>
+                {v && <span className="block h-full rounded-full" style={{ width: `${Math.max(2, b.fracao * 100)}%`, background: 'var(--fam-indigo-mid)' }} />}
+              </span>
+              <span
+                className="w-[104px] shrink-0 text-right text-[12px] font-semibold tabular-nums"
+                style={{ color: v ? 'var(--prod-primary)' : 'var(--prod-muted)' }}
+                title={v ? `com os centavos: ${v.cheio}` : undefined}
+              >
+                {v ? v.curto : 'a apurar'}
+              </span>
+            </div>
+          )
+        })}
+        {/* ⚠️ a amostra é DITA — média de 1 semana não é média, e esconder isso seria pior */}
+        <p className="pt-[2px] text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+          {barras.map((b) => `${b.rotulo}: ${b.amostras}`).join(' · ')} ·{' '}
+          {barras.some((b) => b.media == null)
+            ? 'os "a apurar" esperam mais semanas de histórico'
+            : 'histórico suficiente em todos'}
+        </p>
+      </div>
+    </Cartao>
+  )
+}
+
+/* ═══════════════════════════ CASCA ═══════════════════════════ */
+
+function Cartao({ children }: { children: React.ReactNode }) {
+  return (
+    <section
+      className="mb-[12px] overflow-hidden rounded-[16px] border"
+      style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}
+    >
+      {children}
+    </section>
+  )
+}
+
+function CabecaDoCartao({ titulo, dica }: { titulo: string; dica?: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-[8px] px-[18px] pb-[8px] pt-[14px]">
+      <h2 className="text-[15px] font-semibold" style={{ color: 'var(--prod-primary)' }}>{titulo}</h2>
+      {dica && <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>{dica}</span>}
+    </div>
+  )
+}
+
+/** ⭐ a dupla lado a lado em ≥1024px — o molde da casa (a lei de layout de 08/10) */
+function Duo({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-[14px] lg:[&>section]:mb-0">
+      {children}
+    </div>
+  )
+}
+
+function Chip({ on, onClick, children, rotulo }: {
+  on: boolean
+  onClick: () => void
+  children: React.ReactNode
+  rotulo?: string
+}) {
+  return (
+    <button
+      type="button" onClick={onClick} aria-label={rotulo}
+      className="rounded-full px-[12px] py-[5px] text-[12.5px] font-medium"
+      style={on
+        ? { background: 'var(--fam-indigo-mid)', color: 'var(--prod-acao-ink)' }
+        : { background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}
+    >
+      {children}
+    </button>
+  )
 }

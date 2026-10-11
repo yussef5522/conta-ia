@@ -18,6 +18,20 @@ export function mesCorrente(now: Date = new Date()): string {
   return `${br.getUTCFullYear()}-${String(br.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
+/**
+ * ⭐ O DIA do Brasil como `YYYY-MM-DD` — irmão do `mesCorrente`, e pelo MESMO motivo: o
+ * servidor roda em UTC, e às 21h de São Paulo o `new Date().toISOString()` já diz amanhã.
+ *
+ * ⚠️ Mudou de casa em 10/10 (`lib/margem/janela.ts` → aqui) quando a tela de Vendas precisou
+ * da mesma pergunta: *"que dia é hoje pra quem olha?"* é do PROJETO, não da margem — e a 2ª
+ * cópia nasceria no primeiro módulo que precisasse dela sem saber que ela já existia (foi o
+ * que aconteceu com o `pctBR`). `lib/margem/janela.ts` REEXPORTA, então os chamadores de lá
+ * seguem funcionando sem saber que ela mudou de lugar.
+ */
+export function hojeBrasil(agora: Date = new Date()): string {
+  return new Date(agora.getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
 export interface JanelaDoMes {
   /** `YYYY-MM` */
   mes: string

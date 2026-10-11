@@ -1,3 +1,18 @@
+// ⚠️⚠️ SEM CHAMADOR DESDE O VENDAS v4 (10/10) — CAPACIDADE GUARDADA, NÃO É LIXO.
+//
+// O v4 matou o modelo que isto agrega: aqui a unidade de exibição é o BLOCO de fim de
+// semana JÁ AGREGADO (`Unidade.isBloco`), e no v4 **cada dia é célula própria** — o bloco
+// agrupado foi o vermelho nº 2 do pedido do dono. Ou seja: não há mais quem produza
+// `Unidade[]`, e religar isto exigiria ressuscitar o agrupado.
+//
+// ⛔ E NÃO FOI APAGADO POR UMA RAZÃO MEDIDA: o teste dele trava **números REAIS de agosto
+// que não estão travados em lugar nenhum** — o bloco de borda 31/07–02/08 (R$ 58.852,69) e
+// os dias de 03 a 11/08. O golden de agosto trava só os três dias que o dono conferiu
+// (12/08, 13/08 e o fds 14–16). Apagar perderia cobertura de dinheiro conferido.
+//
+// ⭐ FECHA QUANDO: os números do mês forem realocados num teste do v4 (`montarCartoes`
+// sobre o agosto real). Ver a pendência nomeada no relatório/CLAUDE.md.
+
 // VENDAS — agregados de PERÍODO da tela (25/08).
 //
 // ⚠️ EXTRAÍDOS da própria página no passe visual, com o código IDÊNTICO ao que já

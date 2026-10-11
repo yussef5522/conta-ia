@@ -40,17 +40,21 @@ const DIA = 86400_000
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 const ddmm = (s: string) => `${s.slice(8, 10)}/${s.slice(5, 7)}`
 
-/** o dia do Brasil como YYYY-MM-DD */
-export function hojeBrasil(agora: Date): string {
-  return iso(new Date(agora.getTime() - 3 * 3600_000))
-}
+/**
+ * ⚠️ `hojeBrasil` MUDOU DE CASA em 10/10 (pra `lib/periodo/mes-corrente.ts`, junto do
+ * `mesCorrente`) e é REEXPORTADA daqui: a pergunta *"que dia é hoje pra quem olha?"* é do
+ * PROJETO, e a tela de Vendas precisou dela no mesmo dia. Os importadores de sempre seguem
+ * funcionando (o padrão do `pctBR` e do `pontoDeEquilibrio`).
+ */
+export { hojeBrasil } from '@/lib/periodo/mes-corrente'
+import { hojeBrasil as hojeBr } from '@/lib/periodo/mes-corrente'
 
 export function janelaDaMargem(
   periodo: PeriodoDaMargem,
   agora: Date,
   datas?: { de?: string | null; ate?: string | null },
 ): JanelaDaMargem {
-  const hoje = hojeBrasil(agora)
+  const hoje = hojeBr(agora)
 
   let de = hoje
   let ate = hoje
