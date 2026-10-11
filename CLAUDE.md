@@ -2779,6 +2779,142 @@ VendaDiaria 194 · movimentos 7.190 · linhas 2.936 · comp 2.874 · arquivos 4 
 2. ⚠️ **O caso "dia sem extrato inflando o a caminho" NÃO dispara com o dado de hoje** — o extrato vai até **10/10** e os 9 dias com PDV são 01→09/10, então todos têm extrato. O que dispara hoje é a **ressalva do extrato atrasado** no recorte do mês (*"está em 10/10"*), que é a mesma régua de honestidade. O caso estrito acende sozinho no 1º dia com PDV depois do corte do extrato.
 3. ⚠️ **A diferença entre as duas réguas de recebido é R$ 14.416,92** (competência 144.196,87 × caixa 158.613,79). A faixa usa competência, e o ⓘ explica. Se um dia ele quiser ver o caixa do período, é tela nova — **nunca o mesmo número com duas contas**.
 
+## 🔧 A PERGUNTA ÚNICA DO PEDIDO — UMA VEZ, DEPOIS DE CRIAR (11/10/2026)
+
+**Defeito do dono:** *"a quantidade é perguntada 2× — na criação E depois de criar — e números diferentes deixam o 1º assombrando a tela. Decisão: pergunta UMA vez, no lugar certo = DEPOIS de criar, onde dá pra ver a prateleira."*
+
+### ⛔⛔⛔ O RETRATO (item 0) — NÃO ERAM 2 WRITERS: ERAM 2 LUGARES DE PERGUNTA E O 2º NÃO ESCREVIA
+
+A criação gravava `escalaReceitas` **e** `stock_ordem_meta` (um writer só, em `criarOrdem`). O campo *"Quero fazer"* da página da ordem **só mexia em `useState`**: ele recalculava a separação linha a linha e **nunca regravava nem a meta nem a escala**. Medido no código: digitar 20 ali fazia a cozinha separar material pra 20 enquanto **o cabeçalho, a home, a lista e os relatórios seguiam imprimindo 30** — todos leem o pedido/escala do BANCO.
+
+⚠️ ***O fantasma não era dado divergente: era a 2ª pergunta sem escrita.*** E a pergunta *"por que o número antigo fica aparecendo"* tem resposta exata: ele nunca saiu de lá.
+
+**⚠️⚠️ E UMA DIVERGÊNCIA DE MATERIAL MEDIDA EM PROD NÃO É ATRIBUÍVEL A ELE:** 10 de 120 ordens têm escala-material ≠ escala-gravada acima de 10%. Ajustar a linha pelo que REALMENTE saiu da câmara é comportamento **legítimo e desenhado**. *Achado não atribuível não é achado* — e a 1ª medição desta sondagem dizia **36 de 120** porque eu cravei `versao: 1` em vez do `versaoFicha` que a ordem snapshotou, comparando material com a dose de OUTRA receita.
+
+**⛔ E A RÉGUA DA SEPARAÇÃO NÃO MUDOU NESTE SPRINT (ela só ficou visível ANTES):** falta de insumo **não bloqueia** — a separação grava o movimento negativo; o único guard que barra é o `assertSaldoNaoFicaImpossivel` (dinheiro negativo com saldo positivo). Medido: **7 itens negativos em prod hoje**.
+
+### ⭐⭐ PASSO 1 — CRIAR ENXUTO (receita + data + setor)
+
+O campo de quantidade **e o do retalho MORRERAM da criação**, e criar leva **direto pra página da ordem** (PLANEJADA, ainda sem pedido).
+
+⚠️ **`escalaReceitas` continua OPCIONAL em `criarOrdem`, de propósito:** a sugestão de mín/máx calcula uma escala e **não "pede" nada** (`origem: 'SUGESTAO'`). Exigir a meta ali quebraria a sugestão e o tablet. **O que não pode é a ausência virar um pedido inventado.**
+
+### ⭐⭐⭐ `AGUARDANDO` — A ORIGEM NOVA, E ELA EXISTE POR UM NÚMERO MEDIDO
+
+A ordem nova nasce com **`escalaReceitas = 1`** (o DEFAULT do banco, porque a coluna é `NOT NULL` com `CHECK > 0` — ***"sem pedido" não é representável nela***). Se o DERIVADO mandasse, a tela imprimiria **"pedido 1 lote"** — um número que ninguém pediu, na tela em que o dono ainda vai dizer quanto quer.
+
+⛔ **A ordem das regras importa: `AGUARDANDO` vem ANTES do `DERIVADO`.** E `estado` virou **campo OBRIGATÓRIO** de `EntradaDoPedido`/`OrdemPraContexto` — foi o `tsc` que achou **todos** os chamadores (a REGRA 4 de graça, em vez de grep).
+
+⚠️ **E a troca é segura hoje porque foi MEDIDA: 0 ordens abertas em prod** — nenhuma ordem antiga muda de leitura, e as 471 antigas (encerradas) seguem no DERIVADO, **marcado como tal**.
+
+### ⭐⭐ PASSO 2 — A PERGUNTA NA PÁGINA DA ORDEM
+
+Campo de **24px tabular que nasce vazio** (mesmo na correção — *número pré-preenchido vira número confirmado sem ninguém conferir*, a régua de 05/10) + **TABELA AO VIVO** recalculando a cada dígito: INSUMO · VAI TIRAR · NA PRATELEIRA · veredito curto.
+
+- ⛔⛔ **O "VAI TIRAR" SAI DA PORTA DA SEPARAÇÃO** (`tabelaDaPergunta` → `listaDoQueVaiSeparar` → `insumoDoPedido`), **nunca de uma 2ª derivação**: multiplicar `dose × pedido` na tela faria ela prometer um material e a ordem separar outro — *e o dono descobriria com a carne na mão*. Guard proíbe `porLote *` e `/ loteBase` no bloco da tabela.
+- ⛔ **FALTA NÃO BLOQUEIA**, e o `disabled` do botão prova: ele olha **o NÚMERO**, nunca `faltando`. A linha fica **pintada de coral** e a tela diz que a separação registra o que sair e o saldo fica negativo até a compra entrar.
+- ⚠️ **`semNumero` faz a tabela renderizar APAGADA, nunca uma tabela de zeros** — *"vai tirar 0 KG"* antes de o dono digitar é a mesma mentira do *"pedido 0"*.
+- ⚠️ **`saldo a apurar` é estado PRÓPRIO:** sem o saldo não dá pra dizer que dá **nem** que falta, e `faltam` só existe quando o saldo é CONHECIDO.
+- **O RETALHO vem AQUI, junto do número** (saiu da criação), com a frase curta *"vai sair ~246 UN no total"* e o lembrete *"da última vez: X kg"* — que serve pra reconhecer grandeza absurda, **nunca pra poupar a pesagem**.
+- **Os AVISOS DO ATO mudaram de tela COM o número** (`avisosDaEscala`), **incluindo o atalho do `LOTE_NAO_COMPARAVEL`** — *o aviso vive onde o número é digitado*; deixá-lo na criação o tornaria inalcançável.
+
+### ⭐⭐⭐ O WRITER ÚNICO — `confirmarPedido`
+
+**Grava a meta, o rastro e a escala na MESMA transação.** ⛔ *"O pedido desta ordem"* vive em **DUAS colunas** (`stock_ordem_meta.unidades`, em unidades do produto, e `stock_production_order.escalaReceitas`, o múltiplo do lote base que a SEPARAÇÃO lê) — a mesma informação em duas réguas. Gravar uma e não a outra faria o cabeçalho dizer 20 e a separação pré-preencher material pra 30: **o fantasma de volta, por dentro.**
+
+- ⛔ **A escala sai da PORTA ÚNICA** (`escalaDoPedido`), nunca de `pedido / loteBase` escrito ali.
+- ⛔⛔ **A config do retalho é conferida ANTES de qualquer escrita** — é a ordem que a prova em prod de 09/10 cobrou (a 1ª versão checava DEPOIS do `create` e **a ordem ficava gravada** com a rota devolvendo 422). Aqui a ordem **existe legitimamente** (nasceu de um gesto próprio); o que não pode ficar pela metade é **o PEDIDO**.
+- ⚠️ **Corrigir pra "não tem" APAGA o retalho anterior** (`retalhoKg: null`) — deixar o kg velho faria o fiscal seguir dando um bônus que o dono acabou de retirar.
+- ⚠️ **Não aninha `$transaction`** (`if ('$transaction' in db)`) — Prisma não aninha, a cirurgia do `aplicar-marcacao` de 29/08.
+
+**A CORREÇÃO ATÉ SEPARAR, pela MESMA tela:** reabre o **mesmo componente** da pergunta (não existe um 2º campo — era o 2º lugar de perguntar que criou o fantasma). ⛔⛔ **Depois de SEPARADA, não** — e a recusa **nomeia a saída**: *"cancele a ordem (o material volta pra prateleira) e crie outra"*. Mudar o número ali deixaria o material que já saiu da câmara obedecendo a um pedido que não existe mais.
+
+**⭐ O RASTRO EM TABELA PRÓPRIA** (`stock_ordem_pedido_declarado`, CREATE-only, append-only): ALTER é **proibido** em migration de estoque, **e seria errado por conteúdo** — a meta guarda o valor de HOJE e tem `criadoEm DEFAULT now()` (não `@updatedAt`), então um upsert de correção deixaria o *"quem · quando"* apontando pra a **PRIMEIRA** declaração (a cicatriz medida do `stock_venda_import`, 08/10). ⚠️ **SEM índice único de propósito:** duas linhas da mesma ordem é o caso **NORMAL** — unique aqui mataria justamente a correção que o dono pediu.
+
+### ⛔⛔ PASSO 3 — O FANTASMA MORREU
+
+O componente **`Secao` foi APAGADO, não desligado**: ele tinha **zero chamadores** e era o último lugar que imprimia o número cru da criação — *enquanto o componente existe no arquivo, alguém religa* (a lição do `GruposSugeridos`, 23/09). A lista passou a distinguir **"pedido a definir →"** (AGUARDANDO) de **"sem pedido"** (legado), e o `pedidoDasOrdens` resolve o pedido de TODAS as listadas por **1 consulta em lote**.
+
+**⭐ E O ESPELHO DA SEPARAÇÃO FOI REALOCADO, não removido** (*remoção sem realocação é perda*): o *"Com isso deve sair ~N"* desceu pro rodapé do cartão de insumos. ⚠️ **São duas perguntas, não duas contas** — na pergunta do pedido o dono diz as unidades e a tela mostra o material; aqui ele ajusta o material (o que REALMENTE tirou da câmara) e a tela mostra quantas unidades aquilo dá.
+
+### ⚠️⚠️ REGRA 11 — 7 DEFEITOS REPOSTOS, E DOIS VIERAM VERDES **POR CULPA DA SONDA**
+
+| defeito reposto | vermelhos |
+|---|---|
+| **campo de quantidade de volta na CRIAÇÃO** | **1** |
+| **2º campo editável de pedido na página da ordem** | **1** |
+| **meta com 2 writers** (o `criarOrdem` volta a gravar) | **6** |
+| **"vai tirar" calculado FORA da porta da separação** | **1** |
+| a ordem NOVA voltando ao DERIVADO (o *"pedido 1"*) | **2** |
+| a correção DEPOIS de separada sendo aceita | **1** |
+| o retalho conferido DEPOIS da escrita (estado pela metade) | **1** |
+
+⛔⛔ **Os dois verdes NÃO foram cegueira de guard — foi sonda errada, nas duas formas que esta casa já pagou:** (a) a âncora do `AGUARDANDO` estava escrita com `return` na mesma linha e o `replace` **não aplicou em silêncio** (agora com `assert`, como a cicatriz do `perl` de 09/10); (b) o teste do retalho **não estava na lista de arquivos** da rodada. ***Reposição que não reproduz o defeito é um verde de graça***, e sonda que não acusa a própria falha de aplicação é pior.
+
+### ⛔⛔ E O GUARD `ordem-tem-casa` PEGOU UMA REGRESSÃO MINHA, DO MESMO SPRINT
+
+Ao reescrever o zod da criação com `.strict()` eu devolvi **`dataProducao: z.string().min(1)`** — **a porta exata do ano 202** (19/09), em que `"0202-09-18"` entrou, a ordem foi pro fim da lista ordenada e **sumiu de todas as telas** com R$ 42,18 de insumo preso. Restaurado o regex de formato, com o motivo escrito na rota. ⭐ *Guard de sprint antigo pagando o aluguel no sprint novo.*
+
+**⚠️ 4 GUARDS REAPONTADOS COM O MOTIVO ESCRITO, nenhum afrouxado — e dois ganharam OS DOIS LADOS:** a pergunta do retalho e o aviso da escala **mudaram de casa**, e agora os guards exigem que eles **existam na ordem E tenham saído da criação** (*guard que só afirma a remoção aprovaria o dia em que eles sumissem de todo lugar; guard que só afirma a presença aprovaria a pergunta duplicada*). ⚠️ E o do *"deve sair"* virou **ESTRUTURAL** (o gate imediatamente antes do bloco) em vez de casar o literal `{planejada && (` — *literal quebra no primeiro refactor legítimo*.
+
+### ⚠️ REGRA 13 — OS 3 CHECKS PROVADOS CONTRA POSTGRES
+
+`scripts/prova-check-pedido-declarado.ts`: **6 de 6 INSERTs tortos recusados pela constraint certa** (pedido zero · negativo · companyId vazio/só-espaço · ordemId vazio/só-espaço) · **4 de 4 legítimos aceitos**, incluindo ⭐ **DUAS declarações da MESMA ordem** (o estado normal depois de uma correção) e autor `NULL` · **zero escrita líquida**.
+
+⭐ **E a REDE 3 mede a lição no próprio banco em vez de eu afirmar:** a forma INGÊNUA sobre NULL devolve **`NULL → o CHECK PASSARIA`**; a nossa devolve **`false → RECUSA`**. As duas chaves do CHECK de forma são `is_nullable = NO`, e o script **acusa** se alguma virar nullable — *"é NOT NULL" é exatamente o tipo de premissa que envelhece quando alguém mexe no schema*.
+
+### PROVADO EM PROD, NAVEGANDO (zero escrita líquida)
+
+```
+1. CRIAR ENXUTO   POST /ordens {fichaId, dataProducao} → 200
+   "beef de xis" · PLANEJADA · escala 1
+   ⭐ pedido: {unidades: null, origem: AGUARDANDO, "a ordem abre na pergunta — diga
+      quantas unidades produzir"}            ⛔ nunca "pedido 1"
+
+2. 30 → 20        POST pedido 30 → 200 {unidades:30, escala:30, corrigiu:false}
+                  POST pedido 20 → 200 {unidades:20, escala:20, corrigiu:true}
+
+3. SÓ O 20 EXISTE — 7 de 7, campo por campo
+   ✓ página da ordem  pedido 20 · DECLARADO
+   ✓ lista/home       pedidoDasOrdens 20 · a ordem está na lista
+   ✓ banco            1 meta · unidades 20 · escalaReceitas 20 (o que a separação lê)
+   ⭐ e o 30 VIVE no RASTRO, que é onde ele deve viver:
+      "corrigido pra 20 por Yussef" · "pedido 30 por Yussef"
+   ⭐ lotes da janela com pedido DECLARADO: 100 de 501 (o leitor de 13/09 tem número)
+
+4. A TABELA AO VIVO
+   vazio    semNumero · botão "Diga quantas unidades" · tabela APAGADA, sem zeros
+   20       Acém 1,82 KG / 117,93 → dá ✓ · Peito 0,88 / 69,03 → dá ✓ · Gordura 0,4 / 2,95 → dá ✓
+   100000   Acém 9.100 KG → faltam 8.982,07 [VERMELHO] · Peito → faltam 4.330,97 · Gordura → 1.997,05
+
+5. FALTA NÃO BLOQUEIA   POST pedido 100000 → 200 · movimentos criados: 0
+
+6. O RETALHO NO LUGAR NOVO
+   "metade de bolinha massa de pizza" → retalho no payload da ORDEM:
+      {aceita:true, pesoUnidadeG:200, ultimoKg:20.1}
+   frase: "vai sair ~246 UN no total"   ·   POST 200 + 9,2 kg → 200 · linha gravada 9,2 kg
+   ⛔ retalho em receita NÃO marcada → 422, e NADA do pedido gravado
+
+7. DEPOIS DE SEPARADA   POST pedido 7 → 422 "cancele a ordem (o material volta pra
+   prateleira) e crie outra" · a meta continua 20
+
+REGRA 12 — o chunk DESTA tela (38 KB), nos DOIS viewports:
+   celular 200/62ms · desktop 200/109ms · 15/15 peças nos dois
+   ⛔ "Quero fazer": 0 · hex cravado: 0 · composição só-celular: 0
+   ✓ os 14 tokens nos DOIS mapas do CSS servido (2.591 regras recortadas)
+
+ordens 578→578 · metas 104→104 · rastros 0→0 · movimentos 7.407→7.407 · conclusões 503→503
+⭐ ZERO ESCRITA LÍQUIDA
+```
+
+**⚠️⚠️ E A PROVA ERROU DUAS VEZES ANTES DE EU MEDIR CERTO — as duas cicatrizes conhecidas:** (a) procurei o rótulo `Confirmar pedido ·` e **o minificador escapa o `·` como `\xb7`** (a cicatriz do `Sa\xeddas:` de 15/09) — ⛔ numa tela CERTA; (b) a 1ª contagem de hex somou **os 989 KB de TODOS os chunks da página**, incluindo o shell do dashboard, e acusou **25 hex** sobre código que **não é desta tela** — ***achado não atribuível não é achado*** (a lição de 06/10). O chunk desta tela tem **ZERO**. ⚠️ E a 1ª medição do *"só o 20"* procurou a **substring "30"** num JSON inteiro: ela casa com id, timestamp e `prateleira 69.03` — **e o rastro contém o 30 de propósito**. A pergunta certa é *"o 30 aparece como O PEDIDO?"*, medida campo por campo.
+
+**951 arquivos · 12.646 verdes · TS 0 · migration CREATE-only (1 CREATE TABLE, 3 CHECKs, 1 índice) · `pg_dump pre-pergunta-do-pedido-20261011-181540.dump` (8.912.443 bytes, tamanho conferido) · deploy 4/4 (`QbGkkcT3DvJI3kTFwyh2r`) · Δ chunks −4 KB.**
+
+📋 **FICA PRO DONO (o clique é dele, REGRA 2):** criar uma ordem, digitar 30, trocar pra 20, confirmar — e conferir no celular e no notebook, nos dois temas, que **só o 20** aparece e que o rastro mostra os dois. A prova mede o que prod serve (as 15 peças, os 14 tokens nos dois mapas, zero hex no chunk), mas **o olho é dele**; screenshot segue indisponível (extensão do Chrome desligada).
+
+📋 **ACHADO NO CAMINHO, NÃO ATACADO:** o juiz do estoque tem **1 achado M2 NOVO** — a `MAIONESE` do lote de **10/10** com o `sal` em **ficha 0,0005 KG × efetiva 0,001 KG (+100%)**. É a classe do **meio grama** que o sprint do campo decimal (29/09) tornou digitável, e o M2 fazendo o trabalho dele. ⚠️ **Não é do meu sprint** (a conclusão é de 10/10 19:11, e a prova criou 0 conclusões). Os outros são os débitos já registrados: V1 123 · E7 97 · P6 94 · P8 59 · P3 59 · M1 53 · M5 37 · F2 26 · E15 10 · P5 3 · **P1 2** (14/09 e 30/09) · M3 1.
+
 ## 💰 CMV NA CASA — O PLACAR VIROU A CASCATA DO MÊS (10/10/2026)
 
 **Ordem escrita do dono:** *"A CASCATA substitui o placar atual (é ele crescido): 5 cartões em linha — VENDEU · − CMV (INSUMOS) · = SOBRA · − A CASA · = LUCRO"*. **ZERO conta nova:** o CMV por consumo é a **MESMA soma de custos que já produz a sobra**.
