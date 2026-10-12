@@ -3031,6 +3031,41 @@ CELULAR 200 em 382ms · DESKTOP 200 em 50ms · chunk DESTA tela 24 KB
 
 📋 **FICA PRO DONO (o clique é dele, REGRA 2):** abrir a lista no celular e no notebook, **nos dois temas**, e **marcar as dele** — o bloco de cima nasce com o convite, de propósito, porque a escolha é dele. Digitar `calab`, `porcao`, `xxxx` e clicar os 3 chips. ⚠️ Screenshot segue indisponível (extensão do Chrome desligada): a prova mede o que prod serve (as 15 peças, os 4 tokens nos dois mapas, zero hex), **o olho é dele**.
 
+### ⭐ AJUSTE DO MESMO DIA — OS 2 BLOCOS VIRARAM EXCLUSIVOS (12/10)
+
+**O dono usou a tela e decidiu:** *"na hora de clica em estrella receita sai de tudo as receitas e ir para PRINCIPAIS e nao fica no as 2 dai na hora de clica no estrela de novo ela volta aprace no tudos"*.
+
+**⚠️⚠️ ISTO SUBSTITUI A DECISÃO DE MANHÃ** (o bloco de baixo continha TODAS). Eu tinha registrado as duas saídas como defensáveis e escolhido a inclusiva **pelo argumento do rótulo honesto** — e é a MESMA régua que obriga o passo seguinte: com as marcadas fora, *"Todas as receitas"* viraria mentira, então o bloco de baixo passa a se chamar **"outras receitas"**. ⭐ *A régua não mudou de lado; ela trocou de consequência quando o conteúdo do bloco mudou.*
+
+**⭐ E A DIVISÃO É UMA PARTIÇÃO, não dois filtros soltos:** `principal` é booleano, então `principais + outras == o universo` **por construção** — nenhuma receita se perde no meio nem conta duas vezes (teste varre 0, 1, 2 e TODAS estreladas). ⚠️ Bloco de baixo vazio (tudo estrelado) **DIZ o que houve** (*"todas as receitas estão fixadas aqui em cima"*): vazio mudo se lê como defeito de render.
+
+⛔ **ZERO banco, zero porta nova** — só a lib pura e o rótulo. `marcarReceitaPrincipal` intocada, chips intocados (`todas · 44` segue o universo do recorte da busca), e o modo RECORTE (busca/chip ativo) segue sendo uma lista única.
+
+**⭐ GUARD NOVO, do lado do render:** a tela **não pode cravar nenhum dos dois rótulos** — ela desenha `{b.titulo}`. Rótulo cravado faria a régua renomear e a tela continuar prometendo o que não entrega (o rótulo honesto de 13/09, agora valendo pro render).
+
+**REGRA 11 — 5 vermelhos ANTES do fix** (os 4 do pedido + o vai-e-vem), e os 3 defeitos repostos depois mordem: o bloco de baixo voltando a conter todas (**5**) · o rótulo voltando a *"Todas as receitas"* com bloco exclusivo (**1**) · o rótulo cravado na tela (**1**).
+
+**PROVADO EM PROD com as 19 que ELE marcou, nos 2 viewports:**
+```
+«Principais» 19   beef aparmegiana · beef de hamburger · beef de xis · Hamburger de frango ·
+                  metade de bolinha · porcao bacon · PORÇAO CALABRESA 85g · porçao calabresa
+                  ralada · porcao chuleta · porcao coax prato · porcao coxao · porcao de
+                  calabresa · porcao file para xis · porcao file prato · porcao file xis ·
+                  porcao frango · porçao frango frito · porcao iscas de frango · porçao queijo
+«outras receitas» 25   ABRIR ERVILHA | ABRIR MILHO | Aneis de cebola hamburguer | …
+
+⛔ 19 + 25 = 44 · a casa tem 44 → ⭐ FECHA     ⛔ receita nos DOIS blocos: NENHUMA
+⭐ alfabético pt-BR nos dois blocos · chips [todas · 44] [⭐ 19] [⚠ 4]
+
+A TROCA DE BLOCO («ABRIR ERVILHA», autorizada e devolvida):
+  marca   → Principais 20 · outras 24 · em cima SIM · embaixo não · soma 44
+  desmarca → Principais 19 · outras 25 · em cima não · embaixo SIM · soma 44
+  linhas na tabela 19 → 19 ⭐ como encontrou · versões 334 · movimentos 7.600 (intocados)
+```
+⚠️ **E uma sonda minha mediu a coisa errada:** procurei `"outras receitas"` **no BUNDLE** e ela aparece — mas isso é o certo, porque o chunk junta a TELA com a LIB, e o rótulo vive na lib. Quem distingue é o guard, que lê o **fonte da página**. ⭐ O que o bundle prova de útil é o outro lado: *"Todas as receitas"* **não existe mais em lugar nenhum**.
+
+**955 arquivos · 12.729 verdes · TS 0 · migration NENHUMA · deploy 4/4 (`-VpuCBbIAmKt0cBec9ev6`) · Δ chunks +4 KB.**
+
 ## 🚪 LOTE KG→UN — O SISTEMA RESOLVE SOZINHO, A FICHA É A CASA DO NÚMERO (11/10/2026)
 
 **Ordem do dono:** *"como os líderes — o rendimento se declara UMA vez, na ficha; nunca se pergunta de novo na ordem."* **M5: 37 → 1.**
