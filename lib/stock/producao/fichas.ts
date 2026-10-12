@@ -13,6 +13,7 @@ import { calcularCustoTeorico, calcularMargem, type ComponenteCusto } from './cu
 import { custoMedioPorItem } from '../saldo'
 import { normalizarBusca } from '@/lib/busca-texto'
 import { rendimentoMedidoDeFichas } from './conclusao'
+import { avaliarCoerenciaDoLote, avaliarCoerenciaDoRotulo, fichaDeclaraRendimento } from './coerencia-do-lote'
 
 type Db = PrismaClient | Prisma.TransactionClient
 import { planoDeAgrupamento, aplicarAgrupamento } from '@/lib/stock/vendas/aplicar-agrupamento'
@@ -109,6 +110,44 @@ export async function buildGrafoFichas(companyId: string, db: Db, exceptFichaId?
 export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defaultPrisma): Promise<{ fichaId: string; itemProduzidoId: string; vinculadoAoPdv: boolean }> {
   if (!input.componentes.length) throw new FichaError('A ficha precisa de ao menos um componente.')
   if (!ehTipoDeFicha(input.tipoProduto)) throw new FichaError('Tipo de produto inválido.')
+
+  /**
+   * ⛔⛔⛔ A PORTA DO RENDIMENTO (11/10) — *"nascer incoerente vira impossível"*.
+   *
+   * Ficha que a cozinha PRODUZ por ordem tem que declarar o rendimento **na unidade em que o
+   * produto se conta**: é esse número que divide o pedido na separação. Nascer com `rende 1 KG`
+   * num produto contado em UN foi o que custou o `beef de xis` (pedir 10, separar pra 6,7) e os
+   * 37 achados do M5.
+   *
+   * ⚠️ **ANTES de qualquer escrita, de propósito:** recusar depois do `create` deixaria a ficha
+   * gravada e a tela dizendo 422 — a cicatriz medida do retalho em 09/10 (531 → 532 ordens).
+   */
+  const coer = avaliarCoerenciaDoLote({
+    tipoProduto: input.tipoProduto,
+    unidadeLoteBase: input.unidadeLoteBase,
+    unidadeProduto: input.unidadeProduzido,
+    nomeProduto: input.nomeProduzido,
+  })
+  if (!coer.ok) throw new FichaError(coer.frase!)
+
+  /**
+   * ⛔⛔ E A RÉGUA VOCABULARY-FREE VALE PRA **QUALQUER TIPO** NO NASCIMENTO — é ela que o
+   * TRIGGER do banco espelha, e é por isso que ela precisa existir aqui: se o TS deixasse
+   * passar o que o banco recusa, o dono levaria um **500 sem corpo** no lugar de uma frase
+   * que ensina (a família do «preview e confirm discordando»).
+   *
+   * ⚠️ **E A FÁBRICA DOS 37 ESTAVA NO EDITOR:** `valoresIniciaisDaFicha` abria a ficha de
+   * produção com `unidadeLoteBase = 'KG'` enquanto o produto nascia em `'UN'` — o estado
+   * DEFAULT era incoerente. Sem consertar o editor, esta recusa seria uma parede no caminho
+   * principal; com ele consertado (a unidade do rótulo **deriva** do produto), ela nunca
+   * morde um gesto legítimo e fica como backstop de quem chama a rota por fora.
+   */
+  const rot = avaliarCoerenciaDoRotulo({
+    unidadeLoteBase: input.unidadeLoteBase,
+    unidadeProduto: input.unidadeProduzido,
+    nomeProduto: input.nomeProduzido,
+  })
+  if (!rot.ok) throw new FichaError(rot.frase!)
 
   // ⛔⛔ SEGUNDA FICHA PRO MESMO PRODUTO É RECUSADA (01/09/2026). `criarFicha` cria um
   // stock_item NOVO a cada chamada, então "salvar de novo" não colidia com nada e nascia um
@@ -320,12 +359,56 @@ export async function atualizarFicha(companyId: string, fichaId: string, input: 
     const ciclo = detectaCicloFicha(ficha.itemProduzidoId, componentes.map((c) => c.itemId), grafo)
     if (ciclo.ciclo) throw new FichaError('Esses componentes criariam um ciclo (a ficha usaria a si mesma).')
 
+    /**
+     * ⛔⛔ A MESMA PORTA NO EDITAR — e aqui ela tem uma sutileza que vale escrever: a unidade do
+     * lote pode vir do INPUT (o dono mudou) **ou ser HERDADA** da versão atual (ele mexeu só
+     * numa dose). Nos dois casos a versão NOVA nasce com ela, então os dois casos passam pela
+     * porta. Checar só o input deixaria a incoerência atravessar por herança, em silêncio.
+     *
+     * ⚠️ **Consequência declarada:** ficha de produção que HOJE está torta (em prod, só a
+     * `MAIONESE`) só aceita edição de receita depois que o rendimento for declarado — e o campo
+     * está na mesma tela, com a frase dizendo o número que falta. *Recusa que aponta a saída não
+     * é beco.*
+     */
+    const loteNovo = input.loteBase ?? atual?.loteBase ?? 1
+    const unidadeLoteNova = input.unidadeLoteBase ?? atual?.unidadeLoteBase ?? 'UN'
+    const prodItem = await tx.stockItem.findUnique({ where: { id: ficha.itemProduzidoId }, select: { nome: true, unidadeControle: true } })
+    if (prodItem) {
+      const nomeProd = input.nomeProduzido ?? prodItem.nome
+      const coer = fichaDeclaraRendimento(ficha.tipoProduto)
+        ? avaliarCoerenciaDoLote({
+            tipoProduto: ficha.tipoProduto,
+            unidadeLoteBase: unidadeLoteNova,
+            unidadeProduto: prodItem.unidadeControle,
+            nomeProduto: nomeProd,
+          })
+        : /**
+           * ⛔⛔ FORA DA PRODUÇÃO VALE A **CATRACA**, nunca a exigência seca: o sabor
+           * `CALABRESA` está torto em prod (produto UN · rende 1 KG) e é o de MAIOR volume do
+           * cardápio. Exigir coerência ali trancaria a edição legítima dele por causa de um
+           * campo que a venda nem lê. A catraca recusa só a **REGRESSÃO** — e é a MESMA régua
+           * que o trigger do banco aplica, então os dois nunca discordam.
+           */
+          (() => {
+            const anteriorEraCoerente = atual
+              ? avaliarCoerenciaDoRotulo({ unidadeLoteBase: atual.unidadeLoteBase, unidadeProduto: prodItem.unidadeControle }).ok
+              : true
+            if (!anteriorEraCoerente) return { ok: true, frase: null }
+            return avaliarCoerenciaDoRotulo({
+              unidadeLoteBase: unidadeLoteNova,
+              unidadeProduto: prodItem.unidadeControle,
+              nomeProduto: nomeProd,
+            })
+          })()
+      if (!coer.ok) throw new FichaError(coer.frase!)
+    }
+
     const novaVersao = ficha.versaoAtual + 1
     const versao = await tx.stockFichaVersao.create({
       data: {
         companyId, fichaId, versao: novaVersao,
-        loteBase: input.loteBase ?? atual?.loteBase ?? 1,
-        unidadeLoteBase: input.unidadeLoteBase ?? atual?.unidadeLoteBase ?? 'UN',
+        loteBase: loteNovo,
+        unidadeLoteBase: unidadeLoteNova,
         modoPreparo: input.modoPreparo !== undefined ? input.modoPreparo : atual?.modoPreparo ?? null,
         tempoPreparoMin: input.tempoPreparoMin !== undefined ? input.tempoPreparoMin : atual?.tempoPreparoMin ?? null,
         validadeDias: input.validadeDias !== undefined ? input.validadeDias : atual?.validadeDias ?? null,

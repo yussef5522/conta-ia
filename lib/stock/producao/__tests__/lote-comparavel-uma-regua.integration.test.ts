@@ -17,6 +17,7 @@ import { prisma } from '@/lib/db'
 import { checkFantasmaInvariants } from '../../fantasma-invariants'
 import { fichasParaConverter } from '../fichas-para-converter'
 import { loteEhComparavel } from '../lote-comparavel'
+import { tornarRotuloTorto } from './_ficha-torta'
 import { criarFicha } from '../fichas'
 
 const CNPJ = '71717171000252'
@@ -48,11 +49,16 @@ async function fichaDeProducao(opts: {
       unidadeProduzido: opts.unidadeProduto,
       tipoProduto: 'INTERMEDIARIO',
       loteBase: opts.loteBase,
-      unidadeLoteBase: opts.unidadeLoteBase,
+      // ⛔ nasce COERENTE (a porta de 11/10 recusa o contrário) e o rótulo é torcido depois,
+      // pelo helper — que é a forma do legado. Ver `_ficha-torta.ts`.
+      unidadeLoteBase: opts.unidadeProduto,
       componentes: [{ itemId: insumo.id, qtdPlanejada: opts.dose ?? 0.18, unidade: 'KG' }],
     },
     prisma,
   )
+  if (opts.unidadeLoteBase !== opts.unidadeProduto) {
+    await tornarRotuloTorto(companyId, f.fichaId, opts.unidadeLoteBase, prisma)
+  }
   return f.fichaId
 }
 
@@ -144,18 +150,19 @@ describe('⭐⭐ o juiz e a lista NUNCA discordam sobre a mesma ficha', () => {
     const insumo = await prisma.stockItem.create({
       data: { companyId, nome: 'porção pronta', unidadeControle: 'UN', categoria: 'INTERMEDIARIO', criadoVia: 'MANUAL' },
     })
-    await criarFicha(
+    const fFinal = await criarFicha(
       {
         companyId,
         nomeProduzido: 'XIS COMPLETO',
         unidadeProduzido: 'UN',
         tipoProduto: 'PRODUTO_FINAL',
         loteBase: 1,
-        unidadeLoteBase: 'KG', // divergente de propósito
+        unidadeLoteBase: 'UN', // nasce coerente; o rótulo é torcido abaixo (de propósito)
         componentes: [{ itemId: insumo.id, qtdPlanejada: 1, unidade: 'UN' }],
       },
       prisma,
     )
+    await tornarRotuloTorto(companyId, fFinal.fichaId, 'KG', prisma)
 
     expect(await M5()).toEqual([])
     const prog = await fichasParaConverter(companyId, prisma)

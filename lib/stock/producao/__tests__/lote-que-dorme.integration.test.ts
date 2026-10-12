@@ -47,7 +47,7 @@ beforeEach(async () => {
   await prisma.stockMovement.create({ data: { companyId, itemId: acem, tipo: 'ENTRADA_NF', quantidade: 100, custoUnitario: 5, custoTotal: 500, origem: 'SEFAZ' } })
   const f = await criarFicha({
     companyId, nomeProduzido: 'Massa de pizza', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-    loteBase: 1, unidadeLoteBase: 'KG',
+    loteBase: 1, unidadeLoteBase: 'UN',
     // ⭐ a receita real do caso: sova hoje, modela amanhã (a massa descansa a noite)
     etapas: [{ nome: 'sovar' }, { nome: 'modelar' }],
     componentes: [{ itemId: acem, qtdPlanejada: 1, unidade: 'KG', posicao: 0 }],

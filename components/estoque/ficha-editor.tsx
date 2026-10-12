@@ -23,10 +23,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Loader2, Plus, Trash2, Search, Save, AlertTriangle, ChevronDown, ChevronRight, BookOpen, ExternalLink } from 'lucide-react'
 import { BuscaItem, type ItemBusca } from './busca-item'
+import { previewDoRendimento, fraseDoPreview } from '@/lib/stock/producao/preview-do-rendimento'
 import { valoresIniciaisDaFicha, paraCampo, faixaMargem, type LinhaParaFicha } from '@/lib/stock/cardapio/valores-iniciais'
 import { camposDaCopia } from '@/lib/stock/producao/duplicar-ficha'
 import { montaNaVenda, ehTipoDeFicha, TIPO_INTERMEDIARIO, type TipoFicha } from '@/lib/stock/tipos-ficha'
-import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, validarQtd } from '@/lib/stock/quantidade'
+import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, validarQtd, formatarQtd } from '@/lib/stock/quantidade'
 import { useDismissivel } from '@/lib/hooks/use-dismissivel'
 
 // ⚠️ `qtdTexto` é a FONTE DA VERDADE do campo, não um número (28/08). O input era
@@ -113,7 +114,24 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   const [setorId, setSetorId] = useState<string>('')
   const [valorVenda, setValorVenda] = useState(ini.preco)
   const [loteBase, setLoteBase] = useState(ini.loteBase)
-  const [unidadeLoteBase, setUnidadeLoteBase] = useState<'KG' | 'UN' | 'LT'>(ini.unidadeLoteBase)
+  /**
+   * ⛔⛔⛔ A UNIDADE DO RENDIMENTO **NÃO É ESCOLHA** — ela DERIVA do produto (11/10/2026).
+   *
+   * **A fábrica dos 37 achados do M5 era este campo.** O editor abria a ficha de produção com
+   * `unidadeLoteBase = 'KG'` (`valoresIniciaisDaFicha`) e `unidadeProduzido = 'UN'`: o estado
+   * **DEFAULT** era incoerente, e bastava salvar pra nascer torta. *"A receita rende X"*
+   * responde **quantas unidades do produto saem de 1 receita** — logo a unidade É a do produto,
+   * por definição. O dropdown era o bug, e removê-lo torna o erro **IMPOSSÍVEL** (REGRA 5), não
+   * improvável.
+   *
+   * ⚠️ `unidadeLoteSalva` guarda o que o servidor mandou **só pra a tela DIZER** quando o rótulo
+   * foi corrigido — corrigir calado seria mudar a ficha sem o dono ver (e o preview de «separa
+   * hoje × separa depois» mostra que a separação não se move).
+   */
+  const [unidadeLoteSalva, setUnidadeLoteSalva] = useState<'KG' | 'UN' | 'LT' | null>(null)
+  /** ⭐ o rendimento GRAVADO — é o lado "separa hoje" do preview (item 2c) */
+  const [loteBaseSalvo, setLoteBaseSalvo] = useState<number | null>(null)
+  const unidadeLoteBase = unidadeProduzido
   const [validadeDias, setValidadeDias] = useState('')
   const [tempoPreparoMin, setTempoPreparoMin] = useState('')
   const [modoPreparo, setModoPreparo] = useState('')
@@ -165,7 +183,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
         setNomeProduzido(v.nomeProduzido)
         setUnidadeProduzido(v.unidadeProduzido); setTipoProduto(v.tipoProduto)
         setSetorId(v.setorId ?? ''); setValorVenda(paraCampo(v.valorVenda))
-        setLoteBase(String(v.loteBase)); setUnidadeLoteBase(v.unidadeLoteBase)
+        setLoteBase(String(v.loteBase)); setUnidadeLoteSalva(v.unidadeLoteBase); setLoteBaseSalvo(v.loteBase)
         setValidadeDias(v.validadeDias != null ? String(v.validadeDias) : ''); setTempoPreparoMin(v.tempoPreparoMin != null ? String(v.tempoPreparoMin) : '')
         setModoPreparo(v.modoPreparo ?? '')
         setEtapas((f.etapas ?? []).map((e: { nome: string }) => e.nome))
@@ -182,7 +200,9 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
    */
   useEffect(() => {
     if (!foco || carregando) return
-    document.getElementById(`comp-${foco}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    // ⭐ `?foco=rendimento` vem do aviso do sininho: o campo que ESPERA o número acende
+    const alvo = foco === 'rendimento' ? 'rendimento' : `comp-${foco}`
+    document.getElementById(alvo)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }, [foco, carregando, comps.length])
 
   // ⭐ CUSTO AO VIVO. Produto final MONTA na venda → custo por unidade = Σ componentes ÷ lote
@@ -202,6 +222,28 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
 
   // ⭐ duas listas, a MESMA fonte — a ordem de gravação (`comps`) não muda
   const compsComida = useMemo(() => comps.filter((c) => c.categoria !== 'EMBALAGEM'), [comps])
+
+  /**
+   * ⭐⭐ O PREVIEW DO RENDIMENTO (item 2c) — só existe EDITANDO ficha de produção: numa ficha
+   * nova não há "separa hoje" com que comparar, e inventar um lado seria o preview mentindo.
+   *
+   * ⚠️ O pedido da simulação é um redondo (30 — o do beef que o dono conferiu em prod); a conta
+   * é PROPORCIONAL, então qualquer pedido conta a mesma história, e um número fixo deixa a
+   * comparação estável entre dois dígitos digitados.
+   */
+  const prev = useMemo(() => {
+    if (produtoFinal || loteBaseSalvo == null) return null
+    const lista = comps
+      .map((c) => ({ itemId: c.itemId, nome: c.nome, unidade: c.unidadeControle, qtdPlanejada: valorQtd(c.qtdTexto) }))
+      .filter((c): c is { itemId: string; nome: string; unidade: string; qtdPlanejada: number } => c.qtdPlanejada != null)
+    if (!lista.length) return null
+    return previewDoRendimento({
+      loteBaseAtual: loteBaseSalvo,
+      loteBaseNovo: valorQtd(loteBase),
+      componentes: lista,
+      pedido: 30,
+    })
+  }, [produtoFinal, loteBaseSalvo, comps, loteBase])
   const compsEmbalagem = useMemo(() => comps.filter((c) => c.categoria === 'EMBALAGEM'), [comps])
 
   const preco = parseNum(valorVenda)
@@ -306,18 +348,52 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
 
         {/* rendimento: SÓ no mundo da produção (produto final é per-serving) */}
         {!produtoFinal && (
-          <div className="flex flex-wrap items-end gap-2.5 border-t pt-2.5">
+          <div id="rendimento" className={`flex flex-wrap items-end gap-2.5 border-t pt-2.5 ${foco === 'rendimento' ? 'rounded-lg ring-2 ring-amber-400 ring-offset-4' : ''}`}>
             <label className="text-[11px] text-slate-500">A receita rende
               <div className="mt-1 flex items-center gap-1">
                 <input value={loteBase} onChange={(e) => setLoteBase(e.target.value)} inputMode="decimal" className="h-9 w-20 rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
-                <select value={unidadeLoteBase} onChange={(e) => setUnidadeLoteBase(e.target.value as 'KG' | 'UN' | 'LT')} className="h-9 rounded-lg border border-slate-300 px-2 text-sm"><option>KG</option><option>UN</option><option>LT</option></select>
+                {/* ⛔ a unidade é a do PRODUTO, não um campo: ver o comentário do estado acima */}
+                <span className="inline-flex h-9 items-center rounded-lg bg-slate-100 px-2.5 text-sm font-medium text-slate-600">{unidadeLoteBase}</span>
               </div>
             </label>
             <label className="text-[11px] text-slate-500">Validade (dias)
               <input value={validadeDias} onChange={(e) => setValidadeDias(e.target.value)} inputMode="numeric" placeholder="p/ etiqueta"
                 className="mt-1 block h-9 w-24 rounded-lg border border-slate-300 px-3 text-sm tabular-nums" />
             </label>
-            <p className="pb-2 text-[11px] text-slate-400">o rendimento real é medido na produção</p>
+            <p className="pb-2 text-[11px] text-slate-400">
+              {unidadeLoteSalva && unidadeLoteSalva !== unidadeLoteBase
+                ? <span className="text-amber-700">a unidade do rendimento era {unidadeLoteSalva} e passa a ser {unidadeLoteBase} (o produto se conta em {unidadeLoteBase}) — o número não muda, e a separação também não</span>
+                : <>em {unidadeLoteBase}, a unidade do produto — é esse número que divide o pedido na separação</>}
+            </p>
+            {/**
+              * ⭐⭐ "SEPARA HOJE × SEPARA DEPOIS" (item 2c) — a conta vem da LIB pura, que chama a
+              * PORTA DA SEPARAÇÃO. ⛔ E o rendimento MEDIDO não aparece nem como palpite: a lei de
+              * 03/10 é que a separação é SEMPRE ficha × pedido, e um editor que sugerisse o medido
+              * seria o laço que aprende o desvio como normal.
+              */}
+            {prev && (
+              <div className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                <p className={`text-[11px] font-medium ${prev.semNumero ? 'text-slate-400' : prev.naoMuda ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {fraseDoPreview(prev)}
+                </p>
+                {!prev.semNumero && (
+                  <table className="mt-1.5 w-full text-[11px] tabular-nums">
+                    <thead className="text-slate-400">
+                      <tr><th className="text-left font-normal">insumo</th><th className="text-right font-normal">separa hoje</th><th className="text-right font-normal">separa depois</th></tr>
+                    </thead>
+                    <tbody>
+                      {prev.linhas.map((l) => (
+                        <tr key={l.itemId} className={l.delta ? 'text-amber-800' : 'text-slate-600'}>
+                          <td className="py-0.5 pr-2">{l.nome}</td>
+                          <td className="py-0.5 text-right">{l.hoje == null ? '—' : formatarQtd(l.hoje, l.unidade)}</td>
+                          <td className="py-0.5 text-right font-medium">{l.depois == null ? '—' : formatarQtd(l.depois, l.unidade)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
           </div>
         )}
       </CardContent></Card>

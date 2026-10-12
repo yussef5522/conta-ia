@@ -24,7 +24,7 @@ beforeEach(async () => {
   coxaoId = coxao.id
   // 20kg em estoque a 46,95/kg (custo derivado)
   await prisma.stockMovement.create({ data: { companyId, itemId: coxaoId, tipo: 'ENTRADA_NF', quantidade: 20, custoUnitario: 46.95, custoTotal: 939, origem: 'SEFAZ' } })
-  const f = await criarFicha({ companyId, nomeProduzido: 'Porção de carne 100g', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: coxaoId, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
+  const f = await criarFicha({ companyId, nomeProduzido: 'Porção de carne 100g', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: coxaoId, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
   fichaId = f.fichaId
 })
 afterEach(async () => {

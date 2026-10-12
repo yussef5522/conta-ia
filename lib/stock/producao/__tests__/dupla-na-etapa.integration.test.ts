@@ -49,7 +49,7 @@ beforeEach(async () => {
   await prisma.stockMovement.create({ data: { companyId, itemId: it.id, tipo: 'ENTRADA_NF', quantidade: 50, custoUnitario: 33.95, custoTotal: 1697.5, origem: 'SEFAZ' } })
   const f = await criarFicha({
     companyId, nomeProduzido: 'Beef de xis', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-    loteBase: 1, unidadeLoteBase: 'KG', validadeDias: 10,
+    loteBase: 1, unidadeLoteBase: 'UN', validadeDias: 10,
     etapas: [{ nome: 'gessado' }, { nome: 'moldar beef' }],
     componentes: [{ itemId: it.id, qtdPlanejada: 1, unidade: 'KG', posicao: 0 }],
   }, prisma)

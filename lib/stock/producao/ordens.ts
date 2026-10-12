@@ -13,6 +13,7 @@ import { saldoItem, custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 import { materializarEtapasDaOrdem } from './etapas'
 import { configDeRetalho } from './retalho'
 import { encerrarEtapasAbertas } from './encerrar-etapas-abertas'
+import { fichaEsperaRendimento } from './auto-conversao-de-lote'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -416,16 +417,34 @@ export interface OrdemView {
   estado: string
   origem: string
   observacao: string | null
+  /**
+   * ⭐⭐ A FICHA DESTA ORDEM ESPERA O RENDIMENTO? (11/10, item 2b)
+   *
+   * **Ordem do dono:** *"se alguém criar ordem de receita ainda pendente, a página NÃO pergunta:
+   * mostra «esta ficha ainda não diz quantas UN rendem de 1 receita — [completar a ficha →]»."*
+   *
+   * ⛔⛔ **A DECISÃO VEM DO SERVIDOR, nunca da tela.** Se a página derivasse isso comparando
+   * `unidadeLoteBase` com `unidadeProduzido`, seria a **segunda régua** — e ela divergiria do
+   * sininho e da fila no primeiro caso de borda (é a lição do B1 e dos 7 detectores de par).
+   * ⚠️ E ela é `null` quando não há nada a esperar: ausência não é `false` disfarçado.
+   */
+  rendimentoPendente: { porQue: string } | null
 }
 
 export async function getOrdem(companyId: string, ordemId: string, db: Db = defaultPrisma): Promise<OrdemView | null> {
   const o = await db.stockProductionOrder.findFirst({ where: { id: ordemId, companyId } })
   if (!o) return null
-  const [prod, setor, versao] = await Promise.all([
+  const [prod, setor, versao, pend] = await Promise.all([
     db.stockItem.findFirst({ where: { companyId, id: o.itemProduzidoId }, select: { nome: true, unidadeControle: true } }),
     o.setorId ? db.stockSetor.findFirst({ where: { companyId, id: o.setorId }, select: { nome: true } }) : Promise.resolve(null),
     // a versão TRAVADA na ordem — o teórico tem que ser o da época, não o da ficha de hoje
     db.stockFichaVersao.findFirst({ where: { companyId, fichaId: o.fichaId, versao: o.versaoFicha }, select: { loteBase: true, unidadeLoteBase: true } }),
+    /**
+     * ⚠️ A pergunta é sobre a ficha de HOJE (`versaoAtual`), não a versão travada: o que a
+     * página precisa saber é se **o dono ainda deve um número** — e isso ele resolve na ficha
+     * atual. Resolve POR ID (ver `fichaEsperaRendimento`), nunca varrendo a fila.
+     */
+    fichaEsperaRendimento(companyId, o.fichaId, db),
   ])
   return {
     id: o.id, fichaId: o.fichaId, versaoFicha: o.versaoFicha, itemProduzidoId: o.itemProduzidoId,
@@ -436,6 +455,7 @@ export async function getOrdem(companyId: string, ordemId: string, db: Db = defa
      *  divergência inventada contra uma string vazia (*"não sei" nunca vira "está errado"*) */
     unidadeLoteBase: versao?.unidadeLoteBase ?? prod?.unidadeControle ?? '—',
     estado: o.estado, origem: o.origem, observacao: o.observacao,
+    rendimentoPendente: pend.espera && pend.porQue ? { porQue: pend.porQue } : null,
   }
 }
 

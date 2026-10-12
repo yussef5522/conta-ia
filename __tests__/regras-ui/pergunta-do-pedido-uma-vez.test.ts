@@ -94,8 +94,47 @@ describe('⭐⭐⭐ PASSO 2 — a pergunta mora na página da ordem, e é UMA', 
     const s = src()
     expect(s).toMatch(/Quantas unidades produzir\?/)
     expect(s).toMatch(/origem === 'AGUARDANDO'/)
-    // ⭐ e o gate junta o aguardando com a correção — um componente, dois momentos
-    expect(s).toMatch(/perguntando\s*=\s*ordem\?\.estado === 'PLANEJADA' && \(aguardando \|\| corrigindoPedido\)/)
+    /**
+     * ⭐ e o gate junta o aguardando com a correção — um componente, dois momentos.
+     *
+     * ⚠️⚠️ **REAPONTADO EM 11/10, E MAIS FORTE:** o literal ganhou `!esperaRendimento` (item 2b
+     * do dono — *"se alguém criar ordem de receita ainda pendente, a página NÃO pergunta"*).
+     * A pergunta do guard não mudou (*"a pergunta é UMA e mora aqui"*); o que mudou é que ela
+     * passou a exigir também a condição NOVA — senão o gate poderia perder o `!esperaRendimento`
+     * num refactor e a ordem voltaria a pedir um pedido que o sistema não tem como dividir.
+     */
+    expect(s).toMatch(/perguntando\s*=\s*ordem\?\.estado === 'PLANEJADA' && !esperaRendimento && \(aguardando \|\| corrigindoPedido\)/)
+  })
+
+  /**
+   * ⛔⛔⛔ O VERMELHO QUE O DONO NOMEOU: *"NUNCA um campo de rendimento na ordem"* (item 5).
+   *
+   * A ficha é a ÚNICA casa do número. Um campo de rendimento aqui seria a **config paralela**
+   * que o item 2 proíbe — duas casas pro mesmo número, divergindo no primeiro ajuste.
+   */
+  it('⛔⛔ a ordem NUNCA tem campo de rendimento — ela mostra o LINK pra ficha', () => {
+    const s = src()
+    /**
+     * ⚠️⚠️ **A REGRA 11 REPROVOU A 1ª VERSÃO DESTE TESTE (11/10):** ela fazia
+     * `toMatch(/foco=rendimento/)` sobre o arquivo inteiro. Arranquei o bloco do gate e o
+     * teste ficou **VERDE**, porque a MESMA string vive no atalho do aviso de escala, cem
+     * linhas abaixo. ***"Menção, não uso" pela 13ª vez nesta casa*** (o `moldura ? 'O BANCO
+     * DIZ' : null` de 20/09, o `hrefSemPagamento`, o `IgnoradosDoCardapio`…).
+     *
+     * ⭐ O que morde é exigir o **BLOCO GATEADO**: o `<a>` do *"completar a ficha"* tem que
+     * existir **dentro** do ramo `esperaRendimento`, e não solto no arquivo.
+     */
+    const iGate = s.indexOf('{esperaRendimento && ')
+    expect(iGate, 'o bloco do link tem que ser gateado por esperaRendimento').toBeGreaterThan(-1)
+    const bloco = s.slice(iGate, s.indexOf('{perguntando && (', iGate))
+    expect(bloco, 'o link mora DENTRO do gate, não solto no arquivo').toMatch(/<a[\s\S]*?foco=rendimento/)
+    expect(bloco).toMatch(/completar a ficha/)
+    expect(bloco, 'e com o caminho de volta pra esta ordem').toMatch(/voltar=/)
+    // ⛔ e NENHUM input/estado de rendimento/lote mora nesta tela
+    expect(s).not.toMatch(/setLoteBase|unidadeLoteBase\s*=\s*useState|A receita rende/)
+    // ⭐ o veredito vem do SERVIDOR (uma régua), nunca de uma comparação de unidades aqui
+    expect(s).toMatch(/ordem\?\.rendimentoPendente/)
+    expect(s).not.toMatch(/unidadeLoteBase !== .*unidadeProduzido|unidadeProduzido !== .*unidadeLoteBase/)
   })
 
   it('⛔⛔ existe EXATAMENTE UM input de quantidade de pedido na tela', () => {

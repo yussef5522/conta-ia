@@ -31,11 +31,22 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
   /** ⭐ o efeito do que aconteceu — a linha nunca sai da lista em silêncio */
   const [aviso, setAviso] = useState<string | null>(null)
   /**
-   * ⭐ quantas receitas ainda declaram o lote na unidade errada (o M5). Só o CONTADOR depende
-   * disto — a PORTA fica sempre (a régua de 12/09: *fila zerada esconde o trabalho, nunca a
-   * ferramenta*). Fail-soft: se não carregar, o link aparece sem número.
+   * ⭐⭐ AS RECEITAS QUE ESPERAM O RENDIMENTO DO DONO (11/10, item 4).
+   *
+   * ⛔⛔ **A TELA-FILA MORREU E A LISTA VIROU A FILA.** O botão *"N com o lote na unidade
+   * errada"* levava a uma tela separada que listava as 37; com a auto-conversão resolvendo as
+   * neutras sozinha, o que sobra é pendência de DECISÃO — e decisão de receita se resolve NA
+   * FICHA, que é a linha que já está aqui. ⭐ A pendência passa a ser um chip NA LINHA, com o
+   * link abrindo a ficha com o campo aceso: *a porta é a linha*.
+   *
+   * ⚠️ E isto **não contraria** a régua de 12/09 (*fila zerada esconde o trabalho, nunca a
+   * ferramenta*): a FERRAMENTA de rever o rendimento continua existindo — ela mudou de casa
+   * pro editor da ficha, onde o campo mora e onde o preview «separa hoje × separa depois»
+   * mostra o efeito antes de salvar. O que morreu foi a segunda vitrine.
+   *
+   * ⚠️ Fail-soft: se não carregar, a lista abre sem os chips (nunca sem a lista).
    */
-  const [faltamConverter, setFaltamConverter] = useState<number | null>(null)
+  const [esperam, setEsperam] = useState<Record<string, string>>({})
 
   const carregar = useCallback(() => {
     fetch(`/api/empresas/${id}/estoque/fichas`).then((r) => r.json())
@@ -47,8 +58,11 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
 
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/fichas/conversao`).then((r) => r.json())
-      .then((j) => setFaltamConverter(typeof j?.progresso?.faltam === 'number' ? j.progresso.faltam : null))
-      .catch(() => setFaltamConverter(null))
+      .then((j) => {
+        const lista: { fichaId: string; porQue: string }[] = Array.isArray(j?.esperamRendimento) ? j.esperamRendimento : []
+        setEsperam(Object.fromEntries(lista.map((f) => [f.fichaId, f.porQue])))
+      })
+      .catch(() => setEsperam({}))
   }, [id])
 
   const produzir = async (fichaId: string) => {
@@ -75,19 +89,18 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
         <ChefHat className="h-5 w-5 shrink-0 text-[#185FA5]" />
         <h1 className="text-base font-semibold text-slate-900">Receitas de produção</h1>
         <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">O que a cozinha produz em lote (gessado, beef, porções) — rendimento medido a cada produção</p>
-        {/*
-          ⭐⭐ A PORTA DO ASSISTENTE DE CONVERSÃO (04/10) — à vista, com borda e ícone.
-          ⛔ Ela fica SEMPRE: o contador vai a zero quando as 37 forem corrigidas, mas rever
-          o lote de uma receita é ferramenta permanente (a régua de 12/09 — *fila zerada
-          esconde o trabalho, nunca a ferramenta*). Sem hover-only: no celular não existe hover.
-        */}
-        <a href={`/empresas/${id}/estoque/fichas/conversao`}
-          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 text-xs font-medium text-amber-900 hover:bg-amber-100">
-          <Scale className="h-3.5 w-3.5" />
-          {faltamConverter != null && faltamConverter > 0
-            ? `${faltamConverter} com o lote na unidade errada`
-            : 'conferir o lote das receitas'}
-        </a>
+        {/**
+          * ⛔⛔ O BOTÃO DA TELA-FILA MORREU (11/10, item 4) — ver o comentário do estado
+          * `esperam`. A pendência agora é um chip NA LINHA de cada receita, e o gesto abre a
+          * ficha com o campo aceso. ⭐ Quando há pendência, a linha abaixo DIZ quantas são:
+          * número sem porta era o que a fila fazia; porta sem número não diz o tamanho.
+          */}
+        {Object.keys(esperam).length > 0 && (
+          <span className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 text-xs font-medium text-amber-900">
+            <Scale className="h-3.5 w-3.5" />
+            {Object.keys(esperam).length} esperando o rendimento
+          </span>
+        )}
         <a href={`/empresas/${id}/estoque/producao/receitas/nova`}
           className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C]">
           <Plus className="h-3.5 w-3.5" /> Nova receita
@@ -126,6 +139,14 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
                   {f.validadeDias != null && ` · validade ${f.validadeDias}d`}
                 </p>
               </a>
+              {/* ⭐ A FILA VIROU A LINHA: o chip leva à ficha com o campo do rendimento aceso */}
+              {esperam[f.id] && (
+                <a href={`/empresas/${id}/estoque/fichas/${f.id}?foco=rendimento&voltar=${encodeURIComponent(`/empresas/${id}/estoque/producao/receitas`)}`}
+                  className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 text-[11.5px] font-medium text-amber-900 hover:bg-amber-100"
+                  title={esperam[f.id]}>
+                  <Scale className="h-3 w-3" /> rendimento a declarar
+                </a>
+              )}
               <div className="text-right">
                 <p className="text-[11px] text-slate-400">Custo do lote</p>
                 {f.custoADefinir

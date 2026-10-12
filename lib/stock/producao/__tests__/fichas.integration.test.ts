@@ -38,7 +38,7 @@ describe('fichas item 2.0', () => {
   it('criar ficha: cria item produzido + v1 + componentes, custo do lote ao vivo, rendimento a apurar', async () => {
     const { fichaId, itemProduzidoId } = await criarFicha({
       companyId, userId: 'u', nomeProduzido: 'Carne de panela 100g', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-      loteBase: 5, unidadeLoteBase: 'KG',
+      loteBase: 5, unidadeLoteBase: 'UN',
       componentes: [{ itemId: coxaoId, qtdPlanejada: 5, unidade: 'KG' }, { itemId: gorduraId, qtdPlanejada: 1, unidade: 'KG' }],
     })
     const produzido = await prisma.stockItem.findUnique({ where: { id: itemProduzidoId } })
@@ -54,7 +54,7 @@ describe('fichas item 2.0', () => {
   })
 
   it('editar componentes → versão NOVA (v2), versão atual aponta pra ela', async () => {
-    const { fichaId } = await criarFicha({ companyId, nomeProduzido: 'Carne 100g', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 5, unidadeLoteBase: 'KG', componentes: [{ itemId: coxaoId, qtdPlanejada: 5, unidade: 'KG' }] })
+    const { fichaId } = await criarFicha({ companyId, nomeProduzido: 'Carne 100g', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 5, unidadeLoteBase: 'UN', componentes: [{ itemId: coxaoId, qtdPlanejada: 5, unidade: 'KG' }] })
     const r = await atualizarFicha(companyId, fichaId, { componentes: [{ itemId: coxaoId, qtdPlanejada: 6, unidade: 'KG' }, { itemId: gorduraId, qtdPlanejada: 1, unidade: 'KG' }] })
     expect(r.versao).toBe(2)
     const got = await getFicha(companyId, fichaId)
@@ -101,7 +101,7 @@ describe('fichas item 2.0', () => {
 
   it('3 NÍVEIS: ficha de PRODUTO_FINAL aceita intermediário E outra ficha final como componente (Combo)', async () => {
     // intermediário: porção de carne (usa coxão)
-    const carne = await criarFicha({ companyId, nomeProduzido: 'Porção de carne', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: coxaoId, qtdPlanejada: 1, unidade: 'KG' }] })
+    const carne = await criarFicha({ companyId, nomeProduzido: 'Porção de carne', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: coxaoId, qtdPlanejada: 1, unidade: 'KG' }] })
     // produto final Xis: usa o INTERMEDIÁRIO (porção de carne) + insumo
     const xis = await criarFicha({ companyId, nomeProduzido: 'Xis', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: carne.itemProduzidoId, qtdPlanejada: 1, unidade: 'UN' }, { itemId: gorduraId, qtdPlanejada: 0.05, unidade: 'KG' }] })
     // Combo (PRODUTO_FINAL) usa OUTRA ficha final (o Xis) como componente — recursão dos 3 níveis
@@ -118,7 +118,7 @@ describe('fichas item 2.0', () => {
     await prisma.stockMovement.create({ data: { companyId, itemId: acem.id, tipo: 'ENTRADA_NF', quantidade: 10, custoUnitario: 33.95, custoTotal: 339.5, origem: 'SEFAZ' } })
     expect(acem.custoMedio).toBeNull() // o campo está null (é isso que enganava o editor)
 
-    const { fichaId } = await criarFicha({ companyId, nomeProduzido: 'Porção', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: acem.id, qtdPlanejada: 1, unidade: 'KG' }] })
+    const { fichaId } = await criarFicha({ companyId, nomeProduzido: 'Porção', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: acem.id, qtdPlanejada: 1, unidade: 'KG' }] })
     const got = await getFicha(companyId, fichaId)
     expect(got!.ficha.componentes[0].custoMedio).toBe(33.95) // DERIVADO do movimento, não o campo null
     expect(got!.ficha.custoLote).toBe(33.95)

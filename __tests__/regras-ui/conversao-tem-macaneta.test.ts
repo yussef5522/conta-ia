@@ -8,6 +8,21 @@
  *
  * ⭐ **Guard de UM lado não serve:** só olhar a TELA aprovaria um botão apontando pro nada; só
  * olhar a ROTA aprovaria um motor que ninguém alcança. Ele prova os dois.
+ *
+ * ═══ ⚠️⚠️ REAPONTADO EM 11/10 — A MAÇANETA MUDOU DE CASA (item 4 do dono) ═══
+ *
+ * A tela-fila *"Corrigir o lote"* foi **APOSENTADA**: as neutras a auto-conversão resolve
+ * sozinha, e o que sobra é decisão, que se resolve **NA FICHA**. Então a maçaneta deixou de ser
+ * um link pra uma tela separada e passou a ser:
+ *   (a) o **chip NA LINHA** da lista de receitas (*"rendimento a declarar"* → a ficha com o
+ *       campo aceso) — *a fila morreu porque a LISTA é a fila*;
+ *   (b) o **aviso no sininho**, um por ficha, com o mesmo destino;
+ *   (c) o **aviso da ORDEM**, que continua oferecendo a saída — agora a ficha, não a fila.
+ *
+ * ⭐ **A PERGUNTA DO GUARD NÃO MUDOU:** *o aviso que diz o problema tem que oferecer a saída, e
+ * o gesto tem que ser alcançável pelo dedo no celular.* O que mudou é o endereço da saída. E ele
+ * ficou **MAIS FORTE**: passou a exigir que a rota legada **redirecione** (link velho não vira
+ * 404 silencioso) e que a tela-fila **não ressuscite**.
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync, statSync } from 'node:fs'
@@ -43,10 +58,12 @@ describe('⭐⭐ a maçaneta existe — nos dois pontos que o dono pediu', () =>
 
   it('⭐⭐ o AVISO DA ORDEM carrega o gesto (era ele que dizia o problema sem a saída)', () => {
     const tela = semComentario(ler(TELA_DA_ORDEM))
-    expect(tela, 'o aviso LOTE_NAO_COMPARAVEL tem que oferecer o caminho').toContain('estoque/fichas/conversao')
+    // ⭐ o destino agora é a FICHA, com o campo do rendimento aceso (11/10)
+    expect(tela, 'o aviso LOTE_NAO_COMPARAVEL tem que oferecer o caminho').toContain('foco=rendimento')
+    expect(tela, 'e o caminho de VOLTA pra ordem — senão o dono se perde no meio do gesto').toContain('voltar=')
     // ⛔ e os dois lados: ele SAIU da criação junto com o campo de quantidade
     expect(semComentario(ler(TELA_DA_PRODUCAO)), 'o aviso voltou pra criação, que não pergunta mais quantidade')
-      .not.toContain('estoque/fichas/conversao')
+      .not.toContain('foco=rendimento')
     /**
      * ⚠️ E o atalho é CONDICIONAL ao motivo certo: o `MEDIA_DESTOA` não se resolve convertendo
      * lote nenhum, e oferecer ali mandaria o dono pro lugar errado (a lição de 16/09 —
@@ -55,27 +72,58 @@ describe('⭐⭐ a maçaneta existe — nos dois pontos que o dono pediu', () =>
     expect(tela).toMatch(/motivo === 'LOTE_NAO_COMPARAVEL'/)
   })
 
-  it('⭐ a tela das RECEITAS tem a porta permanente (ferramenta não some com a fila)', () => {
+  it('⭐⭐ a tela das RECEITAS leva à ficha NA LINHA (a fila virou a linha)', () => {
     const tela = semComentario(ler(TELA_DAS_RECEITAS))
-    expect(tela).toContain('estoque/fichas/conversao')
     /**
-     * ⛔ A régua de 12/09: *fila zerada esconde o TRABALHO, nunca a FERRAMENTA*. O link não
-     * pode nascer atrás do contador — só o TEXTO dele muda quando `faltam` é zero.
-     *
-     * ⚠️⚠️ **A REGRA 11 PEGOU ESTE TESTE: a 1ª versão NÃO MORDIA.** Eu fatiava 600 caracteres
-     * antes do primeiro `estoque/fichas/conversao` do arquivo — e o primeiro é o **`fetch` do
-     * `useEffect`** que carrega o contador, lá no topo. Repondo o defeito (o link atrás do
-     * contador) o teste passou **VERDE**. *Guard que mede a vizinhança da ocorrência errada é
-     * uma afirmação sobre outro trecho do arquivo* — é a 7ª vez que a janela de distância
-     * engana nesta casa. O que vale é o que vem imediatamente antes da **TAG**.
+     * ⛔⛔ A régua de 12/09 continua: *fila zerada esconde o TRABALHO, nunca a FERRAMENTA*. A
+     * ferramenta não sumiu — ela mudou de casa pro editor da ficha, e **toda linha desta lista
+     * já leva pra lá**. O que é condicional é a MARCA da pendência (o chip), que é trabalho;
+     * e isso é o certo: chip zerado em toda linha treina o dono a não olhar o chip.
      */
-    const iTag = tela.search(/<a\b[^>]*\n?[^>]*estoque\/fichas\/conversao/)
-    expect(iTag, 'nenhum <a> aponta pro assistente nesta tela').toBeGreaterThan(-1)
-    const antesDaTag = tela.slice(Math.max(0, iTag - 200), iTag)
+    /**
+     * ⚠️⚠️ **A REGRA 11 REPROVOU A 1ª VERSÃO (11/10):** ela fazia `toContain('foco=rendimento')`
+     * no arquivo. Troquei o gate do chip por `{false && (` e o teste ficou **VERDE** — o `<a>`
+     * continuava no arquivo, dentro de um ramo morto. ⭐ O que morde é olhar **o que vem
+     * imediatamente antes da TAG** (estrutura, nunca distância — a janela de caracteres já
+     * enganou 7 vezes aqui).
+     */
+    const iTagChip = tela.search(/<a\b[^>]*foco=rendimento/)
+    expect(iTagChip, 'nenhum <a> leva à ficha com o campo aceso').toBeGreaterThan(-1)
+    const antes = tela.slice(Math.max(0, iTagChip - 120), iTagChip)
     expect(
-      /faltamConverter\s*(?:!=|>|&&)/.test(antesDaTag),
-      'o LINK não pode estar atrás de um contador de pendência — só o rótulo muda (12/09)',
-    ).toBe(false)
+      /\{esperam\[f\.id\]\s*&&/.test(antes),
+      'o chip tem que ser gateado pela pendência DAQUELA ficha — nem solto, nem em ramo morto',
+    ).toBe(true)
+    expect(tela, 'e com o caminho de volta pra lista').toContain('voltar=')
+
+    // ⛔ a tela-fila NÃO pode voltar a ser destino de link nenhum
+    expect(tela, 'a tela-fila foi aposentada — nenhuma tela aponta pra ela').not.toMatch(/<a\b[\s\S]*?estoque\/fichas\/conversao/)
+
+    /**
+     * ⭐ E a LEITURA dela continua viva: a rota `/fichas/conversao` é quem diz QUAIS fichas
+     * esperam o rendimento. Apagar a leitura junto com a tela deixaria a lista sem como marcar
+     * a pendência — e aí a fila teria morrido levando o trabalho com ela.
+     */
+    expect(tela).toContain('estoque/fichas/conversao')
+    expect(tela).toContain('esperamRendimento')
+  })
+
+  /**
+   * ⛔⛔⛔ A ROTA LEGADA REDIRECIONA — link velho não vira 404 silencioso (a régua de 15/09).
+   *
+   * ⚠️ E ela redireciona **pro destino que o link antigo de fato queria**: com `?ficha=`, pra
+   * aquela ficha com o campo aceso. Mandar todo mundo pra uma lista genérica faria o dono
+   * procurar de novo o que o link já sabia (o defeito do Bamberg, 13/09).
+   */
+  it('⭐⭐ a tela-fila aposentada REDIRECIONA, e diz que é legada', () => {
+    const tela = ler(TELA_DA_VARREDURA)
+    expect(tela, 'a rota aposentada tem que registrar que é legada').toMatch(/ROTA LEGADA|APOSENTADA/)
+    const semCom = semComentario(tela)
+    expect(semCom).toMatch(/router\.replace/)
+    expect(semCom, 'com ?ficha= leva À FICHA, com o campo aceso').toContain('foco=rendimento')
+    // ⛔ e ela não pode voltar a LISTAR: a segunda vitrine é o que morreu
+    expect(semCom, 'a tela-fila ressuscitou — ela não pode listar pendentes de novo')
+      .not.toMatch(/pendentes\.map|sugestoes/)
   })
 
   /**
@@ -94,7 +142,7 @@ describe('⭐⭐ a maçaneta existe — nos dois pontos que o dono pediu', () =>
        * ⚠️ `[^}]*` NÃO serve pro href: o template da casa é `` {`/empresas/${id}/...`} `` e o
        * `}` do `${id}` fecha a classe cedo. O que delimita a tag é o PRIMEIRO `>`.
        */
-      const links = [...tela.matchAll(/<a\b[\s\S]*?>/g)].filter((m) => m[0].includes('estoque/fichas/conversao'))
+      const links = [...tela.matchAll(/<a\b[\s\S]*?>/g)].filter((m) => m[0].includes('foco=rendimento'))
       expect(links.length, `${rel}: nenhum <a> aponta pro assistente`).toBeGreaterThan(0)
       for (const m of links) {
         expect(

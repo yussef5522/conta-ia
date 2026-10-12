@@ -28,7 +28,7 @@ beforeEach(async () => {
   cocaId = coca.id
   const xis = await criarFicha({ companyId, nomeProduzido: 'Xis Completo', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: mp.id, qtdPlanejada: 0.2, unidade: 'KG' }] }, prisma)
   xisFichaId = xis.fichaId
-  const interm = await criarFicha({ companyId, nomeProduzido: 'Porção de carne 100g', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: mp.id, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
+  const interm = await criarFicha({ companyId, nomeProduzido: 'Porção de carne 100g', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: mp.id, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
   intermFichaId = interm.fichaId
 })
 afterEach(async () => {

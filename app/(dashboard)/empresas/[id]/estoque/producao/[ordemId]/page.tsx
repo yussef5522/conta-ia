@@ -30,15 +30,24 @@ import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, X, Tag, Pen
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 import { avisoDeEtapasAbertas } from '@/lib/stock/producao/aviso-etapas-abertas'
 import type { OrigemDoPedido } from '@/lib/stock/producao/pedido-da-ordem'
+import type { OrdemView } from '@/lib/stock/producao/ordens'
 import { tabelaDaPergunta, rotuloDoConfirmar, vereditoDaLinha } from '@/lib/stock/producao/pergunta-do-pedido'
 import { avisosDaEscala } from '@/lib/stock/producao/escala-do-pedido'
 import { fraseDoRetalho } from '@/lib/stock/producao/retalho'
 import { sanitizarQtd, valorQtd } from '@/lib/stock/quantidade'
 
 interface Linha { itemId: string; nome: string; unidade: string; unidadeControle: string; porLote: number; qtdPlanejada: number; qtdSeparada: number; qtdConsumida: number; saldoDisponivel: number; custoMedio: number | null; fichaIdComponente: string | null }
-interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number;
-  /** ⭐ a unidade do lote base — o `avisosDaEscala` compara com a do produto (ver a lib) */
-  unidadeLoteBase: string; estado: string; dataProducao: string; setorNome: string | null; versaoFicha: number; fichaId: string }
+/**
+ * ⭐⭐ O TIPO DERIVA DO QUE O SERVIDOR DEVOLVE (`OrdemView`), em vez de ser reescrito à mão —
+ * e isso paga a dívida registrada em 01/09: *"interface escrita à mão sobre payload é promessa,
+ * não prova"*. Foi assim que o `.name` de uma relação nullable derrubou a carteira de
+ * empréstimos com o `tsc` VERDE, e foi assim que a home PF leu `cards` de uma rota que devolvia
+ * outra chave — 200, silêncio, widget vazio.
+ *
+ * ⚠️ Campo novo no servidor passa a existir aqui **de graça**; campo renomeado fica VERMELHO no
+ * `tsc` em vez de virar `undefined` na tela.
+ */
+type Ordem = OrdemView
 /**
  * ⭐ O CARIMBO vem do SERVIDOR, derivado da tabela de conferência — a tela nunca o deduz.
  * ⚠️ `null` só acontece se a rota ficar atrás num deploy; o leitor devolve AGUARDANDO pra
@@ -211,7 +220,19 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
    * material e a ordem separaria outro — e o dono descobriria com a carne na mão.
    */
   const aguardando = pedido?.origem === 'AGUARDANDO'
-  const perguntando = ordem?.estado === 'PLANEJADA' && (aguardando || corrigindoPedido)
+  /**
+   * ⛔⛔⛔ FICHA PENDENTE: A PÁGINA **NÃO PERGUNTA** (11/10, item 2b).
+   *
+   * **Ordem do dono:** *"a ficha é a ÚNICA casa do número (writer único)"* — *"nada de pergunta
+   * na ordem, nada de config paralela"*. Enquanto a ficha não disser quantas unidades saem de 1
+   * receita, perguntar o PEDIDO aqui seria pedir um número que o sistema não tem como dividir:
+   * `escala = pedido ÷ loteBase`, e o `loteBase` está declarado na unidade errada.
+   *
+   * ⚠️ **E o veredito vem do SERVIDOR** (`ordem.rendimentoPendente`), nunca de uma comparação
+   * aqui: duas réguas fariam a ordem cobrar o que o sininho considera resolvido.
+   */
+  const esperaRendimento = !!ordem?.rendimentoPendente
+  const perguntando = ordem?.estado === 'PLANEJADA' && !esperaRendimento && (aguardando || corrigindoPedido)
   const pedidoNum = valorQtd(quanto)
   const tabela = useMemo(
     () => tabelaDaPergunta(
@@ -488,6 +509,32 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
         </div>
       )}
 
+      {/**
+        * ⛔⛔⛔ A FICHA AINDA NÃO DIZ O RENDIMENTO — o LINK, nunca a pergunta (item 2b).
+        *
+        * ⚠️ E ele leva pra a ficha **com o campo aceso** (`?foco=rendimento`) e com o caminho de
+        * VOLTA pra esta ordem (`?voltar=`): perder no caminho a informação que a tela acabou de
+        * dar é obrigar o dono a procurar de novo (o defeito do Bamberg, 13/09).
+        */}
+      {esperaRendimento && ordem?.estado === 'PLANEJADA' && (
+        <Card style={{ borderColor: 'var(--fam-ambar-mid)' }}><CardContent className="space-y-2 p-4">
+          <p className="text-[15px] font-medium" style={{ color: 'var(--fam-ambar-ink)' }}>
+            Esta ficha ainda não diz quantas {ordem.unidadeProduzido} rendem de 1 receita
+          </p>
+          <p className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
+            {ordem.rendimentoPendente!.porQue} Sem esse número não dá pra dividir o pedido na
+            separação — por isso a pergunta mora na ficha, uma vez, e não aqui a cada ordem.
+          </p>
+          <a
+            href={`/empresas/${id}/estoque/fichas/${ordem.fichaId}?foco=rendimento&voltar=${encodeURIComponent(`/empresas/${id}/estoque/producao/${ordemId}`)}`}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium"
+            style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}
+          >
+            completar a ficha →
+          </a>
+        </CardContent></Card>
+      )}
+
       {/* ⭐⭐⭐ A PERGUNTA ÚNICA DO PEDIDO (11/10) — "quantas unidades produzir?" */}
       {perguntando && (
         <Card style={{ borderColor: 'var(--fam-indigo-mid)' }}><CardContent className="space-y-4 p-4">
@@ -630,10 +677,10 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                 * da "porta sem maçaneta" na criação, e ela não volta aqui.
                 */}
               {a.motivo === 'LOTE_NAO_COMPARAVEL' && (
-                <a href={`/empresas/${id}/estoque/fichas/conversao?ficha=${ordem.fichaId}`}
+                <a href={`/empresas/${id}/estoque/fichas/${ordem.fichaId}?foco=rendimento&voltar=${encodeURIComponent(`/empresas/${id}/estoque/producao/${ordemId}`)}`}
                   className="ml-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] font-medium underline"
                   style={{ color: 'var(--fam-ambar-ink)' }}>
-                  corrigir o lote desta ficha
+                  completar a ficha
                 </a>
               )}
             </div>

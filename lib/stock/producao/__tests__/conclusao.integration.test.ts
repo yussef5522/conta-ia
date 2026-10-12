@@ -27,7 +27,7 @@ beforeEach(async () => {
     ids[k.nome] = it.id
     await prisma.stockMovement.create({ data: { companyId, itemId: it.id, tipo: 'ENTRADA_NF', quantidade: 20, custoUnitario: k.custo, custoTotal: k.custo * 20, origem: 'SEFAZ' } })
   }
-  const f = await criarFicha({ companyId, nomeProduzido: 'Porção de carne 100g', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', validadeDias: 15, componentes: COMPS.map((k, i) => ({ itemId: ids[k.nome], qtdPlanejada: 1, unidade: 'KG', posicao: i })) }, prisma)
+  const f = await criarFicha({ companyId, nomeProduzido: 'Porção de carne 100g', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', validadeDias: 15, componentes: COMPS.map((k, i) => ({ itemId: ids[k.nome], qtdPlanejada: 1, unidade: 'KG', posicao: i })) }, prisma)
   fichaId = f.fichaId; produtoId = f.itemProduzidoId
 })
 afterEach(async () => {

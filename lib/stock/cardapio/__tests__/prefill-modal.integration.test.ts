@@ -72,14 +72,19 @@ describe('produto final = PLATE COST (1 porção vendida)', () => {
     expect(v.mostraRendimento).toBe(false)
     expect(v.mostraValidade).toBe(false)
     expect(v.loteBase).toBe('1') // 1 ficha = 1 unidade vendida
-    expect(v.unidadeLoteBase).toBe('UN')
+    // ⚠️ TESTE INVERTIDO COM O MOTIVO ESCRITO (11/10): ele afirmava que o prefill DECIDE a
+    // unidade do rendimento. Ela não é decisão do prefill nem do dono — é a unidade do PRODUTO
+    // (o editor deriva). O campo saiu da lib, e a sua ausência é o que o teste afirma agora.
+    expect('unidadeLoteBase' in v).toBe(false)
   })
 
   it('⚠️ receita de PRODUÇÃO mantém os dois — é ela que rende em lote e vence', () => {
     const v = valoresIniciaisDaFicha('INTERMEDIARIO')
     expect(v.mostraRendimento).toBe(true)
     expect(v.mostraValidade).toBe(true)
-    expect(v.unidadeLoteBase).toBe('KG') // a cozinha pesa a matéria-prima
+    // ⛔⛔ E ESTE AFIRMAVA A FÁBRICA: `'KG'` aqui, com o produto nascendo em `'UN'`, era o
+    // estado DEFAULT incoerente que produziu os 37 achados do M5. A unidade some da lib.
+    expect('unidadeLoteBase' in v).toBe(false)
     expect(v.preco).toBe('') // intermediário não tem preço de cardápio
   })
 })

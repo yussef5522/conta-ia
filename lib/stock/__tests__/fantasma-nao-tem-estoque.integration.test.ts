@@ -15,6 +15,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { checkFantasmaInvariants } from '../fantasma-invariants'
+import { tornarRotuloTorto } from '@/lib/stock/producao/__tests__/_ficha-torta'
 import { criarFicha } from '../producao/fichas'
 
 const CNPJ = '75757575000175'
@@ -138,18 +139,22 @@ describe('⛔⛔ M5 — o lote declarado tem que ser COMPARÁVEL (a raiz do beef
     const insumo = await prisma.stockItem.create({
       data: { companyId, nome: 'ACEM', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' },
     })
-    await criarFicha(
+    const f = await criarFicha(
       {
         companyId,
         nomeProduzido: 'beef de xis',
         unidadeProduzido: 'UN',       // ⭐ o produto se CONTA em UN
         tipoProduto: 'INTERMEDIARIO',
         loteBase: 1,
-        unidadeLoteBase: 'KG',        // ⛔ mas o lote é declarado em KG
+        unidadeLoteBase: 'UN',        // nasce coerente (porta de 11/10)…
         componentes: [{ itemId: insumo.id, qtdPlanejada: 0.091, unidade: 'KG' }],
       },
       prisma,
     )
+    // ⛔⛔ …e o rótulo é TORCIDO depois, por fora da porta: é a forma do legado (as 37 nasceram
+    // antes de 11/10). Ver `producao/__tests__/_ficha-torta.ts` — sem isso o M5 só seria
+    // testado contra o mundo bom, que é o verde de graça que a REGRA 11 proíbe.
+    await tornarRotuloTorto(companyId, f.fichaId, 'KG', prisma)
     const m = await M('M5')
     expect(m).toHaveLength(1)
     expect(m[0].nivel).toBeUndefined() // ⛔ ERRO

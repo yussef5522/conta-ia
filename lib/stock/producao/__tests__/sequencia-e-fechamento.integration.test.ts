@@ -61,7 +61,7 @@ beforeEach(async () => {
   }
   const f = await criarFicha({
     companyId, nomeProduzido: 'Beef de hambúrguer', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-    loteBase: 1, unidadeLoteBase: 'KG', validadeDias: 10,
+    loteBase: 1, unidadeLoteBase: 'UN', validadeDias: 10,
     etapas: [{ nome: 'gessado' }, { nome: 'beef' }],
     componentes: [
       { itemId: acem, qtdPlanejada: 0.8, unidade: 'KG', posicao: 0 },
@@ -208,7 +208,7 @@ describe('⭐⭐ o lote fecha na ponta, pelo MESMO motor', () => {
   it('⭐ receita sem etapas: a etapa única É a última — o fluxo vale igual', async () => {
     const sem = await criarFicha({
       companyId, nomeProduzido: 'Porção avulsa', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-      loteBase: 1, unidadeLoteBase: 'KG',
+      loteBase: 1, unidadeLoteBase: 'UN',
       componentes: [{ itemId: acem, qtdPlanejada: 1, unidade: 'KG', posicao: 0 }],
     }, prisma)
     const { ordemId } = await criarOrdem({ companyId, fichaId: sem.fichaId, escalaReceitas: 2, dataProducao: HOJE }, prisma)

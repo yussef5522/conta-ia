@@ -30,7 +30,7 @@ afterEach(async () => {
 
 describe('sugestão de produção (min/max)', () => {
   it('produzido abaixo do mínimo → sugere; sem mínimo ou acima → não sugere', async () => {
-    const f = await criarFicha({ companyId, nomeProduzido: 'Produto A', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: insumoId, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
+    const f = await criarFicha({ companyId, nomeProduzido: 'Produto A', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: insumoId, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
     // sem mínimo → nenhuma sugestão
     expect(await sugestoesDeProducao(companyId, prisma)).toHaveLength(0)
     // define mínimo 10, máximo 50; saldo do produzido = 0 → abaixo

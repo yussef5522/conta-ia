@@ -47,7 +47,7 @@ describe('GOLDEN — Porção de Carne 100g (1ª ficha real da Caçula)', () => 
   it('custo do lote fecha em 90,50 ao centavo, 3 componentes com custo do ledger, sem "a definir"', async () => {
     const { fichaId } = await criarFicha({
       companyId, nomeProduzido: 'porcao de carne 100 grama', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-      loteBase: 1, unidadeLoteBase: 'KG', validadeDias: 15,
+      loteBase: 1, unidadeLoteBase: 'UN', validadeDias: 15,
       componentes: RECEITA.map((r, i) => ({ itemId: itemIds[r.nome], qtdPlanejada: 1, unidade: 'KG', posicao: i })),
     })
     const got = await getFicha(companyId, fichaId)
@@ -64,7 +64,7 @@ describe('GOLDEN — Porção de Carne 100g (1ª ficha real da Caçula)', () => 
 
   it('adicionar um insumo SEM nota (molho) → custo do lote vira "a definir" (nunca 0,01)', async () => {
     const molho = await prisma.stockItem.create({ data: { companyId, nome: 'Molho caseiro', unidadeControle: 'LT', categoria: 'MATERIA_PRIMA', criadoVia: 'MANUAL' } })
-    const { fichaId } = await criarFicha({ companyId, nomeProduzido: 'Porção', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: itemIds['Coxão Mole'], qtdPlanejada: 1, unidade: 'KG' }] })
+    const { fichaId } = await criarFicha({ companyId, nomeProduzido: 'Porção', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: itemIds['Coxão Mole'], qtdPlanejada: 1, unidade: 'KG' }] })
     await atualizarFicha(companyId, fichaId, { componentes: [{ itemId: itemIds['Coxão Mole'], qtdPlanejada: 1, unidade: 'KG' }, { itemId: molho.id, qtdPlanejada: 0.2, unidade: 'LT' }] })
     const got = await getFicha(companyId, fichaId)
     expect(got!.ficha.versaoAtual).toBe(2)

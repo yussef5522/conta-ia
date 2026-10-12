@@ -45,7 +45,7 @@ beforeEach(async () => {
   const carne = await estoque('Carne moída', 'MATERIA_PRIMA', 100, 40)
 
   // beef = INTERMEDIÁRIO produzido em lote (o mundo da cozinha)
-  const beef = await criarFicha({ companyId, nomeProduzido: 'Beef de xis', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: carne, qtdPlanejada: 0.1, unidade: 'KG' }] }, prisma)
+  const beef = await criarFicha({ companyId, nomeProduzido: 'Beef de xis', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: carne, qtdPlanejada: 0.1, unidade: 'KG' }] }, prisma)
   beefId = beef.itemProduzidoId
   await prisma.stockMovement.create({ data: { companyId, itemId: beefId, tipo: 'PRODUCAO_GERACAO', quantidade: 50, custoUnitario: 4, custoTotal: 200, origem: 'MANUAL' } })
 

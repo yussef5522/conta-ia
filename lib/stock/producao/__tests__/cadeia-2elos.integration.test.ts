@@ -62,7 +62,7 @@ describe('cadeia de 2 elos: gessado → beef', () => {
     await produzir(gessado.fichaId, CARNES.map((k) => ({ itemId: ids[k.nome], qtd: 1 })), 3) // 3kg de gessado a 30,17/kg (90,50/3)
 
     // beef de xis: ficha INTERMEDIÁRIO que consome o GESSADO (outro intermediário)
-    const beef = await criarFicha({ companyId, nomeProduzido: 'Beef de Xis', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: gessado.itemProduzidoId, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
+    const beef = await criarFicha({ companyId, nomeProduzido: 'Beef de Xis', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: gessado.itemProduzidoId, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
     // moldou 1kg de gessado → 9 beefs (100g cada, perdeu 0,1kg na moldagem)
     const r = await produzir(beef.fichaId, [{ itemId: gessado.itemProduzidoId, qtd: 1 }], 9)
     // gessado baixou de 3 → 2
@@ -76,13 +76,13 @@ describe('cadeia de 2 elos: gessado → beef', () => {
 
   it('ciclo bloqueado continua: gessado não pode passar a usar o beef', async () => {
     const gessado = await criarFicha({ companyId, nomeProduzido: 'Gessado', unidadeProduzido: 'KG', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: ids['Acém'], qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
-    const beef = await criarFicha({ companyId, nomeProduzido: 'Beef', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: gessado.itemProduzidoId, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
+    const beef = await criarFicha({ companyId, nomeProduzido: 'Beef', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: gessado.itemProduzidoId, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
     await expect(atualizarFicha(companyId, gessado.fichaId, { componentes: [{ itemId: beef.itemProduzidoId, qtdPlanejada: 1, unidade: 'UN' }] }, prisma)).rejects.toThrow(FichaError)
   })
 
   it('elo 2 avisa a falta: separar beef sem gessado suficiente mostra saldo < planejado + a ficha do gessado', async () => {
     const gessado = await criarFicha({ companyId, nomeProduzido: 'Gessado', unidadeProduzido: 'KG', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: ids['Acém'], qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
-    const beef = await criarFicha({ companyId, nomeProduzido: 'Beef', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 5, unidadeLoteBase: 'KG', componentes: [{ itemId: gessado.itemProduzidoId, qtdPlanejada: 5, unidade: 'KG' }] }, prisma)
+    const beef = await criarFicha({ companyId, nomeProduzido: 'Beef', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 5, unidadeLoteBase: 'UN', componentes: [{ itemId: gessado.itemProduzidoId, qtdPlanejada: 5, unidade: 'KG' }] }, prisma)
     const { ordemId } = await criarOrdem({ companyId, fichaId: beef.fichaId, escalaReceitas: 1, dataProducao: new Date('2026-08-22') }, prisma)
     const { linhas } = await explodirSeparacao(companyId, ordemId)
     const lg = linhas.find((l) => l.itemId === gessado.itemProduzidoId)!

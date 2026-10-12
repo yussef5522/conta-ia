@@ -43,7 +43,7 @@ beforeEach(async () => {
   }
   fichaId = (await criarFicha({
     companyId, nomeProduzido: 'Beef de xis', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-    loteBase: 10, unidadeLoteBase: 'KG', validadeDias: 10,
+    loteBase: 10, unidadeLoteBase: 'UN', validadeDias: 10,
     etapas: [{ nome: 'gessado' }, { nome: 'moldar beef' }],
     componentes: [
       { itemId: acem, qtdPlanejada: 0.8, unidade: 'KG', posicao: 0 },

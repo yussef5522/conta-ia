@@ -63,7 +63,7 @@ function espiao(real: PrismaClient) {
 async function criarFichaComPrefixo(n: number) {
   const f = await criarFicha({
     companyId, nomeProduzido: `RECEITA LOTE ${n}`, unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-    loteBase: 1, unidadeLoteBase: 'KG', validadeDias: 10,
+    loteBase: 1, unidadeLoteBase: 'UN', validadeDias: 10,
     etapas: [{ nome: 'gessado' }, { nome: 'moldar' }],
     componentes: INSUMOS.map((k, i) => ({ itemId: insumoIds[k.nome], qtdPlanejada: 1, unidade: 'KG', posicao: i })),
   }, prisma)
@@ -180,7 +180,7 @@ describe('⛔⛔ a lista de fichas não pergunta N vezes o que se pergunta uma',
     const f1 = await criarFichaComPrefixo(1)
     await criarFicha({
       companyId, nomeProduzido: 'RECEITA SEM ETAPA', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-      loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: insumoIds['PAO LOTE'], qtdPlanejada: 1, unidade: 'KG' }],
+      loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: insumoIds['PAO LOTE'], qtdPlanejada: 1, unidade: 'KG' }],
     }, prisma)
 
     const lista = await listFichas(companyId, prisma)

@@ -62,7 +62,7 @@ beforeEach(async () => {
   }
   const f = await criarFicha({
     companyId, nomeProduzido: 'Beef de xis', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-    loteBase: 1, unidadeLoteBase: 'KG', validadeDias: 10,
+    loteBase: 1, unidadeLoteBase: 'UN', validadeDias: 10,
     // ⭐ as DUAS etapas reais da cozinha
     etapas: [{ nome: 'gessado' }, { nome: 'moldar beef' }],
     componentes: [
@@ -97,7 +97,7 @@ describe('⭐⭐ as etapas moram na receita e nascem com a ordem', () => {
   it('⛔⛔ receita SEM etapa continua funcionando — vira UMA etapa, sem backfill', async () => {
     const sem = await criarFicha({
       companyId, nomeProduzido: 'Porção avulsa', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-      loteBase: 1, unidadeLoteBase: 'KG',
+      loteBase: 1, unidadeLoteBase: 'UN',
       componentes: [{ itemId: ids['Acém'], qtdPlanejada: 1, unidade: 'KG', posicao: 0 }],
     }, prisma)
     const { ordemId } = await criarOrdem({ companyId, fichaId: sem.fichaId, escalaReceitas: 1, dataProducao: HOJE }, prisma)

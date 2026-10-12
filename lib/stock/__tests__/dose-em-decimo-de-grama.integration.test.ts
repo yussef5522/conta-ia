@@ -46,7 +46,7 @@ beforeEach(async () => {
   await prisma.stockMovement.create({ data: { companyId, itemId: farinhaId, tipo: 'ENTRADA_NF', quantidade: 100, custoUnitario: 3.61, custoTotal: 361, origem: 'SEFAZ' } })
   const f = await criarFicha({
     companyId, nomeProduzido: 'metade de bolinha massa de pizza', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
-    loteBase: 1, unidadeLoteBase: 'KG',
+    loteBase: 1, unidadeLoteBase: 'UN',
     componentes: [
       { itemId: farinhaId, qtdPlanejada: 0.15, unidade: 'KG', posicao: 0 },
       { itemId: fermentoId, qtdPlanejada: 0.003, unidade: 'KG', posicao: 1 }, // a ficha GORDA (3 g)
@@ -133,7 +133,7 @@ describe('⭐⭐ 2. a tela mostra na unidade natural (a gravação segue em KG)'
 describe('⛔⛔⛔ 3. o caminho inteiro: editar a ficha → separar → o ledger', () => {
   it('⭐ salva v2 com 0,0003 e a ficha DEVOLVE 0,0003 (não 0)', async () => {
     const { versao } = await atualizarFicha(companyId, fichaId, {
-      loteBase: 1, unidadeLoteBase: 'KG',
+      loteBase: 1, unidadeLoteBase: 'UN',
       componentes: [
         { itemId: farinhaId, qtdPlanejada: 0.15, unidade: 'KG', posicao: 0 },
         { itemId: fermentoId, qtdPlanejada: DOSE, unidade: 'KG', posicao: 1 },
@@ -151,7 +151,7 @@ describe('⛔⛔⛔ 3. o caminho inteiro: editar a ficha → separar → o ledge
 
   it('⛔⛔ a SEPARAÇÃO multiplica sem arredondar cedo (era round4/round2)', async () => {
     await atualizarFicha(companyId, fichaId, {
-      loteBase: 1, unidadeLoteBase: 'KG',
+      loteBase: 1, unidadeLoteBase: 'UN',
       componentes: [
         { itemId: farinhaId, qtdPlanejada: 0.15, unidade: 'KG', posicao: 0 },
         { itemId: fermentoId, qtdPlanejada: DOSE, unidade: 'KG', posicao: 1 },
@@ -181,7 +181,7 @@ describe('⛔⛔⛔ 3. o caminho inteiro: editar a ficha → separar → o ledge
      * ZERO e a pessoa confirma sem o componente — o insumo sai do lote sem sair do estoque.
      */
     await atualizarFicha(companyId, fichaId, {
-      loteBase: 1, unidadeLoteBase: 'KG',
+      loteBase: 1, unidadeLoteBase: 'UN',
       componentes: [{ itemId: fermentoId, qtdPlanejada: 0.000001, unidade: 'KG', posicao: 0 }],
     }, prisma)
     const o = await criarOrdem({ companyId, fichaId, escalaReceitas: 1, dataProducao: new Date('2026-09-29') }, prisma)
@@ -192,7 +192,7 @@ describe('⛔⛔⛔ 3. o caminho inteiro: editar a ficha → separar → o ledge
 
   it('⭐⭐ o LEDGER recebe a dose exata e o saldo desconta 0,3 g por metade', async () => {
     await atualizarFicha(companyId, fichaId, {
-      loteBase: 1, unidadeLoteBase: 'KG',
+      loteBase: 1, unidadeLoteBase: 'UN',
       componentes: [
         { itemId: farinhaId, qtdPlanejada: 0.15, unidade: 'KG', posicao: 0 },
         { itemId: fermentoId, qtdPlanejada: DOSE, unidade: 'KG', posicao: 1 },
@@ -214,7 +214,7 @@ describe('⛔⛔⛔ 3. o caminho inteiro: editar a ficha → separar → o ledge
 
   it('⛔⛔ a BAIXA DE VENDA não zera a dose (o 2º motor, com o mesmo defeito)', async () => {
     await atualizarFicha(companyId, fichaId, {
-      loteBase: 1, unidadeLoteBase: 'KG',
+      loteBase: 1, unidadeLoteBase: 'UN',
       componentes: [{ itemId: fermentoId, qtdPlanejada: DOSE, unidade: 'KG', posicao: 0 }],
     }, prisma)
     // a ficha do produto final que o PDV vende, consumindo a massa como componente

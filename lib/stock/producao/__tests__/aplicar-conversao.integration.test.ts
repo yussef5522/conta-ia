@@ -11,6 +11,7 @@ import { prisma } from '@/lib/db'
 import { aplicarConversaoDeLote, ConversaoError } from '../aplicar-conversao'
 import { fichasParaConverter } from '../fichas-para-converter'
 import { criarFicha } from '../fichas'
+import { tornarRotuloTorto } from './_ficha-torta'
 
 const CNPJ = '72727272000253'
 let companyId = ''
@@ -29,7 +30,8 @@ async function fichaEmKg(nome: string, loteBase = 1, dose = 0.18) {
       unidadeProduzido: 'UN', // ⭐ o produto se CONTA em UN…
       tipoProduto: 'INTERMEDIARIO',
       loteBase,
-      unidadeLoteBase: 'KG', // …e o lote declara KG: é o caso dos 37
+      // ⛔ nasce COERENTE (a porta de 11/10) e o rótulo é torcido abaixo — é a forma do legado
+      unidadeLoteBase: 'UN',
       componentes: [
         { itemId: insumo.id, qtdPlanejada: dose, unidade: 'KG' },
         { itemId: sal.id, qtdPlanejada: 0.002, unidade: 'KG' },
@@ -39,6 +41,7 @@ async function fichaEmKg(nome: string, loteBase = 1, dose = 0.18) {
     },
     prisma,
   )
+  await tornarRotuloTorto(companyId, f.fichaId, 'KG', prisma)
   return { fichaId: f.fichaId, insumoId: insumo.id, salId: sal.id }
 }
 

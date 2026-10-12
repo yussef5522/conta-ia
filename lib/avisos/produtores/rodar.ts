@@ -18,6 +18,7 @@ import { produzirAvisosDeMargem } from './margem'
 import { produzirAvisosDeImportDeVenda } from './import-de-venda'
 import { produzirAvisosDeConferencia } from './conferencia'
 import { produzirAvisosDeRetalho } from './retalho'
+import { produzirAvisosDeRendimento } from './rendimento'
 import { montarSemanaVerde } from '../semana-verde'
 import { registrarAviso, avisosAbertos } from '../central'
 
@@ -164,6 +165,21 @@ export async function rodarProdutoresDeAviso(agora: Date = new Date()): Promise<
       r.reabertos += rt.reabertos
       r.resolvidos += rt.resolvidos
       for (const x of rt.recusados) r.recusados.push({ empresa: e.name, ...x })
+      /**
+       * ⭐⭐ AS FICHAS QUE ESPERAM O RENDIMENTO (11/10, item 2a) — setor `gerencia`.
+       *
+       * ⛔⛔ **ENTRA DEPOIS DA PRODUÇÃO de propósito, e a ordem é a régua anti-spam:** o M5 e o
+       * aviso de PADRÃO de rendimento nascem lá e falam da MESMA ficha por outro ângulo.
+       * Rodando antes, este gritaria sobre uma ficha que ainda vai ganhar o alarme da causa.
+       *
+       * ⚠️ E ele lista só as NÃO-NEUTRAS: ficha que a auto-conversão resolve sozinha não é
+       * pendência do dono. Empresa sem ficha torta devolve zero e não grava nada.
+       */
+      const rd = await produzirAvisosDeRendimento(e.id, agora)
+      r.gravados += rd.gravados
+      r.reabertos += rd.reabertos
+      r.resolvidos += rd.resolvidos
+      for (const x of rd.recusados) r.recusados.push({ empresa: e.name, ...x })
       if (await verdeDaSemana(e.id, agora)) r.verdesSemanais++
     } catch (err) {
       // ⛔ uma empresa com problema não derruba a rodada das outras nem o juiz

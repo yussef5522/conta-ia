@@ -36,7 +36,6 @@ export interface ValoresIniciais {
   /** de onde veio o preço — a tela DIZ, pra o dono saber que pode confiar/editar */
   precoOrigem: 'praticado' | 'cardapio' | null
   loteBase: string
-  unidadeLoteBase: 'KG' | 'UN' | 'LT'
   /** campos do mundo da produção que NÃO aparecem no produto final */
   mostraRendimento: boolean
   mostraValidade: boolean
@@ -77,7 +76,14 @@ export function valoresIniciaisDaFicha(modo: ModoFicha, linha?: LinhaParaFicha |
     precoOrigem,
     // ⚠️ produto final é SEMPRE 1 porção vendida — não se pergunta o que a tela já sabe.
     loteBase: '1',
-    unidadeLoteBase: monta ? 'UN' : 'KG',
+    /**
+     * ⛔⛔ `unidadeLoteBase` SAIU DAQUI (11/10) — e ela era **A FÁBRICA DOS 37 ACHADOS DO M5**.
+     * Este campo abria a ficha de produção em `'KG'` enquanto o produto nascia em `'UN'`: o
+     * estado DEFAULT do editor era incoerente. A unidade do rendimento **não é escolha nem
+     * default** — ela É a unidade do produto, por definição de *"quantas unidades saem de 1
+     * receita"*. O editor passou a derivá-la, e campo sem leitor é campo que alguém religa por
+     * descuido (a lição do `futureParcelasNotInvoiced`).
+     */
     mostraRendimento: !monta,
     mostraValidade: !monta,
   }
