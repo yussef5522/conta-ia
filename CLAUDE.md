@@ -2915,6 +2915,122 @@ ordens 578→578 · metas 104→104 · rastros 0→0 · movimentos 7.407→7.407
 
 📋 **ACHADO NO CAMINHO, NÃO ATACADO:** o juiz do estoque tem **1 achado M2 NOVO** — a `MAIONESE` do lote de **10/10** com o `sal` em **ficha 0,0005 KG × efetiva 0,001 KG (+100%)**. É a classe do **meio grama** que o sprint do campo decimal (29/09) tornou digitável, e o M2 fazendo o trabalho dele. ⚠️ **Não é do meu sprint** (a conclusão é de 10/10 19:11, e a prova criou 0 conclusões). Os outros são os débitos já registrados: V1 123 · E7 97 · P6 94 · P8 59 · P3 59 · M1 53 · M5 37 · F2 26 · E15 10 · P5 3 · **P1 2** (14/09 e 30/09) · M3 1.
 
+## 🔎⭐ RECEITAS DE PRODUÇÃO — BUSCA + PRINCIPAIS + ROUPA v4 (12/10/2026)
+
+**Ordem do dono:** 44 receitas e ele caçando uma por uma na rolagem. E as que importam, **na mão dele**: *"mais importante ou mais caro e eu tem opcao de coloca receitas dentro… e tira tbm quando achou q nao mais importante"*. ⛔ **Categoria automática (carnes/queijos/legumes) foi DESCARTADA no chat** — quem decide o que importa é ele, e um mapa de palavra erraria justo na receita atípica, que costuma ser a mais cara. ⚠️ Varrido antes: **não havia resquício de "famílias"** de tentativa anterior (os matches de `familia` no módulo são a palavra em comentário de prosa).
+
+### ⛔⛔⛔ A LEI DA ESTRELA: ELA É ROUPA, A RECEITA É LEI
+
+A marca vive na **IDENTIDADE** da receita (`fichaId`), **nunca na versão**. Marcar/desmarcar **não cria versão**, **não mexe em custo** e **não passa perto de `explodirReceita`** — e isso não é promessa: o arquivo da porta **não importa** nada de versão/componente/explosão, e o guard proíbe que importe.
+
+**⚠️⚠️ E É TABELA, NÃO COLUNA — o pedido dizia "1 coluna nova no registro de IDENTIDADE", e a regra dura do módulo não deixa:** `ADD COLUMN` em `stock_ficha` é **ALTER**, e `migration-isolation.test.ts` reprova qualquer ALTER numa migration `stock_`, **no CI, antes do deploy** (Fase 0). `stock_receita_principal` (CREATE-only, `@@unique(companyId,fichaId)`) cumpre a **intenção inteira** — a marca é da identidade, não da versão — e é o mesmo desenho de `stock_ficha_retalho`, `stock_dose_a_declarar` e `stock_item_validade`.
+
+**⭐ E O "NASCE false, NUNCA NULL" SAI DE GRAÇA, POR CONSTRUÇÃO:** linha ausente = não é principal. Não existe estado terceiro pra ler errado — mais forte que um DEFAULT de coluna, porque nem o INSERT precisa lembrar dele. ⚠️ A coluna `principal` existe pra o **rastro sobreviver ao desmarcar** (*quem* tirou e *quando*): o gesto vai e volta muito, e append-only viraria ruído. **Ausência e `false` significam a MESMA coisa na leitura** — a régua de *"ausência = padrão"* do `stock_etapa_plano`.
+
+**⛔⛔ E A LEITURA NÃO CONFUNDE "TEM LINHA" COM "É PRINCIPAL":** `principaisDaEmpresa` filtra `principal: true` explícito. Tratar a existência da linha como a marca ressuscitaria o `?? 'CAIXA'` que sumiu com o CASPER em 20/09 — ***default que resolve é default que esconde***.
+
+### ⭐⭐ A PORTA ÚNICA DE ESCRITA
+
+`marcarReceitaPrincipal(id + liga/desliga)` grava **o booleano e mais nada**. Resolve a ficha **por ID escopado por empresa** (REGRA 8 — sem o `companyId` no `where`, um id de outra empresa marcaria a receita do vizinho), é **idempotente** (upsert + índice único: dois toques rápidos no celular não criam duas linhas), e a rota é **casca fina** com `.strict()` no corpo (campo a mais é 400, nunca recortado em silêncio — a cicatriz de 25/09).
+
+**⚠️ Ela aceita QUALQUER ficha da empresa, de propósito:** a pergunta que a coluna responde é *"o dono fixou esta receita no topo?"*. Se amanhã o cardápio quiser o mesmo gesto, é a MESMA pergunta e a MESMA porta (REGRA 4); restringir a INTERMEDIARIO aqui forçaria uma segunda tabela, e aí a estrela passaria a significar duas coisas.
+
+⚠️ **`stock.manage`, não `operate`:** decidir o que é importante é organizar a casa do dono — a mesma fronteira do mín/máx, da ficha e do mapa do PDV. Quem opera produz e separa.
+
+### ⭐⭐⭐ A DECISÃO DA LISTA É LIB PURA — e é ela que torna o sprint testável
+
+`montarListaDeReceitas` (busca · chips · 2 blocos · ordem · vazio) é **PURA**, e a tela **ECOA**: não filtra, não ordena, não conta (o guard proíbe `.sort()`/`localeCompare` nela). ⛔ Sem jsdom no projeto, **regra que mora num `useState`/JSX é regra que ninguém prova** — a cicatriz do prefill do cardápio (quebrou 2× antes de virar função) e do binding do seletor de categoria (17/09). **Todo vermelho que o dono pediu só existe por causa disso.**
+
+**⚠️⚠️ OS CONTADORES DOS CHIPS SAEM DO RECORTE DA BUSCA, NÃO DO UNIVERSO** — e esta é a decisão mais importante do arquivo. O chip é um FILTRO: o número nele é *"quantas eu vejo se clicar"*. Contar o universo faria o chip dizer `principais · 2` e a lista mostrar **0** depois do clique (porque a busca continua ativa) — exatamente a divergência **badge × tela** que esta casa pagou no menu da Conciliação. Há teste com o contrafactual.
+
+**⚠️ "TODAS AS RECEITAS" CONTÉM TODAS, inclusive as principais**, e as duas saídas eram defensáveis. Esconder as marcadas dali faria o rótulo prometer mais do que entrega (13/09) e o dono procuraria a receita estrelada onde ela sempre esteve. ⭐ E a régua de *"uma decisão aparece UMA vez na página"* (20/09) não é violada: lá o risco era **dois lugares de AGIR sobre o mesmo par**; aqui é o MESMO cartão, com gestos idempotentes de navegação.
+
+### ⭐⭐ A BUSCA — PELA PORTA DA CASA, COM O TRECHO DESTACADO
+
+Filtra **ao vivo sobre o que a tela já carregou** (zero chamada por tecla) pela **`casaBusca`** — importada, **nunca copiada**. ⛔ `toLowerCase()/includes()` cru ressuscitaria o bug de 08/09, e o guard proíbe os dois na tela e na régua.
+
+**⭐⭐ `trechosDaBusca` (novo, em `lib/busca-texto.ts`) destaca no nome ORIGINAL** — e o ponto fino é o **mapa de índice**: `normalizarBusca` **remove** o acento (NFD), então sem guardar de qual caractere original cada caractere normalizado veio, o destaque de `"porcao"` cairia **deslocado** em `"porçao"`, e destaque torto parece defeito de render. ⛔ **E ele é COSMÉTICO e conservador de propósito:** quem decide se a linha aparece é `casaBusca`; palavra que o destaque não localizar só deixa de ser pintada. O inverso — destaque mandando na filtragem — faria uma falha de cosmética **esconder receita**, a classe mais cara deste módulo.
+
+### ⭐ ROUPA v4 + LEI DE LAYOUT
+
+Logo colorido pelo **componente único** (`LogoDaReceita` 38, o mesmo da home — a tela não importa `caraDaReceita`: zero mapa novo) · nome forte com o destaque · sublinha num fôlego (`v5 · lote 1 UN · R$ 4,14 · 3 componente(s)`) · **custo "a definir" ÂMBAR na sublinha** (cinza se lê como *"não importa"*, e é justo ali que falta um gesto do dono) · estrela como `<button>` com `aria-pressed` (teclado e leitor de tela) · **teto 1440 · 28px (14 no celular) · GRADE de cartões**, os números do pedido escritos literais. **Produzir, duplicar, excluir, "Nova receita" e o chip *"rendimento a declarar"* ficam os mesmos, nos mesmos destinos** — e o guard trava cada um.
+
+**⭐ A ESTRELA É OTIMISTA, E A REVERSÃO É A PARTE QUE IMPORTA:** falhou a gravação, ela **volta sozinha** e a tela diz. Afirmar um estado que o servidor não guardou é a família do *"salvo que mentia"* — pior que o clique não responder, porque o dono vai embora achando que marcou. ⛔ E **zero `carregar()`** no gesto: recarregar 44 fichas pra mudar um booleano é o refetch de 1,4 s que esta casa já aposentou duas vezes.
+
+### ⚠️⚠️ REGRA 11 — 8 DEFEITOS REPOSTOS, 16 VERMELHOS, nenhum verde de graça
+
+| defeito reposto | vermelhos |
+|---|---|
+| **a porta CRIANDO versão da ficha** (estrela virando receita) | **3** |
+| **escrita FORA da porta única** (upsert na rota) | **1** |
+| a régua comparando na mão (`toLowerCase/includes` cru) | 2 |
+| comparação crua **NA TELA** | 1 |
+| o chip âmbar filtrando o CONTRÁRIO | 3 |
+| ordem sem `localeCompare('pt-BR')` (Água no fim) | 3 |
+| **duplicar** sumindo da tela | 1 |
+| `principal` nascendo `undefined` em vez de `false` | 2 |
+
+**Baseline 0 · restaurado 0.** A sonda guarda backup pela **chave do caminho inteiro** (a cicatriz de 09/10: duas telas se chamam `page.tsx`), **ASSERTA que a substituição aplicou** (a do `perl` que não aplicou e deu verde) e **conta suíte que NÃO COLETOU como vermelho** — a cicatriz de ontem, em que 35 testes mortos devolveram *"0 failed tests"*.
+
+**⚠️ E UM GUARD MEU DEU FALSO VERMELHO NUMA TELA CERTA — a janela de distância, 8ª vez:** eu ancorei o teste do custo âmbar no **1º `custoADefinir` do arquivo**, que é a **declaração da interface**, 150 linhas acima do JSX. Reancorado no **USO** (`{f.custoADefinir`).
+
+**⚠️ E O TESTE CORRIGIU A MINHA ARITMÉTICA:** eu escrevi que o `sort()` cru devolveria `Zucchini · Água · beef`. É `Zucchini · beef · Água` (`Z`=0x5A < `b`=0x62 < `Á`=0xC1). O que importa (o acento vai pro fim) estava certo; a minha ordem de code point, não.
+
+### ⚠️ REGRA 13 — O CHECK PROVADO CONTRA POSTGRES
+
+`scripts/prova-check-receita-principal.ts`: **4 de 4 INSERTs tortos recusados pela constraint certa** (`companyId` vazio/só-espaço · `fichaId` vazio/só-espaço) · **3 de 3 legítimos aceitos**, inclusive o **DESMARCADO com rastro** (`principal=false`) e o **sem autor** (`marcadoPorId` NULL) · **a 2ª linha da mesma receita recusada pelo índice único (23505)** · **zero escrita líquida** (0 → 0).
+
+⭐ **E o contrafactual medido no próprio banco:** `length(trim(NULL)) > 0` devolve **NULL → o CHECK PASSARIA** (o furo do `chk_aviso_acao_completa`, 04/10) — aqui ele não morde porque `is_nullable` das duas colunas comparadas é **NO**, e o script **mede isso** em vez de eu afirmar.
+
+### ⛔⛔ E O BUILD REPROVOU O QUE O `tsc` LOCAL APROVOU
+
+`respostaDeErroDoEstoque` devolve `null` pro que **não** é erro de domínio, e eu o devolvi direto no `catch` — o handler passou a poder retornar `null` e o build do Next recusou (*"Type 'null' is not assignable to type 'void | Response'"*). ⚠️ **`npx tsc --noEmit` passou LIMPO:** a restrição do handler só existe nos **tipos que o Next GERA no build**. O certo é o padrão dos vizinhos: traduz, e **relança** o inesperado (ali o 500 genérico é honesto). ⭐ **O blue-green segurou — o symlink não moveu e prod seguiu no build anterior**: falha de build continua sendo não-evento pro cliente.
+
+### PROVADO EM PROD, NAVEGANDO, NOS 2 VIEWPORTS × 2 TEMAS
+
+```
+44 receitas de produção · principais hoje 0 · ⭐ nenhuma com principal null/undefined
+
+A BUSCA (ao vivo)
+  "calab"  → 5 · CALABRESA BLACK 120 GRAMAS | Pizza congelada de calabresa | …
+             destaque: [CALAB]RESA BLACK 120 GRAMAS
+  "queijo" → 4 · porçao queijo 135 grama | porcao queijo empanado 100 grama | …
+  "xxxx"   → 0 · “nenhuma receita com «xxxx»” + limpar
+
+⭐⭐ O ACENTO, com o dado REAL (10 receitas têm acento em prod):
+  "porcao" → 20 · "porçao" → 20 · "PORCAO" → 20 — ⭐ o MESMO conjunto
+  destaque sem deslocar: [porçao] queijo 135 grama
+  ⛔ CONTRAFACTUAL: "porçao queijo".toLowerCase().includes("porcao") → FALSE
+     (com a comparação crua, 20 das 44 receitas seriam invisíveis na busca)
+
+OS CHIPS   [todas · 44] [⭐ principais · 0] [⚠ custo a definir · 4]
+  clicando ⚠ → o chip prometia 4, a lista tem 4 ⭐ BATE
+     beef de hamburger · beef de xis · metade de bolinha massa de pizza · porcao chuleta
+  chip + busca ("beef" + a definir) → 2 · modo RECORTE (uma lista só)
+
+OS 2 BLOCOS  «Principais» 0 — "toque na estrela pra fixar as mais importantes aqui em cima"
+             «Todas as receitas» 44 · ⭐ alfabético pt-BR: ABRIR ERVILHA | ABRIR MILHO | Aneis…
+
+CELULAR 200 em 382ms · DESKTOP 200 em 50ms · chunk DESTA tela 24 KB
+  ✓ 15/15 peças nos dois (busca · ✕ · os 2 chips · os 2 blocos · convite · vazio ·
+    aria-pressed · fixar/tirar · produzir · duplicar · teto 1440 · 28px · 14px · grade)
+  ⛔ hex cravado fora do azul legado: NENHUM
+  ✓ os 4 tokens nos DOIS mapas do CSS servido (2.595 regras recortadas)
+
+⭐⭐ O VAI E VEM na receita REAL (autorizado) — «porcao bacon 80 grama»
+  POST {principal:true}  → 200 · bloco Principais 1 · o bacon EM CIMA ⭐ · chip principais · 1
+  POST {principal:false} → 200 · bloco Principais 0 · o bacon voltou pra baixo · chip · 0
+  ⭐ custo do lote: R$ 4,14 → R$ 4,14 — IDÊNTICO · versão v5 → v5 — IDÊNTICA
+  linhas na tabela: 0 → 0 ⭐ como encontrou
+```
+⚠️ **A linha de rastro do vai-e-vem foi REMOVIDA por mim**, e o registro importa: ela é do meu *probe*, não do gesto dele — *"deixar como encontrou"* vale pro estado que o dono vê. O rastro (quem tirou e quando) está provado no teste de integração, onde ele é o comportamento desejado.
+
+⚠️ **E o "agua" do pedido não dispara com o dado de hoje:** não existe receita com esse nome em prod — ele devolve o vazio que DIZ o termo, que é o certo. **O caminho do acento está provado com o dado real pelo `porcao` × `porçao`** (20 receitas, com o contrafactual), e o `"agua"`/`Água` fica travado na suíte.
+
+**955 arquivos · 12.724 verdes · 2 todo · TS 0 · migration CREATE-only (1 CREATE TABLE, 1 CHECK, 1 unique, 1 índice) · `pg_dump pre-receitas-principais-20261012-160818.dump` (9.036.042 bytes, tamanho conferido) · deploy 4/4 (`wDHtS_cfcvnzQHtuNGqXh`) · Δ chunks +16 KB.**
+
+📋 **FICA PRO DONO (o clique é dele, REGRA 2):** abrir a lista no celular e no notebook, **nos dois temas**, e **marcar as dele** — o bloco de cima nasce com o convite, de propósito, porque a escolha é dele. Digitar `calab`, `porcao`, `xxxx` e clicar os 3 chips. ⚠️ Screenshot segue indisponível (extensão do Chrome desligada): a prova mede o que prod serve (as 15 peças, os 4 tokens nos dois mapas, zero hex), **o olho é dele**.
+
 ## 🚪 LOTE KG→UN — O SISTEMA RESOLVE SOZINHO, A FICHA É A CASA DO NÚMERO (11/10/2026)
 
 **Ordem do dono:** *"como os líderes — o rendimento se declara UMA vez, na ficha; nunca se pergunta de novo na ordem."* **M5: 37 → 1.**
