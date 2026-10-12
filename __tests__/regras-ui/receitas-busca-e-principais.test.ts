@@ -154,6 +154,25 @@ describe('⭐ OS GESTOS QUE JÁ EXISTIAM continuam — e nos mesmos destinos', (
   })
 })
 
+describe('⭐⭐ OS BLOCOS — rótulo vem da RÉGUA, nunca cravado na tela (12/10)', () => {
+  /**
+   * ⛔⛔ O dono pediu os blocos EXCLUSIVOS, e com isso *"Todas as receitas"* virou mentira — o
+   * bloco de baixo passou a se chamar **"outras receitas"**. ⚠️ Rótulo cravado na tela faria a
+   * régua renomear e a tela continuar prometendo o que não entrega: é o rótulo honesto de
+   * 13/09 valendo pro lado do render.
+   */
+  it('⛔ a tela não crava NENHUM dos dois rótulos — ela desenha `b.titulo`', () => {
+    const src = tela()
+    expect(src, 'rótulo cravado: a régua renomeia e a tela mente').not.toContain('Todas as receitas')
+    expect(src).not.toContain('outras receitas')
+    expect(src, 'o título tem que vir da régua').toMatch(/\{b\.titulo\}/)
+  })
+
+  it('⭐ e o convite do bloco vazio também vem da régua (nunca um branco mudo)', () => {
+    expect(tela()).toMatch(/\{b\.convite\}/)
+  })
+})
+
 describe('⭐ ROUPA v4 — logo do dono único, sublinha num fôlego, LEI DE LAYOUT', () => {
   it('⭐ o logo vem do componente ÚNICO (zero mapa novo, zero desenho novo)', () => {
     const src = tela()

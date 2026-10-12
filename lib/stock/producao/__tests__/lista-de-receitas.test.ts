@@ -157,13 +157,50 @@ describe('⭐⭐ OS CHIPS — contam o recorte da busca, e clicar devolve EXATAM
 })
 
 describe('⭐⭐ OS 2 BLOCOS — e o convite no lugar do bloco vazio', () => {
-  it('⭐ as principais ficam em cima; "Todas as receitas" contém TODAS (o rótulo não mente)', () => {
+  /**
+   * ⚠️⚠️ **INVERTIDO EM 12/10 COM O MOTIVO ESCRITO, não apagado.** A versão de hoje de manhã
+   * afirmava *"«Todas as receitas» contém TODAS, inclusive as principais"* — e eu tinha
+   * registrado as duas saídas como defensáveis. **O dono usou e decidiu a outra:** *"na hora de
+   * clica em estrella receita sai de tudo as receitas e ir para PRINCIPAIS e nao fica no as 2"*.
+   *
+   * ⭐ E a metade que eu defendia (*o rótulo não pode prometer mais do que entrega*) **continua
+   * valendo — ela é que obriga a renomear**: com as marcadas fora, *"Todas as receitas"* viraria
+   * mentira. O bloco de baixo passa a se chamar **"outras receitas"**.
+   */
+  it('⭐⭐ BLOCOS EXCLUSIVOS: a estrelada sai de baixo, e o rótulo de baixo diz a verdade', () => {
     const l = montarListaDeReceitas({ receitas: REAIS })
-    const [principais, todas] = l.blocos
+    const [principais, outras] = l.blocos
     expect(principais.titulo).toBe('Principais')
     expect(principais.receitas).toHaveLength(2)
-    expect(todas.titulo).toBe('Todas as receitas')
-    expect(todas.receitas).toHaveLength(REAIS.length)
+    expect(outras.titulo, 'com o bloco exclusivo, "Todas as receitas" seria mentira').toBe('outras receitas')
+    expect(outras.receitas).toHaveLength(REAIS.length - 2)
+  })
+
+  it('⛔⛔ NENHUMA receita aparece nos DOIS blocos (o pedido de 12/10)', () => {
+    const l = montarListaDeReceitas({ receitas: REAIS })
+    const [principais, outras] = l.blocos
+    const emCima = new Set(principais.receitas.map((x) => x.id))
+    const repetida = outras.receitas.filter((x) => emCima.has(x.id)).map((x) => x.nomeProduzido)
+    expect(repetida, 'a estrelada ficou nos dois blocos').toEqual([])
+    expect(outras.receitas.every((x) => !x.principal)).toBe(true)
+    expect(principais.receitas.every((x) => x.principal)).toBe(true)
+  })
+
+  it('⭐⭐ principais + outras == o total da casa (nada some no meio da divisão)', () => {
+    for (const quantas of [0, 1, 2, REAIS.length]) {
+      const receitas = REAIS.map((x, i) => ({ ...x, principal: i < quantas }))
+      const l = montarListaDeReceitas({ receitas })
+      const [p, o] = l.blocos
+      expect(p.receitas.length + o.receitas.length, `com ${quantas} estreladas a soma furou`).toBe(REAIS.length)
+    }
+  })
+
+  it('⭐ TODAS estreladas → o bloco de baixo fica vazio, e DIZ (nunca um branco mudo)', () => {
+    const l = montarListaDeReceitas({ receitas: REAIS.map((x) => ({ ...x, principal: true })) })
+    const [p, o] = l.blocos
+    expect(p.receitas).toHaveLength(REAIS.length)
+    expect(o.receitas).toHaveLength(0)
+    expect(o.convite).toBe('todas as receitas estão fixadas aqui em cima')
   })
 
   it('⭐⭐ ZERO principais → CONVITE, nunca um bloco em branco (que se lê como defeito)', () => {
@@ -178,14 +215,21 @@ describe('⭐⭐ OS 2 BLOCOS — e o convite no lugar do bloco vazio', () => {
     const antes = montarListaDeReceitas({ receitas: REAIS })
     expect(antes.contadores.principais).toBe(2)
 
+    // ⭐ a CALABRESA começa no bloco de baixo
+    expect(antes.blocos[1].receitas.map((x) => x.nomeProduzido)).toContain('CALABRESA')
+
     const marcada = REAIS.map((x) => (x.nomeProduzido === 'CALABRESA' ? { ...x, principal: true } : x))
     const depois = montarListaDeReceitas({ receitas: marcada })
     expect(depois.contadores.principais).toBe(3)
+    // ⭐⭐ ela SAI de baixo e vai pra cima — nunca nos dois (o pedido de 12/10)
     expect(depois.blocos[0].receitas.map((x) => x.nomeProduzido)).toContain('CALABRESA')
+    expect(depois.blocos[1].receitas.map((x) => x.nomeProduzido)).not.toContain('CALABRESA')
 
-    // e DESMARCAR volta pra baixo
+    // e DESMARCAR a devolve pro bloco de baixo
     const voltou = montarListaDeReceitas({ receitas: REAIS })
     expect(voltou.blocos[0].receitas.map((x) => x.nomeProduzido)).not.toContain('CALABRESA')
+    expect(voltou.blocos[1].receitas.map((x) => x.nomeProduzido), 'desmarcou e ela não voltou pro bloco de baixo')
+      .toContain('CALABRESA')
   })
 
   it('⛔ com recorte ativo NÃO existem blocos — 3 resultados partidos em dois esconderiam o resultado', () => {

@@ -31,7 +31,7 @@ export interface ReceitaDaLista {
 }
 
 export interface BlocoDeReceitas<T> {
-  chave: 'PRINCIPAIS' | 'TODAS' | 'RECORTE'
+  chave: 'PRINCIPAIS' | 'OUTRAS' | 'RECORTE'
   /** `null` no modo recorte: ali a lista é UMA, e título de bloco só repetiria o filtro */
   titulo: string | null
   receitas: T[]
@@ -92,17 +92,23 @@ export function montarListaDeReceitas<T extends ReceitaDaLista>(
    * o que esconde o resultado em vez de organizar.
    */
   if (busca === '' && chip === 'TODAS') {
-    const principais = ordemAlfabetica(entrada.receitas.filter((r) => r.principal))
     /**
-     * ⚠️⚠️ **"TODAS AS RECEITAS" CONTÉM TODAS — INCLUSIVE AS PRINCIPAIS**, e o registro
-     * importa porque as duas saídas eram defensáveis. Esconder as marcadas daqui faria o
-     * rótulo prometer mais do que entrega (*"nenhum rótulo promete mais do que entrega"*,
-     * 13/09) e, pior, o dono procuraria a receita estrelada no lugar onde ela sempre esteve
-     * e não acharia. ⭐ E a régua de *"uma decisão aparece UMA vez na página"* (20/09) não é
-     * violada: ali o risco era **dois lugares de AGIR sobre o mesmo par** (marcar a nota
-     * errada); aqui é o MESMO cartão, com gestos idempotentes de navegação.
+     * ⭐⭐ OS BLOCOS SÃO EXCLUSIVOS — decisão do dono (12/10), depois de usar a tela:
+     * *"na hora de clica em estrella receita sai de tudo as receitas e ir para PRINCIPAIS e
+     * nao fica no as 2 dai na hora de clica no estrela de novo ela volta aprace no tudos"*.
+     *
+     * ⚠️⚠️ **ISTO SUBSTITUI A DECISÃO DE HOJE DE MANHÃ** (o bloco de baixo continha TODAS).
+     * Eu havia registrado as duas saídas como defensáveis e escolhido a inclusiva pelo
+     * argumento do rótulo honesto; **ele usou e decidiu a outra** — e a mesma régua do rótulo
+     * é o que obriga o passo seguinte: com as marcadas fora, *"Todas as receitas"* viraria
+     * mentira, então o bloco de baixo passa a se chamar **"outras receitas"**.
+     *
+     * ⭐ E a divisão é uma PARTIÇÃO, não dois filtros soltos: `principal` é booleano, então
+     * `principais + outras == o universo` **por construção** — nenhuma receita se perde no
+     * meio nem conta duas vezes (há teste varrendo 0, 1, 2 e todas estreladas).
      */
-    const todas = ordemAlfabetica(entrada.receitas)
+    const principais = ordemAlfabetica(entrada.receitas.filter((r) => r.principal))
+    const outras = ordemAlfabetica(entrada.receitas.filter((r) => !r.principal))
     return {
       modo: 'BLOCOS',
       contadores,
@@ -114,7 +120,16 @@ export function montarListaDeReceitas<T extends ReceitaDaLista>(
           receitas: principais,
           convite: principais.length === 0 ? 'toque na estrela pra fixar as mais importantes aqui em cima' : null,
         },
-        { chave: 'TODAS', titulo: 'Todas as receitas', receitas: todas, convite: null },
+        {
+          chave: 'OUTRAS',
+          titulo: 'outras receitas',
+          receitas: outras,
+          /**
+           * ⚠️ Com tudo estrelado o bloco de baixo fica vazio — e vazio MUDO se lê como
+           * defeito de render. Ele DIZ o que houve, a mesma régua do convite de cima.
+           */
+          convite: outras.length === 0 && principais.length > 0 ? 'todas as receitas estão fixadas aqui em cima' : null,
+        },
       ],
     }
   }
