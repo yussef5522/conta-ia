@@ -4967,6 +4967,33 @@ model StockItemCategoriaTrocada {
 /// o fiscal conta como contava ontem — as outras 189 receitas não mudam NADA. ⚠️ Config no
 /// BANCO em vez de `if (nome === …)`: nome é texto livre, e a conta `'sicredi '` com espaço no
 /// fim já custou um diagnóstico nesta casa.
+/// ⭐⭐ A ESTRELA DO DONO — as receitas PRINCIPAIS (12/10/2026).
+///
+/// A marca é da IDENTIDADE da receita (`fichaId`), **nunca da versão**: marcar/desmarcar não
+/// cria versão nova, não mexe em custo e não passa perto de `explodirReceita`. Estrela é
+/// roupa; receita é lei.
+///
+/// ⛔ É TABELA e não coluna em `stock_ficha` porque migration de estoque SÓ CRIA (guard de
+/// CI reprova ALTER). Linha ausente = NÃO é principal — "nasce false, nunca NULL" sai por
+/// construção. Ver a migration `20261012140000_stock_receita_principal` pro raciocínio inteiro.
+///
+/// ⚠️ Marca é DA CASA (por `companyId`), não por usuário: todo mundo do painel vê as mesmas
+/// principais — foi o que o dono pediu.
+model StockReceitaPrincipal {
+  id        String  @id @default(cuid())
+  companyId String
+  fichaId   String // stock_ficha (IDENTIDADE, nunca stock_ficha_versao)
+  principal Boolean @default(false)
+  /// ⚠️ rastro de quem mexeu por último — sobrevive ao desmarcar (por isso a coluna
+  /// `principal` existe em vez de "desmarcar = apagar a linha").
+  marcadoPorId String?
+  marcadoEm    DateTime @default(now())
+
+  @@unique([companyId, fichaId]) // marcar 2× é UPDATE, nunca 2ª linha
+  @@index([companyId, principal])
+  @@map("stock_receita_principal")
+}
+
 model StockFichaRetalho {
   id            String   @id @default(cuid())
   companyId     String

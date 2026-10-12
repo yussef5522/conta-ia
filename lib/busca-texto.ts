@@ -68,6 +68,67 @@ export function casaDigitos(alvo: string | null | undefined, termo: string): boo
   return (alvo ?? '').replace(/\D/g, '').includes(d)
 }
 
+/**
+ * ⭐⭐ O TRECHO QUE CASOU, pra a tela DESTACAR (12/10/2026).
+ *
+ * Devolve o texto **original** partido em pedaços, cada um dizendo se casa com o termo —
+ * então o destaque é feito sobre o que o dono lê (`CALABRESA`, com acento e caixa), não sobre
+ * a versão normalizada.
+ *
+ * ⛔⛔ **QUEM DECIDE SE A LINHA APARECE É `casaBusca`, NUNCA ESTA FUNÇÃO.** Aqui é cosmética,
+ * e por isso ela pode ser **conservadora**: palavra que ela não conseguir localizar
+ * simplesmente não é destacada, e a linha continua na lista. O inverso — destaque mandando na
+ * filtragem — faria uma falha de cosmética **esconder receita**, que é a classe de bug mais
+ * cara deste módulo (a lição do `take: 50` que sumiu com o fermento).
+ *
+ * ⚠️ O mapa de índice é o ponto fino: `normalizarBusca` **remove** os acentos (NFD), então o
+ * texto normalizado tem outro comprimento que o original. Sem guardar de qual caractere
+ * original cada caractere normalizado veio, o destaque de `"agua"` cairia deslocado em
+ * `"Água"` — e destaque torto é pior que destaque nenhum, porque parece defeito de render.
+ */
+export function trechosDaBusca(texto: string, termo: string): { texto: string; casa: boolean }[] {
+  const original = texto ?? ''
+  const t = normalizarBusca(termo)
+  if (original === '' || t === '') return [{ texto: original, casa: false }]
+
+  // normaliza PRESERVANDO de onde cada caractere veio (sem colapsar espaço: as palavras do
+  // termo nunca têm espaço dentro, então colapsar aqui só quebraria o mapa)
+  let alvo = ''
+  const deOnde: number[] = []
+  for (let i = 0; i < original.length; i++) {
+    const n = original[i]
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+    for (const c of n) {
+      alvo += c
+      deOnde.push(i)
+    }
+  }
+
+  const marcado = new Array<boolean>(original.length).fill(false)
+  for (const palavra of t.split(' ')) {
+    if (!palavra) continue
+    let from = 0
+    for (;;) {
+      const at = alvo.indexOf(palavra, from)
+      if (at < 0) break
+      const ini = deOnde[at]
+      const fim = deOnde[at + palavra.length - 1]
+      if (ini != null && fim != null) for (let k = ini; k <= fim; k++) marcado[k] = true
+      from = at + palavra.length
+    }
+  }
+
+  const out: { texto: string; casa: boolean }[] = []
+  for (let i = 0; i < original.length; i++) {
+    const ultimo = out[out.length - 1]
+    if (ultimo && ultimo.casa === marcado[i]) ultimo.texto += original[i]
+    else out.push({ texto: original[i], casa: marcado[i] })
+  }
+  return out
+}
+
 /** Filtra uma lista pelo termo, usando o campo que `extrair` apontar. */
 export function filtrarPorBusca<T>(itens: T[], termo: string, extrair: (i: T) => string): T[] {
   const t = normalizarBusca(termo)

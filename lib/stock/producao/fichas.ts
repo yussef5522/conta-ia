@@ -14,6 +14,7 @@ import { custoMedioPorItem } from '../saldo'
 import { normalizarBusca } from '@/lib/busca-texto'
 import { rendimentoMedidoDeFichas } from './conclusao'
 import { avaliarCoerenciaDoLote, avaliarCoerenciaDoRotulo, fichaDeclaraRendimento } from './coerencia-do-lote'
+import { principaisDaEmpresa } from './receita-principal'
 
 type Db = PrismaClient | Prisma.TransactionClient
 import { planoDeAgrupamento, aplicarAgrupamento } from '@/lib/stock/vendas/aplicar-agrupamento'
@@ -456,6 +457,14 @@ export interface FichaView {
   rendimentoMedio: number | null // MEDIDO: média das últimas 5 conclusões desta ficha
   rendimentoLotes: number // quantas conclusões compõem a média (0 = nunca produziu)
   margem: number | null
+  /**
+   * ⭐ A ESTRELA DO DONO (12/10) — `true` quando ele fixou esta receita no topo da lista.
+   *
+   * ⚠️ É **roupa, não receita**: vem de `stock_receita_principal` (identidade da ficha), nunca
+   * da versão. Ficha nunca marcada vem `false` — **nunca `undefined`/`null`**, senão a tela
+   * teria que escolher um default e "desconhecido" voltaria a se passar por "não é".
+   */
+  principal: boolean
 }
 
 // custoMedio DERIVADO dos movimentos (mesma fonte da Posição), NÃO o campo stockItem.custoMedio
@@ -520,11 +529,14 @@ async function montarFichaViews(companyId: string, fichas: FichaHead[], db: Db):
   // 4. os itens (produzidos + componentes) e 5. o custo médio derivado — duas consultas pro
   //    conjunto inteiro. ⚠️ O custo vem de `custoMedioPorItem`, a MESMA fonte da Posição.
   const itemIds = [...new Set([...fichas.map((f) => f.itemProduzidoId), ...compsTodos.map((c) => c.itemId)])]
-  const [itens, derivado, rendimentos] = await Promise.all([
+  const [itens, derivado, rendimentos, principais] = await Promise.all([
     db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true, unidadeControle: true } }),
     custoMedioPorItem(db, companyId),
     // 6. o rendimento medido de TODAS as fichas (era 3 consultas por ficha)
     rendimentoMedidoDeFichas(companyId, fichas.map((f) => f.id), db as PrismaClient),
+    // 7. ⭐ as estrelas do dono — UMA consulta pro conjunto, no mesmo `Promise.all` (uma por
+    //    ficha seria o N+1 de 28/09 de volta, na mesma função que o conserto curou)
+    principaisDaEmpresa(companyId, db),
   ])
   const itemPorId = new Map(itens.map((i) => [i.id, i]))
 
@@ -555,6 +567,7 @@ async function montarFichaViews(companyId: string, fichas: FichaHead[], db: Db):
       loteBase: v.loteBase, unidadeLoteBase: v.unidadeLoteBase, modoPreparo: v.modoPreparo, tempoPreparoMin: v.tempoPreparoMin, validadeDias: v.validadeDias,
       componentes, etapas: etapasPorVersao.get(v.id) ?? [], custoLote: custo.custoLote, custoPorUnidade: custo.custoPorUnidade, custoADefinir: custo.custoADefinir, rendimentoMedio, rendimentoLotes: medido.lotes,
       margem: ficha.tipoProduto === 'PRODUTO_FINAL' ? calcularMargem(ficha.valorVenda, custo.custoPorUnidade) : null,
+      principal: principais.has(ficha.id),
     })
   }
   return out
