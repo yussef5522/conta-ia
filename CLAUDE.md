@@ -2915,6 +2915,87 @@ ordens 578→578 · metas 104→104 · rastros 0→0 · movimentos 7.407→7.407
 
 📋 **ACHADO NO CAMINHO, NÃO ATACADO:** o juiz do estoque tem **1 achado M2 NOVO** — a `MAIONESE` do lote de **10/10** com o `sal` em **ficha 0,0005 KG × efetiva 0,001 KG (+100%)**. É a classe do **meio grama** que o sprint do campo decimal (29/09) tornou digitável, e o M2 fazendo o trabalho dele. ⚠️ **Não é do meu sprint** (a conclusão é de 10/10 19:11, e a prova criou 0 conclusões). Os outros são os débitos já registrados: V1 123 · E7 97 · P6 94 · P8 59 · P3 59 · M1 53 · M5 37 · F2 26 · E15 10 · P5 3 · **P1 2** (14/09 e 30/09) · M3 1.
 
+## 🚪 LOTE KG→UN — O SISTEMA RESOLVE SOZINHO, A FICHA É A CASA DO NÚMERO (11/10/2026)
+
+**Ordem do dono:** *"como os líderes — o rendimento se declara UMA vez, na ficha; nunca se pergunta de novo na ordem."* **M5: 37 → 1.**
+
+### ⭐⭐⭐ A LEI DA NEUTRALIDADE — converter é seguro EXATAMENTE quando o número já estava certo
+
+A separação é `pedido ÷ loteBase × dose`; depois da conversão é `pedido ÷ 1 × (dose ÷ U)`. As duas são iguais **se e somente se `U == loteBase`**.
+
+> ⭐ **Converter o rótulo é NEUTRO na prateleira precisamente quando o NÚMERO do lote já estava certo e só a UNIDADE estava errada** — que é o caso das 36.
+
+⛔ **E a neutralidade não é argumento, é MEDIÇÃO:** `avaliarAutoConversao` roda a separação **por componente** pela porta única (`insumoDoPedido`) em **seis tamanhos de pedido** (1 · 7 · 30 · 80 · 137,5 · 1000) e exige **Δ == 0 ao centavo em TODOS**. Qualquer Δ ≠ 0 → **NÃO TOCA**, e a ficha vira pendente do item 2. **GUARD:** `exigirNeutralidade` lança `AutoConversaoError` — auto com Δ≠0 é **impossível**, não combinado (REGRA 5), e a REGRA 11 mediu com Δ forjado.
+
+### ⛔⛔ A PORTA — nascer torto virou impossível, e a CATRACA é o que mantém a MAIONESE editável
+
+**`criarFicha` EXIGE coerência** (produto contado em UN ⇒ *"A receita rende"* em UN) **antes de qualquer escrita**, pra TODO tipo. No **editar** vale a **CATRACA**: recusa só a **REGRESSÃO** (quem já estava torto — `MAIONESE`, e o sabor `CALABRESA`, o de maior volume do cardápio — continua editável). ⛔ Régua global ali trancaria a edição legítima delas por um campo que a venda nem lê.
+
+**⭐⭐ E A RAIZ FOI FECHADA, não validada:** o editor tinha `unidadeLoteBase: monta ? 'UN' : 'KG'` com `unidadeProduzido` em `'UN'` — **era A FÁBRICA das 37**. O campo **MORREU**: a unidade do rótulo **DERIVA do produto** (`const unidadeLoteBase = unidadeProduzido`), o dropdown virou texto. **Incoerência deixou de ser possível de criar** (REGRA 5), em vez de ser pega depois.
+
+**⚠️ E a cura cobrou 214 vermelhos:** 23 arquivos / 32 fichas de fixture usavam `produto UN · rende KG` **como idioma**. Alinhados por varredura — e **3 testes cuja razão de existir É a incoerência** (`fantasma-nao-tem-estoque`, `lote-comparavel-uma-regua`, `aplicar-conversao`) foram **revertidos** e remontados com `_ficha-torta.ts`, que fabrica o torto **por fora da porta** (a forma do legado).
+
+### ⛔⛔ REGRA 13 — O TRIGGER, E POR QUE NÃO É UM CHECK
+
+`stock_ficha_rotulo_coerente()` + `trg_stock_ficha_versao_rotulo` (BEFORE INSERT, migration CREATE-only). **Não é CHECK porque a comparação é CROSS-TABLE** (`stock_ficha_versao` × `stock_item`) — CHECK não vê outra tabela.
+- ⛔ **VOCABULARY-FREE:** o SQL **não conhece `tipoProduto`** (a cicatriz de 21/09 — CHECK com lista fechada virou parede em um dia). Ele espelha `avaliarCoerenciaDoRotulo`, e o TS é **mais estrito só na direção segura** (recusa primeiro, com frase que ensina, pra não virar 500 cru).
+- ⛔ **REGRA 13:** `IS NULL` **explícito e PRIMEIRO** — `NEW."unidadeLoteBase" <> un_produto` com um lado NULL avalia pra **NULL**, o `IF` não entra e a versão torta **PASSA**.
+- **PROVA em prod** (`scripts/prova-trigger-rotulo-catraca.ts`): **2/2 tortos recusados** pelo nome (`ROTULO DO RENDIMENTO INCOERENTE`) · **2/2 legítimos aceitos, inclusive o LEGADO** (v4 torta sobre v3 já torta = MAIONESE/CALABRESA) · **contrafactual medido no banco** (`'KG' <> NULL` → NULL → *passaria*) · `pg_trigger` conferido · **versões 296 → 296, zero escrita líquida**.
+
+### ⭐⭐ A FICHA É A ÚNICA CASA DO NÚMERO (item 2)
+
+- **a ORDEM NÃO PERGUNTA:** ela **APONTA** — *"esta ficha ainda não diz quantas UN rendem de 1 receita"* + `completar a ficha →` com `?foco=rendimento&voltar=<ordem>`. ⛔ **GUARD: nenhum campo de rendimento na ordem** (medido no bundle, nos dois viewports). O veredito vem do **SERVIDOR** (`ordem.rendimentoPendente`, de `fichaEsperaRendimento`) — se a tela deduzisse, divergiria do juiz no 1º caso de borda.
+- **o SININHO lista as pendentes** (`lib/avisos/produtores/rendimento.ts`): **UM aviso por FICHA**, setor `gerencia`, **ÂMBAR** (nada está quebrado AGORA — falta o número que torna o rótulo honesto; coral aqui treinaria o dono a ignorar coral), com a **CONSEQUÊNCIA dentro** (*"é esse número que divide o pedido quando a cozinha separa"*) e `reconciliarOrigem` no fim (ficha completada — ou convertida pela auto — tem o aviso **RESOLVIDO**).
+  ⛔ **E ele lista SÓ AS NÃO-NEUTRAS:** ficha neutra ainda na fila é trabalho do SISTEMA, não pendência dele. *Cobrar um gesto que ele não precisa dar é como o dono aprende a não olhar a fila.*
+- ⛔⛔ **O AVISO NUNCA CARREGA O RENDIMENTO MEDIDO**, nem como palpite — a lei de 03/10 é que a separação é SEMPRE ficha × pedido; sugerir o medido seria **o laço que aprende o desvio como normal**, escondido num texto de sininho. **O preview também não sugere**: ele mostra *"separa hoje × separa depois"* e deixa o número para o dono.
+
+### ⭐ A AUTO-CONVERSÃO DEIXA **UM** RESUMO (item 1)
+
+*"corrigi N rótulos — nada mudou na prateleira; [ver a lista]"* — **UM, não N**: o aviso POR FICHA é do item 2, onde cada uma espera um número DIFERENTE e o gesto é por ficha; **36 sininhos pra dizer "não mudou nada" seria a enxurrada que mata o sininho**. **AZUL** (nada pede olho — a prova é o Δ 0 medido pela porta da separação), **fail-soft e DEPOIS de converter** (a conversão já está gravada; problema na central de avisos não desfaz o gesto), com o `alvo` carregando a **CONTAGEM** (rodada futura ganha o resumo dela em vez de reabrir este e misturar dois lotes).
+
+### ⛔ A TELA-FILA MORREU (item 4)
+
+`/estoque/fichas/conversao` virou **redirect**: com `?ficha=` → aquela ficha **com o campo aceso**; sem → a lista de receitas. **Zerada pelos itens 1+2**, ela não tem mais o que mostrar — e o `POST` da rota ganhou papel novo (devolve `esperamRendimento` pra o chip da lista). O **aviso antigo** (`LOTE_NAO_COMPARAVEL`) foi **repontado** pra `/fichas/<id>?foco=rendimento&voltar=` — *remoção sem realocação é perda*.
+
+### ⭐⭐ AS PROVAS (item 5)
+
+**O RETRATO, antes de tocar em prod:** 44 fichas de produção · 7 coerentes · **37 pendentes** · **36 auto-neutras** · **1 pendente: MAIONESE** (rende 2,858 UN, produto em KG, Δ 0,0003) · **0 ordens abertas** · 296 versões.
+
+**APLICADO** (`pg_dump pre-rendimento-na-ficha-20261011-233251.dump`, **8.950.799 bytes conferidos**):
+```
+⭐ as 36 convertidas · versões 296 → 332 (+36) · ledger 7412 → 7412 (ZERO movimento)
+⭐ BEEF, pedido 30, ANTES × DEPOIS:  Acém 2.73 · Gordura 0.6 · Peito 1.32  → IDÊNTICO ✓
+   ficha a ficha: Δ 0 em TODOS os componentes, nos 6 tamanhos de pedido
+⛔ MAIONESE INTOCADA, com o motivo escrito ("a separação MUDARIA até 0,0003")
+   a fila depois: 43 coerentes · 1 pendente     M5 do juiz: 37 → 1 ⭐
+```
+**O SININHO em prod:** o resumo **azul** das 36 (*"Confere os 36 rótulos de rendimento que eu corrigi"*) + o **âmbar** da MAIONESE, com `?foco=rendimento`. ⚠️ O resumo do lote de hoje foi registrado **à mão, UMA vez, com o motivo escrito**: as 36 foram convertidas **ANTES deste código existir**, então `autoConverterNeutras` (idempotente) não acha mais nada e nunca o registraria. **Daqui pra frente ele nasce dentro do gesto.**
+
+**NAVEGANDO, nos DOIS viewports (REGRA 12):**
+```
+CELULAR  receitas 200 · ficha(?foco=rendimento) 200 · ordem 200 · conversão(redirect) 200
+DESKTOP  idem — 7/7 peças nos dois:
+  o aviso da ordem · o gesto "completar a ficha" · id:"rendimento" (o campo aceso)
+  "separa hoje" · a frase do preview · o aviso do rótulo · o chip "rendimento a declarar"
+⛔ campo de rendimento NA ORDEM: NENHUM ✓ (o guard do item 5)
+
+⭐ O PREVIEW É HONESTO (a ficha da MAIONESE, pedido 30):
+   digitando 2,858 (o lote de hoje) → "a separação NÃO muda"  · 6 de 6 componentes iguais
+   digitando 1                      → "a separação MUDA — até 136,522 de diferença"
+                                       OVO 73,4783 → 210 · OLEO 31,4907 → 90 · …
+```
+⭐ **ORDENS ANTIGAS INTOCADAS:** elas apontam pra a `versaoFicha` da época (snapshot) — provado re-explodindo a separação de uma concluída antes e depois: **idêntica**.
+
+**REGRA 11 — defeitos repostos, vermelhos medidos:** auto com Δ≠0 forjado · a porta aceitando ficha torta · a catraca recusando a CALABRESA (regressão × legado) · a ordem voltando a perguntar · o `?foco=` ignorado · o resumo virando N avisos · o resumo nascendo sem nada convertido. ⚠️ **E a REGRA 11 me pegou 4 vezes:** (a) um **comentário meu mentia** — eu escrevi que `tipoProduto` desconhecido *"não exige"* coerência, e `comoConsome` é **denylist** (desconhecido → `ESTOCADO` → **exige**); (b) **D5 e D7 vieram VERDES** — `toMatch(/foco=rendimento/)` no arquivo inteiro passa com o bloco num ramo morto (*"menção, não uso"*, **13ª vez**): apertados pro **GATE que renderiza**; (c) **D4 veio verde por SONDA ERRADA** — minha substituição gerou **erro de sintaxe**, e suíte que não coleta devolve **0 "failed tests"** (a cicatriz de 07/10); a sonda passou a contar suíte que não coletou.
+
+**⚠️ 2 GUARDS REAPONTADOS, nenhum afrouxado, e os DOIS ficaram MAIS FORTES:** `pergunta-do-pedido-uma-vez` (o gate ganhou `!esperaRendimento`) e `conversao-tem-macaneta` (a tela foi aposentada) — os dois passaram a ser **de dois lados**: a tela velha **não pode voltar** E o caminho novo **tem que existir**. **1 guard de CNPJ de teste** mordeu (`71717171000171` colidia) — trocado por `79797979000179` depois de medir os livres.
+
+**952 arquivos · 12.670 verdes · 2 todo · TS 0 · migration CREATE-only (1 FUNCTION + 1 TRIGGER, rollback no header) · deploys 4/4 (`tFf8fhm60qdsVfR53M_K8`, `PFzTvWCCqfLcXHew107pn`) · Δ chunks −104 KB.**
+
+📋 **FICA PRO DONO (o clique é dele, REGRA 2):** **a MAIONESE** — abrir pelo sininho (o campo abre aceso), digitar quantas **KG** saem de 1 receita e ver o preview *"separa hoje × separa depois"* antes de salvar. Com ela, o **M5 vai a 0**. ⚠️ E conferir na lista de receitas que os 36 rótulos ficaram do jeito que ele espera — as versões antigas estão no histórico e **as ordens já feitas não mudaram**.
+
+📋 **DÉBITOS CARREGADOS (não deste sprint):** a devolução Arafat de R$ 40.000 (decisão dele) · a devolução de 01/09 (R$ 50.000) **sem categoria** · `lib/vendas/resumo-periodo.ts` sem chamador · e o **M2** da MAIONESE/sal (ficha 0,0005 KG × efetiva 0,001, de 10/10). Quadro do juiz hoje: V1 123 · E7 97 · P6 92 · P8 59 · P3 59 · M1 52 · F2 26 · E15 10 · P5 3 · P1 2 · **M5 1** · M3 1 · M2 1.
+
 ## 💰 CMV NA CASA — O PLACAR VIROU A CASCATA DO MÊS (10/10/2026)
 
 **Ordem escrita do dono:** *"A CASCATA substitui o placar atual (é ele crescido): 5 cartões em linha — VENDEU · − CMV (INSUMOS) · = SOBRA · − A CASA · = LUCRO"*. **ZERO conta nova:** o CMV por consumo é a **MESMA soma de custos que já produz a sobra**.
