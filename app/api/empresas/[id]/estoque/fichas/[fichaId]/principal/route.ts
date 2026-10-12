@@ -41,6 +41,15 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json(r)
   } catch (e) {
     if (e instanceof ReceitaPrincipalError) return NextResponse.json({ erro: e.message }, { status: 404 })
-    return respostaDeErroDoEstoque(e)
+    /**
+     * ⚠️ O tradutor devolve `null` pro que NÃO é erro de domínio — e aí o certo é **relançar**
+     * (o inesperado continua 500, onde o genérico é honesto). Devolvê-lo direto fazia o
+     * handler poder retornar `null`, e o **build do Next reprovou** ("Type 'null' is not
+     * assignable to type 'void | Response'") — ⚠️ o `tsc --noEmit` local passou: a restrição
+     * do handler só existe nos tipos que o Next GERA no build. Mesmo padrão dos vizinhos.
+     */
+    const t = respostaDeErroDoEstoque(e, { empresaId: companyId })
+    if (t) return NextResponse.json({ erro: t.erro, code: t.code, saida: t.saida }, { status: t.status })
+    throw e
   }
 }
