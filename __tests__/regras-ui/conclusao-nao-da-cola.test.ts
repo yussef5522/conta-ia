@@ -73,7 +73,14 @@ describe('⛔⛔⛔ NENHUM número esperado na mão de quem declara', () => {
    */
   it('⛔⛔ a modal não chama nenhuma função de previsão/veredito', () => {
     const m = modal()
-    for (const f of ['preverSaida(', 'avaliarVariacao(', 'eficienciaMedia(', 'escalaDoConsumo(']) {
+    /**
+     * ⚠️⚠️ **`fraseDaSeparacao(` ENTROU NA LISTA EM 12/10, e por um motivo de método:** com a
+     * frase do espelho mudando de casa (do JSX pra a lib, pra somar o retalho num lugar só), a
+     * régua de SUBSTRING acima deixaria de ver *"deve sair"* se a modal passasse a CHAMAR a
+     * lib — o texto não estaria mais no arquivo. ***Palavra que muda de arquivo precisa do
+     * símbolo na lista, senão o guard fica cego justo no refactor que o motivou.***
+     */
+    for (const f of ['preverSaida(', 'avaliarVariacao(', 'eficienciaMedia(', 'escalaDoConsumo(', 'fraseDaSeparacao(']) {
       expect(m, `${f} não entra na tela de conclusão`).not.toContain(f)
     }
   })
@@ -122,14 +129,27 @@ describe('⛔⛔⛔ NENHUM número esperado na mão de quem declara', () => {
    * casar o literal `{planejada && (` — literal quebra no primeiro refactor legítimo, e
    * *grep não distingue "refatorei" de "quebrei"*.
    */
+  /**
+   * ⚠️⚠️ **REAPONTADO EM 12/10 — e a PERGUNTA continua a mesma de 05/10:** *"o «deve sair» só
+   * aparece em PLANEJADA"*. O que mudou é que a FRASE saiu do JSX pra a lib (`fraseDaSeparacao`),
+   * porque ela passou a somar o retalho e **a soma precisa de um dono só** — somar no JSX seria
+   * a 2ª derivação do total, divergindo do `permitido` do fiscal.
+   *
+   * ⛔ O literal `Com isso deve sair` **deixou de existir na página** (está na lib, com teste que
+   * o EXECUTA). Continuar grepando por ele aqui seria *grep que não distingue "refatorei" de
+   * "quebrei"* — a razão de existir da REGRA 3. A âncora virou o SÍMBOLO, e o guard ficou
+   * **mais forte**: ele agora exige as duas pontas (a frase vive na lib E a chamada é gateada).
+   */
   it('⛔⛔ o "deve sair" da separação é gateado por `planejada`', () => {
     const t = tela()
-    const i = t.indexOf('Com isso deve sair')
+    const i = t.indexOf('fraseDaSeparacao({')
     expect(i, 'o bloco da separação existe').toBeGreaterThan(0)
     const gate = t.lastIndexOf('{planejada &&', i)
     expect(gate, 'ele está dentro de um gate de PLANEJADA').toBeGreaterThan(0)
     // ⚠️ e o gate é ANTES do bloco, sem um `)}` fechando no meio
     expect(t.slice(gate, i), 'o gate não fecha antes do bloco').not.toContain(')}')
+    // ⭐ e a frase existe de verdade, no dono dela
+    expect(ler('lib/stock/producao/retalho.ts'), 'a frase mora na lib').toContain('Com isso deve sair')
   })
 })
 

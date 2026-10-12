@@ -13,7 +13,7 @@ import { confirmarPedido } from '../confirmar-pedido'
 import { filaDeConferencia } from '../fila-de-conferencia'
 import { fiscalDeOrdens } from '../fiscal-dos-lotes'
 import { produzirAvisosDeRetalho } from '@/lib/avisos/produtores/retalho'
-import { PESO_DA_METADE_G } from '../retalho'
+import { PESO_DA_METADE_G, configDeRetalho, retalhoDasOrdens, linhaDoRetalho } from '../retalho'
 
 const CNPJ = '71727374000171'
 let companyId = ''
@@ -264,5 +264,139 @@ describe('⚠️ A SANIDADE — retalho > 20 kg avisa (e não trava)', () => {
     await criar(fichaMassa, 200, 25)
     for (let i = 0; i < 3; i++) await produzirAvisosDeRetalho(companyId, new Date(), prisma)
     expect(await prisma.aviso.count({ where: { companyId, origem: 'RETALHO_ALTO' } })).toBe(1)
+  })
+})
+
+/**
+ * ⭐⭐⭐ O RETALHO VISÍVEL E CORRIGÍVEL (12/10) — passos 1 e 2 do pedido do dono.
+ *
+ * **O caso:** ordem de 10 UN com 10 KG de retalho declarado, e a página não mostrava nada. A
+ * perícia (passo 0) achou os 10 KG **gravados** — o buraco era de EXIBIÇÃO. E ao fechar o
+ * buraco apareceu o segundo defeito: *corrigir o pedido APAGAVA o retalho em silêncio*.
+ */
+describe('⭐⭐ PASSO 1 — o retalho é LEGÍVEL em qualquer estado', () => {
+  /**
+   * ⛔⛔ O VERMELHO Nº 1 DO DONO: *"ordem COM retalho gravado sem a linha visível no pedido"*.
+   *
+   * ⚠️ Este teste exercita a **composição que a rota monta** (config + declarado + a lib da
+   * linha) **depois de SEPARAR e depois de CONCLUIR** — os estados em que a rota, até 12/10,
+   * nem consultava o retalho. O gate `planejada` era o defeito inteiro.
+   */
+  it('⭐⭐ separada e concluída: a linha continua dizendo "10 KG → +50 UN"', async () => {
+    const { ordemId } = await criar(fichaMassa, 10, 10)
+
+    const linhaAgora = async () => {
+      const cfg = (await configDeRetalho(companyId, [fichaMassa], prisma)).get(fichaMassa)
+      const decl = (await retalhoDasOrdens(companyId, [ordemId], prisma)).get(ordemId)
+      return linhaDoRetalho({
+        aceita: !!cfg?.aceita, kg: decl?.kg ?? null,
+        pesoUnidadeG: cfg?.pesoUnidadeG ?? null, unidade: 'UN',
+      })
+    }
+
+    for (const estado of ['SEPARADA', 'EM_PRODUCAO'] as const) {
+      await prisma.stockProductionOrder.update({ where: { id: ordemId }, data: { estado } })
+      const l = await linhaAgora()
+      expect(l, `em ${estado} a linha existe`).not.toBeNull()
+      expect(l!.declarado, `em ${estado} o retalho é visível`).toBe(true)
+      expect(l!.texto).toContain('10 KG')
+      expect(l!.texto).toContain('+50 UN')
+    }
+
+    /** ⭐ e na CANCELADA também — era o estado da ordem real do dono quando ele reclamou */
+    await prisma.stockProductionOrder.update({ where: { id: ordemId }, data: { estado: 'CANCELADA' } })
+    expect((await linhaAgora())!.declarado).toBe(true)
+  })
+
+  /** ⛔⛔ receita que aceita e ordem SEM retalho DIZ isso — ausência nunca é dúvida */
+  it('⛔⛔ sem retalho declarado a linha DIZ "sem retalho declarado"', async () => {
+    const { ordemId } = await criar(fichaMassa, 10)
+    const cfg = (await configDeRetalho(companyId, [fichaMassa], prisma)).get(fichaMassa)
+    const decl = (await retalhoDasOrdens(companyId, [ordemId], prisma)).get(ordemId)
+    const l = linhaDoRetalho({
+      aceita: !!cfg?.aceita, kg: decl?.kg ?? null,
+      pesoUnidadeG: cfg?.pesoUnidadeG ?? null, unidade: 'UN',
+    })
+    expect(l!.texto).toBe('sem retalho declarado')
+  })
+
+  /** ⛔ e a receita vizinha (as outras 189) não ganha linha nenhuma */
+  it('⛔ receita que não aceita segue muda', async () => {
+    const { ordemId } = await criar(fichaOutra, 10)
+    const cfg = (await configDeRetalho(companyId, [fichaOutra], prisma)).get(fichaOutra)
+    const decl = (await retalhoDasOrdens(companyId, [ordemId], prisma)).get(ordemId)
+    expect(linhaDoRetalho({
+      aceita: !!cfg?.aceita, kg: decl?.kg ?? null,
+      pesoUnidadeG: cfg?.pesoUnidadeG ?? null, unidade: 'UN',
+    })).toBeNull()
+  })
+})
+
+describe('⭐⭐ PASSO 2 — corrigir o retalho, pela MESMA porta', () => {
+  /**
+   * ⛔⛔⛔ **O DEFEITO QUE A PRÓPRIA CONSTRUÇÃO DO PASSO 1 EXPÔS.** O campo do retalho nasce
+   * VAZIO na correção (ordem do dono: *"nunca pré-preenchido"*), e até 12/10 *"não respondi"*
+   * e *"não tem"* eram a MESMA coisa pro servidor → **corrigir só o número apagava os 10 KG**,
+   * sem uma palavra na tela, e o fiscal voltava a acusar o lote à toa.
+   */
+  it('⛔⛔⛔ corrigir SÓ o pedido NÃO apaga o retalho declarado', async () => {
+    const { ordemId } = await criar(fichaMassa, 10, 10)
+    expect(await prisma.stockOrdemRetalho.count({ where: { companyId, ordemId } })).toBe(1)
+
+    /** ⚠️ o campo ausente = *"não respondi"* — é o caminho que a tela usa quando ele só troca o número */
+    await confirmarPedido({ companyId, ordemId, unidades: 20 }, prisma)
+
+    const r = await prisma.stockOrdemRetalho.findFirstOrThrow({ where: { companyId, ordemId } })
+    expect(r.kg, 'os 10 KG continuam').toBe(10)
+    const meta = await prisma.stockOrdemMeta.findFirstOrThrow({ where: { companyId, ordemId } })
+    expect(meta.unidades, 'e o pedido foi corrigido').toBe(20)
+  })
+
+  /** ⭐ *"Não tem"* é resposta EXPLÍCITA e apaga — bônus que o dono retirou não pode sobreviver */
+  it('⭐ responder "não tem" (null) APAGA o retalho', async () => {
+    const { ordemId } = await criar(fichaMassa, 10, 10)
+    await confirmarPedido({ companyId, ordemId, unidades: 10, retalhoKg: null }, prisma)
+    expect(await prisma.stockOrdemRetalho.count({ where: { companyId, ordemId } })).toBe(0)
+  })
+
+  /** ⭐ e corrigir o KG substitui, sem deixar duas linhas (o unique do banco) */
+  it('⭐ corrigir o kg substitui a linha, nunca empilha', async () => {
+    const { ordemId } = await criar(fichaMassa, 10, 10)
+    await confirmarPedido({ companyId, ordemId, unidades: 10, retalhoKg: 9.2 }, prisma)
+    const rs = await prisma.stockOrdemRetalho.findMany({ where: { companyId, ordemId } })
+    expect(rs).toHaveLength(1)
+    expect(rs[0].kg).toBe(9.2)
+  })
+
+  /**
+   * ⛔⛔ O VERMELHO Nº 5 DO DONO: *"corrigir retalho depois de separado = vermelho (trava)"*.
+   *
+   * ⚠️ A trava é a MESMA do pedido, e isso é o ponto: **não nasceu porta nova**. O material já
+   * saiu da câmara obedecendo ao pedido atual; mexer no bônus do fiscal depois disso mudaria a
+   * régua do lote que já está na panela.
+   */
+  it('⛔⛔ depois de SEPARADA o retalho não se corrige — e o kg antigo fica intacto', async () => {
+    const { ordemId } = await criar(fichaMassa, 10, 10)
+    await prisma.stockProductionOrder.update({ where: { id: ordemId }, data: { estado: 'SEPARADA' } })
+
+    await expect(
+      confirmarPedido({ companyId, ordemId, unidades: 10, retalhoKg: 30 }, prisma),
+    ).rejects.toThrow(OrdemError)
+    await expect(
+      confirmarPedido({ companyId, ordemId, unidades: 10, retalhoKg: null }, prisma),
+    ).rejects.toThrow(OrdemError)
+
+    const r = await prisma.stockOrdemRetalho.findFirstOrThrow({ where: { companyId, ordemId } })
+    expect(r.kg, 'nada do retalho se mexeu').toBe(10)
+  })
+
+  /** ⛔ e a trava da receita não marcada vale igual na CORREÇÃO, não só na 1ª declaração */
+  it('⛔ corrigir pra uma receita que não aceita segue 422, sem gravar', async () => {
+    const { ordemId } = await criar(fichaOutra, 10)
+    await expect(
+      confirmarPedido({ companyId, ordemId, unidades: 20, retalhoKg: 5 }, prisma),
+    ).rejects.toThrow(OrdemError)
+    const meta = await prisma.stockOrdemMeta.findFirstOrThrow({ where: { companyId, ordemId } })
+    expect(meta.unidades, 'o pedido antigo não foi tocado').toBe(10)
   })
 })

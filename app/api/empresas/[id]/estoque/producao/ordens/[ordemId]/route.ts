@@ -98,23 +98,41 @@ export async function GET(request: NextRequest, { params }: Params) {
      * da ausência do DADO, não de um `if` na tela que alguém remove num refactor (a régua que a
      * rota `/retalho` já escreve).
      */
+    /**
+     * ⛔⛔⛔ **E A CONFIG + O DECLARADO VÊM EM TODO ESTADO (12/10) — era aqui que o retalho
+     * ficava INVISÍVEL.** A versão de 11/10 só consultava em `PLANEJADA` *"pra não pagar 2
+     * queries em toda abertura de ordem"* — e o efeito foi o defeito que o dono relatou: a
+     * ordem de 10 UN tinha **10 KG gravados** e a página não dizia uma palavra sobre eles em
+     * nenhum estado que não fosse o de separar.
+     *
+     * ⚠️ A troca é consciente e medida: são **2 consultas indexadas** (`stock_ficha_retalho` por
+     * `(companyId, fichaId)` e `stock_ordem_retalho` pelo unique `(companyId, ordemId)`) contra
+     * uma tela que precisa contar a verdade. ⭐ A **CARA** (`ultimoRetalhoDaFicha`, que varre as
+     * 50 últimas ordens da ficha) continua gateada em `PLANEJADA`, porque ela é o LEMBRETE do
+     * campo de digitar — só existe onde há campo.
+     */
     const planejada = ordem.estado === 'PLANEJADA'
-    const cfgRetalho = planejada ? (await configDeRetalho(companyId, [ordem.fichaId], prisma)).get(ordem.fichaId) : undefined
-    const [ultimo, jaDeclarado, rastro] = planejada
-      ? await Promise.all([
-          cfgRetalho?.aceita ? ultimoRetalhoDaFicha(companyId, ordem.fichaId, prisma) : Promise.resolve(null),
-          retalhoDasOrdens(companyId, [ordemId], prisma),
-          rastroDoPedido(companyId, ordemId, prisma),
-        ])
-      : [null, new Map(), []]
-    const retalho = !planejada || !cfgRetalho?.aceita
+    const [cfgMap, jaDeclarado] = await Promise.all([
+      configDeRetalho(companyId, [ordem.fichaId], prisma),
+      retalhoDasOrdens(companyId, [ordemId], prisma),
+    ])
+    const cfgRetalho = cfgMap.get(ordem.fichaId)
+    const [ultimo, rastro] = await Promise.all([
+      planejada && cfgRetalho?.aceita ? ultimoRetalhoDaFicha(companyId, ordem.fichaId, prisma) : Promise.resolve(null),
+      planejada ? rastroDoPedido(companyId, ordemId, prisma) : Promise.resolve([]),
+    ])
+    /**
+     * ⚠️ `aceita: false` **não manda peso nem kg**: a ausência da pergunta (e da linha) tem que
+     * vir da ausência do DADO, não de um `if` na tela que alguém remove num refactor.
+     */
+    const retalho = !cfgRetalho?.aceita
       ? { aceita: false as const }
       : {
           aceita: true as const,
           pesoUnidadeG: cfgRetalho.pesoUnidadeG,
           /** ⚠️ o LEMBRETE, nunca o valor do campo: ele nasce VAZIO (ordem do dono, 09/10) */
           ultimoKg: ultimo?.kg ?? null,
-          /** ⭐ o que ESTA ordem já declarou — pra a correção abrir com a resposta anterior à vista */
+          /** ⭐ o que ESTA ordem declarou — é o que a LINHA do pedido mostra, em qualquer estado */
           declaradoKg: jaDeclarado.get(ordemId)?.kg ?? null,
         }
 

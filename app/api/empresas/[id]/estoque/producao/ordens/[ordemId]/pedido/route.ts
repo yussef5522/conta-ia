@@ -24,9 +24,11 @@ interface Params { params: Promise<{ id: string; ordemId: string }> }
 const schema = z.object({
   unidades: z.number().positive(),
   /**
-   * ⚠️ `nullable` porque *"não tem"* é a resposta, e ela tem que chegar: `null` **apaga** o
-   * retalho de uma declaração anterior. Mandar o campo ausente na correção deixaria o kg velho
-   * valendo — e bônus de fiscal silencioso é bônus que ninguém confere (a régua de 09/10).
+   * ⚠️⚠️ **`nullable` E `optional` com significados DIFERENTES (12/10):** `null` é a resposta
+   * *"não tem"* e **apaga** o retalho de uma declaração anterior; **ausente é "não respondi" e
+   * MANTÉM** o que já estava. Colapsar os dois (como esta rota fazia com `?? null`) fazia
+   * corrigir só o pedido **apagar o retalho em silêncio** — o campo nasce vazio de propósito,
+   * então a ausência de resposta é o caso COMUM da correção.
    *
    * ⭐ O teto de 1000 kg é o mesmo da criação: 25 kg já é muito, e o absurdo plausível é o que
    * o aviso de sanidade pergunta — este CHECK cobre o impossível.
@@ -48,7 +50,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   try {
     const r = await confirmarPedido({
       companyId, ordemId, unidades: parsed.data.unidades,
-      retalhoKg: parsed.data.retalhoKg ?? null, userId: a.user!.sub,
+      /** ⛔ SEM `?? null`: era ele que transformava *"não respondi"* em *"apague"* */
+      retalhoKg: parsed.data.retalhoKg, userId: a.user!.sub,
     })
     return NextResponse.json({ ok: true, ...r })
   } catch (e) {

@@ -25,6 +25,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { fmtPedido } from './pedido-na-tela'
+import { formatarQtd } from '@/lib/stock/quantidade'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -112,6 +113,88 @@ export function fraseDoRetalho(e: {
   const txt = fmtPedido(total, e.unidade)
   if (txt == null) return null
   return `vai sair ~${txt} ${e.unidade} no total`
+}
+
+/**
+ * ⭐⭐⭐ A LINHA DO RETALHO NO BLOCO DO PEDIDO (12/10) — *"hoje ele é invisível"*.
+ *
+ * **Defeito do dono:** ele criou a ordem de 10 UN declarando 10 KG de retalho, a página mostrou
+ * *"deve sair ~12 UN (pela sua média)"* e **nenhum sinal do retalho**. A pergunta dele foi
+ * *"não era certo mudar a quantidade que eu pedi?"* — e a resposta da casa é **NÃO** (o pedido
+ * comanda a separação; o retalho não gasta material). **Mas o retalho tem que APARECER.**
+ *
+ * ⭐ **TRÊS SAÍDAS, e a do meio é a que fecha a dúvida:**
+ *   · receita que **NÃO aceita** → `null`, a tela não diz nada (como hoje);
+ *   · receita que aceita **COM** retalho declarado → *"retalho de ontem: 10 KG → +50 UN"*;
+ *   · receita que aceita **SEM** retalho → *"sem retalho declarado"*, discreto.
+ *
+ * ⛔⛔ **A terceira saída é a que importa:** sem ela, ausência de linha significaria duas coisas
+ * (*"não declarei"* e *"a receita não aceita"*) e o dono ficaria na dúvida justamente no caso em
+ * que ele esqueceu de declarar. ***Ausência nunca pode ser indistinguível de "não se aplica"***
+ * — é a mesma régua do *"sem contagem"* do estoque e do *"nunca conferida"* das contas.
+ *
+ * ⚠️⚠️ **E ELA NÃO É COLA DE PROVA** (a lei de 05/10), e a diferença é de ORIGEM: o bônus é a
+ * conversão do kg que **o próprio dono pesou** pela régua que **ele declarou** na ficha (200 g),
+ * não o que a ficha PROMETE nem a média histórica. O que a lei proíbe é o sistema soprar o
+ * número esperado; aqui ele só devolve a aritmética da declaração dele. A modal de conclusão
+ * segue intocada.
+ *
+ * ⚠️ **"+50 UN", não "+50 metades"** — o dono escreveu *"metades"* porque é o produto DESTE caso.
+ * A frase usa a **unidade do item produzido**, que continua verdadeira no dia em que outra
+ * receita aceitar retalho; cravar "metades" faria a tela chamar de metade o que não é.
+ */
+export function linhaDoRetalho(e: {
+  aceita: boolean
+  kg: number | null | undefined
+  pesoUnidadeG: number | null | undefined
+  unidade: string
+}): { texto: string; declarado: boolean; bonus: number | null } | null {
+  if (!e.aceita) return null
+  const bonus = unidadesDoRetalho(e.kg, e.pesoUnidadeG)
+  if (bonus == null) return { texto: 'sem retalho declarado', declarado: false, bonus: null }
+  const txt = fmtPedido(bonus, e.unidade)
+  if (txt == null) return { texto: 'sem retalho declarado', declarado: false, bonus: null }
+  return {
+    texto: `retalho de ontem: ${formatarQtd(e.kg!, 'KG')} → +${txt} ${e.unidade}`,
+    declarado: true,
+    bonus,
+  }
+}
+
+/**
+ * ⭐⭐⭐ O ESPELHO DA SEPARAÇÃO PASSOU A DIZER O **TOTAL** (12/10, ordem do dono).
+ *
+ * *"A frase vira o TOTAL, curta: «deve sair ~62 UN no total (~12 da massa nova + 50 do
+ * retalho)»"* — porque dizer só *"~12"* numa ordem que vai render 62 é a tela escondendo a
+ * metade do lote, e foi exatamente isso que fez o dono desconfiar do pedido.
+ *
+ * ⛔⛔ **A CONTA MORA AQUI, NÃO NO JSX.** A tela não soma `massa nova + bônus`: somar ali seria
+ * a 2ª derivação do mesmo total (a lição do B1 e dos 7 detectores de par), e ela divergiria do
+ * fiscal — que usa `permitido = material + retalho ÷ 200 g` — no primeiro ajuste de régua.
+ *
+ * ⚠️ A régua usada continua NOMEADA no fim (*"pela sua média"* × *"pelo que a receita promete"*):
+ * espelho sem nome faz o dono comparar dois números sem saber de onde vieram.
+ *
+ * ⛔ `null` sem massa nova: sem o número da separação não existe total, e somar o bônus a nada
+ * daria *"deve sair ~50"* numa ordem que não separou nada.
+ */
+export function fraseDaSeparacao(e: {
+  daMassaNova: number | null | undefined
+  porMedia: boolean
+  bonusDoRetalho: number | null
+  unidade: string
+}): string | null {
+  if (e.daMassaNova == null || !Number.isFinite(e.daMassaNova)) return null
+  const regua = e.porMedia ? 'pela sua média' : 'pelo que a receita promete'
+  const nova = fmtPedido(e.daMassaNova, e.unidade)
+  if (nova == null) return null
+  if (e.bonusDoRetalho == null) {
+    return `Com isso deve sair ~${nova} ${e.unidade} (${regua})`
+  }
+  const total = fmtPedido(e.daMassaNova + e.bonusDoRetalho, e.unidade)
+  const bonus = fmtPedido(e.bonusDoRetalho, e.unidade)
+  if (total == null || bonus == null) return null
+  return `Com isso deve sair ~${total} ${e.unidade} no total (~${nova} da massa nova + ${bonus} do retalho) · ${regua}`
 }
 
 /** ⭐ A config das receitas pedidas, em UMA consulta (a lição dos 4.909 ms de 28/09). */

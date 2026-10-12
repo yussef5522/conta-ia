@@ -44,9 +44,18 @@ export interface ConfirmarPedidoInput {
   /** quantas unidades do PRODUTO o dono quer — na unidade de controle do item produzido */
   unidades: number
   /**
-   * ⭐ o retalho de ontem, quando a receita aceita (a pergunta mudou da criação pra cá, junto
-   * do número). ⚠️ `null`/ausente = *"não tem"*: a ausência é a resposta, e o CHECK do banco
-   * exige `kg > 0`.
+   * ⭐⭐ o retalho de ontem, quando a receita aceita (a pergunta mudou da criação pra cá, junto
+   * do número). **TRÊS valores, três significados diferentes (12/10):**
+   *   · `undefined` → *"não respondi"* → **o retalho de antes CONTINUA**;
+   *   · `null` → *"não tem"* (resposta explícita) → **apaga** o que estava declarado;
+   *   · `> 0` → substitui (o CHECK do banco exige `kg > 0`).
+   *
+   * ⛔⛔ **A separação entre `undefined` e `null` NASCEU DE UM DEFEITO MEDIDO.** Até 12/10 os
+   * dois significavam *"não tem"*, e o campo do retalho **nasce vazio** na correção (ordem do
+   * dono: *"nunca pré-preenchido"*) — então **corrigir só o pedido APAGAVA, em silêncio, o
+   * retalho que já estava gravado**. No caso real isso jogaria no lixo os 10 KG da ordem de
+   * 12/10 e o fiscal voltaria a acusar o lote à toa. ***Campo que nasce vazio não pode
+   * significar "apague o que você já me disse".***
    */
   retalhoKg?: number | null
   userId?: string
@@ -109,6 +118,8 @@ export async function confirmarPedido(
    * metade, o pior dos dois mundos. Quem pegou foi a contabilidade de escrita (531 → 532), não
    * um teste meu.
    */
+  /** ⭐ *"respondeu"* é o que separa `null` (apaga) de ausente (não toca) — ver o input */
+  const respondeuRetalho = input.retalhoKg !== undefined
   const temRetalho = input.retalhoKg != null && input.retalhoKg > 0
   if (temRetalho) {
     const cfg = (await configDeRetalho(input.companyId, [ordem.fichaId], db)).get(ordem.fichaId)
@@ -162,18 +173,23 @@ export async function confirmarPedido(
       data: { escalaReceitas: escala },
     })
     /**
-     * ⭐ O RETALHO declarado. ⚠️ Corrigir o pedido **apaga o retalho anterior** quando a resposta
-     * nova é *"não tem"*: deixar o kg velho faria o fiscal seguir dando um bônus que o dono
-     * acabou de retirar — e bônus silencioso é bônus que ninguém confere (a régua de 09/10).
+     * ⭐⭐ O RETALHO declarado — e as três respostas (ver `retalhoKg` no input).
+     *
+     * ⚠️ *"Não tem"* (`null`) **apaga** o anterior: deixar o kg velho faria o fiscal seguir
+     * dando um bônus que o dono acabou de retirar — e bônus silencioso é bônus que ninguém
+     * confere (a régua de 09/10). ⛔ Já *"não respondi"* (`undefined`) **não toca em nada** —
+     * era por aqui que a correção do pedido apagava o retalho calado.
      */
-    await tx.stockOrdemRetalho.deleteMany({ where: { companyId: input.companyId, ordemId: input.ordemId } })
-    if (temRetalho) {
-      await tx.stockOrdemRetalho.create({
-        data: {
-          companyId: input.companyId, ordemId: input.ordemId,
-          kg: input.retalhoKg!, declaradoPorId: input.userId ?? null,
-        },
-      })
+    if (respondeuRetalho) {
+      await tx.stockOrdemRetalho.deleteMany({ where: { companyId: input.companyId, ordemId: input.ordemId } })
+      if (temRetalho) {
+        await tx.stockOrdemRetalho.create({
+          data: {
+            companyId: input.companyId, ordemId: input.ordemId,
+            kg: input.retalhoKg!, declaradoPorId: input.userId ?? null,
+          },
+        })
+      }
     }
   }
 

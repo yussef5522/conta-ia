@@ -33,7 +33,7 @@ import type { OrigemDoPedido } from '@/lib/stock/producao/pedido-da-ordem'
 import type { OrdemView } from '@/lib/stock/producao/ordens'
 import { tabelaDaPergunta, rotuloDoConfirmar, vereditoDaLinha } from '@/lib/stock/producao/pergunta-do-pedido'
 import { avisosDaEscala } from '@/lib/stock/producao/escala-do-pedido'
-import { fraseDoRetalho } from '@/lib/stock/producao/retalho'
+import { fraseDoRetalho, linhaDoRetalho, fraseDaSeparacao } from '@/lib/stock/producao/retalho'
 import { sanitizarQtd, valorQtd } from '@/lib/stock/quantidade'
 
 interface Linha { itemId: string; nome: string; unidade: string; unidadeControle: string; porLote: number; qtdPlanejada: number; qtdSeparada: number; qtdConsumida: number; saldoDisponivel: number; custoMedio: number | null; fichaIdComponente: string | null }
@@ -180,12 +180,24 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const confirmarPedido = async () => {
     const un = valorQtd(quanto)
     if (un == null || !(un > 0)) { setErro('Diga quantas unidades produzir.'); return }
+    /**
+     * ⛔⛔ AS TRÊS RESPOSTAS DO RETALHO — e a do meio é a que o defeito de 12/10 criou:
+     *   · não respondeu (`temRetalho === null`) → **o campo não viaja** → o servidor MANTÉM o
+     *     que estava. Como o campo nasce vazio inclusive na correção, *"não respondi"* é o caso
+     *     COMUM de quem só queria corrigir o número — e mandar `null` ali **apagava os 10 KG**;
+     *   · *"Não tem"* → manda `null` → apaga (resposta explícita);
+     *   · *"Sim" + kg* → manda o kg.
+     */
     const kg = temRetalho === 'SIM' ? valorQtd(retalhoKg) : null
+    const respondeu = temRetalho !== null
     setBusy(true); setErro(null)
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/pedido`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unidades: un, retalhoKg: kg && kg > 0 ? kg : null }),
+        body: JSON.stringify({
+          unidades: un,
+          ...(respondeu ? { retalhoKg: kg && kg > 0 ? kg : null } : {}),
+        }),
       })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui gravar o pedido.'); return }
@@ -263,6 +275,26 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
       : []),
     [ordem, pedidoNum, maiorDose, espelho],
   )
+  /**
+   * ⭐⭐⭐ A LINHA DO RETALHO (12/10) — *"10 UN pedidas · retalho de ontem: 10 KG → +50 UN"*.
+   *
+   * ⛔ Ela sai da LIB, nunca de uma conta aqui: o bônus é o MESMO `unidadesDoRetalho` que o
+   * fiscal usa pra achar o `permitido`. Uma divisão por 200 no JSX seria a 2ª régua, e ela
+   * divergiria do fiscal no dia em que o dono mudar o peso da metade na ficha.
+   *
+   * ⚠️ Vale em TODO estado (é por isso que a rota passou a mandar o `declaradoKg` sempre): o
+   * defeito do dono era justamente o retalho invisível numa ordem que não estava em PLANEJADA.
+   */
+  const linhaRet = useMemo(
+    () => (ordem
+      ? linhaDoRetalho({
+          aceita: !!retalho?.aceita, kg: retalho?.declaradoKg ?? null,
+          pesoUnidadeG: retalho?.pesoUnidadeG ?? null, unidade: ordem.unidadeProduzido,
+        })
+      : null),
+    [ordem, retalho],
+  )
+
   /** ⭐ a frase curta do retalho — *"vai sair ~246 UN no total"* (a conta mora na lib) */
   const fraseRet = useMemo(
     () => (ordem && retalho?.aceita && temRetalho === 'SIM'
@@ -398,6 +430,26 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                 {ordem.unidadeProduzido} {pedido.origem === 'DECLARADO' ? 'pedidas' : 'esperadas'}
               </span>
             </p>
+
+            {/**
+              * ⭐⭐⭐ O RETALHO DE ONTEM — *"retalho de ontem: 10 KG → +50 UN"* (12/10).
+              *
+              * ⛔⛔ **A ausência tem DUAS saídas, nunca o silêncio:** receita que aceita e ordem
+              * sem retalho diz *"sem retalho declarado"* (cinza, discreto) — senão "nada na tela"
+              * significaria *"não declarei"* E *"a receita não aceita"*, e o dono ficaria na
+              * dúvida justo quando esqueceu de declarar. Receita que não aceita: a lib devolve
+              * `null` e aqui nada aparece, como sempre foi.
+              *
+              * ⚠️ **NÃO é cola de prova** (a lei de 05/10): o bônus é a conversão do kg que ELE
+              * pesou pela régua que ELE declarou na ficha — não é o que a ficha promete nem a
+              * média histórica. A modal de conclusão segue intocada.
+              */}
+            {linhaRet && (
+              <p className="mt-0.5 text-[12px]"
+                style={{ color: linhaRet.declarado ? 'var(--fam-indigo-ink)' : 'var(--prod-muted)' }}>
+                {linhaRet.texto}
+              </p>
+            )}
 
             {/**
               * ⭐⭐⭐ ORDEM CONCLUÍDA (item 6): o par *"pedido 305 · fez X"* + a pílula
@@ -618,6 +670,20 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
               <p className="text-[13px] font-medium" style={{ color: 'var(--fam-indigo-ink)' }}>
                 Tem retalho de ontem? Quer adicionar na receita?
               </p>
+              {/**
+                * ⭐⭐ NA CORREÇÃO, O QUE JÁ ESTÁ DECLARADO FICA À VISTA — e a tela DIZ que ele
+                * continua se o dono não responder.
+                *
+                * ⛔ É a metade honesta da trava nova: o campo nasce vazio (ordem do dono), então
+                * sem esta frase o dono não teria como saber que os 10 KG seguem valendo — e
+                * silêncio sobre dado gravado é como a confiança na tela se perde.
+                */}
+              {retalho.declaradoKg != null && temRetalho === null && (
+                <p className="text-[12px]" style={{ color: 'var(--fam-indigo-ink)' }}>
+                  esta ordem está com {formatarQtd(retalho.declaradoKg, 'KG')} declarado — se você
+                  não responder, ele continua
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={() => { setTemRetalho('NAO'); setRetalhoKg('') }}
                   className="rounded-md px-2.5 py-1 text-[12.5px]"
@@ -846,13 +912,22 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
           */}
         {planejada && previsao && (
           <div className="px-4 pb-4 text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
-            {/* ⚠️ a MEDIDA ganha quando existe, e a tela DIZ qual régua usou — espelho sem
-                nome faria o dono comparar dois números sem saber de onde vieram */}
-            Com isso deve sair{' '}
-            <strong style={{ color: 'var(--prod-secondary)' }}>
-              ~{num(Math.round(previsao.medido ?? previsao.esperadoDaFicha))} {ordem.unidadeProduzido}
-            </strong>
-            {previsao.medido != null ? ' (pela sua média)' : ' (pelo que a receita promete)'}
+            {/**
+              * ⭐⭐⭐ A FRASE VIROU O **TOTAL** (12/10, ordem do dono): *"deve sair ~62 UN no
+              * total (~12 da massa nova + 50 do retalho)"*. Dizer só *"~12"* numa ordem que vai
+              * render 62 é a tela escondendo metade do lote — e foi isso que fez o dono
+              * desconfiar do pedido.
+              *
+              * ⛔ A soma mora na LIB (`fraseDaSeparacao`): somar `massa nova + bônus` aqui seria
+              * a 2ª derivação do mesmo total, e ela divergiria do `permitido` do fiscal.
+              * ⚠️ A régua usada (sua média × o que a receita promete) continua NOMEADA na frase.
+              */}
+            {fraseDaSeparacao({
+              daMassaNova: Math.round(previsao.medido ?? previsao.esperadoDaFicha),
+              porMedia: previsao.medido != null,
+              bonusDoRetalho: linhaRet?.bonus ?? null,
+              unidade: ordem.unidadeProduzido,
+            })}
           </div>
         )}
       </CardContent></Card>
