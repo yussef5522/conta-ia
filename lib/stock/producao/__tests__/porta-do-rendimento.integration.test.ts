@@ -23,6 +23,7 @@ import {
   fichaEsperaRendimento,
   AutoConversaoError,
   PEDIDOS_DA_PROVA,
+  ORIGEM_DO_RESUMO,
 } from '../auto-conversao-de-lote'
 import { insumoDoPedido } from '../escala-da-ordem'
 import { criarOrdem, explodirSeparacao } from '../ordens'
@@ -271,6 +272,40 @@ describe('⭐⭐⭐ O BEEF: pedido 30 separa os MESMOS kg antes × depois, AO CE
     expect(vs[1]).toMatchObject({ versao: 2, unidadeLoteBase: 'UN' })
     // ⚠️ rastro de SISTEMA: a versão nova nasce SEM autor (ninguém clicou)
     expect(vs[1].criadoPorId).toBeNull()
+  })
+
+  /**
+   * ⭐⭐ UM RESUMO NO SININHO, não N (item 1) — e ele DIZ que nada mudou na prateleira.
+   *
+   * ⛔ 36 sininhos pra dizer *"não mudou nada"* seria a enxurrada que mata o sininho. O aviso
+   * POR FICHA é do item 2, onde cada uma espera um número diferente do dono.
+   */
+  it('⭐⭐ a auto deixa UM resumo no sininho, azul, dizendo que a prateleira não se moveu', async () => {
+    await beefTorto('beef do resumo A')
+    await beefTorto('beef do resumo B')
+    await autoConverterNeutras(companyId, prisma)
+
+    const avisos = await prisma.aviso.findMany({ where: { companyId, origem: ORIGEM_DO_RESUMO } })
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].severidade).toBe('azul')
+    expect(avisos[0].setor).toBe('gerencia')
+    expect(avisos[0].titulo).toContain('2 rótulos')
+    expect(avisos[0].corpo).toContain('Nada mudou na prateleira')
+    expect(avisos[0].acaoHref).toContain('/estoque/producao/receitas')
+    // ⛔ e o aviso POR FICHA (item 2) NÃO nasce pra ficha que a auto resolveu
+    expect(await rendimentosPendentes(companyId, prisma)).toEqual([])
+  })
+
+  it('⛔ sem nada pra converter, NENHUM resumo nasce (aviso de "não fiz nada" é ruído)', async () => {
+    const i = await insumo('Acém coerente')
+    await criarFicha({
+      companyId, nomeProduzido: 'ja coerente', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO',
+      loteBase: 1, unidadeLoteBase: 'UN',
+      componentes: [{ itemId: i, qtdPlanejada: 0.1, unidade: 'KG' }],
+    }, prisma)
+    const r = await autoConverterNeutras(companyId, prisma)
+    expect(r.convertidas).toEqual([])
+    expect(await prisma.aviso.count({ where: { companyId, origem: ORIGEM_DO_RESUMO } })).toBe(0)
   })
 
   it('⭐ e o gesto é IDEMPOTENTE: a 2ª rodada não acha mais nada pra converter', async () => {

@@ -39,6 +39,7 @@ import { fichasParaConverter, type FichaParaConverter } from './fichas-para-conv
 import { loteEhComparavel } from './lote-comparavel'
 import { comoConsome } from '../explodir-receita'
 import { aplicarConversaoDeLote } from './aplicar-conversao'
+import { registrarAviso } from '@/lib/avisos/central'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -47,6 +48,9 @@ type Db = PrismaClient | Prisma.TransactionClient
  * **Não é enfeite** — cada um ataca um arredondamento diferente da cadeia `dose → escala →
  * insumo`. O `137,5` é o que mais já pegou nesta casa.
  */
+/** ⭐ a origem do RESUMO — distinta do aviso por ficha (`RENDIMENTO_PENDENTE`) de propósito */
+export const ORIGEM_DO_RESUMO = 'ROTULO_CORRIGIDO'
+
 export const PEDIDOS_DA_PROVA = [1, 7, 30, 80, 137.5, 1000] as const
 
 export interface ProvaDeComponente {
@@ -198,6 +202,48 @@ export async function autoConverterNeutras(
     exigirNeutralidade(a) // ⛔ cinto sobre o suspensório: nunca aplica o que não provou
     await aplicarConversaoDeLote(companyId, f.fichaId, a.unidadesPorReceita, null, db)
     convertidas.push(a)
+  }
+
+  /**
+   * ⭐⭐ UM RESUMO NO SININHO — *"corrigi N rótulos — nada mudou na prateleira"* (item 1).
+   *
+   * ⛔⛔ **UM, não N.** O aviso por ficha é do item 2 (lá cada uma espera um número DIFERENTE do
+   * dono, e o gesto é por ficha). Aqui o sistema já resolveu: 36 sininhos pra dizer *"não mudou
+   * nada"* seria a enxurrada que mata o sininho (os 111 alarmes falsos de 26/08).
+   *
+   * ⭐ **AZUL, nunca âmbar:** nada pede olho — a prateleira não se moveu, e a prova disso é o
+   * Δ 0 medido pela porta da separação. Âmbar aqui treinaria o dono a ignorar âmbar.
+   *
+   * ⚠️ **FAIL-SOFT, e DEPOIS de converter:** a conversão já está gravada quando isto roda; um
+   * problema na central de avisos não pode desfazê-la nem derrubar o gesto. ⚠️ E o alvo carrega
+   * a CONTAGEM: uma rodada futura que converta outras fichas ganha o seu próprio resumo, em vez
+   * de reabrir este e misturar dois lotes num aviso só.
+   */
+  if (convertidas.length) {
+    try {
+      const nomes = convertidas.slice(0, 3).map((c) => c.nomeProduto).join(', ')
+      const resto = convertidas.length - Math.min(3, convertidas.length)
+      await registrarAviso({
+        companyId,
+        setor: 'gerencia',
+        severidade: 'azul',
+        titulo: `Confere os ${convertidas.length} rótulos de rendimento que eu corrigi`,
+        corpo:
+          `${convertidas.length} ficha${convertidas.length > 1 ? 's' : ''} declarava${convertidas.length > 1 ? 'm' : ''} ` +
+          `o rendimento numa unidade que não era a do produto (${nomes}${resto > 0 ? ` e outras ${resto}` : ''}). ` +
+          'Troquei só o rótulo, e provei antes de mexer: a separação de cada componente dá o ' +
+          'mesmo material de antes, ao centavo, em seis tamanhos de pedido. Nada mudou na prateleira.',
+        oQueFazer:
+          'Confira na lista de receitas se o rendimento de cada uma ficou do jeito que você espera — ' +
+          'as versões antigas continuam no histórico, e as ordens já feitas não mudaram.',
+        acaoRotulo: 'ver a lista de receitas',
+        acaoHref: `/empresas/${companyId}/estoque/producao/receitas`,
+        origem: ORIGEM_DO_RESUMO,
+        alvo: `auto:${convertidas.length}`,
+      }, db)
+    } catch {
+      // ⚠️ aviso é CANAL, nunca o gesto: a conversão está gravada e não se desfaz por isto
+    }
   }
 
   return { total: fila.total, jaCoerentes: fila.coerentes, convertidas, pendentes }
