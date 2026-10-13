@@ -5,10 +5,17 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { avaliarEntrada, ehEntradaQueConserta, frasePergunta, TIPO_AJUSTE_RESIDUO } from './entrada-cruza-o-zero'
 import { ehAncoraDeContagem } from './contagem-ancora'
-import { TIPOS_FORA_DA_PRATELEIRA } from './saldo'
+import { TIPOS_FORA_DA_PRATELEIRA } from './prateleira'
+import { lembrarCustoVigente, memoriaDaEntrada } from './custo-vigente'
 import { familiaDoItem, porQueEstaNegativo, type FatosDoNegativo } from './porta-do-negativo'
 
 type Db = PrismaClient | Prisma.TransactionClient
+
+/** ⭐ o estado do item ANTES deste movimento (a consulta que a entrada já fazia) */
+interface SomaAtual {
+  saldo: number
+  valor: number
+}
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const CUSTO_TOL = 0.01 // por LINHA (o mesmo do CHECK do banco)
@@ -132,21 +139,31 @@ function unidadeOuUnidades(n: number): string {
  */
 async function residuoAAbsorverNaEntrada(
   db: Db, m: NovoMovimento, custoTotal: number,
-): Promise<number | null> {
+): Promise<{ residuo: number | null; antes: SomaAtual | null }> {
   // ⛔ só a ENTRADA conserta — contagem sobre negativo continua na porta de 22/09
-  if (m.quantidade <= 0 || !ehEntradaQueConserta(m.tipo)) return null
+  if (m.quantidade <= 0 || !ehEntradaQueConserta(m.tipo)) return { residuo: null, antes: null }
   const atual = await db.stockMovement.aggregate({
     where: { companyId: m.companyId, itemId: m.itemId, tipo: { notIn: [...TIPOS_FORA_DA_PRATELEIRA] } },
     _sum: { quantidade: true, custoTotal: true },
   })
+  /**
+   * ⭐ 13/10 — o `antes` SOBE pra o chamador porque a MEMÓRIA DO CUSTO precisa dele, e esta
+   * consulta já acontecia. ⚠️ `TIPOS_COM_CUSTO_CONHECIDO === ENTRADAS_QUE_CONSERTAM` (a
+   * mesma lista), então **toda entrada que ensina custo já passa por aqui** — a memória não
+   * custa nenhuma consulta nova no caminho quente (a lição dos 4.909 ms de 28/09).
+   */
+  const antes: SomaAtual = {
+    saldo: round2(atual._sum.quantidade ?? 0),
+    valor: round2(atual._sum.custoTotal ?? 0),
+  }
   const v = avaliarEntrada({
-    saldoAntes: round2(atual._sum.quantidade ?? 0),
-    valorAntes: round2(atual._sum.custoTotal ?? 0),
+    saldoAntes: antes.saldo,
+    valorAntes: antes.valor,
     qtdDaEntrada: m.quantidade,
     valorDaEntrada: custoTotal,
   })
-  if (v.decisao === 'OK' || v.decisao === 'RECUSA') return null
-  if (v.decisao === 'AJUSTA_RESIDUO' || m.confirmouResiduo) return v.residuo
+  if (v.decisao === 'OK' || v.decisao === 'RECUSA') return { residuo: null, antes }
+  if (v.decisao === 'AJUSTA_RESIDUO' || m.confirmouResiduo) return { residuo: v.residuo, antes }
 
   // ⭐ PERGUNTA — com a conta na tela. Nunca beco.
   const item = await db.stockItem.findUnique({ where: { id: m.itemId }, select: { nome: true, unidadeControle: true } })
@@ -244,7 +261,7 @@ export async function criarMovimento(db: Db, m: NovoMovimento) {
    * ⭐⭐ A ORDEM IMPORTA: a entrada que CRUZA O ZERO é avaliada ANTES do guard da baixa —
    * senão o guard barraria (valorDepois < 0) o movimento que existe pra consertar isso.
    */
-  const residuo = await residuoAAbsorverNaEntrada(db, m, custoTotal)
+  const { residuo, antes } = await residuoAAbsorverNaEntrada(db, m, custoTotal)
   /**
    * ⛔ Com resíduo a absorver, o guard da BAIXA **não pode disparar**: ele veria o estado
    * do meio (saldo já positivo, valor ainda negativo) e barraria justamente o movimento
@@ -295,7 +312,7 @@ export async function criarMovimento(db: Db, m: NovoMovimento) {
       },
     })
   }
-  return db.stockMovement.create({
+  const criado = await db.stockMovement.create({
     data: {
       companyId: m.companyId, itemId: m.itemId, tipo: m.tipo, quantidade: m.quantidade,
       custoUnitario: m.custoUnitario, custoTotal, receiptId: m.receiptId ?? null, nfeChave: m.nfeChave ?? null,
@@ -303,6 +320,34 @@ export async function criarMovimento(db: Db, m: NovoMovimento) {
       ...(m.dataMovimento ? { dataMovimento: m.dataMovimento } : {}),
     },
   })
+
+  /**
+   * ⭐⭐⭐ A MEMÓRIA DO CUSTO APRENDE AQUI (13/10/2026) — no choke-point do ledger, nunca em
+   * cada chamador (REGRA 5): **toda entrada que ensina custo passa por `criarMovimento`**, e
+   * é isso que faz a lei valer pra a nota, a entrada manual, a produção, a devolução, o
+   * reunitizar e qualquer caminho novo **de graça**.
+   *
+   * ⛔ Quem decide o número é `memoriaDaEntrada` (pura, a MESMA lei que o replay do ledger
+   * executa). Ela devolve `null` quando a memória **não se mexe** — então ESTE bloco não
+   * precisa saber de tipo nenhum, e o `AJUSTE_RESIDUO` (unitário derivado, R$ 89.580/kg no
+   * fermento) continua **incapaz** de envenenar a memória.
+   *
+   * ⚠️ `antes` só existe quando a entrada passou pela avaliação acima — e passa, porque as
+   * duas listas são a MESMA. Sem ele, a memória não se mexe (nunca chuta).
+   */
+  if (antes) {
+    const memoria = memoriaDaEntrada({
+      tipo: m.tipo, quantidade: m.quantidade, custoTotal,
+      saldoAntes: antes.saldo, valorAntes: antes.valor,
+    })
+    if (memoria != null) {
+      await lembrarCustoVigente(db, {
+        companyId: m.companyId, itemId: m.itemId, custoMedio: memoria, movimentoId: criado.id,
+      })
+    }
+  }
+
+  return criado
 }
 
 /**

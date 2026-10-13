@@ -30,7 +30,7 @@ const TABELAS_POR_COMPANY = [
   'stockConferenceItem', 'stockReceiptConference',
   'stockItemMesclado', 'stockSupplierProdutoNome', 'stockSupplierProduct',
   'stockNfeItem', 'stockNfeDup', 'stockNfeEmit', 'stockNfe',
-  'stockMovement', 'stockSaldoCache', 'stockItem', 'stockSupplier',
+  'stockMovement', 'stockSaldoCache', 'stockItemCustoVigente', 'stockItem', 'stockSupplier',
 ] as const
 
 /** fotografia das empresas ANTES da rodada — o que existir além disso é resíduo dela */

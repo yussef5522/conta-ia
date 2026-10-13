@@ -4979,6 +4979,28 @@ model StockItemCategoriaTrocada {
 ///
 /// ⚠️ Marca é DA CASA (por `companyId`), não por usuário: todo mundo do painel vê as mesmas
 /// principais — foi o que o dono pediu.
+/// ⛔⛔⛔ A MEMÓRIA DO CUSTO MÉDIO (13/10/2026) — lei do dono: *"ele tem q fica com preco q
+/// tava antes de zero estoque"*. Custo médio é MEMÓRIA do item (SAP/TOTVS/Odoo), não fração
+/// do momento: `valor/saldo` com saldo em pé, o ÚLTIMO CONHECIDO com saldo ≤ 0.
+///
+/// ⚠️ Persistido pra leitura O(1) (a porta roda em toda ficha/cardápio/margem) **E
+/// recomputável** — `memoriaPelaHistoria` replaya o ledger e dá o mesmo número; é ela que o
+/// backfill e o **juiz E17** usam. Ausência de linha = "a definir".
+model StockItemCustoVigente {
+  id         String @id @default(cuid())
+  companyId  String
+  itemId     String // stock_item
+  custoMedio Float // > 0 (CHECK) — custo zero/negativo não é memória, é estado impossível
+  /// ⚠️ RASTRO: qual entrada ensinou este número (`null` no backfill, que replaya a história
+  /// inteira e não tem um movimento único pra apontar).
+  movimentoId  String?
+  atualizadoEm DateTime @default(now())
+
+  @@unique([companyId, itemId]) // aprender 2× é UPDATE, nunca 2ª linha
+  @@index([companyId])
+  @@map("stock_item_custo_vigente")
+}
+
 model StockReceitaPrincipal {
   id        String  @id @default(cuid())
   companyId String

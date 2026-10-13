@@ -8,6 +8,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { saldosDaEmpresa } from './saldo'
+import { checkCustoVigenteInvariants } from './custo-vigente-invariants'
 import { checkProducaoInvariants } from './producao/producao-invariants'
 import { checkVendasInvariants } from './vendas/vendas-invariants'
 import { checkBaixaInvariants } from './vendas/juiz-da-baixa'
@@ -217,6 +218,14 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
   // Custo subestimado é silencioso: a margem SOBE e a casa parece mais paga do que está —
   // o estado que viveu meses na Caçula (a massa em UMA das 11 fichas de base).
   fails.push(...(await checkBaseInvariants(db)))
+
+  /**
+   * E17 (13/10) — a MEMÓRIA do custo bate com o ledger. ⚠️ Mora em arquivo próprio porque a
+   * REGRA 11 pegou o guard dele VERDE quando ele era inline aqui: inline, só dava pra travar
+   * por grep de símbolo, e `void memoriaDoLedger` passa por "uso". Extraído, o teste
+   * **executa** o juiz contra um drift de verdade.
+   */
+  fails.push(...(await checkCustoVigenteInvariants(db, companyIds)))
 
   return fails
 }

@@ -54,6 +54,7 @@ afterAll(async () => {
   await prisma.stockFicha.deleteMany({ where: { companyId } })
   await prisma.stockMovement.deleteMany({ where: { companyId } })
   await prisma.stockSaldoCache.deleteMany({ where: { companyId } })
+  await prisma.stockItemCustoVigente.deleteMany({ where: { companyId } })
   await prisma.stockItem.deleteMany({ where: { companyId } })
   await prisma.company.deleteMany({ where: { id: companyId } })
 })
@@ -80,14 +81,37 @@ describe('⛔⛔ O GUARD QUE NÃO PODE CAIR: Σ(linhas) == saldo', () => {
 })
 
 describe('⭐⭐ A ERVILHA — o pior caso, com tudo "—" em vez de número inventado', () => {
-  it('⛔⛔ pílula NEGATIVA, cobertura e custo médio ausentes — nenhum zero disfarçado', async () => {
+  /**
+   * ⚠️⚠️ ASSERÇÃO INVERTIDA EM 13/10/2026, COM O MOTIVO ESCRITO — este teste afirmava a lei
+   * VELHA (`custoMedio = saldo > 0 ? valor/saldo : null`), que apagava o custo quando o saldo
+   * zerava. A lei nova é *"custo médio é MEMÓRIA do item"*: a ERVILHA teve entrada com valor
+   * (36 KG a 13,145), então o custo lido com saldo negativo é o **último conhecido**.
+   *
+   * ⭐ A metade CERTA deste teste — *"nenhum zero disfarçado"* — continua valendo e segue
+   * travada aqui (pílula NEGATIVA, cobertura `null`) e no teste de baixo (item que nunca teve
+   * entrada com valor segue `null`, nunca um número inventado).
+   */
+  it('⛔⛔ pílula NEGATIVA e cobertura ausente — e o custo é a MEMÓRIA, não zero nem null', async () => {
     const f = (await buildFichaItem(companyId, ids.ervilha, prisma))!
     expect(f.saldo).toBeLessThan(0)
-    expect(f.custoMedio, 'o saldo.ts se recusa a dividir negativo').toBeNull()
+    expect(f.custoMedio, 'a lei de 13/10: saldo ≤ 0 lê o último custo conhecido').toBe(13.15)
     expect(f.pilula.estado).toBe('NEGATIVO')
     expect(f.pilula.tom).toBe('vermelho')
     expect(f.cobertura.dias, 'previsão sobre dado impossível não se faz').toBeNull()
     expect(f.cobertura.porque).toBe('SALDO_NAO_POSITIVO')
+  })
+
+  /** ⭐ A OUTRA METADE: sem NENHUMA entrada com valor, o custo segue "a definir" — honesto */
+  it('⛔ item negativo que NUNCA teve entrada com valor continua sem custo (nada inventado)', async () => {
+    const semNota = await item('fermento sem nota')
+    await criarMovimento(prisma, {
+      companyId, itemId: semNota, tipo: 'SEPARACAO_SAIDA',
+      quantidade: -2, custoUnitario: 0, custoTotal: 0, origem: 'MANUAL', dataMovimento: diasAtras(3),
+    })
+    const f = (await buildFichaItem(companyId, semNota, prisma))!
+    expect(f.saldo).toBeLessThan(0)
+    expect(f.custoMedio, 'nunca houve compra: inventar número aqui é o pior dos mundos').toBeNull()
+    expect(f.pilula.estado).toBe('NEGATIVO')
   })
 
   it('⛔ com UMA compra só, nenhuma sugestão de mínimo', async () => {
