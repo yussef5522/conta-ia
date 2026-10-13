@@ -10,33 +10,44 @@
  * escrita líquida. Padrão de `scripts/prova-check-receita-principal.ts`.
  */
 import { prisma } from '@/lib/db'
+import type { Prisma } from '@prisma/client'
 import { exigirEmpresaNesteBanco } from '@/lib/scripts/prova-banco'
 
 const EMPRESA = process.env.EMPRESA_ID ?? 'cmq17yapb00gnrndlh33sctbo'
 
-type Caso = { nome: string; constraint: string; sql: (id: string, item: string) => Promise<unknown> }
+type Tx = Prisma.TransactionClient
+type Caso = { nome: string; constraint: string; sql: (tx: Tx, item: string) => Promise<unknown> }
+
+/**
+ * ⚠️⚠️ O INSERT RECEBE O `tx`, NUNCA O `prisma` GLOBAL — e isso é a diferença entre prova e
+ * escrita em produção. A 1ª versão deste script usava o client global dentro do
+ * `$transaction`: a escrita saiu por OUTRA conexão, o `throw ROLLBACK` não desfez nada, e a
+ * linha FICOU no banco (depois os legítimos 2 e 3 bateram no unique da linha que sobrou).
+ * É a cicatriz de 07/10 (*"o POST de chips estava dentro do `$transaction` achando que o
+ * rollback o desfaria"*) com outra roupa: **rollback só desfaz o que passa pelo `tx`.**
+ */
+const ins = (tx: Tx, companyId: string, itemId: string, custoMedio: string, movimentoId: string | null) =>
+  tx.$executeRawUnsafe(
+    `INSERT INTO "stock_item_custo_vigente" ("id","companyId","itemId","custoMedio","movimentoId","atualizadoEm")
+     VALUES ($1,$2,$3,${custoMedio},$4, CURRENT_TIMESTAMP)`,
+    `prova-${custoMedio}-${itemId.slice(0, 6)}-${Math.round(companyId.length + custoMedio.length)}`,
+    companyId, itemId, movimentoId,
+  )
 
 async function main() {
   await exigirEmpresaNesteBanco(prisma, EMPRESA)
   const antes = await prisma.stockItemCustoVigente.count()
   const item = await prisma.stockItem.findFirstOrThrow({ where: { companyId: EMPRESA }, select: { id: true } })
-
-  const ins = (companyId: string, itemId: string, custoMedio: string, movimentoId: string | null) =>
-    prisma.$executeRawUnsafe(
-      `INSERT INTO "stock_item_custo_vigente" ("id","companyId","itemId","custoMedio","movimentoId","atualizadoEm")
-       VALUES ($1,$2,$3,${custoMedio},$4, CURRENT_TIMESTAMP)`,
-      `prova-${Math.round(custoMedio.length * 7 + companyId.length)}-${itemId.slice(0, 6)}-${custoMedio}`,
-      companyId, itemId, movimentoId,
-    )
+  const mov = await prisma.stockMovement.findFirst({ where: { companyId: EMPRESA }, select: { id: true } })
 
   const tortos: Caso[] = [
-    { nome: 'companyId VAZIO', constraint: 'chk_custo_vigente_forma', sql: (_i, it) => ins('', it, '0.54', null) },
-    { nome: 'companyId SÓ-ESPAÇO', constraint: 'chk_custo_vigente_forma', sql: (_i, it) => ins('   ', it, '0.54', null) },
-    { nome: 'itemId VAZIO', constraint: 'chk_custo_vigente_forma', sql: () => ins(EMPRESA, '', '0.54', null) },
-    { nome: 'itemId SÓ-ESPAÇO', constraint: 'chk_custo_vigente_forma', sql: () => ins(EMPRESA, '  ', '0.54', null) },
+    { nome: 'companyId VAZIO', constraint: 'chk_custo_vigente_forma', sql: (tx, it) => ins(tx, '', it, '0.54', null) },
+    { nome: 'companyId SÓ-ESPAÇO', constraint: 'chk_custo_vigente_forma', sql: (tx, it) => ins(tx, '   ', it, '0.54', null) },
+    { nome: 'itemId VAZIO', constraint: 'chk_custo_vigente_forma', sql: (tx) => ins(tx, EMPRESA, '', '0.54', null) },
+    { nome: 'itemId SÓ-ESPAÇO', constraint: 'chk_custo_vigente_forma', sql: (tx) => ins(tx, EMPRESA, '  ', '0.54', null) },
     // ⛔ custo zero/negativo não é memória — é resquício do estado impossível (FANTA UVA)
-    { nome: 'custoMedio ZERO', constraint: 'chk_custo_vigente_positivo', sql: (_i, it) => ins(EMPRESA, it, '0', null) },
-    { nome: 'custoMedio NEGATIVO', constraint: 'chk_custo_vigente_positivo', sql: (_i, it) => ins(EMPRESA, it, '-2540.13', null) },
+    { nome: 'custoMedio ZERO', constraint: 'chk_custo_vigente_positivo', sql: (tx, it) => ins(tx, EMPRESA, it, '0', null) },
+    { nome: 'custoMedio NEGATIVO', constraint: 'chk_custo_vigente_positivo', sql: (tx, it) => ins(tx, EMPRESA, it, '-2540.13', null) },
   ]
 
   console.log('\n═══ INSERTs TORTOS (cada um tem que ser recusado PELA CONSTRAINT CERTA) ═══')
@@ -44,7 +55,7 @@ async function main() {
   for (const c of tortos) {
     try {
       await prisma.$transaction(async (tx) => {
-        await c.sql(EMPRESA, item.id)
+        await c.sql(tx, item.id)
         throw new Error('ROLLBACK')
       })
       console.log(`  ⛔ ${c.nome}: PASSOU (o CHECK não morde!)`)
@@ -63,19 +74,16 @@ async function main() {
 
   console.log('\n═══ LEGÍTIMOS (têm que ENTRAR) ═══')
   let okBons = 0
-  const bons: { nome: string; run: () => Promise<unknown> }[] = [
-    { nome: 'custo 0,54 com rastro de movimento', run: async () => {
-      const mov = await prisma.stockMovement.findFirst({ where: { companyId: EMPRESA }, select: { id: true } })
-      return ins(EMPRESA, item.id, '0.54', mov?.id ?? null)
-    } },
+  const bons: { nome: string; run: (tx: Tx) => Promise<unknown> }[] = [
+    { nome: 'custo 0,54 com rastro de movimento', run: (tx) => ins(tx, EMPRESA, item.id, '0.54', mov?.id ?? null) },
     // ⚠️ movimentoId NULL é o caso do BACKFILL: ele replaya a história inteira e não tem um
     //    movimento único pra apontar. O CHECK **não compara** a coluna nullable (REGRA 13).
-    { nome: 'movimentoId NULL (o backfill)', run: () => ins(EMPRESA, item.id, '34', null) },
-    { nome: 'custo com muitas casas (0,0003 — dose de fermento)', run: () => ins(EMPRESA, item.id, '0.0003', null) },
+    { nome: 'movimentoId NULL (o backfill)', run: (tx) => ins(tx, EMPRESA, item.id, '34', null) },
+    { nome: 'custo com muitas casas (0,0003 — dose de fermento)', run: (tx) => ins(tx, EMPRESA, item.id, '0.0003', null) },
   ]
   for (const b of bons) {
     try {
-      await prisma.$transaction(async () => { await b.run(); throw new Error('ROLLBACK') })
+      await prisma.$transaction(async (tx) => { await b.run(tx); throw new Error('ROLLBACK') })
       console.log(`  ⛔ ${b.nome}: ??? (não deveria chegar aqui)`)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -87,9 +95,9 @@ async function main() {
   console.log('\n═══ UNIQUE (companyId, itemId) — aprender 2× é UPDATE, nunca 2ª linha ═══')
   let okUnique = false
   try {
-    await prisma.$transaction(async () => {
-      await ins(EMPRESA, item.id, '0.54', null)
-      await ins(EMPRESA, item.id, '0.55', null)
+    await prisma.$transaction(async (tx) => {
+      await ins(tx, EMPRESA, item.id, '0.54', null)
+      await ins(tx, EMPRESA, item.id, '0.55', null)
       throw new Error('ROLLBACK')
     })
   } catch (e) {
