@@ -3827,6 +3827,99 @@ MARGEM: PRECINHO 80,7% → 75,4% · FAMILIA 45CM 85,3% → 83,9% · Pizza (Aiq) 
 
 📋 **ACHADO À PARTE, FORA DO ESCOPO, E É GRANDE:** **«PIZZA GRANDE CALABRESA OU MUSSARELA OU FRANGO BLACK FRIDAY» — 566 unidades, R$ 17.244,16 em 30 dias, SEM DESTINO no mapa do PDV.** É o **2º maior volume de pizza do cardápio** e **não baixa estoque nenhum**. Não é base (é promoção com sabor no nome), então não entra nesta normalização — mas é a maior lacuna de cobertura que o retrato achou.
 
+## ⭐⭐⭐ QUEM PAGA A CASA v4 — A LEI DAS COLUNAS + CMV + O CARTÃO DE PRODUTO (13/10/2026)
+
+**A referência `docs/margem-referencia.html` virou v4** (aprovada pelo dono) e com ela três frentes num sprint só, com **MOTOR ÚNICO**: a lei das colunas, o CMV no montador e o cartão "escolha um produto".
+
+### ⭐⭐⭐ A PORTA ÚNICA DO VEREDITO DE PREÇO (`lib/margem/veredito-de-preco.ts`)
+
+**Farol, charme, gross-up, teto/alvo e as frases moram num arquivo PURO (zero import de prisma), e os DOIS cartões passam por ele** (`montarBlocoDoVeredito`). ⛔ Se cada cartão chamasse `farolDoPreco` + `precosIdeais` + `fraseDoEspecialista` por conta própria, a ORDEM das decisões (qual alvo, qual teto, o que fazer com custo pendente) viveria **duas vezes** — e divergiria no primeiro estado de borda, que aqui é o mais comum: **a pizza com fatia em aberto**. ⚠️ E o risco era maior que o de costume: **o montador e o cartão de produto ficam LADO A LADO, na mesma dobra** — duas contas discordando a dez centímetros uma da outra é a doença do B1 com as duas respostas visíveis ao mesmo tempo.
+
+- **CHARME, e por que ele não arredonda:** `chao + 0,90`, e **se ficar abaixo do ideal bruto sobe pro `chao + 1,90`**. Arredondar pro `,90` mais próximo **puxaria o preço PRA BAIXO do ideal** — e aí o número bonito custaria margem, que é o oposto do que ele existe pra fazer. ⛔ Vermelho do dono travado: *charme abaixo do ideal bruto = vermelho*.
+- **GROSS-UP, na ordem que importa:** o iFood sai de `(custo + sobra do balcão) ÷ (1 − taxa)` — o **gross-up é EXATO antes do charme**, e o charme vem depois. Com isso a **sobra do iFood é SEMPRE ≥ a do balcão** (medido nos 3 alvos do caso real), que é o vermelho *"sobra do iFood menor que a do balcão"*. ⛔ **E nunca copia o preço do balcão pro iFood** — há teste exigindo que os dois sejam diferentes quando a taxa é > 0.
+- ⛔⛔ **`taxaPct: null` é "a declarar", NUNCA 0%** — 0% afirma que o canal é de graça e inflaria a sobra justo no canal em que ela é menor. A taxa vem da **porta de canais que o montador já usava** (`CanalDeVenda.taxaPct`): **zero `0.20` novo cravado**, e há guard provando que nem a porta nem a tela digitam taxa.
+- **`custo == null` NUNCA vira número:** farol **neutro**, canais **"a apurar"**, frase que convida (*"cria a ficha que eu te digo o preço na hora"*). É o vermelho *"produto sem ficha mostrando número de custo/ideal"*.
+- **PERCENTUAL COM VÍRGULA, por `pctBR`** (dono único, `lib/format/percentual.ts`). O caso do dono sai **`CMV 63,6% · fora do padrão`** — ponto decimal ali é vermelho.
+- ⚠️ **Convenção de grandeza, declarada:** fração onde o número **VIAJA** (`cmvPct: 0.6357`, `taxaPct: 0.2`) e percentual inteiro onde ele é **régua de dono** (`tetoPct: 33`). Misturar os dois é como um `× 100` se perde.
+
+**⭐ O MAPA CATEGORIA → TETO/ALVOS É ÚNICO (`REGUA_POR_SECAO`), e ele se pendura no vocabulário que a casa JÁ tem** (`secaoDaLinha`/`secoesPorNome` + `SECOES_SEED`) — **nunca um segundo vocabulário de categoria**. PIZZAS 33 · XIS/BURGERS/LANCHES 35 · PORCOES/FRANGO_FRITO/PRATOS 40, todos **DECLARADO**; BEBIDAS/DOCES/OUTROS **DERIVADO** e **marcado como tal** na tela. ⚠️ `TETO_SEM_SECAO = 40` (o mais FOLGADO de propósito): teto apertado num produto que o sistema não soube classificar **grita lobo** e ensina o dono a ignorar o farol.
+
+### ⭐⭐ A LEI DAS COLUNAS (`lib/margem/recorte-de-coluna.ts`)
+
+*"Lista comprida NUNCA mora inteira numa coluna lateral — ela ganha teto: TOP 10 + «ver todos» que expande ALI MESMO. Recolhido, as duas colunas de cada dupla terminam JUNTAS. Coluna fantasma = tela REPROVADA."*
+
+- ⛔⛔ **UM TETO SÓ PROS DOIS CARTÕES DA DUPLA — e isso não é economia, é a única forma de a lei valer.** `CARREGADORES_VISIVEIS` era `6` cravado em `placar.ts` e passou a **derivar de `TOPO_DA_COLUNA = 10`**. ⚠️ **A própria v4 se contradiz no desenho:** ela DECLARA `TOP 10` e DESENHA 6 linhas em "quem carregou"; a 38px por linha (o `padding:9px` + `13.5px/1.45` do CSS dela), 4 linhas de diferença são **152px**, fora da tolerância de ~140 que ela mesma escreveu. **Com dois tetos separados, alguém ajusta um e a coluna fantasma volta sem nada ficar vermelho; com um dono único ela é impossível** (REGRA 5). **Medido em prod: diferença de 0 linha.**
+- ⚠️ **A tolerância é em LINHAS, derivada dos px da referência** (`~140 ÷ ~38 = 3,6` → **3**), não escolhida a dedo. Converter pra linha é o que torna a lei **testável sem navegador**: as duas colunas usam o MESMO padding e a MESMA fonte, então contar linha **É** medir altura.
+- ⚠️ **O teto é de EXIBIÇÃO, nunca de leitura** — a lista inteira chega na tela e expandir **não refaz consulta**. É o oposto do `take` que escondeu o fermento (16/09) e a ordem do ano 202 (19/09), onde o teto cortava o **DADO**.
+- ⛔ **Lista que CABE no teto não ganha botão** (botão que não faz nada é ruído) e o **estado inicial é SEMPRE recolhido** — nascer aberta é a lista de 50 rolando sozinha, que é o que a lei existe pra matar.
+- **Ordem nova das zonas:** dupla [quem carregou | a liga] → dupla [montador | escolha um produto] → **fila de sabores em LARGURA CHEIA**. O mobile empilha na ordem do HTML (uma composição só).
+
+### ⭐⭐ O CARTÃO "ESCOLHA UM PRODUTO" (`lib/margem/produto-do-veredito.ts`)
+
+**Tradução, zero conta nova** — e as portas ficam declaradas: **custo** = `LinhaCardapio.custoUnitario` (de `explodir` com qtd 1, a MESMA porta que a baixa de venda usa) · **preço** = `precoUsado` (`round2(vendasValor ÷ vendasQtd)`, a **MESMA fonte da liga** — média REAL do PDV no período da tela) · **categoria** = `secaoDaLinha` + `REGUA_POR_SECAO`.
+
+- **Busca pela `casaBusca` da casa** (palavra em qualquer ordem, sem caixa e sem acento), sobre nome **e apelidos do PDV**. ⛔ `includes` cru é o bug de 08/09: medido em prod, `"porcao"` acha as 3 de `"porçao"` — com a régua crua acharia **zero**.
+- ⛔ **Sem ficha = farol neutro + canais "a apurar" + convite**, com o **custo PARCIAL guardado como PISO** e nunca no lugar do total (*"1 componente da ficha sem custo, parcial R$ 13,12"*).
+- ⛔ **Sem venda no período = campo VAZIO + "sem venda no período"**, nunca R$ 0,00 — e quando o preço vem do **cardápio** em vez do PDV, a **origem é DITA** (a tela não pode passar preço de tabela por média real).
+- ⚠️ **`secao` NUNCA é null** (`secaoDaLinha` cai em `sugerirSecao`), e a **sugestão não confirmada vem MARCADA** — decisão do dono não é proposta.
+- **Editar o preço SIMULA e nada grava** (`montarProdutosDoVeredito` é tradução; o único POST da seção é o da config de canais, que já existia).
+
+### ⛔⛔ E A REGRA 11 REPROVOU O GUARD DUAS VEZES — as duas instrutivas
+
+1. **O guard estrutural passou com a tela NÃO consumindo a porta.** Eu somava `usosDe(t, 'veredito')` e **`SeloDoVeredito`** (da liga, outra coisa) casava — ***"menção, não uso" pela 14ª vez nesta casa, cometida DENTRO do guard que existe pra isso***. Apertado pro nome EXATO que a porta assina (`blocoDoVeredito`) + a exigência de o farol chegar **pronto** (`.farol`), nunca derivado na tela.
+2. **O detector de CMV na tela nasceu CEGO na forma que o código real teria.** Eu procurava `custo\w*\s*/\s*preco\w*` (**adjacente**), e `custoTotal`/`precoVenda` são **nullable** — quem escrevesse a conta à mão escreveria `(pizza?.custoTotal ?? 0) / (pizza?.precoVenda ?? 1)`, com o `??` no meio, e **o regex não casa**. Virou `divisoesDeCmv()` **estrutural** (por linha: o que vem antes do `/` fala de custo, o que vem depois fala de preço; pula `//` e `/>`), **com auto-teste nos dois sentidos**.
+
+**REGRA 11 — 20 defeitos repostos, 20 morderam** (7 na lib + 13 na tela), baseline 0, restaurado 0. ⚠️ E a **sonda** da REGRA 11 nasceu com dois furos meus: backup por **basename** (duas telas se chamam `page.tsx` — a cicatriz de 09/10) e um `assert antes not in novo` que **falha em reposição por INSERÇÃO** (o `depois` CONTÉM a âncora) — relaxado pra `novo != src and depois in novo`, com a suíte que **não coleta** contando como vermelho.
+
+### ⚠️⚠️ UMA DIVERGÊNCIA DECLARADA ENTRE A v4 E O QUE ESTÁ EM PROD: A CASCATA
+
+A v4 **não tem** a cascata de 5 cartões (a v3.1 tinha, 11 matches; a v4 tem **zero**). **Medi com git antes de decidir** e são três evidências de que é **artefato de recorte, não ordem**: as **4 novidades** que a v4 anuncia não falam do topo; as seções 1-2 estão marcadas **"INTOCADO na v4"**; e a cascata é **ordem escrita do dono, já em prod** (10/10, *"é ele crescido"*). **A cascata FICA**, o guard foi **re-apontado com o motivo escrito** (`fraseSoNoCodigo`, que exige um motivo de 20+ caracteres pra cada frase que vive só no código), e a divergência está **declarada** em vez de resolvida por conta própria.
+
+### ⛔ ACHADO NO CAMINHO: UMA CONSULTA SEM LEITOR
+
+`lerMargem` buscava `canaisDb` no `Promise.all` e **jogava fora** — consulta paga, dado nunca usado. Agora ele viaja no payload (`canais`), que é o que o cartão de produto precisa pra não cravar taxa.
+
+### PROVADO EM PROD, PELO MOTOR REAL (zero escrita)
+
+```
+[banco] postgres .../conta_ia_prod · empresa: caçula mix
+
+A LEI DAS COLUNAS   teto único: liga 10 · quem carregou 10 · iguais ✓
+   a liga tem 42 linhas · RECOLHIDO 10 visíveis · 32 atrás do botão "ver todos os 42 ▾"
+   EXPANDIDO 42 · botão "mostrar só o top 10 ▴"
+   ⭐ a dupla recolhida: carregou 12 × liga 12 → TERMINAM JUNTAS (diferença de 0 linha)
+
+O CASO DO DONO (custo 25,42 · vendendo a 39,99 · régua PIZZAS teto 33 · alvos 28/33/45)
+   FAROL [coral] CMV 63,6% · fora do padrão      ⭐ vírgula, nunca ponto
+   ESPECIALISTA: "esse sabor não cabe na tabela comum. Ou vira linha premium com
+                  preço próprio, ou o mix compensa."
+   ALVO 28%  ideal bruto 90,79 → balcão 90,90 (sobra 65,48) · iFood 113,90 (sobra 65,70)
+   ALVO 33%  ideal bruto 77,03 → balcão 77,90 (sobra 52,48) · iFood  97,90 (sobra 52,90)
+   ALVO 45%  ideal bruto 56,49 → balcão 56,90 (sobra 31,48) · iFood  71,90 (sobra 32,10)
+   ⭐ 9 de 9 preços terminam em ,90 · 0 abaixo do ideal bruto
+   ⭐ sobra do iFood ≥ a do balcão nos 3 · balcão NUNCA copiado pro iFood
+
+O PRODUTO COM FICHA   «MINI FRITAS» 399 un · seção PORCOES · teto 40% (DECLARADO)
+   custo R$ 3,11 · vendendo hoje a R$ 9,99 [praticado] · FAROL [verde] CMV 31,1% · no padrão
+   ideal balcão R$ 7,90 (sobra 4,79) · iFood R$ 9,90 (sobra 4,81)
+O PRODUTO SEM FICHA   «Combo Caçula» 564 un · custo a definir (1 componente sem custo,
+   parcial R$ 13,12) · FAROL [neutro] · canais "a apurar" · convite pra criar a ficha
+
+A BUSCA   "xis"→23 · "porcao"/"porçao"/"PORCAO"→3 cada ⭐ · "coxao"→2 · "zzz"→0
+O GUARD DO DONO   Σ(quem carregou) R$ 27.507,53 == sobra bruta == Σ da aba ⭐ FECHA
+REGRA 12   celular e desktop: PAGE 200 · 14/14 peças do v4 · hex no chunk DESTA tela: 0
+           os 10 tokens nos DOIS mapas do CSS servido (2.597 regras recortadas)
+ESCRITA    movimentos 7732→7732 · versões 334→334 · canais 3→3  ⭐ ZERO
+```
+
+**963 arquivos · 12.882 verdes · 2 todo · TS 0 · migration NENHUMA · deploy 4/4 (`OnKpiwiGmSznT45f0Dn5X`) · Δ chunks +12 KB.**
+
+### ⚠️⚠️ E A PROVA EM PROD ACHOU UM ESTADO DE DADO QUE TRAVA O MONTADOR — não é defeito
+
+As **4 bases de pizza** vieram `custo: a apurar`, e a causa foi medida componente a componente: **`metade de bolinha massa de pizza` está com saldo 0 e valor 0**, e `custoMedio` é `saldo > 0 ? valor/saldo : null` → **null** → a régua *"`null` quando QUALQUER folha não tem custo médio"* (a mesma do `custoUnitario` do hub, que este módulo obedece) derruba a base inteira. Queijo (4,20), caixa 25 (1,98), caixa 35 (2,74) e caixa 45 (4,48) estão todos com custo.
+
+⭐ **O v4 responde a isso do jeito certo:** farol **neutro "fecha a pizza"**, canais **"a apurar"**, **zero número inventado** — é o vermelho do dono sendo obedecido, não contornado. ⚠️ **Consequência de desenho que vale registrar:** o custo da base **oscila com o saldo**, então ele vira "a apurar" todo dia em que a massa zerar na prateleira. O caso filé+bacon foi provado com o **custo que o dono mediu (25,42)**; a conta canônica de 08/10 (`2×massa 0,54 + 2×queijo 4,20 + caixa 2,74 = 12,22` + sabores `9,00 + 4,29`) dá **25,51**, que é a confirmação independente de que é o mesmo caso.
+
 ## ⭐⭐ QUEM PAGA A CASA v3.1 — A LEI DE LAYOUT: LARGURA CHEIA + DUPLAS (08/10/2026)
 
 **O dono substituiu `docs/margem-referencia.html` pela v3.1** (o rodapé do arquivo diz a versão). A mudança é **SÓ DE LAYOUT**, e nasceu comentada no CSS dele como **"LEI DE LAYOUT"**:
