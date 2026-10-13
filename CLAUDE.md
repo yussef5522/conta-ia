@@ -3066,6 +3066,82 @@ A TROCA DE BLOCO («ABRIR ERVILHA», autorizada e devolvida):
 
 **955 arquivos · 12.729 verdes · TS 0 · migration NENHUMA · deploy 4/4 (`-VpuCBbIAmKt0cBec9ev6`) · Δ chunks +4 KB.**
 
+## 🥖 O RETALHO VIROU VISÍVEL NA PÁGINA DA ORDEM (12/10/2026)
+
+**O caso real:** o dono criou uma ordem de **10 UN** de *metade de bolinha massa de pizza* declarando **10 KG de retalho de ontem**. A página mostrava *"deve sair ~12 UN (pela sua média)"* e **nenhum sinal do retalho**. A pergunta dele: *"não era certo mudar a quantidade que eu pedi?"* — e a resposta da casa é **NÃO** (o pedido comanda a separação; o retalho não gasta material da câmara). **Mas o retalho tinha que APARECER.**
+
+**⭐⭐ PASSO 0 — A PERÍCIA (read-only) RESPONDEU ANTES DE EU TOCAR EM CÓDIGO: os 10 KG ESTAVAM GRAVADOS.**
+```
+ordem cmv5nzj240079f2jr2ymgvaw4 · metade de bolinha massa de pizza · CANCELADA · criada 12/10 19:48:02
+   meta (pedido): 10 UN · escala 10 · versão da ficha v7
+   RETALHO: ⭐ 10 KG · declarado 19:48:42 (40 s depois) · config aceita=true · peso da metade 200 g
+   linhas de retalho na empresa: 4
+```
+**O buraco era de EXIBIÇÃO, não de dado** — e por isso não houve cirurgia nem migration. ⚠️ *Se eu tivesse ido consertar "o gesto que não gravou", teria passado a tarde no lugar errado.*
+
+**⛔⛔⛔ E A PERÍCIA ACHOU A CAUSA EXATA, que era maior que o relato: a rota só consultava o retalho em `PLANEJADA`.** A versão de 11/10 fazia `const cfgRetalho = planejada ? (await configDeRetalho(…)) : undefined`, com o motivo escrito: *"pagar 2 queries em TODA abertura de ordem concluída seria a lição dos 4.909 ms em versão pequena"*. **A economia estava certa na intenção e produziu o defeito:** o retalho ficou invisível em **todos** os estados que não o de separar — e a ordem do dono estava **CANCELADA**. ⭐ A troca nova é declarada: entram **2 consultas indexadas** (`stock_ficha_retalho` por `(companyId,fichaId)` e `stock_ordem_retalho` pelo unique `(companyId,ordemId)`); a leitura **CARA** (`ultimoRetalhoDaFicha`, que varre as 50 últimas ordens da ficha) **continua gateada**, porque ela é o LEMBRETE do campo de digitar — e campo só existe em PLANEJADA.
+
+### ⭐⭐ PASSO 1 — AS TRÊS SAÍDAS, E A DO MEIO É A QUE FECHA A DÚVIDA
+
+`linhaDoRetalho` (pura) devolve: **receita que não aceita → `null`** (a tela não diz nada, como sempre) · **aceita COM retalho → *"retalho de ontem: 10 KG → +50 UN"*** · **aceita SEM retalho → *"sem retalho declarado"***.
+
+⛔⛔ **A terceira é a que importa:** sem ela, a ausência de linha significaria **duas coisas** — *"não declarei"* e *"a receita não aceita"* — e o dono ficaria na dúvida justo no caso em que ele **esqueceu** de declarar. ***Ausência nunca pode ser indistinguível de "não se aplica"*** — a mesma régua do *"sem contagem"* do estoque e do *"nunca conferida"* das contas.
+
+**⭐⭐ E A FRASE VIROU O TOTAL** (`fraseDaSeparacao`): *"Com isso deve sair ~62 UN no total (~12 da massa nova + 50 do retalho) · pela sua média"*. Dizer só *"~12"* numa ordem que vai render 62 é **a tela escondendo metade do lote** — e foi isso que fez o dono desconfiar do pedido. ⛔ **A soma mora na LIB:** somar `massa nova + bônus` no JSX seria a 2ª derivação do mesmo total, e ela divergiria do `permitido` do fiscal no primeiro ajuste de régua.
+
+⚠️ **E a régua usada continua NOMEADA no fim** (*"pela sua média"* × *"pelo que a receita promete"*): o dono pediu a frase curta, mas espelho sem nome faz comparar dois números sem saber de onde vieram. **Divergência declarada:** ele escreveu *"+50 metades"*; a frase usa a **unidade do item produzido** (`+50 UN`) — *"metades"* é o nome **deste** produto, e cravá-lo faria a tela chamar de metade o que não é no dia em que outra receita aceitar retalho.
+
+**⚠️⚠️ E ISTO NÃO É COLA DE PROVA** (a lei de 05/10), e a diferença é de **ORIGEM**: o bônus é a conversão do kg que **o próprio dono pesou** pela régua que **ele declarou** na ficha — não é o que a ficha PROMETE nem a média histórica. O que a lei proíbe é o sistema **soprar o número esperado**; aqui ele devolve a aritmética da declaração dele. **A modal de conclusão segue intocada.**
+
+### ⛔⛔⛔ PASSO 2 — E A CONSTRUÇÃO DO PASSO 1 EXPÔS UM DEFEITO QUE APAGAVA OS 10 KG EM SILÊNCIO
+
+O campo do retalho **nasce vazio** na correção (ordem do dono: *"nunca pré-preenchido"*), e até hoje a tela mandava `retalhoKg: null` sempre que a resposta não era *"Sim"* — com o servidor tratando **`null` e ausente como a mesma coisa**. Resultado: ***corrigir só o número APAGAVA o retalho declarado, sem uma palavra na tela***, e o fiscal voltava a acusar o lote à toa.
+
+**⭐ TRÊS VALORES, TRÊS SIGNIFICADOS:** `undefined` (*"não respondi"*) → **mantém** · `null` (*"não tem"*, resposta explícita) → **apaga** · `> 0` → **substitui**. ***Campo que nasce vazio não pode significar "apague o que você já me disse".*** ⚠️ E a metade honesta da trava é a TELA DIZER: *"esta ordem está com 10 KG declarado — se você não responder, ele continua"*. Silêncio sobre dado gravado é como a confiança na tela se perde.
+
+⭐ **NENHUMA PORTA NOVA:** o retalho se corrige pelo `confirmarPedido`, o writer único do pedido — com a **mesma trava** (`PLANEJADA` só), a mesma recusa 422 que ensina a saída e o mesmo aviso de **>20 kg** no sininho (ele nasce da linha, e a linha tem um dono só). Guard conta os writers de `stock_ordem_retalho` e exige **exatamente um arquivo**.
+
+### ⭐ AS LEIS DE 09/10, CONFERIDAS E INTOCADAS
+
+| lei | como está |
+|---|---|
+| a separação é `ficha × pedido`, sempre | ⭐ provado contra banco: *"a separação com e sem retalho é IDÊNTICA"* |
+| `permitido = material + retalho ÷ 200 g` | ⭐ já contava — `fiscal-dos-lotes` alimenta `bonusDeRetalho` desde 09/10 |
+| o placar do gerente conta o retalho | ⭐ idem (é o MESMO `eficienciaDaOrdem`) |
+| retalho não é item | ⭐ zero movimento, zero migration neste sprint |
+
+### REGRA 11 — 7 DEFEITOS REPOSTOS, 7 VERMELHOS (baseline 0 · restaurado 0)
+
+a rota voltando a gatear o retalho em `PLANEJADA` — **o defeito de hoje** (**1**) · a linha saindo do bloco do pedido (**1**) · a frase voltando a ser só a massa nova, montada no JSX (**2**) · a tela voltando a mandar `null` sempre, o apaga-em-silêncio (**1**) · a porta apagando sem resposta (**2**) · **o fiscal voltando a ignorar o retalho** (**1**) · **a separação passando a mudar com retalho** (**1**).
+
+⚠️ A sonda guarda backup pela **chave do caminho inteiro**, **ASSERTA que a substituição aplicou** e **conta suíte que não coletou como vermelho** — as três cicatrizes de sonda desta casa.
+
+**⚠️ 1 GUARD REAPONTADO, e ele ficou MAIS FORTE:** o `conclusao-nao-da-cola` ancorava no literal `Com isso deve sair` **na página**, e a frase **mudou de casa** pra a lib (ela passou a somar o retalho, e a soma precisa de um dono só). Continuar grepando o literal ali seria *grep que não distingue "refatorei" de "quebrei"*. A âncora virou o **SÍMBOLO** (`fraseDaSeparacao({` dentro do gate de `planejada`), e **`fraseDaSeparacao(` entrou na lista de funções proibidas na modal** — senão a régua de substring ficaria cega justo no refactor que a motivou.
+
+**PROVADO EM PROD, na ordem real de 12/10, nos 2 viewports × 2 temas:**
+```
+ROTA → 200 · pedido {10 UN, DECLARADO} · retalho {aceita:true, peso:200g, declaradoKg:10}
+⭐ A LINHA:  10 UN pedidas · retalho de ontem: 10 KG → +50 UN   [bonus 50]
+⭐ O TOTAL:  "Com isso deve sair ~62 UN no total (~12 da massa nova + 50 do retalho) · pela sua média"
+             (pela ficha: ~60 · sem retalho: "~12 UN (pela sua média)" — o pedido não vira novidade)
+⭐ A LINHA VIVE EM TODO ESTADO: CANCELADA ✓ (era aqui que ela sumia) · SEPARADA ✓ · EM_PRODUCAO ✓
+⭐ ordem cmv10wye6… (CONCLUIDA, MESMA receita, sem retalho) → "sem retalho declarado"
+⛔ receita vizinha → NADA aparece ✓
+
+AS TRAVAS (gestos que RECUSAM, zero escrita):
+   kg novo na ordem encerrada  → 422 "Esta ordem já foi encerrada."
+   "não tem" na encerrada      → 422 · campo desconhecido → 400 que diz o nome
+   ⭐ os 10 KG seguem intactos: 10 kg
+
+celular 200 em 100ms · desktop 200 em 48ms · 19 chunks · 992 KB · 8/8 peças nos dois
+✓ os 3 tokens da linha nos DOIS mapas do CSS (2.595 regras recortadas)
+retalhos 4→4 · metas 128→128 · movimentos 7.620→7.620 · ⭐ ZERO ESCRITA
+```
+
+**957 arquivos · 12.760 verdes · 2 todo · TS 0 · migration NENHUMA · deploy 4/4 (`7i9zubx9by957lAvnl6ha`) · Δ chunks +4 KB.**
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** criar a ordem de amanhã com o retalho e ver a linha no cabeçalho + o total no espelho; e **corrigir o pedido sem responder o retalho**, pra confirmar na tela que os kg continuam (hoje não há ordem PLANEJADA nem SEPARADA em prod — a trava e o não-apagar estão provados contra banco na suíte).
+
 ## 🚪 LOTE KG→UN — O SISTEMA RESOLVE SOZINHO, A FICHA É A CASA DO NÚMERO (11/10/2026)
 
 **Ordem do dono:** *"como os líderes — o rendimento se declara UMA vez, na ficha; nunca se pergunta de novo na ordem."* **M5: 37 → 1.**
