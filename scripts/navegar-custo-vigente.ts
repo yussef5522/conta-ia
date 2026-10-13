@@ -57,16 +57,30 @@ async function main() {
     }
   }
 
-  // ⭐ o PAYLOAD do montador: é onde o custo da base aparece pra o dono
+  /**
+   * ⭐ O PAYLOAD DO MONTADOR — é onde o custo da base aparece pra o dono.
+   *
+   * ⚠️ Rota PRÓPRIA: a bancada carrega **sob demanda** (decisão de 07/10, pra não pesar o 1º
+   * paint da margem), então `/api/.../margem` não traz `montador` — eu havia chutado essa chave
+   * e o laço rodou zero vezes, imprimindo nada com cara de "o montador está vazio".
+   */
   console.log('\n═══ O PAYLOAD DO MONTADOR (o que a bancada recebe) ═══')
-  const r = await fetch(`${BASE}/api/empresas/${EMPRESA}/margem`, { headers: { cookie, 'user-agent': UA.desktop } })
-  console.log(`  GET /api/.../margem → ${r.status}`)
+  const r = await fetch(`${BASE}/api/empresas/${EMPRESA}/margem/montador`, { headers: { cookie, 'user-agent': UA.desktop } })
+  console.log(`  GET /api/.../margem/montador → ${r.status}`)
   if (r.ok) {
-    const j = (await r.json()) as { montador?: { tamanhos?: { tamanho?: string; base?: { nome?: string; custo?: number | null } }[] } }
-    for (const t of j.montador?.tamanhos ?? []) {
+    const j = (await r.json()) as {
+      tamanhos?: { tamanho?: string; base?: { nome?: string; custo?: number | null } }[]
+      sabores?: { custo?: number | null }[]
+      faltando?: { frase?: string }[]
+    }
+    for (const t of j.tamanhos ?? []) {
       const c = t.base?.custo
       console.log(`    ${String(t.tamanho).padEnd(18)} ${c == null ? '⛔ a apurar' : `⭐ R$ ${c.toFixed(2).replace('.', ',')}`} · base «${t.base?.nome ?? '—'}»`)
     }
+    const ok = (j.tamanhos ?? []).filter((t) => t.base?.custo != null).length
+    console.log(`  ⭐ tamanhos com a base CUSTEADA: ${ok} de ${(j.tamanhos ?? []).length}`)
+    console.log(`  sabores: ${(j.sabores ?? []).length} · sem custo: ${(j.sabores ?? []).filter((s) => s.custo == null).length}`)
+    for (const f of j.faltando ?? []) console.log(`  ⚠️ falta: ${f.frase}`)
   }
 }
 
