@@ -3154,7 +3154,49 @@ a lista do dia voltando ao cru (**6**) · o R$ do painel no `aggregate` cru (**4
 - o `pagina-da-ordem-v4` exigia o `fez` somando `conclusoes` **CRU** — e isso somava a estornada junto: **era o cartão duplo dentro do cabeçalho da ordem**. A pergunta não mudou (*soma as parciais*); agora ela soma **as que valem**, e o guard **proíbe a volta do cru**.
 - o `grandeza-da-conclusao` exigia a régua *"estornada não conta"* escrita **dentro** do `conclusao.ts` — e era exatamente essa a doença (escrita em dois lugares, faltando em nove). Agora ele exige as duas metades: a média **lê a porta** e **não tem régua própria**.
 
-**959 arquivos · 12.785 verdes · 2 todo · TS 0 · migration NENHUMA.**
+### PROVADO EM PROD, no dia 12/10 REAL, nos 2 viewports × 2 temas
+
+```
+PASSO 0 (pós-deploy)  MAIONESE  GERACAO 34,236 → ESTORNO −34,236 → GERACAO 34,296 · líquido 34,296
+                      CALABRESA GERACAO 107    → ESTORNO −107    → GERACAO 127    · líquido 127
+
+O DIA 12/10, pelas FUNÇÕES QUE AS TELAS CHAMAM        antes → agora
+  LISTA "Concluídas · 12/10"          20 →  ⭐ 18 cartões  ·  18 ordens distintas
+  FAIXA DO TOPO               1.723 UN · 68,532 KG →  ⭐ 1.616 UN · 34,296 KG
+  CARD "Concluídas"                   20 →  ⭐ 18
+  R$ PRODUZIDO               R$ 5.516,73 →  ⭐ R$ 4.877,60
+  "Rendimento do dia"          de 20 lotes →  ⭐ de 18 lotes
+  lotesDaJanela 18 · relatorioPorDia 18 linhas · a porta 18
+  ⛔ cartão com o número VELHO (34,236 ou 107): 0
+  FISCAL  MAIONESE declarado 34,296 (era 68,532 contra material pra ~34) · impossível=false
+
+O INVARIANTE DE GUARDA, com dado REAL
+  ⭐ nenhuma ordem 2× em: lista do dia · lotes da janela · relatório por dia
+  ⭐ total do período == Σ dos estados atuais: 4.877,60 × 4.877,60
+
+A EMPRESA INTEIRA   525 conclusões · 7 estornadas · 518 VIVAS
+  ⚠️ ordens com 2+ conclusões VIVAS (a PARCIAL legítima): 0 — hoje as duas réguas coincidem
+
+O RASTRO (a página da ordem da MAIONESE)
+  ⊘ HISTÓRIA  fez 34,236 · AGUARDANDO_CONFERENCIA   ← sem carimbo, e por isso a LISTA lê a PORTA
+  ⭐ VALE     fez 34,296 · CORRIGIDA_E_CONFERIDA (era 34,236) · por marcyelle
+  FILA DO GERENTE: 0 aguardando · 0 cartões · ⛔ a desfeita na fila: 0
+  HOJE AO VIVO (12/10): 18 eventos com lote fechado — UM por ordem, nenhum empilhado
+
+⭐⭐ O JUIZ: nenhuma das 7 ordens com conclusão estornada aparece em P3/P8/M1/M2 — e os
+   22.864 (o lote podre de 19/09) não aparecem em achado NENHUM. O P3 passou de 59 → 61,
+   que são os 2 lotes novos do dia, não um salto: ele NÃO denuncia a declaração desfeita.
+   quadro: V1 124 · E7 97 · P6 93 · P8 61 · P3 61 · M1 50 · F2 26 · E15 10 · P5 3 · P1 2 ·
+           M3 1 · M2 1  ·  ⭐ M5 1 → 0 (o dono declarou o rendimento da MAIONESE)
+
+celular 372/88/58/76ms · desktop 42/54/37/34ms (produção · hoje · relatórios · a ordem)
+23 chunks · 1.086 KB · 3/3 peças nos dois · ✓ os 3 tokens nos DOIS mapas do CSS (2.595 regras)
+conclusões 525→525 · estornadas 7→7 · carimbos 93→93 · movimentos 7.624→7.624  ⭐ ZERO ESCRITA
+```
+
+**959 arquivos · 12.785 verdes · 2 todo · TS 0 · migration NENHUMA · deploy 4/4 (`uKTsc_dwa45S5s_jrawg6`) · Δ chunks +4 KB.**
+
+⚠️ **ERRO MEU NA SONDA, registrado:** chamei `exigirEmpresaNesteBanco(EMPRESA)` com um argumento e a assinatura é `(db, companyId)` — *chutei em vez de ler*, a cicatriz que este doc já registra 4 vezes. O erro saiu como `Cannot read properties of undefined (reading 'findUnique')`, que **parece defeito de prod** até se ler o stack.
 
 ## 🥖 O RETALHO VIROU VISÍVEL NA PÁGINA DA ORDEM (12/10/2026)
 
