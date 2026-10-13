@@ -193,4 +193,29 @@ describe('⛔⛔ A MEMÓRIA SÓ APRENDE NO CHOKE-POINT DO LEDGER', () => {
       'o invariante tem que ser EMPURRADO na rodada — existir e estar desligado é selo verde de graça',
     ).toMatch(/fails\.push\([^)]*checkCustoVigenteInvariants\s*\(/)
   })
+
+  /**
+   * ⛔⛔⛔ UMA RÉGUA DE PRATELEIRA, NÃO DUAS — e este guard nasceu de um defeito MEDIDO EM PROD
+   * (13/10), com o backfill já pronto pra gravar.
+   *
+   * O replay filtrava só `TIPOS_FORA_DA_PRATELEIRA` e **esquecia o `idsDeEstornoInterno`**, que
+   * a porta exclui desde 09/09. A `CUBA MAIONESE` real dava **R$ 0,04 pelo replay contra R$
+   * 11,95 pela régua da prateleira** — e o replay é justamente quem o **juiz E17** usa de
+   * referência e quem o **backfill** copia pro banco. Ou seja: a régua torta faria o juiz
+   * acusar drift inexistente **e** o backfill gravar o número errado.
+   *
+   * ⚠️ Eu havia movido a função pra `prateleira.ts` exatamente pra os dois lados
+   * compartilharem — e esqueci de CHAMÁ-LA aqui. **Extrair o dono não basta; o consumidor
+   * tem que consumir.** Quem morde de verdade é o `.integration` (que executa as duas
+   * leituras e exige o mesmo número); isto trava a FORMA, pra a query não ser reescrita sem a
+   * régua de novo.
+   */
+  it('⛔⛔ o replay usa a régua da prateleira INTEIRA (tipo fora dela E estorno interno)', () => {
+    const t = fonte(PORTA)
+    expect(
+      usosDe(t, 'idsDeEstornoInterno'),
+      'sem isto o replay mede contra outra régua que a porta — foi o caso da CUBA (0,04 × 11,95)',
+    ).toBeGreaterThan(0)
+    expect(t, 'e o tipo fora da prateleira também').toMatch(/TIPOS_FORA_DA_PRATELEIRA/)
+  })
 })

@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { prisma } from '@/lib/db'
-import { criarMovimento } from '../movement'
+import { criarMovimento, estornarMovimento } from '../movement'
 import { saldoItem, custoMedioPorItem } from '../saldo'
 import { memoriaDoLedger } from '../custo-vigente'
 import { checkCustoVigenteInvariants } from '../custo-vigente-invariants'
@@ -263,5 +263,44 @@ describe('⭐⭐⭐ o replay do ledger CONCORDA com o campo persistido (é o jui
     const doLedger = await memoriaDoLedger(prisma, companyId, massaId)
     expect(doLedger).toBe(persistido)
     expect(doLedger).toBe(0.54)
+  })
+
+  /**
+   * ⛔⛔⛔ O REPLAY LÊ A RÉGUA DA PRATELEIRA **INTEIRA** — tipo fora dela E estorno INTERNO.
+   *
+   * **O defeito que este teste repõe foi MEDIDO em prod (13/10), antes do backfill gravar:** o
+   * `memoriaDoLedger` filtrava só `TIPOS_FORA_DA_PRATELEIRA` e esquecia o `idsDeEstornoInterno`
+   * que a porta exclui desde 09/09. Efeito na `CUBA MAIONESE` real: **R$ 0,04 pelo replay contra
+   * R$ 11,95 pela régua da prateleira** — e isso faria o **juiz E17 acusar drift que não existe**
+   * e o **backfill gravar o número errado em produção**.
+   *
+   * ⭐ A cena abaixo reproduz a assinatura do caso real (consumo com custo DESPROPORCIONAL ao
+   * saldo): com a régua certa o veredito é **R$ 10,00**; com o estorno interno dentro, **R$ 0,10**
+   * — as mesmas 100× de diferença.
+   */
+  it('⛔⛔ estorno de PRODUCAO_CONSUMO não entra no replay (a régua é a MESMA da porta)', async () => {
+    const it = await item('item com estorno interno')
+    await criarMovimento(prisma, {
+      companyId, itemId: it, tipo: 'ENTRADA_NF',
+      quantidade: 10, custoUnitario: 10, custoTotal: 100, origem: 'SEFAZ',
+    })
+    // ⚠️ o consumo NÃO move a prateleira (é transferência interna), e aqui ele sai com custo
+    //    desproporcional — é o que faz o estorno dele desequilibrar a média se for contado
+    const consumo = await criarMovimento(prisma, {
+      companyId, itemId: it, tipo: 'PRODUCAO_CONSUMO',
+      quantidade: -10, custoUnitario: 0.1, custoTotal: -1, origem: 'MANUAL',
+    })
+    await estornarMovimento(prisma, consumo.id)
+    await criarMovimento(prisma, {
+      companyId, itemId: it, tipo: 'BAIXA_VENDA',
+      quantidade: -10, custoUnitario: 10, custoTotal: -100, origem: 'MANUAL',
+    })
+
+    const s = await saldoItem(prisma, companyId, it)
+    expect(s.saldo, 'a porta: o consumo e o estorno dele se anulam fora da prateleira').toBe(0)
+    expect(
+      await memoriaDoLedger(prisma, companyId, it),
+      'o replay tem que concordar com a porta — 0,10 aqui seria a régua torta de volta',
+    ).toBe(10)
   })
 })

@@ -30,7 +30,7 @@
  */
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { TIPOS_COM_CUSTO_CONHECIDO } from './contagem-ancora'
-import { TIPOS_FORA_DA_PRATELEIRA } from './prateleira'
+import { TIPOS_FORA_DA_PRATELEIRA, idsDeEstornoInterno } from './prateleira'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -183,10 +183,25 @@ export async function lembrarCustoVigente(
  * `dataMovimento` e **desempata por `id`**: dois movimentos no mesmo instante em ordem
  * arbitrária dariam memórias diferentes a cada rodada, e o juiz acusaria um drift que não
  * existe (a cicatriz do rastro de vencimento, 16/09).
+ *
+ * ⛔⛔ **A RÉGUA DA PRATELEIRA É A DO `saldo.ts`, INTEIRA — tipo FORA dela E estorno INTERNO.**
+ * A 1ª versão filtrava só `TIPOS_FORA_DA_PRATELEIRA` e **esquecia o `idsDeEstornoInterno`**,
+ * que a porta exclui desde 09/09 (estorno de `PRODUCAO_CONSUMO` soma na leitura crua e **não**
+ * no saldo). Resultado medido em prod antes de aplicar o backfill: a `CUBA MAIONESE` dava
+ * **R$ 0,04** por aqui contra os **R$ 11,95** que a régua da prateleira diz. ⚠️ Era *"duas
+ * réguas pra mesma pergunta"* outra vez — e, pior, no lugar onde ela faria o **juiz E17 acusar
+ * drift que não existe** e o **backfill gravar número errado**. Eu tinha movido a função pra
+ * `prateleira.ts` justamente pra os dois lados compartilharem, e esqueci de CHAMÁ-LA aqui.
  */
 export async function memoriaDoLedger(db: Db, companyId: string, itemId: string): Promise<number | null> {
+  const excluir = await idsDeEstornoInterno(db, companyId, itemId)
   const movs = await db.stockMovement.findMany({
-    where: { companyId, itemId, tipo: { notIn: [...TIPOS_FORA_DA_PRATELEIRA] } },
+    where: {
+      companyId,
+      itemId,
+      tipo: { notIn: [...TIPOS_FORA_DA_PRATELEIRA] },
+      ...(excluir.length ? { id: { notIn: excluir } } : {}),
+    },
     select: { tipo: true, quantidade: true, custoTotal: true },
     orderBy: [{ dataMovimento: 'asc' }, { id: 'asc' }],
   })
