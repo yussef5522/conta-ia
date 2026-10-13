@@ -3827,6 +3827,90 @@ MARGEM: PRECINHO 80,7% → 75,4% · FAMILIA 45CM 85,3% → 83,9% · Pizza (Aiq) 
 
 📋 **ACHADO À PARTE, FORA DO ESCOPO, E É GRANDE:** **«PIZZA GRANDE CALABRESA OU MUSSARELA OU FRANGO BLACK FRIDAY» — 566 unidades, R$ 17.244,16 em 30 dias, SEM DESTINO no mapa do PDV.** É o **2º maior volume de pizza do cardápio** e **não baixa estoque nenhum**. Não é base (é promoção com sabor no nome), então não entra nesta normalização — mas é a maior lacuna de cobertura que o retrato achou.
 
+## 🧮⭐⭐⭐ O CUSTO MÉDIO NÃO MORRE QUANDO O ESTOQUE ZERA (13/10/2026) — lei do dono
+
+**A DOR, com o caso real:** metade de `bolinha massa de pizza` tinha custo conhecido, o serviço consumiu tudo, o saldo foi a 0 — e a régua `custoMedio = saldo > 0 ? valor/saldo : null` **APAGOU o custo**. As 4 bases de pizza viraram *"a apurar"* e o montador apagou. **Palavra do dono:** *"ele tem q fica com preco q tava antes de zero estoque e manter esse preco ate se estoque fica negativo — uma coisa nao tem nada ve com outra"*. É a régua de todo sistema sério (SAP/TOTVS/Odoo): **custo médio é MEMÓRIA do item, não fração do momento.**
+
+**A LEI, na porta única do custo** (`lib/stock/custo-vigente.ts`, pura): `saldo > 0` → `valor ÷ saldo` (**igual a hoje, ao centavo** — zero regressão) · `saldo ≤ 0` → **o último custo conhecido** · nunca teve entrada com valor → **"a definir"** (honesto; número inventado nunca) · **entrada com saldo ≤ 0 → o custo REINICIA no custo da entrada** (padrão de mercado) · entrada com saldo > 0 → média ponderada normal.
+
+**⭐⭐ PERSISTIDO *E* RECOMPUTÁVEL — a tensão com o princípio da casa, declarada no código.** *"Saldo nunca é dado primário"* vale; a memória é persistida (leitura O(1): a porta é chamada em toda ficha/cardápio/margem) **e** rebuildável por `memoriaPelaHistoria`, que replaya o ledger com a MESMA lei — e é ela que o **backfill** copia e o **juiz E17** confere. ⛔ Derivar na leitura foi medido e recusado: varreria os movimentos de **todo item zerado** em cada carregamento de tela (o scan de 28/09).
+
+**⛔ A MEMÓRIA SÓ APRENDE COM QUEM TEM CUSTO DEFENSÁVEL** — `TIPOS_COM_CUSTO_CONHECIDO`, a **MESMA lista** que a valoração da contagem usa (REGRA 4; o motivo já estava escrito lá: *"o que se pagou ou o que custou produzir"*). ⚠️ Sem essa trava o `AJUSTE_RESIDUO` **envenenaria a memória**: ele grava `0,001` de quantidade com o unitário derivado do total — no fermento, **R$ 89.580/kg**. ⛔ E a média ponderada com saldo negativo também seria veneno: 10 kg a R$ 34 entrando sobre `−5 kg / −R$ 31` daria **R$ 61,80/kg** (o resíduo negativo contaminando o preço de compra) — por isso o reinício.
+
+**⭐ ZERO CONSUMIDOR MUDOU — só a porta.** `montar()` do `saldo.ts` delega pra `custoMedioComMemoria`; o writer entra no **choke-point do ledger** (`criarMovimento`), então todo caminho herda de graça (REGRA 5), e **zerar ou negativar o saldo nunca toca na memória**. ⚠️ E **sem consulta nova no caminho quente**: como `TIPOS_COM_CUSTO_CONHECIDO === ENTRADAS_QUE_CONSERTAM`, toda entrada que ensina custo **já rodava** o agregado do "antes" dentro do `residuoAAbsorverNaEntrada` — eu só surfacei o resultado.
+
+**⚠️ `prateleira.ts` NASCEU PRA QUEBRAR UM CICLO:** o custo precisa da régua da prateleira e o saldo precisa da porta do custo. A régua (`TIPOS_FORA_DA_PRATELEIRA`/`movePrateleira`/`idsDeEstornoInterno`) saiu pra um arquivo próprio, com o `saldo.ts` **re-exportando** — os 3 importadores de antes não sentiram.
+
+### ⛔⛔⛔ E A MEDIÇÃO ANTES DE APLICAR ACHOU **DUAS RÉGUAS DE PRATELEIRA** — 100× de diferença
+
+O preview do backfill deu **R$ 0,04** pra a `CUBA MAIONESE` e eu **não apliquei**: fui replayar a história passo a passo. O `memoriaDoLedger` filtrava só `TIPOS_FORA_DA_PRATELEIRA` e **esquecia o `idsDeEstornoInterno`**, que a porta exclui desde 09/09 → **R$ 0,04 pelo replay contra R$ 11,95 pela régua da prateleira** (e os 11,95 batem **ao centavo** com a medição independente de 19/09 registrada neste doc).
+
+⚠️⚠️ **Por que isso era grave e não cosmético:** o replay é **quem o juiz E17 usa de referência** e **quem o backfill copia pro banco** — a régua torta faria o juiz acusar drift inexistente **e** o backfill gravar número errado em 22 itens de produção. ⭐ E a lição é sobre mim: **eu havia movido o `idsDeEstornoInterno` pra `prateleira.ts` exatamente pra os dois lados compartilharem, e esqueci de CHAMÁ-LO.** *Extrair o dono não basta — o consumidor tem que consumir.* **Red-then-green nos dois guards:** o de integração monta `PRODUCAO_CONSUMO` + estorno dele com custo desproporcional e exige que a porta e o replay digam o MESMO número (com o defeito: 0,10 contra 10,00, as mesmas 100×); o estrutural proíbe o replay de consultar o ledger sem a régua.
+
+### ⭐⭐ O CASO DA MASSA: 0,47 e NÃO 0,54 — e a perícia explica, com o dono certo até 11/10
+
+A massa é **produzida todo dia** e o custo oscila (0,52 a 0,87 na janela). Em **09-10/10 ele era exatamente R$ 0,54** — o número que este doc registra nas bases de pizza. O que mudou:
+```
+12/10  BAIXA_VENDA      −563  → saldo −385   (vendeu sem produção registrada)
+12/10  PRODUCAO_GERACAO +370 · R$ 174,24 → 174,24 ÷ 370 = R$ 0,47
+       ← ENTRADA com saldo ≤ 0: o custo REINICIA no custo da entrada
+13/10  AJUSTE_CONTAGEM  +15 → saldo 0 · AJUSTE_RESIDUO zera o valor
+```
+⭐ Ou seja: **0,47 é a 4ª regra da lei DELE aplicada ao dado de ontem**, não um defeito — a produção de 12/10 saiu mais barata e, com o saldo no chão, ela virou a base. ⚠️ **E a perícia mostrou que o caso é ROTINA, não acidente:** o saldo da massa negativou em 10, 11 e 12/10 — era exatamente o *"fichas param de piscar a definir quando um insumo zera de noite"*.
+
+### ⚠️ O FERMENTO DIVERGE DA EXPECTATIVA DO BRIEF — e o número manda
+
+O sprint dizia *"o fermento continua «a definir» até o dono registrar a compra"*. **Ele tem entradas com valor** (R$ 93,42 em 11/09 e R$ 340 em 16/09), então a lei lhe dá memória: **R$ 38,09/kg**, com saldo −4,07. Não bendi o resultado pra caber no texto; quem segue *"a definir"* são os **15 itens que nunca tiveram entrada com valor** (as bebidas de revenda, o `porcao file para xis`, o vinagre mesclado).
+
+### PROVADO EM PROD, PELAS FUNÇÕES QUE AS TELAS CHAMAM
+
+```
+A PORTA (saldosDaEmpresa)   247 itens com movimento · 37 com saldo ≤ 0
+   ⭐ destes, COM custo agora: 22        (pela lei velha: 0)
+   seguem "a definir": 15 (nunca tiveram entrada com valor) — honesto
+A MASSA   saldo 0 · R$ 0,47 pelos TRÊS caminhos (porta · página do item · replay)
+O MONTADOR (rota real /margem/montador → 200)
+   PEQUENA R$ 6,65 · GRANDE R$ 12,08 · GRANDE PRECINHO R$ 12,08 · FAMILIA R$ 18,49
+   ⭐⭐ tamanhos com a base CUSTEADA: 4 de 4   (ontem: "a apurar")
+⭐⭐⭐ O EFEITO NAS FICHAS, com contrafactual da lei velha:
+   custo FECHADO com a lei nova .... 192 de 193
+   custo FECHADO com a lei velha ... 125
+   DESTRAVADAS pelo sprint ......... 67   ← as 4 pizzas, Combo Caçula, XIS, BURGERs, PRATOS
+O JUIZ E17   0 achados  ·  quadro do estoque igual aos débitos de 12/10 (±1 = operação)
+REGRA 12   as 5 telas 200 nos DOIS viewports (celular 60-339ms · desktop 33-52ms)
+```
+
+**BACKFILL (escrita AUTORIZADA pelo dono, `pg_dump pre-backfill-custo-vigente-20261013-032558.dump` = 9.104.856 bytes, tamanho conferido):** **22 memórias gravadas, tabela 0 → 22.** ⛔ `movimentoId` NULL de propósito — o backfill replaya a história inteira e **não tem um movimento único pra apontar**; carimbar um inventaria o rastro.
+
+**REGRA 13 — os 2 CHECKs provados contra Postgres** (`scripts/prova-check-custo-vigente.ts`): **6 de 6 INSERTs tortos recusados pela constraint certa** (companyId/itemId vazio e só-espaço · custo ZERO · custo NEGATIVO) · **3 de 3 legítimos aceitos**, inclusive `movimentoId` **NULL** (o caso do backfill) e custo de 4 casas · a 2ª linha do mesmo item recusada pelo índice único (**23505**) · **zero escrita líquida** · e o **contrafactual medido no próprio banco**: a forma ingênua sobre NULL devolve **NULL → o CHECK PASSARIA**, a nossa devolve **false → RECUSA** (as 3 colunas comparadas são `NOT NULL`, e o script **mede** isso em vez de eu afirmar).
+
+**⚠️⚠️ E A 1ª VERSÃO DESSA PROVA GRAVOU EM PROD — a cicatriz de 07/10 com outra roupa.** O `INSERT` usava o `prisma` **global** dentro do `$transaction`: a escrita saiu por **outra conexão**, o `throw ROLLBACK` não desfez nada, a linha **ficou** no banco, e os legítimos 2 e 3 bateram no unique dela aparecendo como *"RECUSADO"* sem ser. **Rollback só desfaz o que passa pelo `tx`.** Quem denunciou foi a **contabilidade de escrita da própria prova** (`memórias 0 → 1 ⛔ GRAVOU`); a linha foi apagada e a tabela conferida em **0** antes de seguir.
+
+**REGRA 11 — 9 defeitos repostos, 9 morderam** (baseline 0 · restaurado 0): a lei velha de volta na porta (**7 vermelhos**) · o writer saindo do choke-point (**8**) · memória ≤ 0 passando (**1**) · `memoriaDaEntrada` sem a trava de TIPO, o AJUSTE_RESIDUO envenenando (**2**) · média ponderada com saldo ≤ 0, a contaminação do fermento (**3**) · o replay divergindo da lei do writer (**1**) · o E17 parando de comparar com o ledger (**2**) · o E17 saindo da rodada (**1**) · a porta do saldo voltando a decidir sozinha (**6**) · + a régua de prateleira torta (**1**, achada em prod).
+
+**⚠️⚠️ E A REGRA 11 ME PEGOU DUAS VEZES NO MESMO SPRINT, a mesma classe:** `void memoriaDoLedger` e `void checkCustoVigenteInvariants` **contam como "uso"** pro `usosDe()`, então desligar o invariante passava **VERDE**. ***"Menção, não uso"* na 16ª aparição desta casa — as duas de hoje dentro do guard do meu próprio sprint.** A cura foi dupla: o E17 **saiu pra arquivo próprio** (`custo-vigente-invariants.ts`) com um teste que **EXECUTA o juiz** contra um drift de verdade (REGRA 3), e a asserção estrutural passou a exigir a **FORMA DA CHAMADA** (`fails.push(... checkCustoVigenteInvariants(`), nunca o identificador.
+
+**1 asserção INVERTIDA com o motivo escrito** (`pagina-do-item-v4`: afirmava *"o saldo.ts se recusa a dividir negativo → null"*, a lei velha) — ⭐ e **a metade certa dela ficou travada num teste próprio**: item negativo que **nunca teve entrada com valor** segue `null`, nunca um número inventado. **A rede de limpeza da suíte ganhou a tabela nova** (a cicatriz das 161.810 órfãs de 02/10 — *quanto mais limpo o teste, mais lixo ele deixa*).
+
+**966 arquivos · 12.923 verdes · 2 todo · TS 0 · migration CREATE-only (1 CREATE TABLE · 2 CHECKs · 1 unique · 1 índice, zero ALTER) · deploys 4/4 (`M6htJLmMDYDKZbZfVKc0E` e `VL-xlkskYVeNtNev1C3sV`) · Δ chunks +0 KB.**
+
+### 📋 ITEM 4 — INVESTIGAR E SÓ RELATAR (medido, **NADA corrigido** — decisão do dono)
+
+*"Com saldo negativo, a baixa de venda/produção lança valor como hoje?"* **A resposta é NÃO: ela lança quantidade e ZERO de dinheiro.** `custoParaBaixar(valor, saldo)` devolve **0** quando `saldo <= 0` (`residuo-de-centavos.ts`, usado na baixa de venda) — e o tamanho disso em prod:
+
+```
+saídas lançadas com o saldo JÁ ≤ 0:
+  ⭐ a CUSTO ZERO ..... 277 movimentos · 2.300,207 de quantidade
+     estimativa do custo que NÃO foi lançado (qtd × memória): R$ 4.851,85
+  com valor ........... 176 movimentos · R$ 57.795,28
+  por tipo: BAIXA_VENDA 233 · SEPARACAO_SAIDA 44      itens afetados: 26
+  os maiores: aneis de cebola R$ 1.731,53 · fermento R$ 1.007,25 ·
+              molho de tomate R$ 588,75 · feijão R$ 514,24 · arroz R$ 429,12
+```
+⚠️ **A estimativa usa a memória como referência de preço e é ordem de grandeza, nunca um lançamento** — o custo real daquela saída **não existe em lugar nenhum**: ela saiu a zero. ⚠️ E **ERVILHA (115,601 KG) e `porcao beef de alimenuta` aparecem com R$ 0,00 estimado** porque não têm memória: nunca tiveram entrada com valor, então não há preço conhecido nem pra estimar. **Efeito prático: aquele CMV não registrou o custo da mercadoria que saiu.** A decisão é dele.
+
+📋 **FICA PRO DONO (o clique é dele, REGRA 2):** abrir o montador no celular e no notebook e ver as 4 bases fechando, a página da `metade de bolinha` (R$ 0,47) e um item negativo. ⚠️ E decidir o item 4 — e, se achar que o custo da massa devia ser 0,54 e não 0,47, **o caminho é a produção de 12/10**, não a lei: foi ela que entrou a R$ 0,4709/un com o saldo no chão.
+
 ## ⭐⭐⭐ QUEM PAGA A CASA v4 — A LEI DAS COLUNAS + CMV + O CARTÃO DE PRODUTO (13/10/2026)
 
 **A referência `docs/margem-referencia.html` virou v4** (aprovada pelo dono) e com ela três frentes num sprint só, com **MOTOR ÚNICO**: a lei das colunas, o CMV no montador e o cartão "escolha um produto".
