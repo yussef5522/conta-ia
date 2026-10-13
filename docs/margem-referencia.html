@@ -3,14 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Quem paga a casa — REFERÊNCIA VISUAL OFICIAL v3.1 (aprovada pelo dono)</title>
+<title>Quem paga a casa — REFERÊNCIA VISUAL OFICIAL v4 (aprovada pelo dono)</title>
 <style>
 /* ==========================================================================
-   CAIXAOS · "QUEM PAGA A CASA" — REFERÊNCIA VISUAL OFICIAL v3
+   CAIXAOS · "QUEM PAGA A CASA" — REFERÊNCIA VISUAL OFICIAL v4
    Este arquivo é a LEI do visual. A tela em prod deve ficar IGUAL a isto,
    nos dois temas e nos dois viewports (390px e 1280px).
    Onde houver token genérico abaixo, mapear 1:1 para o token da casa.
    Ícones: aqui são emoji/unicode; em prod usar o ícone equivalente da casa.
+
+   NOVIDADES DA v4 (aprovadas no chat em 13/10/2026):
+   1. LEI DAS COLUNAS — a liga ganha teto (top 10 + "ver todos"); colunas
+      irmãs terminam juntas; coluna fantasma = tela reprovada.
+   2. O montador de pizza ganha CMV: farol no preço, alvos, preço ideal
+      por canal (,90 + gross-up iFood) e a frase do especialista.
+   3. NOVO cartão "Escolha um produto e veja o preço ideal" — o irmão do
+      montador, pra xis/hambúrguer/frango/qualquer produto com ficha.
+      Em dupla com o montador (é isso que mata o vazio da esquerda).
+   4. A fila de sabores sem ficha desce pra largura cheia, fechando a tela.
    ========================================================================== */
 
 :root{
@@ -29,9 +39,6 @@
   --verde:#1D9E75;  --verde-esc:#0F6E56; --verde-50:#E1F5EE; --verde-900:#04342C;
   --ambar:#E9A23B;  --ambar-esc:#854F0B; --ambar-50:#FAEEDA; --ambar-900:#412402;
   --coral:#E05B5B;  --coral-esc:#A32D2D; --coral-50:#FCEBEB; --coral-900:#501313;
-  /* o par SÓLIDO do herói (10/10): branco sobre o -mid REPROVA WCAG em 6 dos 8 casos */
-  --verde-solid:#0A5E35; --verde-on:#FFFFFF; --verde-on-soft:#E7F7EE;
-  --coral-solid:#8F2327; --coral-on:#FFFFFF; --coral-on-soft:#FDECEC;
   --rosa:#D4518A;   --rosa-50:#FBEAF0;
   --azul:#2E86D9;   --azul-esc:#185FA5; --azul-50:#E6F1FB;
 
@@ -80,6 +87,13 @@ body{
   .duo{display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start}
   .duo .card{margin-bottom:0}
 }
+/* LEI DAS COLUNAS (v4): lista comprida NUNCA mora inteira numa
+   coluna lateral — ela ganha teto: TOP 10 + "ver todos" que expande
+   ali mesmo. No estado padrão (tudo recolhido), as duas colunas de
+   cada dupla terminam JUNTAS: diferença de altura de no máximo ~um
+   cartão pequeno (~140px). Coluna fantasma — vazio comprido de um
+   lado enquanto o outro rola — é tela REPROVADA. No celular, tudo
+   empilha na ordem do HTML. */
 .num{font-variant-numeric:tabular-nums}
 a,[role=button]{cursor:pointer}
 
@@ -113,31 +127,28 @@ a,[role=button]{cursor:pointer}
 .chegada-foot b{color:var(--text)}
 .chegada-note{padding:0 18px 12px; font-size:11.5px; color:var(--text-3)}
 
-/* ---------- 2. A CASCATA DO MÊS ---------- */
-/* 5 cartões em linha; abaixo de 900px empilham (uma composição, dois tamanhos). */
-.cascata-grid{display:grid; grid-template-columns:1fr; gap:8px; padding:4px 18px 12px}
-@media (min-width:900px){ .cascata-grid{grid-template-columns:repeat(5,1fr)} }
-.ccard{background:var(--surface-2); border-radius:12px; padding:12px 13px}
-.ccard .lbl{font-size:11.5px; color:var(--text-2); font-weight:600}
-.ccard .op{font-size:14px; font-weight:700}
-.ccard .val{margin-top:3px; font-size:22px; font-weight:700; letter-spacing:-.01em}
-/* o % do CMV é o número GIGANTE embaixo do valor */
-.ccard .pct{margin-top:1px; font-size:17px; font-weight:700; color:var(--ambar-esc)}
-.ccard .sub{margin-top:3px; font-size:11px; color:var(--text-3)}
-.ccard.cmv{background:var(--ambar-50)} .ccard.cmv .lbl,.ccard.cmv .val{color:var(--ambar-esc)}
-/* O HERÓI: sólido cheio, número BRANCO. Negativo vira coral "FALTAM". */
-.ccard.heroi{background:var(--verde-solid)} .ccard.heroi .val{font-size:26px; color:var(--verde-on)}
-.ccard.heroi .lbl,.ccard.heroi .sub{color:var(--verde-on-soft)}
-.ccard.faltam{background:var(--coral-solid)} .ccard.faltam .val{font-size:26px; color:var(--coral-on)}
-.ccard.faltam .lbl,.ccard.faltam .sub{color:var(--coral-on-soft)}
-/* A BARRA DE COMPOSIÇÃO: de cada R$ 100 vendidos. Σ=100% POR CONSTRUÇÃO. */
-.composicao{display:flex; height:16px; border-radius:999px; overflow:hidden; border:1px solid var(--border); margin:0 18px}
-.composicao .cmv{background:var(--ambar)} .composicao .casa{background:var(--indigo)} .composicao .lucro{background:var(--verde)}
-.composicao-legenda{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:6px 18px 14px; font-size:11.5px; color:var(--text-2)}
-/* A HONESTIDADE EM UMA LINHA, com o detalhe por TOQUE (nunca hover: no celular não existe). */
-.honestidade{border-top:1px solid var(--border); background:var(--surface-2); padding:9px 18px; font-size:12px; color:var(--text-2)}
-.honestidade b{color:var(--text)}
-.regua-setor{padding:2px 18px 12px; font-size:11px; color:var(--text-3)}
+/* ---------- 2. O PLACAR ---------- */
+.placar-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:4px 18px 12px}
+@media (max-width:640px){ .placar-grid{grid-template-columns:1fr} }
+.pcard{background:var(--surface-2); border-radius:var(--radius); padding:13px 15px}
+.pcard .lbl{font-size:12px; color:var(--text-2); font-weight:600}
+.pcard .val{margin-top:4px; font-size:26px; font-weight:700; letter-spacing:-.01em}
+.pcard .sub{margin-top:2px; font-size:11px; color:var(--text-3)}
+.pcard.win{background:var(--verde-50)}
+.pcard.win .lbl{color:var(--verde-esc)}
+.pcard.win .val{color:var(--verde-900)}
+.pcard.win .sub{color:var(--verde-esc)}
+.pcard.falta{background:var(--ambar-50)}
+.pcard.falta .lbl{color:var(--ambar-esc)} .pcard.falta .val{color:var(--ambar-900)} .pcard.falta .sub{color:var(--ambar-esc)}
+.barra-casa{position:relative; display:flex; height:16px; border-radius:999px; overflow:hidden; border:1px solid var(--border); margin:0 18px}
+.barra-casa .casa{background:var(--indigo)}
+.barra-casa .lucro{background:var(--verde)}
+.barra-casa .resto{background:var(--surface-2)}
+.barra-legenda{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:6px 18px 14px; font-size:11.5px; color:var(--text-2)}
+.barra-legenda .l1{color:var(--indigo); font-weight:600}
+.barra-legenda .l2{color:var(--verde-esc); font-weight:600}
+.cobertura-line{padding:9px 18px; border-top:1px solid var(--border); background:var(--surface-2); font-size:12px; color:var(--text-2)}
+.cobertura-line b{color:var(--text)}
 
 /* ---------- 3. QUEM CARREGOU ---------- */
 .carga-row{display:flex; align-items:center; gap:10px; padding:9px 18px; border-top:1px solid var(--border); font-size:13.5px}
@@ -157,7 +168,7 @@ a,[role=button]{cursor:pointer}
 .fila-foot{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:9px 18px; border-top:1px solid var(--border); background:var(--ambar-50); font-size:12px; color:var(--ambar-esc)}
 .fila-foot a{color:var(--indigo); font-weight:600; text-decoration:none}
 
-/* ---------- 4. A LIGA ---------- */
+/* ---------- 4. A LIGA (v4: TOP 10 + ver todos) ---------- */
 .liga-tabs{display:flex; gap:6px; padding:0 18px 8px; flex-wrap:wrap}
 .liga-row{display:flex; align-items:center; gap:10px; padding:9px 18px; border-top:1px solid var(--border); font-size:13.5px}
 .liga-row:hover{background:var(--surface-2)}
@@ -172,9 +183,11 @@ a,[role=button]{cursor:pointer}
 .liga-val b{color:var(--verde-esc)}
 .liga-val .det{font-size:11.5px; color:var(--text-3)}
 .mediana{padding:4px 18px 8px; font-size:11.5px; color:var(--text-3)}
+.ver-todos{display:block; width:100%; text-align:center; padding:10px 18px; border:0; border-top:1px solid var(--border); background:var(--surface); font:inherit; font-size:12.5px; color:var(--indigo); font-weight:600; cursor:pointer}
+.ver-todos:hover{background:var(--indigo-50)}
 
 /* ---------- 5. MONTADOR ---------- */
-.mont-wrap{display:flex; gap:20px; padding:10px 18px 16px; align-items:center; flex-wrap:wrap}
+.mont-wrap{display:flex; gap:20px; padding:10px 18px 12px; align-items:center; flex-wrap:wrap}
 .mont-svg{width:170px; flex:none}
 .mont-conta{flex:1; min-width:250px; font-size:14px}
 .mont-conta .row{display:flex; justify-content:space-between; gap:10px; padding:3px 0}
@@ -192,7 +205,35 @@ a,[role=button]{cursor:pointer}
 .sabor-chip.sem{border-style:dashed; border-color:var(--ambar); color:var(--ambar-esc)}
 .sabor-chip:hover{background:var(--indigo-50); color:var(--indigo-900); border-color:transparent}
 
-/* ---------- 6. FILA DE SABORES ---------- */
+/* ---------- 7. CMV / PREÇO IDEAL (compartilhado: montador + produto) ---------- */
+.farol{display:inline-block; font-size:12px; font-weight:700; padding:3px 11px; border-radius:999px; white-space:nowrap}
+.farol.ok{background:var(--verde-50); color:var(--verde-900)}
+.farol.aperta{background:var(--ambar-50); color:var(--ambar-900)}
+.farol.fora{background:var(--coral-50); color:var(--coral-900)}
+.farol.neutro{background:var(--surface-2); color:var(--text-3)}
+.farol-sub{font-size:11.5px; color:var(--text-2); text-align:right}
+.ideal-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 18px 8px; border-top:1px dashed var(--border-strong)}
+.ideal-head .t{font-size:13.5px; font-weight:600}
+.canais{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; padding:0 18px}
+@media (max-width:560px){ .canais{grid-template-columns:1fr} }
+.canal{background:var(--surface-2); border-radius:var(--radius); padding:9px 12px}
+.canal .lbl{font-size:11px; color:var(--text-3)}
+.canal .val{font-size:17px; font-weight:700}
+.canal .sub{font-size:11px; color:var(--text-2)}
+.ideal-note{padding:6px 18px 2px; font-size:11px; color:var(--text-3)}
+.dica{margin:10px 18px 16px; border:1px solid var(--ambar); border-radius:var(--radius); background:var(--ambar-50); color:var(--ambar-900); padding:9px 12px; font-size:12.5px; line-height:1.5}
+.dica b{font-weight:700}
+
+/* ---------- 8. ESCOLHA UM PRODUTO ---------- */
+.busca-prod{position:relative; margin:4px 18px 8px}
+.busca-prod input{width:100%; font:inherit; background:var(--surface-2); border:1px solid var(--border-strong); border-radius:10px; padding:8px 12px 8px 34px; color:var(--text)}
+.busca-prod .lupa{position:absolute; left:11px; top:8px; color:var(--text-3)}
+.prod-chips{display:flex; flex-wrap:wrap; gap:6px; padding:0 18px 10px}
+.prod-conta{padding:0 18px 4px; font-size:14px}
+.prod-conta .row{display:flex; justify-content:space-between; gap:10px; padding:3px 0; align-items:center; flex-wrap:wrap}
+.prod-conta .row .mut{color:var(--text-2)}
+
+/* ---------- 6. FILA DE SABORES (v4: largura cheia, fecha a tela) ---------- */
 .fila-grid{display:flex; flex-wrap:wrap; gap:6px; padding:6px 18px 14px}
 .fila-chip{font-size:12px; padding:4px 11px; border-radius:999px; border:1px dashed var(--ambar); color:var(--ambar-esc); background:var(--surface)}
 .fila-chip b{color:var(--ambar-900)}
@@ -208,7 +249,7 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
   <div class="page-head">
     <div>
       <h1>Quem paga a casa</h1>
-      <p class="sub num" data-bind="rotuloPeriodo">outubro (até 07/10)</p>
+      <p class="sub num" data-bind="rotuloPeriodo">outubro (até 12/10)</p>
     </div>
     <div class="chips">
       <span class="chip" data-bind="periodo=hoje">hoje</span>
@@ -220,7 +261,7 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
   </div>
 
   <!-- ===================== 1 · LINHA DE CHEGADA DO DIA ===================== -->
-  <!-- Mostra o ÚLTIMO DIA FECHADO. data-binds: libLinhaDeChegada -->
+  <!-- Mostra o ÚLTIMO DIA FECHADO. data-binds: libLinhaDeChegada. INTOCADO na v4. -->
   <section class="card" aria-label="A linha de chegada do dia">
     <div class="chegada-top">
       <div>
@@ -243,74 +284,50 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
     <div class="chegada-note">é o último dia fechado — o relatório de hoje entra na madrugada</div>
   </section>
 
-  <!-- ===================== 2 · A CASCATA DO MÊS ===================== -->
-  <!--
-    ⚠️⚠️ ESTA SEÇÃO DERIVA DO PEDIDO ESCRITO DO DONO (10/10/2026), não de um mock desenhado:
-    *"A CASCATA substitui o placar atual (é ele crescido): 5 cartões em linha — VENDEU · − CMV
-    (INSUMOS) · = SOBRA · − A CASA · = LUCRO"*. O placar de 3 cartões que vivia aqui MORREU.
-    Inventar um visual e chamá-lo de "o mock aprovado" é exatamente o erro que o protocolo de
-    10/09 existe pra impedir — então fica declarado de onde esta seção veio.
-
-    REGRA DE OURO (travada em teste): vendeu − cmv = sobra · sobra − casa = lucro.
-    A cadeia fecha POR CONSTRUÇÃO: o CMV é DERIVADO da sobra (`vendeu − sobraTotal`), então o
-    resíduo de centavos cai no número NOVO e nunca na sobra que já está em prod.
-  -->
-  <section class="card" aria-label="A cascata do mês">
+  <!-- ===================== 2 · O PLACAR DO PERÍODO ===================== -->
+  <!-- REGRA DE OURO: cartão1 − cartão2 = cartão3, travado em teste. INTOCADO na v4. -->
+  <section class="card" aria-label="O placar do período">
     <div class="card-head">
-      <h2>O mês de outubro, em cascata</h2>
+      <h2>O placar de outubro</h2>
       <span class="hint num" data-bind="composicaoChips">custo fixo: casa + banco + compromissos</span>
     </div>
-    <div class="cascata-grid">
-      <div class="ccard">
-        <div class="lbl">Vendeu</div>
-        <div class="val num" data-bind="vendeu">R$ 126.590</div>
-        <div class="sub">o que o PDV registrou</div>
+    <div class="placar-grid">
+      <div class="pcard">
+        <div class="lbl">O que as vendas deixaram</div>
+        <div class="val num" data-bind="sobraLiquida">R$ 57.232</div>
+        <div class="sub num" data-bind="subSobra">sobra medida em 60% das vendas · já abatidos R$ 9.256 de complementos</div>
       </div>
-      <div class="ccard cmv">
-        <div class="lbl"><span class="op">−</span> CMV (insumos)</div>
-        <div class="val num" data-bind="cmv">R$ 57.235</div>
-        <div class="pct num" data-bind="cmvPct">45,2% das vendas</div>
-        <div class="sub">o que saiu da prateleira</div>
-      </div>
-      <div class="ccard">
-        <div class="lbl"><span class="op">=</span> Sobra</div>
-        <div class="val num" data-bind="sobra">R$ 69.355</div>
-        <div class="sub">vendeu menos o insumo</div>
-      </div>
-      <div class="ccard">
-        <div class="lbl"><span class="op">−</span> A casa</div>
-        <div class="val num" data-bind="casa">R$ 49.828</div>
+      <div class="pcard">
+        <div class="lbl">A casa custou até aqui</div>
+        <div class="val num" data-bind="casaPeriodo">R$ 43.599</div>
         <div class="sub">casa + banco + compromissos</div>
       </div>
-      <!-- ESTADO LUCRO (verde sólido). Estado NEGATIVO: classe .faltam, lbl "Faltam", val "R$ X" -->
-      <div class="ccard heroi">
-        <div class="lbl"><span class="op">=</span> Lucro</div>
-        <div class="val num" data-bind="lucro">R$ 19.527</div>
+      <!-- ESTADO PAGA (verde). Estado NÃO-PAGA: classe .falta, lbl "FALTAM", val "R$ X", sub "pra pagar a casa do período" -->
+      <div class="pcard win">
+        <div class="lbl">✓ CASA PAGA — e sobrou</div>
+        <div class="val num" data-bind="resultado">+R$ 13.632</div>
         <div class="sub">daqui pra frente é lucro</div>
       </div>
     </div>
-    <div class="composicao" role="img" aria-label="de cada R$ 100 vendidos: 45,2% de CMV, 39,4% de casa, 15,4% de lucro">
-      <div class="cmv" style="width:45.2%"></div>
-      <div class="casa" style="width:39.4%"></div>
-      <div class="lucro" style="width:15.4%"></div>
+    <!-- A BARRA ÚNICA: índigo = casa (até a 🏁), verde = transbordo. widths: casa/(casa+lucro) e lucro/(casa+lucro). Σ=100% POR CONSTRUÇÃO. Período não pago: índigo parcial + .resto cinza até 100%. -->
+    <div class="barra-casa" role="img" aria-label="a casa se enchendo: 76% índigo até a bandeira, 24% verde de lucro">
+      <div class="casa" style="width:76%"></div>
+      <div class="lucro" style="width:24%"></div>
     </div>
-    <div class="composicao-legenda">
-      <span>de cada R$ 100 vendidos</span>
-      <span class="num">CMV 45,2%</span>
-      <span class="num">casa 39,4%</span>
-      <span class="num">lucro 15,4%</span>
+    <div class="barra-legenda">
+      <span class="l1">a casa se enchendo</span>
+      <span>🏁 a bandeira é 100% = casa paga</span>
+      <span class="l2 num">o verde é o lucro (+31%)</span>
     </div>
-    <!-- o detalhes abre por TOQUE; dentro dele mora a explicação consumo × compra E o placar do dia -->
-    <div class="honestidade num" data-bind="honestidade">
-      medido em <b>55% das vendas</b> · vendas totais R$ 126.590 · CMV por compra (notas): R$ 258.749 — detalhes ⓘ
-      <div class="cobertura-line num" data-bind="linhaCobertura">
-        cobertura: <b>55% das unidades vendidas têm custo</b> · 49 na obra · 114 fora · acima de <b>80%</b> eu digo <b>o dia em que a casa se pagou</b>
-      </div>
+    <div class="cobertura-line num" data-bind="linhaCobertura">
+      cobertura: <b>60% das unidades vendidas têm custo</b> · na obra e subindo · acima de <b>80%</b> eu digo <b>o dia em que a casa se pagou</b>
     </div>
-    <div class="regua-setor">pizzaria/lanchonete saudável: CMV 28–35% das vendas</div>
   </section>
 
-  <!-- ===================== 3+4 · DUPLA: QUEM CARREGOU | A LIGA (lado a lado em ≥1024px) ===================== -->
+  <!-- ===================== 3+4 · DUPLA: QUEM CARREGOU | A LIGA ===================== -->
+  <!-- LEI DAS COLUNAS: a liga mostra SÓ O TOP 10 + botão "ver todos os N"
+       que expande ali mesmo (recolhido de novo no segundo toque). No estado
+       recolhido, as duas colunas terminam juntas. -->
   <div class="duo">
   <!-- 3 · QUEM CARREGOU A CASA -->
   <!-- Barra RELATIVA AO MAIOR (nunca à casa). % da casa vai no número, pode passar de 100. Top 6 + agrupado. Toda linha clicável → ficha. -->
@@ -356,16 +373,16 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
       <span class="carga-val num" style="color:var(--text-2)"><b>28%</b> <span class="rs">· ver todos ▾</span></span>
     </div>
     <div class="fila-foot">
-      <span>🪑 <b>114 fora da obra</b> — vendem e o custo é desconhecido · <b>95 sabores sem ficha</b></span>
-      <a href="#fila">criar fichas sobe a cobertura (55% → meta 80%) →</a>
+      <span>🪑 <b data-bind="foraDaObra">101 fora da obra</b> — vendem e o custo é desconhecido · <b data-bind="semFicha">86 sabores sem ficha</b></span>
+      <a href="#fila">criar fichas sobe a cobertura (60% → meta 80%) →</a>
     </div>
   </section>
 
-  <!-- 4 · A LIGA -->
+  <!-- 4 · A LIGA — v4: TOP 10 + "ver todos" -->
   <section class="card" aria-label="A liga do período">
     <div class="card-head">
       <h2>🏆 A liga do mês</h2>
-      <span class="hint">selo = veredito · tudo clicável → ficha</span>
+      <span class="hint">selo = veredito · tudo clicável → ficha · top 10</span>
     </div>
     <div class="liga-tabs">
       <span class="chip on">encheu o caixa ✓</span>
@@ -389,28 +406,29 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
       <span class="liga-val num"><b>R$ 7.839,26</b><div class="det">R$ 54,82/un · 143 un · 85%</div></span>
     </div>
     <div class="liga-row" role="button">
-      <span class="medal">10</span><span class="dot" style="background:var(--indigo)"></span>
-      <span class="liga-nome">PROMO 2 PIZZAS G <span class="selo joia">🧩 joia escondida — divulgar</span></span>
-      <span class="liga-val num"><b>R$ 1.176,84</b><div class="det">R$ 98,07/un · 12 un · 81%</div></span>
+      <span class="medal">4</span><span class="dot" style="background:var(--indigo)"></span>
+      <span class="liga-nome">PIZZA FAMÍLIA PRECINHO <span class="selo estrela">⭐ estrela</span></span>
+      <span class="liga-val num"><b>R$ 5.573,10</b><div class="det">R$ 97,69/un · 34 un · 84%</div></span>
     </div>
     <div class="liga-row" role="button">
-      <span class="medal">27</span><span class="dot" style="background:var(--azul)"></span>
-      <span class="liga-nome">ÁGUA MINERAL S/ GÁS <span class="selo burro">🐴 vende muito, sobra pouco</span></span>
-      <span class="liga-val num"><b>R$ 181,56</b><div class="det">R$ 3,56/un · 51 un · 71%</div></span>
+      <span class="medal">5</span><span class="dot" style="background:var(--azul)"></span>
+      <span class="liga-nome">PRATO ALAMINUTA <span class="selo estrela">⭐ estrela</span></span>
+      <span class="liga-val num"><b>R$ 1.774,80</b><div class="det">R$ 20,40/un · 87 un · 66%</div></span>
     </div>
-    <div class="liga-row" role="button">
-      <span class="medal">32</span><span class="dot" style="background:var(--azul)"></span>
-      <span class="liga-nome">HEINEKEN <span class="selo repensar">pra repensar</span></span>
-      <span class="liga-val num"><b>R$ 124,80</b><div class="det">R$ 12,48/un · 10 un · 54%</div></span>
-    </div>
+    <!-- …linhas 6 a 10 iguais a estas (a referência mostra 5 de exemplo; em prod são SEMPRE 10 no estado recolhido)… -->
+    <button class="ver-todos" id="verTodos">ver todos os 51 ▾</button>
+    <!-- ao tocar: expande AQUI MESMO as linhas 11+ e o botão vira "mostrar só o top 10 ▴". Estado inicial: SEMPRE recolhido. -->
   </section>
 
   </div><!-- /duo 3+4 -->
 
-  <!-- ===================== 5+6 · DUPLA: MONTADOR | FILA (lado a lado em ≥1024px) ===================== -->
+  <!-- ===================== 5+7 · DUPLA: MONTADOR | ESCOLHA UM PRODUTO ===================== -->
+  <!-- É esta dupla que mata o vazio da esquerda: os dois simuladores
+       lado a lado, mesma altura de nascença (mesma anatomia). -->
   <div class="duo">
-  <!-- 5 · MONTADOR DE PIZZA -->
-  <!-- INTERATIVO nesta referência: trocar tamanho redesenha as fatias; clicar fatia abre a lista; preço editável recalcula. Conta = base(tamanho) + Σ(1 ocorrência × ficha do sabor) — regra 02/09, SEM fator. -->
+
+  <!-- 5 · MONTADOR DE PIZZA (+ CMV na v4) -->
+  <!-- INTERATIVO nesta referência: trocar tamanho redesenha as fatias; clicar fatia abre a lista; preço editável recalcula. Conta = base(tamanho) + Σ(1 ocorrência × ficha do sabor) — regra 02/09, SEM fator. TUDO que existia continua IGUAL; o que nasce fica ABAIXO da conta. -->
   <section class="card" aria-label="Monte uma pizza e veja o custo">
     <div class="card-head">
       <h2>🍕 Monte uma pizza e veja o custo</h2>
@@ -430,31 +448,72 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
       <div class="lbl">escolher o sabor da fatia <b id="fatiaAlvo"></b> (com ficha primeiro; âmbar = sem ficha, tocar cria):</div>
       <div id="listaSabores"></div>
     </div>
+    <!-- v4 · PREÇO IDEAL DA PIZZA — alvos da categoria pizza: 28/33/45 -->
+    <div class="ideal-head">
+      <span class="t">Preço ideal</span>
+      <span class="chip alvoPz" data-a="28">28% · pizzaria padrão</span>
+      <span class="chip alvoPz on" data-a="33">33% · teto saudável ✓</span>
+      <span class="chip alvoPz" data-a="45">45% · sabor premium</span>
+    </div>
+    <div class="canais" id="canaisPz"></div>
+    <div class="ideal-note">preços terminam em ,90 · iFood calculado pra sobrar o MESMO do balcão · com fatia pendente eu espero a pizza fechar</div>
+    <div class="dica" id="dicaPz"></div>
   </section>
 
-  <!-- 6 · FILA DOS SABORES SEM FICHA -->
+  <!-- 7 · ESCOLHA UM PRODUTO (NOVO na v4) — o irmão do montador -->
+  <!-- EM PROD: produtos do cardápio; custo vem da FICHA (mesma porta do
+       estoque, nada recalculado por fora); "vendendo hoje" vem da MÉDIA
+       REAL DO PDV no período da tela (editável pra simular); sem ficha =
+       "a apurar" + convite pra criar a ficha (nunca número inventado).
+       A busca usa casaBusca (acento/caixa). Os valores ABAIXO são
+       EXEMPLO DE REFERÊNCIA, não dados reais. -->
+  <section class="card" aria-label="Escolha um produto e veja o preço ideal">
+    <div class="card-head">
+      <h2>🍔 Escolha um produto e veja o preço ideal</h2>
+      <span class="hint">só simula — custo da ficha + preço médio real do PDV</span>
+    </div>
+    <div class="busca-prod">
+      <span class="lupa">🔎</span>
+      <input id="buscaProd" placeholder="buscar produto… (xis, hambúrguer, frango — ignora acento)">
+    </div>
+    <div class="prod-chips" id="prodChips"></div>
+    <div class="prod-conta num" id="prodConta"></div>
+    <!-- alvos da categoria lanche: 30/35/45 · porção: 35/40/45 (os chips
+         trocam conforme a categoria do produto escolhido) -->
+    <div class="ideal-head">
+      <span class="t">Preço ideal</span>
+      <span class="chip alvoPr" data-a="30">30% · lanche padrão</span>
+      <span class="chip alvoPr on" data-a="35">35% · teto saudável ✓</span>
+      <span class="chip alvoPr" data-a="45">45% · premium</span>
+    </div>
+    <div class="canais" id="canaisPr"></div>
+    <div class="ideal-note">preços terminam em ,90 · iFood calculado pra sobrar o MESMO do balcão · sem ficha = a apurar</div>
+    <div class="dica" id="dicaPr"></div>
+  </section>
+
+  </div><!-- /duo 5+7 -->
+
+  <!-- ===================== 6 · FILA DOS SABORES SEM FICHA (v4: largura cheia) ===================== -->
   <section class="card" id="fila" aria-label="Sabores vendidos sem ficha">
     <div class="card-head">
-      <h2>🧩 95 sabores vendidos sem ficha</h2>
+      <h2>🧩 <span data-bind="qtdSemFicha">86</span> sabores vendidos sem ficha</h2>
       <span class="hint">cada ficha criada entra na obra e a cobertura sobe · maior volume primeiro</span>
     </div>
     <div class="fila-grid">
-      <span class="fila-chip" role="button"><b>182×</b> CHOCOLATE PRETO</span>
-      <span class="fila-chip" role="button"><b>89×</b> 4 QUEIJOS</span>
-      <span class="fila-chip" role="button"><b>67×</b> MAIONESE CASEIRA</span>
-      <span class="fila-chip" role="button"><b>64×</b> PORTUGUESA</span>
-      <span class="fila-chip" role="button"><b>57×</b> OURO BRANCO</span>
-      <span class="fila-chip" role="button"><b>56×</b> NAPOLITANA</span>
-      <span class="fila-chip" role="button"><b>50×</b> 5 QUEIJOS</span>
-      <span class="fila-chip" role="button"><b>46×</b> MARGHERITA</span>
-      <span class="fila-chip" role="button"><b>38×</b> BRÓCOLIS</span>
-      <span class="fila-chip" role="button">… e mais 86 ▾</span>
+      <span class="fila-chip" role="button"><b>135×</b> CHOCOLATE PRETO</span>
+      <span class="fila-chip" role="button"><b>56×</b> MAIONESE CASEIRA</span>
+      <span class="fila-chip" role="button"><b>42×</b> NAPOLITANA</span>
+      <span class="fila-chip" role="button"><b>39×</b> OURO BRANCO</span>
+      <span class="fila-chip" role="button"><b>38×</b> MARGHERITA</span>
+      <span class="fila-chip" role="button"><b>38×</b> 5 QUEIJOS</span>
+      <span class="fila-chip" role="button"><b>31×</b> MEDIO</span>
+      <span class="fila-chip" role="button"><b>28×</b> PORTUGUESA</span>
+      <span class="fila-chip" role="button"><b>23×</b> BROCOLIS</span>
+      <span class="fila-chip" role="button">… e mais 77 ▾</span>
     </div>
   </section>
 
-  </div><!-- /duo 5+6 -->
-
-  <footer>REFERÊNCIA VISUAL OFICIAL v3.1 (largura cheia + duplas) · aprovada pelo dono em 07/10/2026 · a tela em prod deve ser IGUAL a isto (2 temas × 2 viewports)</footer>
+  <footer>REFERÊNCIA VISUAL OFICIAL v4 (lei das colunas + CMV no montador + cartão de produto) · aprovada pelo dono em 13/10/2026 · a tela em prod deve ser IGUAL a isto (2 temas × 2 viewports)</footer>
 </div>
 
 <script>
@@ -479,9 +538,57 @@ const TAMANHOS = {
   precinhoG:{rot:'precinho G', fatias:2, base:11.58, baseRot:'base precinho G (DERIVADO de grande)', preco:49.90},
 };
 const CORES=['#5DCAA5','#F3C96B','#E8A3C2'];
-const TAXA_IFOOD=0.20;
-let tam='grande', fat=[0,null,null], precoVenda=TAMANHOS[tam].preco, alvo=null;
+const TAXA_IFOOD=0.20; /* em prod: a MESMA porta da taxa que o cartão já usa */
+let tam='grande', fat=[0,null,null], precoVenda=TAMANHOS[tam].preco, alvoAberto=null;
+let alvoPz=33, alvoPr=35;
 const fmt=v=>'R$ '+v.toFixed(2).replace('.',',');
+
+/* ===== CMV / PREÇO IDEAL — AS REGRAS (iguais nos DOIS cartões) =====
+   Em prod os dois cartões chamam a MESMA lib (porta única do veredito):
+   - CMV% = custo ÷ preço, SEMPRE com vírgula (pctBR, dono único de %)
+   - farol por teto da categoria: pizza 33 · lanche 35 · porção 40
+       ≤teto  = verde  "no padrão"
+       ≤45    = âmbar  "apertado"
+       >45    = coral  "fora do padrão"
+   - preço ideal = custo ÷ alvo, arredondado CHARME:
+       termina em ,90 e NUNCA fica abaixo do ideal cru (protege a margem)
+   - iFood: preço próprio tal que 0,80×preço − custo == sobra do balcão,
+       AO CENTAVO (gross-up). NUNCA copiar o preço do balcão pro iFood.
+   - tele própria = balcão (sem taxa)
+   - sem custo fechado (fatia pendente / sem ficha) → farol NEUTRO e
+       canais "a apurar". NUNCA número inventado.                       */
+const pctBR=v=>v.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';
+const charm=v=>{let r=Math.floor(v)+0.9; if(r<v-1e-9) r=Math.floor(v)+1+0.9; return r};
+function farol(custo,preco,teto){
+  if(custo==null || !preco || preco<=0) return {cls:'neutro', rot:'—', cmv:null};
+  const cmv=100*custo/preco;
+  if(cmv<=teto) return {cls:'ok',     rot:'CMV '+pctBR(cmv)+' · no padrão', cmv};
+  if(cmv<=45)   return {cls:'aperta', rot:'CMV '+pctBR(cmv)+' · apertado', cmv};
+  return {cls:'fora', rot:'CMV '+pctBR(cmv)+' · fora do padrão', cmv};
+}
+function canaisHtml(custo,alvoPct){
+  if(custo==null){
+    return ['balcão','tele própria','iFood · taxa 20%'].map(l=>
+      `<div class="canal"><div class="lbl">${l}</div><div class="val" style="color:var(--ambar-esc)">a apurar</div><div class="sub">precisa da ficha</div></div>`).join('');
+  }
+  const ideal=charm(custo/(alvoPct/100)), sobra=ideal-custo;
+  const pIf=charm((custo+sobra)/(1-TAXA_IFOOD)), sobraIf=pIf*(1-TAXA_IFOOD)-custo;
+  return `
+    <div class="canal"><div class="lbl">balcão</div><div class="val num">${fmt(ideal)}</div><div class="sub num">sobra ${fmt(sobra)}</div></div>
+    <div class="canal"><div class="lbl">tele própria</div><div class="val num">${fmt(ideal)}</div><div class="sub num">sobra ${fmt(sobra)}</div></div>
+    <div class="canal"><div class="lbl">iFood · taxa 20%</div><div class="val num">${fmt(pIf)}</div><div class="sub num">sobra ${fmt(sobraIf)}</div></div>`;
+}
+/* frases do especialista: CURTAS (máx. 2 frases), língua do balcão */
+function dica(custo,preco,teto,tipo){
+  if(custo==null) return '<b>Especialista:</b> sem ficha eu não calculo — cria a ficha que eu te digo o preço na hora.';
+  if(!preco||preco<=0) return '<b>Especialista:</b> digita o preço de hoje que eu dou o veredito.';
+  const cmv=100*custo/preco;
+  if(cmv>45) return tipo==='pizza'
+    ? '<b>Especialista:</b> esse sabor não cabe na tabela comum. Ou vira linha premium com preço próprio, ou o mix compensa.'
+    : '<b>Especialista:</b> esse produto tá consumindo demais do preço. Ou sobe a tabela, ou revisa a ficha.';
+  if(cmv>teto) return '<b>Especialista:</b> acima do teto — só fecha se o resto do cardápio segurar a média.';
+  return '<b>Especialista:</b> saudável. O jogo agora é a média do cardápio inteiro.';
+}
 
 function desenha(){
   const t=TAMANHOS[tam]; const n=t.fatias;
@@ -504,7 +611,7 @@ function desenha(){
   let linhas='';
   for(let i=1;i<n;i++){ const a=-90+360/n*i; linhas+=`<line x1="85" y1="85" x2="${85+72*Math.cos(a*Math.PI/180)}" y2="${85+72*Math.sin(a*Math.PI/180)}" stroke="#fff" stroke-width="3"/>`; }
   svg.innerHTML=`<circle cx="85" cy="85" r="80" fill="#F7E1B5"/><circle cx="85" cy="85" r="72" fill="#FAEEDA"/>${paths}${linhas}`;
-  svg.querySelectorAll('.fatia').forEach(p=>p.onclick=()=>{alvo=+p.dataset.i; abreLista();});
+  svg.querySelectorAll('.fatia').forEach(p=>p.onclick=()=>{alvoAberto=+p.dataset.i; abreLista();});
   conta();
 }
 function conta(){
@@ -519,18 +626,28 @@ function conta(){
   const suf=pend?` + ${pend} fatia(s)`:'';
   html+=`<div class="row tot"><span>custo da pizza</span><span class="val">${fmt(total)}${suf}</span></div>`;
   const sobraB=precoVenda-total, sobraI=precoVenda*(1-TAXA_IFOOD)-total;
-  html+=`<div class="row"><span class="mut">vendendo a <input class="preco-input num" id="preco" value="${precoVenda.toFixed(2).replace('.',',')}"> no balcão, sobra</span><span class="sobra-verde">~${fmt(sobraB)}${suf?' − fatias':''}</span></div>`;
+  /* v4: o farol nasce COLADO na linha do preço. Pizza fechada (pend=0)
+     calcula; com fatia pendente o farol fica NEUTRO ("fecha a pizza"). */
+  const fz=pend?{cls:'neutro',rot:'fecha a pizza'}:farol(total,precoVenda,33);
+  html+=`<div class="row"><span class="mut">vendendo a <input class="preco-input num" id="preco" value="${precoVenda.toFixed(2).replace('.',',')}"></span><span class="farol ${fz.cls}">${fz.rot}</span></div>`;
+  html+=`<div class="row"><span class="mut">no balcão, sobra</span><span class="sobra-verde">~${fmt(sobraB)}${suf?' − fatias':''}</span></div>`;
+  html+=`<div class="row"><span class="mut">no tele-entrega própria</span><span class="sobra-verde">~${fmt(sobraB)}${suf?' − fatias':''}</span></div>`;
   html+=`<div class="row"><span class="mut">no iFood (taxa 20%)</span><span class="sobra-ambar">~${fmt(sobraI)}${suf?' − fatias':''}</span></div>`;
   document.getElementById('conta').innerHTML=html;
   const inp=document.getElementById('preco');
   inp.onchange=()=>{ precoVenda=parseFloat(inp.value.replace('.','').replace(',','.'))||precoVenda; conta(); };
+  /* v4: canais + dica da pizza (pendente → a apurar) */
+  document.getElementById('canaisPz').innerHTML=canaisHtml(pend?null:total, alvoPz);
+  document.getElementById('dicaPz').innerHTML=pend
+    ? '<b>Especialista:</b> fecha as fatias que eu te digo o preço ideal.'
+    : dica(total,precoVenda,33,'pizza');
 }
 function abreLista(){
   const box=document.getElementById('escolha'); box.hidden=false;
-  document.getElementById('fatiaAlvo').textContent=(alvo+1)+'ª';
+  document.getElementById('fatiaAlvo').textContent=(alvoAberto+1)+'ª';
   const l=document.getElementById('listaSabores');
   l.innerHTML=SABORES.map((s,ix)=>`<span class="sabor-chip ${s.ficha?'':'sem'}" data-ix="${ix}">${s.nome}${s.ficha?' · '+fmt(s.custo):' · sem ficha ⚠'}</span>`).join('');
-  l.querySelectorAll('.sabor-chip').forEach(c=>c.onclick=()=>{ fat[alvo]=+c.dataset.ix; box.hidden=true; desenha(); });
+  l.querySelectorAll('.sabor-chip').forEach(c=>c.onclick=()=>{ fat[alvoAberto]=+c.dataset.ix; box.hidden=true; desenha(); });
 }
 document.querySelectorAll('#tamanhos .chip').forEach(c=>c.onclick=()=>{
   document.querySelectorAll('#tamanhos .chip').forEach(x=>x.classList.remove('on'));
@@ -539,7 +656,64 @@ document.querySelectorAll('#tamanhos .chip').forEach(c=>c.onclick=()=>{
   precoVenda=TAMANHOS[tam].preco; document.getElementById('escolha').hidden=true;
   desenha();
 });
+document.querySelectorAll('.alvoPz').forEach(c=>c.onclick=()=>{
+  document.querySelectorAll('.alvoPz').forEach(x=>x.classList.remove('on'));
+  c.classList.add('on'); alvoPz=+c.dataset.a; conta();
+});
+
+/* ===== 7 · ESCOLHA UM PRODUTO — comportamento de referência =====
+   EXEMPLO nesta referência. Em prod: lista = produtos do cardápio;
+   custo = ficha (porta única); preco = média real do PDV no período
+   (editável só na simulação); busca via casaBusca; teto por categoria. */
+const PRODUTOS=[
+  {nome:'xis completo',        custo:13.40, preco:29.90, teto:35},
+  {nome:'xis coração',         custo:16.80, preco:33.90, teto:35},
+  {nome:'hambúrguer da casa',  custo:9.00,  preco:27.90, teto:35},
+  {nome:'prato alaminuta',     custo:11.20, preco:20.40, teto:40},
+  {nome:'porção frango frito', custo:null,  preco:24.90, teto:40},
+];
+let prodSel=0, precoProd=PRODUTOS[0].preco;
+const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+function prodChips(filtro){
+  const f=filtro?norm(filtro):'';
+  document.getElementById('prodChips').innerHTML=PRODUTOS.map((p,ix)=>{
+    if(f && norm(p.nome).indexOf(f)<0) return '';
+    return `<span class="sabor-chip ${p.custo==null?'sem':''} ${ix===prodSel?'onp':''}" data-ix="${ix}" style="${ix===prodSel?'background:var(--indigo-50);color:var(--indigo-900);border-color:transparent;font-weight:600':''}">${p.nome}${p.custo==null?' · sem ficha ⚠':''}</span>`;
+  }).join('')||'<span class="hint">nenhum produto com esse nome</span>';
+  document.querySelectorAll('#prodChips .sabor-chip').forEach(c=>c.onclick=()=>{
+    prodSel=+c.dataset.ix; precoProd=PRODUTOS[prodSel].preco; prodDraw();
+  });
+}
+function prodDraw(){
+  const p=PRODUTOS[prodSel];
+  prodChips(document.getElementById('buscaProd').value);
+  const fz=farol(p.custo,precoProd,p.teto);
+  let html='';
+  html+=`<div class="row"><span class="mut">custo pela ficha <span class="hint">(toque abre a ficha)</span></span><span style="font-weight:700">${p.custo==null?'<span style="color:var(--ambar-esc)">a definir</span>':fmt(p.custo)}</span></div>`;
+  html+=`<div class="row"><span class="mut">vendendo hoje a <input class="preco-input num" id="precoProd" value="${precoProd.toFixed(2).replace('.',',')}"> <span class="hint">média real do PDV · editável</span></span><span class="farol ${fz.cls}">${fz.rot}</span></div>`;
+  if(p.custo!=null){
+    html+=`<div class="row"><span class="mut">no balcão, sobra</span><span class="sobra-verde">~${fmt(precoProd-p.custo)}</span></div>`;
+    html+=`<div class="row"><span class="mut">no iFood (taxa 20%), sobra</span><span class="sobra-ambar">~${fmt(precoProd*(1-TAXA_IFOOD)-p.custo)}</span></div>`;
+  }
+  document.getElementById('prodConta').innerHTML=html;
+  const inp=document.getElementById('precoProd');
+  inp.onchange=()=>{ precoProd=parseFloat(inp.value.replace('.','').replace(',','.'))||precoProd; prodDraw(); };
+  document.getElementById('canaisPr').innerHTML=canaisHtml(p.custo,alvoPr);
+  document.getElementById('dicaPr').innerHTML=dica(p.custo,precoProd,p.teto,'produto');
+}
+document.querySelectorAll('.alvoPr').forEach(c=>c.onclick=()=>{
+  document.querySelectorAll('.alvoPr').forEach(x=>x.classList.remove('on'));
+  c.classList.add('on'); alvoPr=+c.dataset.a; prodDraw();
+});
+document.getElementById('buscaProd').addEventListener('input',()=>prodChips(document.getElementById('buscaProd').value));
+
+/* liga: "ver todos" é demonstrativo aqui — em prod expande as linhas 11+ */
+document.getElementById('verTodos').onclick=function(){
+  this.textContent = this.textContent.indexOf('▾')>-1 ? 'mostrar só o top 10 ▴' : 'ver todos os 51 ▾';
+};
+
 desenha();
+prodDraw();
 </script>
 </body>
 </html>

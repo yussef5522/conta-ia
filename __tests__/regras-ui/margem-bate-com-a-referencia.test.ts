@@ -37,6 +37,9 @@ const ler = (p: string) => readFileSync(p, 'utf8')
  * sobre uma tela correta. **Duas réguas pro mesmo arquivo e uma delas mente.**
  */
 const REF = lerReferenciaVisual()
+import { CARREGADORES_VISIVEIS } from '@/lib/margem/placar'
+import { DIFERENCA_MAXIMA_EM_LINHAS, TOPO_DA_COLUNA } from '@/lib/margem/recorte-de-coluna'
+
 const REFERENCIA = REF.html
 const CSS_DA_REFERENCIA = REF.css
 const SCRIPT_DA_REFERENCIA = REF.script
@@ -101,6 +104,28 @@ function frase(texto: string) {
     cru(texto),
   )
   expect(cru(CODIGO), `a referência imprime "${texto}" e o código não`).toContain(cru(texto))
+}
+
+/**
+ * ⛔⛔⛔ A EXCEÇÃO NOMEADA: frase que vive SÓ NO CÓDIGO, porque a v4 foi construída sobre uma
+ * base PRÉ-CASCATA.
+ *
+ * **MEDIDO (13/10):** a v3.1 versionada tinha a seção `2 · A CASCATA DO MÊS` (11 ocorrências
+ * de "cascata"), posta lá pela ordem ESCRITA do dono em 10/10 (*"A CASCATA substitui o placar
+ * atual (é ele crescido): 5 cartões em linha"*). A **v4 tem ZERO** e restaura *"O PLACAR DO
+ * PERÍODO"* com 3 cartões. Três evidências de que é ARTEFATO e não reversão: a lista de
+ * NOVIDADES da v4 tem **4 itens e nenhum é sobre o topo**; as seções 1 e 2 estão marcadas
+ * **"INTOCADO na v4"**; e a cascata é decisão posterior, explícita e já em prod.
+ *
+ * ⭐ Seguir a letra da v4 aqui **desfaria a ordem mais recente do próprio dono**. Então a
+ * cascata FICA, e a divergência está DECLARADA — nunca engolida.
+ *
+ * ⚠️ O `motivo` é parâmetro OBRIGATÓRIO de propósito: sem ele este helper viraria a porta
+ * dos fundos pra qualquer frase inventada escapar da asserção de dois lados.
+ */
+function fraseSoNoCodigo(texto: string, motivo: string) {
+  expect(motivo.length, 'exceção sem motivo escrito não existe').toBeGreaterThan(20)
+  expect(cru(CODIGO), `o código parou de imprimir "${texto}" (${motivo})`).toContain(cru(texto))
 }
 
 /* ═══════════════════════════ 1. OS TOKENS, MAPEADOS 1:1 ═══════════════════════════ */
@@ -265,7 +290,18 @@ describe('⛔⛔ AS MEDIDAS SÃO px LITERAL — tradução mental produziu as ve
     expect([...render.matchAll(/<Duo>/g)], 'a tela precisa das DUAS duplas').toHaveLength(2)
     // ⭐ e cada dupla carrega o PAR que o arquivo nomeia, nessa ordem
     expect(render).toMatch(/<Duo>[\s\S]*?QuemCarregouACasa[\s\S]*?LigaCard[\s\S]*?<\/Duo>/)
-    expect(render).toMatch(/<Duo>[\s\S]*?MontadorDePizza[\s\S]*?FilaDeSabores[\s\S]*?<\/Duo>/)
+    /**
+     * ⭐⭐ REAPONTADO (v4, 13/10): a 2ª dupla é **montador | escolha um produto**.
+     *
+     * ⛔ Antes era `montador | fila de sabores` — e era exatamente isso que produzia o vazio
+     * da esquerda: a fila é uma faixa de CHIPS, que nunca enche uma coluna, então sobrava
+     * buraco comprido ao lado do montador. A v4 diz, com estas palavras: *"É esta dupla que
+     * mata o vazio da esquerda"*.
+     */
+    expect(render).toMatch(/<Duo>[\s\S]*?MontadorDePizza[\s\S]*?EscolhaUmProduto[\s\S]*?<\/Duo>/)
+    expect(render, 'a fila NÃO pode voltar pra dentro de uma dupla').not.toMatch(
+      /<Duo>[\s\S]*?FilaDeSabores[\s\S]*?<\/Duo>/,
+    )
 
     const duo = blocoDa('Duo')
     expect(duo).toContain('lg:grid-cols-2')
@@ -316,9 +352,15 @@ describe('⛔⛔⛔ OS 6 CARTÕES DA REFERÊNCIA — RENDERIZADOS e NA ORDEM', (
    * ⭐ O que morde é ler a **LISTA DE RENDER** (o JSX que roda quando o payload chega) e
    * exigir ali os 6, na ordem do arquivo do dono.
    */
-  const ANCORAS: { texto: string; componente: string }[] = [
+  /**
+   * ⚠️ `naTela` existe SÓ pra a seção 2, e é a declaração da divergência: a v4 escreve
+   * *"O placar de"* ali (ela é pré-cascata) e o componente imprime *"em cascata"*. A **lei de
+   * ORDEM continua inteira** — a seção 2 é a do resultado do período, e é a cascata que mora
+   * nela. O que não se exige é que o dono reescreva o arquivo dele pra o guard ficar verde.
+   */
+  const ANCORAS: { texto: string; componente: string; naTela?: string }[] = [
     { texto: 'A LINHA DE CHEGADA', componente: 'LinhaDeChegadaCard' },
-    { texto: 'em cascata', componente: 'CascataDoMes' },
+    { texto: 'O placar de', componente: 'CascataDoMes', naTela: 'em cascata' },
     { texto: 'Quem carregou a casa', componente: 'QuemCarregouACasa' },
     { texto: 'A liga do', componente: 'LigaCard' },
     { texto: 'Monte uma pizza e veja o custo', componente: 'MontadorDePizza' },
@@ -333,10 +375,11 @@ describe('⛔⛔⛔ OS 6 CARTÕES DA REFERÊNCIA — RENDERIZADOS e NA ORDEM', (
 
   it('⭐⭐ cada cartão DESENHA o título que a referência manda', () => {
     for (const a of ANCORAS) {
+      const esperado = a.naTela ?? a.texto
       expect(
         cru(blocoDa(a.componente)),
-        `o cartão ${a.componente} não imprime "${a.texto}"`,
-      ).toContain(cru(a.texto))
+        `o cartão ${a.componente} não imprime "${esperado}"`,
+      ).toContain(cru(esperado))
     }
   })
 
@@ -515,31 +558,31 @@ describe('⛔ AS FRASES DA REFERÊNCIA — as duas pontas conferidas', () => {
    * abaixo afirmando essa AUSÊNCIA (senão o placar antigo voltaria sem ninguém ver).
    */
   it('⭐⭐ a cascata — os 5 cartões com o operador que faz os números lerem como uma CONTA', () => {
-    frase('em cascata')
+    fraseSoNoCodigo('em cascata', 'a v4 foi construída sobre base PRÉ-CASCATA; a cascata é ordem escrita do dono de 10/10 e já está em prod')
     frase('custo fixo:')
-    frase('Vendeu')
-    frase('CMV (insumos)')
+    fraseSoNoCodigo('Vendeu', 'a v4 foi construída sobre base PRÉ-CASCATA; a cascata é ordem escrita do dono de 10/10 e já está em prod')
+    fraseSoNoCodigo('CMV (insumos)', 'a v4 foi construída sobre base PRÉ-CASCATA; a cascata é ordem escrita do dono de 10/10 e já está em prod')
     frase('Sobra')
     frase('A casa')
     frase('Lucro')
     frase('Faltam')
     frase('das vendas')
-    frase('o que saiu da prateleira')
+    fraseSoNoCodigo('o que saiu da prateleira', 'a v4 foi construída sobre base PRÉ-CASCATA; a cascata é ordem escrita do dono de 10/10 e já está em prod')
     frase('daqui pra frente é lucro')
   })
 
   it('⭐ a barra de composição — de cada R$ 100 vendidos, os três pedaços', () => {
-    frase('de cada R$ 100 vendidos')
+    fraseSoNoCodigo('de cada R$ 100 vendidos', 'a v4 foi construída sobre base PRÉ-CASCATA; a cascata é ordem escrita do dono de 10/10 e já está em prod')
     frase('CMV')
     frase('casa')
     frase('lucro')
   })
 
   it('⭐⭐ a honestidade numa linha — e a régua do setor', () => {
-    frase('medido em')
-    frase('vendas totais')
-    frase('CMV por compra (notas)')
-    frase('detalhes')
+    fraseSoNoCodigo('medido em', 'a v4 foi construída sobre base PRÉ-CASCATA; a cascata é ordem escrita do dono de 10/10 e já está em prod')
+    fraseSoNoCodigo('vendas totais', 'a v4 foi construída sobre base PRÉ-CASCATA; a cascata é ordem escrita do dono de 10/10 e já está em prod')
+    fraseSoNoCodigo('CMV por compra (notas)', 'a v4 foi construída sobre base PRÉ-CASCATA; a cascata é ordem escrita do dono de 10/10 e já está em prod')
+    fraseSoNoCodigo('detalhes', 'a v4 foi construída sobre base PRÉ-CASCATA; a cascata é ordem escrita do dono de 10/10 e já está em prod')
     /**
      * ⚠️ A ASSERÇÃO CASA A PARTE FIXA, NÃO OS NÚMEROS — e isso é MAIS forte, não mais frouxo:
      * a faixa é montada por template a partir de `CMV_SAUDAVEL`, então exigir
@@ -547,9 +590,15 @@ describe('⛔ AS FRASES DA REFERÊNCIA — as duas pontas conferidas', () => {
      * exatamente o que `cascata.test.ts` proíbe (*"a régua do setor vem da CONSTANTE"* — a
      * cicatriz do `TETO = 25` hardcoded). Frase montada por template nunca é contígua.
      */
-    frase('pizzaria/lanchonete saudável: CMV')
+    fraseSoNoCodigo('pizzaria/lanchonete saudável: CMV', 'a v4 foi construída sobre base PRÉ-CASCATA; a cascata é ordem escrita do dono de 10/10 e já está em prod')
     frase('das vendas')
-    expect(cru(REFERENCIA), 'a faixa do setor saiu da referência').toContain('cmv 28–35% das vendas')
+    /**
+     * ⚠️ REAPONTADO (13/10): a faixa do setor também saiu da v4 (base pré-cascata). A régua
+     * NÃO ficou sem guard — quem trava que o número vem da CONSTANTE (e não digitado na tela)
+     * é `cascata.test.ts`, que é onde ela sempre morou. Aqui ficaria a 2ª cópia da mesma
+     * afirmação, agora contra um arquivo que não a tem.
+     */
+    expect(cru(CODIGO), 'a faixa do setor saiu do código').toContain('saudavel: cmv')
   })
 
   /**
@@ -557,7 +606,7 @@ describe('⛔ AS FRASES DA REFERÊNCIA — as duas pontas conferidas', () => {
    * frases de cima poderiam conviver com o placar de 3 cartões na mesma tela — duas
    * apresentações do mesmo dinheiro, que é a doença que esta casa mais paga.
    */
-  it('⛔⛔ o PLACAR de 3 cartões MORREU — na referência E no código', () => {
+  it('⛔⛔ o PLACAR de 3 cartões MORREU — no CÓDIGO (a referência v4 é pré-cascata)', () => {
     for (const morta of [
       'O que as vendas deixaram',
       'A casa custou até aqui',
@@ -566,7 +615,11 @@ describe('⛔ AS FRASES DA REFERÊNCIA — as duas pontas conferidas', () => {
       'a casa se enchendo',
       'a bandeira é 100% = casa paga',
     ]) {
-      expect(cru(REFERENCIA), `a frase do placar antigo voltou pra referência: "${morta}"`).not.toContain(cru(morta))
+      // ⚠️ REAPONTADO (13/10): a ausência vale no CÓDIGO, não na referência. A v4 restaurou
+      //    essas frases porque nasceu de base pré-cascata (ver `fraseSoNoCodigo`) — exigir a
+      //    ausência nela seria o guard cobrando que o dono reescrevesse o arquivo dele.
+      //    ⭐ A METADE QUE IMPORTA continua mordendo: duas apresentações do mesmo dinheiro no
+      //    CÓDIGO é o que a casa paga caro, e é isso que fica travado.
       expect(cru(CODIGO), `a frase do placar antigo voltou pro código: "${morta}"`).not.toContain(cru(morta))
     }
     expect(TELA, 'o componente PlacarDaCasa voltou').not.toContain('function PlacarDaCasa')
@@ -764,5 +817,149 @@ describe('⭐ AUTO-TESTE — o detector morde de verdade', () => {
 
   it('⛔ o detector de hex acha hex de verdade', () => {
     expect('cor: #534AB7'.match(/#[0-9a-fA-F]{3,8}\b/g)).toHaveLength(1)
+  })
+})
+
+/* ═══════════════ AS 4 NOVIDADES DA v4 — conferidas CONTRA O ARQUIVO ═══════════════ */
+
+describe('⭐⭐⭐ v4 · AS 4 NOVIDADES QUE O DONO APROVOU', () => {
+  it('⭐ a referência DECLARA as 4 novidades — se a lista mudar, é aqui que fica vermelho', () => {
+    const n = cru(REFERENCIA)
+    expect(n, 'novidade 1: a lei das colunas').toContain('lei das colunas')
+    expect(n, 'novidade 2: o montador ganha cmv').toContain('o montador de pizza ganha cmv')
+    expect(n, 'novidade 3: o cartão de produto').toContain('escolha um produto e veja o preco ideal')
+    expect(n, 'novidade 4: a fila em largura cheia').toContain('largura cheia')
+  })
+
+  describe('⛔⛔ 1 · A LEI DAS COLUNAS', () => {
+    it('o TETO é o que a referência escreve, e ele tem UM dono no código', () => {
+      expect(cru(REFERENCIA), 'a referência manda TOP 10').toContain('top 10')
+      expect(TOPO_DA_COLUNA, 'o teto do código tem que ser o da referência').toBe(10)
+      // ⛔ e é o MESMO das duas colunas da dupla — dois tetos são a coluna fantasma esperando
+      expect(CARREGADORES_VISIVEIS).toBe(TOPO_DA_COLUNA)
+    })
+
+    it('⛔ "ver todos" expande AQUI MESMO e o 2º toque RECOLHE', () => {
+      expect(cru(REFERENCIA)).toContain('ver todos os')
+      expect(cru(REFERENCIA), 'o rótulo do estado aberto').toContain('mostrar so o top 10')
+      const liga = blocoDa('LigaCard')
+      expect(liga, 'o rótulo vem da lib, nunca digitado na tela').toContain('recorte.rotuloDoBotao')
+      expect(liga, 'o toque alterna — expandir sem recolher é meia-porta').toContain('setAbertaALiga((v) => !v)')
+      expect(liga, 'e o estado é dito pra quem usa leitor de tela').toContain('aria-expanded')
+      expect(liga, 'navegar em vez de expandir perderia o lugar do dono').not.toMatch(
+        /rotuloDoBotao[\s\S]{0,400}href=/,
+      )
+    })
+
+    it('⛔ a liga NASCE RECOLHIDA — nascer aberta É a lista de 50 rolando na coluna', () => {
+      expect(cru(REFERENCIA)).toContain('estado inicial: sempre recolhido')
+      expect(blocoDa('LigaCard')).toContain('useState(false)')
+    })
+
+    it('⛔ a liga desenha o RECORTE, nunca `l.linhas` inteiro', () => {
+      const liga = blocoDa('LigaCard')
+      expect(liga).toContain('recorte.visiveis.map')
+      expect(liga, 'mapear a lista inteira é a lei das colunas quebrada').not.toContain('l.linhas.map')
+    })
+
+    it('⭐ a tolerância da coluna fantasma é a da referência (~140px)', () => {
+      expect(cru(REFERENCIA)).toContain('coluna fantasma')
+      expect(cru(REFERENCIA)).toContain('140px')
+      expect(DIFERENCA_MAXIMA_EM_LINHAS, '~140px ÷ ~38px por linha').toBe(3)
+    })
+  })
+
+  describe('⛔⛔ 2 · O MONTADOR GANHOU CMV', () => {
+    const mont = () => blocoDa('MontadorDePizza')
+
+    it('o FAROL nasce COLADO na linha do preço', () => {
+      expect(cru(REFERENCIA)).toContain('o farol nasce colado na linha do preco')
+      expect(mont()).toContain('<PilulaDoFarol farol={blocoDoVeredito.farol}')
+    })
+
+    it('⛔ fatia pendente → farol NEUTRO "fecha a pizza", nunca número parcial', () => {
+      expect(cru(REFERENCIA)).toContain('fecha a pizza')
+      expect(mont()).toContain("motivoNeutro: pizza && pizza.custoTotal == null ? 'fecha a pizza' : undefined")
+    })
+
+    it('⭐ o preço ideal NASCE EMBAIXO, e é o MESMO componente do cartão de produto', () => {
+      const render = mont()
+      expect(render).toContain('<BlocoDoPrecoIdeal')
+      // ⛔⛔ a porta única: os DOIS cartões desenham o MESMO bloco
+      expect(blocoDa('EscolhaUmProduto')).toContain('<BlocoDoPrecoIdeal')
+    })
+
+    it('⛔ O QUE EXISTIA NÃO MUDOU — tamanhos, fatias clicáveis, "vendendo a" e as 3 sobras', () => {
+      const m = mont()
+      expect(m, 'os chips de tamanho').toContain('cat.tamanhos.map')
+      expect(m, 'a fatia clicável').toContain('setFatiaAberta')
+      expect(m, 'o campo de preço').toContain('<CampoDePreco')
+      expect(m, 'as sobras por canal').toContain('pizza.canais.map')
+      expect(m, 'o breakdown do custo').toContain('custo da pizza')
+    })
+  })
+
+  describe('⛔⛔ 3 · O CARTÃO "ESCOLHA UM PRODUTO"', () => {
+    const prod = () => blocoDa('EscolhaUmProduto')
+
+    it('ele ESTÁ na lista de render — componente definido e não desenhado é o mesmo que ausente', () => {
+      expect(listaDeRender()).toContain('<EscolhaUmProduto')
+    })
+
+    it('⭐ o título que a referência manda', () => {
+      frase('Escolha um produto e veja o preço ideal')
+    })
+
+    it('⛔ a BUSCA é a casaBusca da casa — includes cru não acha "porçao"', () => {
+      const p = prod()
+      expect(p).toContain('filtrarProdutosDoVeredito')
+      expect(p, 'régua própria aqui é o bug de 08/09 de volta').not.toMatch(
+        /\.toLowerCase\(\)[\s\S]{0,80}\.includes\(/,
+      )
+    })
+
+    it('⛔ produto SEM FICHA aparece TRACEJADO ÂMBAR e NÃO mostra número', () => {
+      expect(cru(REFERENCIA)).toContain('sem ficha')
+      const p = prod()
+      expect(p, 'o chip tracejado').toContain("border-dashed")
+      expect(p, 'o custo diz "a definir", nunca 0').toContain("<b style={{ color: 'var(--fam-ambar-ink)' }}>a definir</b>")
+      expect(p, 'e o convite LEVA — cartão que cobra sem dar caminho é cobrança').toContain('cria a ficha que eu te digo o preço na hora')
+    })
+
+    it('⭐⭐ "vendendo hoje a" é a MÉDIA REAL DO PDV, editável SÓ pra simular', () => {
+      expect(cru(REFERENCIA)).toContain('media real do pdv')
+      const p = prod()
+      expect(p).toContain('vendendo hoje a')
+      expect(p, 'a tela DIZ que nada grava').toContain('nada grava')
+      expect(p, 'o preço vem do payload, não de uma 2ª conta').toContain('p.preco')
+    })
+
+    it('⛔ sem venda no período → campo VAZIO, nunca R$ 0,00', () => {
+      const p = prod()
+      expect(p).toContain("p.preco == null ? '' :")
+      expect(p).toContain('sem venda no período')
+    })
+
+    it('⛔⛔ ZERO ESCRITA — o único POST da tela é a config, e ele mora no montador', () => {
+      const p = prod()
+      expect(p, 'o cartão de produto não grava nada').not.toMatch(/method:\s*'POST'/)
+    })
+
+    it('⭐ o custo abre a FICHA — pela porta de custo do estoque, nada recalculado', () => {
+      expect(prod()).toContain('href={p.href}')
+      // ⛔ e o custo vem do payload (`custoUnitario` da ficha), não de uma soma aqui
+      expect(prod(), 'somar componente aqui seria a 2ª explosão da receita').not.toMatch(/\.reduce\(/)
+    })
+  })
+
+  describe('⭐ 4 · A FILA EM LARGURA CHEIA', () => {
+    it('ela fecha a tela, FORA de qualquer dupla', () => {
+      expect(cru(REFERENCIA)).toContain('largura cheia')
+      const render = listaDeRender()
+      expect(render).toContain('<FilaDeSabores')
+      expect(render, 'a fila dentro de uma dupla é o vazio da esquerda de volta').not.toMatch(
+        /<Duo>[\s\S]*?FilaDeSabores[\s\S]*?<\/Duo>/,
+      )
+    })
   })
 })

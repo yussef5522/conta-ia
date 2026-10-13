@@ -20,6 +20,8 @@ import { custoMedioPorItem } from '@/lib/stock/saldo'
 import { sobrasDoPeriodo, type Sobras } from './sobra'
 import { montarCasa, type Casa } from './casa'
 import { montarLiga, type Liga, type AbaDaLiga } from './liga'
+import { montarProdutosDoVeredito, type ProdutoDoVeredito } from './produto-do-veredito'
+import { secoesPorNome } from '@/lib/stock/cardapio/secoes-db'
 import { linhaDeChegada, type LinhaDeChegada } from './dia'
 import { janelaDaMargem, custoFixoDaJanela, type JanelaDaMargem, type PeriodoDaMargem } from './janela'
 import { sobraPorDia, custoComplementoPorDia, acumular } from './por-dia'
@@ -41,6 +43,28 @@ export interface MargemDaTela {
   nomesPorChave: Record<string, string[]>
   /** ⚠️ o aviso de qualidade de dado: dias em que a razão sabor/pizza é impossível */
   diasComRelatorioSuspeito: { dia: string; pizzas: number; sabores: number; razao: number }[]
+  /**
+   * ⭐⭐ FRENTE C (v4) — os produtos do cartão "escolha um produto".
+   *
+   * ⛔ Mesma fonte da liga: o custo é a ficha (`custoUnitario`, saído do `explodir`) e o
+   * preço é a MÉDIA REAL DO PDV (`precoUsado`, de `vendasValor ÷ vendasQtd`). Zero conta
+   * nova — se o preço viesse de outro lugar, este cartão e a liga discordariam sobre o
+   * mesmo produto na mesma página.
+   */
+  produtos: ProdutoDoVeredito[]
+  /**
+   * ⭐ OS CANAIS DE VENDA — a config do dono, com rastro (`CanalDeVenda.taxaPct`).
+   *
+   * ⛔⛔ **Zero `0.20` novo nesta tela**: a taxa do iFood vem DAQUI, a mesma porta que o
+   * montador já usa pelo catálogo. ⚠️ `taxaPct: null` é *"a declarar"*, nunca 0% — 0%
+   * afirmaria que o canal é de graça e a sobra sairia maior que a real **justo no canal em
+   * que ela é menor**.
+   *
+   * ⚠️ Esta consulta JÁ EXISTIA aqui e o resultado era **jogado fora** (`canaisDb` sem
+   * leitor). Agora ela tem consumidor — *query sem leitor é dado que alguém religa por
+   * descuido*.
+   */
+  canais: { id: string; nome: string; taxaPct: number | null }[]
   /**
    * ⭐ O CMV POR COMPRA (as notas) do MESMO período — a comparação do ⓘ da cascata.
    *
@@ -92,7 +116,8 @@ export async function lerMargem(
     meses.add(new Date(t).toISOString().slice(0, 7))
   }
 
-  const [hub, ctx, custoDe, custosFixos, canaisDb, compLinhas, mapComp, cmvPorCompra] = await Promise.all([
+  const [hub, ctx, custoDe, custosFixos, canaisDb, compLinhas, mapComp, cmvPorCompra, secoes] =
+    await Promise.all([
     hubCardapio(companyId, { de: janela.deUtc, ate: janela.ateUtc }, db),
     montarCtx(companyId, db),
     custoMedioPorItem(db, companyId),
@@ -117,6 +142,9 @@ export async function lerMargem(
     }),
     // ⭐ o CMV das NOTAS no mesmo recorte — pelo dono único, nunca por um `where` copiado
     somarCmvPorCompra(companyId, { de: janela.deUtc, ate: janela.ateUtc }, db),
+    // ⭐ as seções do CARDÁPIO — o vocabulário de categoria que a casa já tem (08/09).
+    //    ⛔ Criar um mapa próprio aqui seria o 2º vocabulário que a ordem do dono proíbe.
+    secoesPorNome(companyId, db),
   ])
 
   // ─────────── as sobras (a porta única) ───────────
@@ -238,6 +266,8 @@ export async function lerMargem(
       .sort((a, b) => b.ocorrencias - a.ocorrencias),
     nomesPorChave: Object.fromEntries(nomesPorChave),
     diasComRelatorioSuspeito,
+    produtos: montarProdutosDoVeredito(hub.linhas, secoes, companyId),
+    canais: canaisDb,
     cmvPorCompra,
   }
 }

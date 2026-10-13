@@ -8,6 +8,7 @@
  */
 import { COBERTURA_MINIMA, type Casa } from './casa'
 import { pctInteiroBR } from '@/lib/format/percentual'
+import { TOPO_DA_COLUNA } from './recorte-de-coluna'
 
 /** ⚠️ pt-BR com VÍRGULA e sem casa — a régua de percentual do PROJETO, nunca um `toFixed` local */
 const pct = (n: number) => pctInteiroBR(n)
@@ -84,8 +85,15 @@ export function linhaDaCobertura(casa: Casa): PedacoDaCobertura[] {
  * ⚠️ Ela é a MESMA fonte do desenho antigo (`casa.tijolos`), então o guard do dono
  * (`Σ(tijolos) == sobra BRUTA == Σ da aba`) continua valendo sem uma linha nova de conta.
  * O que muda é só quantos aparecem antes do "+N produtos".
+ *
+ * ⭐⭐ E O TETO VEM DO DONO ÚNICO DA **LEI DAS COLUNAS** (v4, 13/10) — era `6` cravado aqui.
+ *
+ * ⛔ Enquanto esta coluna tinha teto próprio, ela e a liga podiam divergir — e divergiam: 6
+ * contra 10 são ~152px, fora dos ~140 que a referência escreveu como tolerância. **Dois
+ * tetos separados são a coluna fantasma esperando alguém ajustar um só.** O nome fica (os
+ * chamadores não mudam); quem manda no número é `recorte-de-coluna.ts`.
  */
-export const CARREGADORES_VISIVEIS = 6
+export const CARREGADORES_VISIVEIS = TOPO_DA_COLUNA
 
 export interface Carregador {
   chave: string

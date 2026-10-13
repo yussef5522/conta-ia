@@ -43,6 +43,18 @@ import { pctBR, pctInteiroBR } from '@/lib/format/percentual'
 import { valorDoCartao } from '@/lib/custos-fixos/cartao-de-dono'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { EMOJI_DO_SELO, type AbaDaLiga, type SeloDoVeredito } from '@/lib/margem/liga'
+import { recorteDaColuna } from '@/lib/margem/recorte-de-coluna'
+import {
+  montarBlocoDoVeredito,
+  reguaDaSecao,
+  type BlocoDoVeredito,
+  type Farol,
+  type TomDoFarol,
+} from '@/lib/margem/veredito-de-preco'
+import {
+  filtrarProdutosDoVeredito,
+  type ProdutoDoVeredito,
+} from '@/lib/margem/produto-do-veredito'
 import {
   linhaDaCobertura, montarCarregadores,
   type Carregador,
@@ -297,10 +309,17 @@ export default function MargemPage({ params }: { params: Promise<{ id: string }>
             />
             <LigaCard d={dados} aba={aba} setAba={setAba} empresaId={empresaId} />
           </Duo>
+          {/* ⭐⭐ A DUPLA QUE MATA O VAZIO DA ESQUERDA (as palavras da v4): o montador e o
+              irmão dele. ⛔ Antes a fila de sabores ocupava este lado — e ela é uma lista de
+              chips que nunca enche a coluna, então sobrava buraco ao lado do montador. */}
           <Duo>
             <MontadorDePizza empresaId={empresaId} />
-            <FilaDeSabores d={dados} empresaId={empresaId} />
+            <EscolhaUmProduto d={dados} empresaId={empresaId} />
           </Duo>
+
+          {/* ⭐ a fila desce pra LARGURA CHEIA, fechando a tela — é o lugar natural de uma
+              faixa de chips, e é o que a v4 manda. */}
+          <FilaDeSabores d={dados} empresaId={empresaId} />
         </>
       )}
     </div>
@@ -719,7 +738,14 @@ const TOM_DO_SELO: Record<SeloDoVeredito, { bg: string; ink: string }> = {
 function LigaCard({
   d, aba, setAba, empresaId,
 }: { d: MargemDaTela; aba: AbaDaLiga; setAba: (a: AbaDaLiga) => void; empresaId: string }) {
+  // ⭐⭐ A LEI DAS COLUNAS (v4): a liga ganhou TETO. O estado nasce RECOLHIDO — nascer
+  // aberto É a lista de 50 rolando sozinha na coluna, que é o que a lei existe pra matar.
+  // ⚠️ Hook no TOPO (REGRA 9): hook perto de onde é usado já derrubou duas telas desta casa.
+  const [abertaALiga, setAbertaALiga] = useState(false)
   const l = d.liga
+  // ⛔ o recorte vem da LIB, não de um `.slice()` aqui: *regra que mora na tela é regra que
+  //    ninguém prova*, e o teto é o MESMO de "quem carregou" (um dono só, ver a lib).
+  const recorte = recorteDaColuna(l.linhas, abertaALiga)
   return (
     <Cartao>
       <CabecaDoCartao titulo="🏆 A liga do período" dica="selo = veredito · tudo clicável → ficha" />
@@ -743,7 +769,7 @@ function LigaCard({
           nenhum produto com custo conhecido neste período
         </p>
       ) : (
-        l.linhas.map((x) => (
+        recorte.visiveis.map((x) => (
           <a
             key={x.chave}
             href={`/empresas/${empresaId}/estoque/cardapio/${encodeURIComponent(x.chave)}`}
@@ -776,7 +802,336 @@ function LigaCard({
           </a>
         ))
       )}
+
+      {/* ⭐ expande AQUI MESMO (nunca navega), e o 2º toque recolhe — a referência manda */}
+      {recorte.rotuloDoBotao && (
+        <button
+          type="button"
+          onClick={() => setAbertaALiga((v) => !v)}
+          aria-expanded={abertaALiga}
+          className="block w-full border-t px-[18px] py-[10px] text-center text-[12.5px] font-semibold hover:bg-[var(--fam-indigo-bg)]"
+          style={{ borderColor: 'var(--prod-line)', color: 'var(--fam-indigo-mid)' }}
+        >
+          {recorte.rotuloDoBotao}
+        </button>
+      )}
     </Cartao>
+  )
+}
+
+/* ═══════════════ 7 · ESCOLHA UM PRODUTO (FRENTE C da v4) ═══════════════ */
+
+/**
+ * ⭐⭐⭐ O IRMÃO DO MONTADOR — xis, hambúrguer, prato, qualquer produto com ficha.
+ *
+ * ⛔⛔ **ANATOMIA IDÊNTICA, COMPONENTES IDÊNTICOS.** O farol e o bloco de preço ideal são os
+ * MESMOS do montador (`PilulaDoFarol`, `BlocoDoPrecoIdeal`), alimentados pela MESMA porta
+ * (`montarBlocoDoVeredito`). Dois desenhos divergiriam no primeiro ajuste de tom — e estes
+ * dois cartões ficam **na mesma dobra, lado a lado**.
+ *
+ * ⭐ É esta dupla que mata o vazio da esquerda (as palavras da referência).
+ *
+ * ⛔ **ZERO ESCRITA.** O preço é editável **só pra simular** — e a tela DIZ isso. Nada grava:
+ * o único POST desta tela é o da config de canais/base, no montador.
+ */
+function EscolhaUmProduto({ d, empresaId }: { d: MargemDaTela; empresaId: string }) {
+  // ⚠️ hooks no TOPO (REGRA 9)
+  const [busca, setBusca] = useState('')
+  const [sel, setSel] = useState<string | null>(null)
+  const [precoTxt, setPrecoTxt] = useState('')
+  const [alvo, setAlvo] = useState<number | null>(null)
+
+  const produtos = d.produtos
+  const filtrados = filtrarProdutosDoVeredito(produtos, busca)
+  // ⭐ o default é o CAMPEÃO de volume (a lista já vem ordenada por isso) — o produto que
+  //    mais sai é o que mais move o bolso, e é nele que o dono vai tocar primeiro.
+  const p = produtos.find((x) => x.chave === sel) ?? produtos[0] ?? null
+
+  // ⛔ o preço EDITADO é só da simulação; o default é a MÉDIA REAL DO PDV no período.
+  //    ⚠️ `precoTxt` vazio = usa o real; nunca sobrescreve o que o dono digitou.
+  const precoSimulado = precoTxt.trim() === '' ? null : Number(precoTxt.replace(/\./g, '').replace(',', '.'))
+  const preco = precoSimulado != null && Number.isFinite(precoSimulado) ? precoSimulado : (p?.preco ?? null)
+
+  const bloco = montarBlocoDoVeredito({
+    custo: p?.custo ?? null,
+    preco,
+    tetoPct: p?.regua.tetoPct ?? 40,
+    alvosPct: p?.regua.alvosPct ?? [35, 40, 45],
+    alvoPct: alvo ?? p?.regua.tetoPct ?? 40,
+    canais: (d.canais ?? []).map((c) => ({ canal: c.nome, taxaPct: c.taxaPct })),
+    tipo: 'produto',
+  })
+
+  return (
+    <Cartao id="produto">
+      <CabecaDoCartao
+        titulo="🍔 Escolha um produto e veja o preço ideal"
+        dica="custo = a ficha · preço = média real do PDV no período"
+      />
+
+      {produtos.length === 0 ? (
+        <p className="px-[18px] pb-[16px] text-[13px]" style={{ color: 'var(--prod-muted)' }}>
+          nenhum produto vendido no período — o cardápio enche sozinho quando o relatório do PDV entrar.
+        </p>
+      ) : (
+        <>
+          {/* ⭐ a busca pela casaBusca da casa: palavra em qualquer ordem, sem caixa e sem
+              acento. ⛔ `includes` cru não acha "porçao" quando o dono digita "porcao" — é o
+              bug medido de 08/09. E o vazio DIZ o recorte. */}
+          <div className="px-[18px] pb-[8px] pt-[4px]">
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="buscar produto (xis, coxao, porcao…)"
+              aria-label="buscar produto"
+              className="w-full max-w-[320px] rounded-[10px] border px-[10px] py-[8px] text-[12.5px]"
+              style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }}
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-[6px] px-[18px] pb-[10px]">
+            {filtrados.length === 0 ? (
+              <p className="text-[12px]" style={{ color: 'var(--prod-muted)' }}>
+                nenhum dos {produtos.length} produtos casa com «{busca}»
+              </p>
+            ) : (
+              recorteDaColuna(filtrados, false, 12).visiveis.map((x) =>
+                /* ⭐ produto SEM ficha aparece TRACEJADO ÂMBAR — esconder faria o cartão
+                   mentir sobre o cardápio e tiraria da frente a fila que sobe a cobertura */
+                <button
+                  key={x.chave}
+                  type="button"
+                  onClick={() => { setSel(x.chave); setPrecoTxt(''); setAlvo(null) }}
+                  className={`rounded-full border px-[11px] py-[4px] text-[12.5px] ${x.temFicha ? '' : 'border-dashed'}`}
+                  style={
+                    x.chave === p?.chave
+                      ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)', borderColor: 'transparent', fontWeight: 600 }
+                      : x.temFicha
+                        ? { borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }
+                        : { borderColor: 'var(--fam-ambar-mid)', color: 'var(--fam-ambar-ink)' }
+                  }
+                >
+                  {x.nome}{x.temFicha ? '' : ' · sem ficha ⚠'}
+                </button>
+              )
+            )}
+          </div>
+
+          {p && (
+            <div className="px-[18px] pb-[4px] text-[14px]">
+              {/* ⭐ a seção, com a marca de PROPOSTA quando o dono ainda não bateu o martelo */}
+              <div className="flex flex-wrap items-center justify-between gap-[8px] py-[3px]">
+                <span style={{ color: 'var(--prod-secondary)' }}>
+                  categoria <b style={{ color: 'var(--prod-primary)' }}>{p.secao}</b>
+                  {p.secaoSugerida && (
+                    <span className="text-[11.5px]" style={{ color: 'var(--fam-ambar-ink)' }}> · sugerida, confirme no cardápio</span>
+                  )}
+                  {p.regua.origem === 'DERIVADO' && (
+                    <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}> · teto {p.regua.tetoPct}% derivado</span>
+                  )}
+                </span>
+                <span className="text-[11.5px] tabular-nums" style={{ color: 'var(--prod-muted)' }}>
+                  {p.unidades} un no período
+                </span>
+              </div>
+
+              {/* ⛔ custo SEM FICHA não mostra número: diz "a definir" e o porquê */}
+              <div className="flex flex-wrap items-center justify-between gap-[10px] py-[3px]">
+                <span style={{ color: 'var(--prod-secondary)' }}>
+                  custo pela ficha{' '}
+                  {p.href && <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>(toque abre a ficha)</span>}
+                </span>
+                {p.custo == null ? (
+                  <span className="text-right">
+                    <b style={{ color: 'var(--fam-ambar-ink)' }}>a definir</b>
+                    <span className="block text-[11px]" style={{ color: 'var(--prod-secondary)' }}>
+                      {p.porque}
+                      {p.custoParcial > 0 ? ` · parcial ${formatBRL(p.custoParcial)}` : ''}
+                    </span>
+                  </span>
+                ) : p.href ? (
+                  <a href={p.href} className="font-bold tabular-nums underline-offset-2 hover:underline" style={{ color: 'var(--prod-primary)' }}>
+                    {formatBRL(p.custo)}
+                  </a>
+                ) : (
+                  <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{formatBRL(p.custo)}</b>
+                )}
+              </div>
+
+              {/* ⭐⭐ "VENDENDO HOJE A" = a MÉDIA REAL DO PDV no período. Editável SÓ pra
+                  simular — e a tela DIZ que nada grava. ⛔ Sem venda no período o campo nasce
+                  VAZIO: zero afirmaria que o produto saiu de graça. */}
+              <div className="flex flex-wrap items-center justify-between gap-[10px] py-[3px]">
+                <span className="flex flex-wrap items-center gap-[6px]" style={{ color: 'var(--prod-secondary)' }}>
+                  vendendo hoje a{' '}
+                  <CampoDePreco
+                    valor={precoTxt !== '' ? precoTxt : p.preco == null ? '' : p.preco.toFixed(2).replace('.', ',')}
+                    aoMudar={setPrecoTxt}
+                  />
+                  <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                    {p.preco == null
+                      ? 'sem venda no período — digite pra simular'
+                      : p.precoOrigem === 'praticado'
+                        ? 'média real do PDV · editável só pra simular, nada grava'
+                        : 'preço de cardápio · editável só pra simular, nada grava'}
+                  </span>
+                </span>
+                <PilulaDoFarol farol={bloco.farol} />
+              </div>
+
+              {/* ⭐ as sobras no preço de HOJE (ou no simulado) — as MESMAS 3 linhas do
+                  montador, pela mesma régua: a taxa incide no PREÇO, nunca na sobra. */}
+              {p.custo != null &&
+                bloco.canais.map((c) => {
+                  const custo = p.custo as number
+                  const sobra =
+                    preco == null || c.taxaPct == null ? null : preco * (1 - c.taxaPct) - custo
+                  return (
+                    <div key={`sobra-${c.canal}`} className="flex justify-between gap-[10px] py-[3px]">
+                      <span style={{ color: 'var(--prod-secondary)' }}>
+                        no {c.canal}
+                        {c.taxaPct != null && c.taxaPct > 0 ? ` (taxa ${pct(c.taxaPct)})` : ''}, sobra
+                      </span>
+                      <span
+                        className="font-semibold tabular-nums"
+                        style={{
+                          color:
+                            sobra == null
+                              ? 'var(--prod-muted)'
+                              : sobra < 0
+                                ? 'var(--fam-coral-ink)'
+                                : 'var(--fam-verde-ink)',
+                        }}
+                      >
+                        {sobra == null ? 'a apurar' : `~${formatBRL(sobra)}`}
+                      </span>
+                    </div>
+                  )
+                })}
+
+              {/* ⭐ sem ficha, o CONVITE — e ele LEVA (cartão que cobra sem dar caminho é cobrança) */}
+              {p.custo == null && (
+                <a
+                  href={`/empresas/${empresaId}/estoque/cardapio/${encodeURIComponent(p.chave)}`}
+                  className="mt-[6px] inline-block rounded-[8px] px-[10px] py-[5px] text-[12.5px] font-semibold"
+                  style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}
+                >
+                  cria a ficha que eu te digo o preço na hora →
+                </a>
+              )}
+            </div>
+          )}
+
+          {p && <BlocoDoPrecoIdeal bloco={bloco} aoTrocarAlvo={setAlvo} tipo="produto" />}
+        </>
+      )}
+    </Cartao>
+  )
+}
+
+/* ═══════════════ 7 · CMV / PREÇO IDEAL — COMPARTILHADO PELOS DOIS CARTÕES ═══════════════ */
+
+/**
+ * ⭐⭐⭐ O VEREDITO DE PREÇO — **os mesmos componentes no montador e no cartão de produto.**
+ *
+ * ⛔⛔ Ordem do dono: *"farol, charme, gross-up e frases moram numa LIB PURA só, usada pelos
+ * DOIS cartões"*. A lib decide; estes dois componentes PINTAM. Um segundo desenho faria os
+ * dois cartões — que ficam **lado a lado na mesma dobra** — divergirem no primeiro ajuste de
+ * tom, e o dono veria dois vereditos do mesmo tipo de conta a dez centímetros um do outro.
+ *
+ * ⚠️ E a tela **não deriva nada**: o `tom`, o `rotulo`, os preços e a frase chegam prontos.
+ * Há guard estrutural (`veredito-tem-uma-porta-so`) proibindo CMV, charme e gross-up aqui.
+ */
+const TOM_DO_FAROL: Record<TomDoFarol, { bg: string; ink: string }> = {
+  verde: { bg: 'var(--fam-verde-bg)', ink: 'var(--fam-verde-ink)' },
+  ambar: { bg: 'var(--fam-ambar-bg)', ink: 'var(--fam-ambar-ink)' },
+  coral: { bg: 'var(--fam-coral-bg)', ink: 'var(--fam-coral-ink)' },
+  neutro: { bg: 'var(--prod-surface-1)', ink: 'var(--prod-muted)' },
+}
+
+function PilulaDoFarol({ farol }: { farol: Farol }) {
+  const t = TOM_DO_FAROL[farol.tom]
+  return (
+    <span
+      className="inline-block whitespace-nowrap rounded-full px-[11px] py-[3px] text-[12px] font-bold"
+      style={{ background: t.bg, color: t.ink }}
+    >
+      {farol.rotulo}
+    </span>
+  )
+}
+
+/**
+ * ⭐⭐ O PREÇO IDEAL POR CANAL — os 3 chips de alvo e os 3 cartõezinhos.
+ *
+ * ⛔ O iFood tem **preço PRÓPRIO** (gross-up), nunca o do balcão: copiar entregaria a taxa de
+ * graça. A sobra dele sai **igual ou maior** que a do balcão — travado em teste de propriedade.
+ *
+ * ⚠️ Sem custo fechado, os três dizem **"a apurar"** com o porquê. Nunca R$ 0,00: número
+ * inventado numa tela de PREÇO é o pior palpite possível, porque ele é **obedecido** — o dono
+ * remarca o cardápio em cima dele.
+ */
+function BlocoDoPrecoIdeal({
+  bloco, aoTrocarAlvo, tipo,
+}: { bloco: BlocoDoVeredito; aoTrocarAlvo: (a: number) => void; tipo: 'pizza' | 'produto' }) {
+  return (
+    <>
+      <div
+        className="flex flex-wrap items-center gap-[8px] border-t border-dashed px-[18px] pb-[8px] pt-[10px]"
+        style={{ borderColor: 'var(--prod-line-strong)' }}
+      >
+        <span className="text-[13.5px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
+          💰 preço ideal
+        </span>
+        <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+          alvo de CMV:
+        </span>
+        {bloco.alvosPct.map((a) => (
+          <Chip key={a} on={a === bloco.alvoPct} onClick={() => aoTrocarAlvo(a)}>
+            {a}%
+          </Chip>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-[8px] px-[18px] min-[560px]:grid-cols-3">
+        {bloco.canais.map((c) => (
+          <div key={c.canal} className="rounded-[12px] px-[12px] py-[9px]" style={{ background: 'var(--prod-surface-1)' }}>
+            <p className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+              {c.canal}
+              {c.taxaPct != null && c.taxaPct > 0 ? ` · taxa ${pct(c.taxaPct)}` : ''}
+            </p>
+            {c.preco == null ? (
+              <>
+                <p className="text-[17px] font-bold" style={{ color: 'var(--fam-ambar-ink)' }}>a apurar</p>
+                <p className="text-[11px]" style={{ color: 'var(--prod-secondary)' }}>{c.porque}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-[17px] font-bold tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+                  {formatBRL(c.preco)}
+                </p>
+                <p className="text-[11px] tabular-nums" style={{ color: 'var(--prod-secondary)' }}>
+                  sobra {formatBRL(c.sobra ?? 0)}
+                </p>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <p className="px-[18px] pb-[2px] pt-[6px] text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+        termina em ,90 e nunca abaixo do ideal · o iFood tem preço próprio pra sobrar o mesmo
+      </p>
+
+      {/* ⚠️ o rótulo "Especialista:" é da TELA — a frase da lib é TEXTO PURO (markdown não
+          atravessa pra UI; a cicatriz de 11/10) */}
+      <p
+        className="mx-[18px] mb-[16px] mt-[10px] rounded-[12px] border px-[12px] py-[9px] text-[12.5px] leading-relaxed"
+        style={{ borderColor: 'var(--fam-ambar-mid)', background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}
+      >
+        <b className="font-bold">Especialista{tipo === 'pizza' ? '' : ''}:</b> {bloco.frase}
+      </p>
+    </>
   )
 }
 
@@ -812,6 +1167,9 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
   const saboresFiltrados = (cat?.sabores ?? []).filter((s) => casaBusca(s.nome, buscaSabor))
   const [precoTxt, setPrecoTxt] = useState('')
   const [salvando, setSalvando] = useState(false)
+  // ⭐ FRENTE B (v4): o alvo de CMV da pizza. ⛔ O default é o TETO da categoria (o chip do
+  //    meio), nunca um número digitado aqui — o mapa é o dono (ver `reguaDaSecao`).
+  const [alvoPizza, setAlvoPizza] = useState<number | null>(null)
 
   const carregar = useCallback(async () => {
     setEstado('CARREGANDO')
@@ -877,6 +1235,28 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
   // ⭐ o sufixo do PISO: com fatia pendente o total é o mínimo, e a tela DIZ quantas faltam
   const pendentes = pizza ? pizza.incompleto.filter((i) => i.motivo !== 'SEM_BASE').length : 0
   const sufixo = pizza && pizza.custoTotal == null ? ` + ${pendentes} fatia(s)` : ''
+
+  /**
+   * ⭐⭐ O VEREDITO DA PIZZA — pela PORTA ÚNICA, a MESMA que o cartão de produto chama.
+   *
+   * ⛔ `custoTotal == null` (fatia em aberto ou sabor sem ficha) vira farol NEUTRO *"fecha a
+   * pizza"* e canais *"a apurar"* — **nunca um número parcial**: mostrar o CMV do custo
+   * parcial afirmaria uma margem melhor do que a real, no número que o dono usa pra remarcar.
+   *
+   * ⚠️ A taxa de cada canal vem do `cat.canais` (a config do dono, com rastro) — **zero 0.20
+   * novo** nesta tela, que é o que o guard estrutural trava.
+   */
+  const reguaPizza = reguaDaSecao('PIZZAS')
+  const blocoDoVeredito = montarBlocoDoVeredito({
+    custo: pizza?.custoTotal ?? null,
+    preco: pizza?.precoVenda ?? null,
+    tetoPct: reguaPizza.tetoPct,
+    alvosPct: reguaPizza.alvosPct,
+    alvoPct: alvoPizza ?? reguaPizza.tetoPct,
+    canais: (cat?.canais ?? []).map((c) => ({ canal: c.nome, taxaPct: c.taxaPct })),
+    tipo: 'pizza',
+    motivoNeutro: pizza && pizza.custoTotal == null ? 'fecha a pizza' : undefined,
+  })
 
   return (
     <Cartao>
@@ -1064,8 +1444,25 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
                     {pizza.canais.find((cn) => cn.porque)!.porque}
                   </p>
                 )}
+
+                {/* ⭐⭐ O FAROL, COLADO NA LINHA DO PREÇO (v4).
+                    ⚠️ Linha PRÓPRIA logo abaixo em vez de dentro da 1ª: a ordem do dono é que
+                    *"o que existe NÃO MUDA (… «vendendo a», 3 sobras)"*, e enfiar a pílula na
+                    1ª linha deixaria dois valores disputando o lado direito dela. */}
+                <div className="flex items-center justify-between gap-[10px] pt-[6px]">
+                  <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                    CMV · teto de pizza {reguaPizza.tetoPct}%
+                  </span>
+                  <PilulaDoFarol farol={blocoDoVeredito.farol} />
+                </div>
               </div>
             </div>
+          )}
+
+          {/* ⭐⭐ NASCE EMBAIXO, como a referência manda — e é o MESMO componente do cartão
+              de produto (porta única do veredito). */}
+          {pizza && (
+            <BlocoDoPrecoIdeal bloco={blocoDoVeredito} aoTrocarAlvo={setAlvoPizza} tipo="pizza" />
           )}
 
           {/* `.escolha-sabor` — os sabores como chips, COM FICHA PRIMEIRO; sem ficha = âmbar */}
