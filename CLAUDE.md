@@ -3066,6 +3066,96 @@ A TROCA DE BLOCO («ABRIR ERVILHA», autorizada e devolvida):
 
 **955 arquivos · 12.729 verdes · TS 0 · migration NENHUMA · deploy 4/4 (`-VpuCBbIAmKt0cBec9ev6`) · Δ chunks +4 KB.**
 
+## 👻🧹 ORDEM CORRIGIDA VIRAVA CARTÃO DUPLO — E A FAMÍLIA INTEIRA MORREU (12/10/2026)
+
+**O caso real, no Hoje ao vivo:** a ordem da MAIONESE aparecia **duas vezes** — *"aguardando conferência · fez 34,236"* às 16:21 **e** *"✓✓ corrigido e conferido (era 34,236) · fez 34,296"* às 18:25. A faixa do topo somava as duas: **68,53 KG** num dia de **34,30**. Idem a calabresa (107 + 127), o *"Concluídas hoje 20"* (real 18), o *"1.723 UN"*, o *"R$ 5.516,73"* e o *"Rendimento do dia (de 20 lotes)"*.
+
+**A LEI (ordem do dono):** ***UMA ordem = UM cartão, sempre no estado ATUAL. A correção do gerente SUBSTITUI, nunca soma outro.*** A declaração antiga mora no rastro da página da ordem (onde já aparece como *"era X"*) — **jamais como segundo cartão em lista ou total**.
+
+### ⭐⭐ PASSO 0 — O ESTOQUE ESTAVA CERTO, E MEDIR ISSO PRIMEIRO MUDOU O SPRINT
+
+```
+ordem cmv5jgmqk0fiufohc75n796t8 · MAIONESE
+   19:21  PRODUCAO_GERACAO   +34,236 KG
+   21:25  ESTORNO            −34,236 KG
+   21:25  PRODUCAO_GERACAO   +34,296 KG   ⭐ líquido 34,296 — UMA vez
+calabresa cmv4sry9v0a4nfohc39ftslet → líquido 127 UN, uma vez
+```
+**O ledger nunca dobrou — o defeito era de LEITURA**, e por isso não houve autorização a pedir nem saldo a corrigir. ⚠️ *Se eu tivesse ido "consertar o estoque", teria mexido em dado correto.* E o dia 12/10 foi medido antes de uma linha de código: **20 conclusões / 18 ordens distintas**; somas erradas 20 cartões · 1.723 UN · 68,532 KG · R$ 5.516,73; corretas **18 · 1.616 UN · 34,296 KG · R$ 4.877,60** — batendo com o relato do dono ao centavo.
+
+### ⛔⛔⛔ A CAUSA: A RÉGUA EXISTIA DESDE 19/09 E NÃO TINHA DONO
+
+A correção é **ESTORNA-E-RELANÇA** (o ledger é imutável): ela **não edita** a conclusão — cria uma NOVA e marca a antiga em `stock_conclusao_estornada`. A régua *"estornada não conta"* nasceu em 19/09 (pros lotes de 22.864) e tinha **DOIS** consumidores: o rendimento medido e a fila do gerente. **Os outros NOVE somavam as duas.** ***A régua existia e não tinha dono: cada leitor novo nascia sem ela.***
+
+⚠️ **E o cartão fantasma dizia "aguardando conferência" porque o carimbo vai na conclusão NOVA** — a antiga fica **sem carimbo**, e quem lia a *ausência de carimbo* como estado concluía "ninguém conferiu ainda".
+
+### ⭐⭐ A PORTA ÚNICA — `lib/stock/producao/conclusoes-vigentes.ts`
+
+`conclusoesVigentes(companyId, {de, ate} | {ordemIds}, db)` devolve as conclusões **no estado ATUAL**: a corrigida entra com o número conferido, a antiga fica fora. Mais `conclusoesComHistoria` (as duas, com `estornada: boolean` — é o que a página da ordem desenha) e `conclusaoEstaEstornada` (a pergunta por id).
+
+- ⛔ **São 2 consultas, nunca uma por conclusão** (a lição dos 4.909 ms de 28/09): é tela de todo dia.
+- ⛔ **`select` RICO de propósito** (11 colunas): um `select` por chamador faria a porta voltar a ser N consultas diferentes, e a próxima nasceria sem o filtro. **Over-fetch de 8 colunas é barato; leitor novo sem a régua custou o dia 12/10.**
+- ⛔ **`ordemIds: []` é "nenhuma ordem", não "todas"** — sem isso a página de uma ordem sem conclusão receberia o período inteiro da empresa.
+- ⚠️ **`idsEstornados` DELEGA** pro dono da pergunta (`conclusao-estornada.ts`); reescrever o `findMany` ali seria a 2ª resposta pra *"quais foram desfeitas?"*.
+
+**⚠️⚠️ E O DEDUP É PELO ESTADO, NUNCA POR `ordemId` — a decisão mais importante do arquivo.** **Produção PARCIAL é legítima e desenhada** (*"300 hoje, 200 amanhã"*, a flag `parcial` existe desde 21/08): ali duas conclusões vivas da mesma ordem são **dois lotes de verdade**, e colapsá-las apagaria metade do que saiu da cozinha. ⚠️ Medido em prod: **0 ordens com 2+ conclusões vivas em 525** — hoje as duas réguas dariam o mesmo resultado, e a diferença entre elas é o dia em que a cozinha fechar um lote em duas vezes.
+
+### ⭐ A VARREDURA — 13 CONSUMIDORES, UM A UM, COM O VEREDITO
+
+| consumidor | antes |
+|---|---|
+| `conclusao.ts` (`conclusoesNoPeriodo`, `rendimentoMedidoDeFichas`, `listConclusoes`) | ⛔ **lia o cru** → a lista do dia e a faixa |
+| `lotes.ts` (`lotesDaJanela`) | ⛔ cru → *"de 20 lotes"*, Por dia, placar |
+| `painel-producao.ts` (`valorProduzido`) | ⛔ `aggregate` cru → **os R$ 5.516,73** |
+| `relatorio-por-dia.ts` · `relatorio-por-pessoa.ts` (2 queries) | ⛔ cru → Por dia e Por pessoa |
+| `execucoes.ts` | ⛔ cru → un/min por pessoa |
+| `fiscal-dos-lotes.ts` | ⛔ cru → **acusaria um lote CERTO** (68,53 declarado contra material pra ~34) |
+| `dia-ao-vivo.ts` | ⛔ cru → o Hoje ao vivo |
+| `avisos/produtores/producao.ts` | ⛔ cru → o P3 **denunciaria todas as noites** |
+| `consumo/route.ts` | ⛔ cru → *"o consumo bate com o custo do lote?"* dobraria exato |
+| `inativar-colaborador.ts` | ⛔ cru |
+| `producao-invariants.ts` (P3 + M2) | ⛔ cru |
+| `fila-de-conferencia.ts` · `rendimentoMedidoDaFicha` | ⭐ **já liam certo** (os dois de 19/09) |
+
+**⭐⭐ E A VARREDURA ACHOU BURACOS QUE O DONO NÃO TINHA VISTO:** o **P3 do juiz denunciaria a declaração desfeita TODA NOITE** (ele compara contra a média limpa, que já a exclui) — alarme falso eterno, e *alarme falso repetido é como um alarme morre*; **corrigir duas vezes** a mesma declaração era possível (ela fica sem carimbo, então o `JA_CONFERIDA` não a pegava) e estornaria um movimento **já estornado**, criando uma TERCEIRA conclusão; e a **ETIQUETA** podia imprimir o número velho numa caixa de freezer.
+
+⛔ **As duas recusas novas são do SERVIDOR, não do botão** (a régua do FREIO da contagem, 23/08): a página mostra a estornada como história, mas a rota se chama por outro caminho.
+
+### ⭐ O RASTRO É LEI — o que morre é o cartão, não a história
+
+A página da ordem renderiza a desfeita como **história** (opacidade, riscado, ⊘ com o motivo), **sem** "corrigir" e **sem** "etiqueta", e o cabeçalho diz *"Conclusões (N) · + 1 corrigida(s), abaixo como história"*. O `fez` e a eficiência passaram a somar **só as que valem** (`valem = conclusoes.filter(c => !c.estornada)`). ⚠️ E a tela **não adivinha pela ausência de carimbo** — era ela que fazia a antiga aparecer *"aguardando conferência"*, ou seja **pedindo um trabalho que já foi feito**.
+
+### ⭐⭐⭐ A CICATRIZ PERMANENTE (ordem do dono: *"fica na suíte PRA SEMPRE"*)
+
+`lib/stock/producao/__tests__/uma-ordem-um-cartao.integration.test.ts` — **19 testes contra banco**, dirigindo o caminho REAL (`corrigirConclusao` → `preverCorrecao` → `ESTORNA_E_RELANCA`) com os números de 12/10 (**34,236 → 34,296** e **107 → 127**) e percorrendo **cada consumidor um a um**. Reintroduzido em qualquer um deles, **CI vermelho antes do deploy**.
+
+- ⭐ O **invariante de guarda** do dono em 2 formas: `listagemSemOrdemRepetida` (nenhuma ordem 2× em listagem de período) rodado contra as **três** listagens reais, e `total do período == Σ dos estados atuais`.
+- ⭐ A **exceção NOMEADA** tem teste próprio: duas parciais da mesma ordem **somam 127** e não são repetição — ⚠️ *invariante que falha no caso legítimo é pior que invariante nenhum* (a lição de 14/08), e sem ela a régua apagaria metade de um lote fechado em dois dias.
+- ⚠️ **AS DATAS SÃO RELATIVAS AO RELÓGIO**, de propósito: a correção grava a conclusão nova com o instante REAL, então janela de data fixa deixaria o teste verde hoje e vermelho no dia em que o calendário passasse dela (a REGRA 12 de 01/09). **A cicatriz são os NÚMEROS, não o dia.**
+
+**⚠️⚠️ E O TESTE PEGOU UM ARREDONDAMENTO DE LEITURA, que fica REGISTRADO e NÃO foi mexido:** `lotesDaJanela` arredonda o `entregue` em **2 casas**, então o relatório mostra **34,3** onde o ledger guarda **34,296** (e o Por dia herda, porque consome ele). É **pré-existente e alheio a esta cicatriz** — o módulo trabalha em 3 casas por causa de grama/ml. Travá-lo aqui faria o teste do cartão duplo guardar a régua de arredondamento de outro arquivo, quebrando no dia em que alguém legitimamente a mudasse; a tolerância está escrita no teste com o motivo, e **o dobro (68,53) continua a uma ordem de grandeza dela**.
+
+### ⛔ O GUARD ESTRUTURAL — mata a FAMÍLIA, não o cartão
+
+`__tests__/regras-ui/uma-ordem-um-cartao.test.ts`: **`findMany`/`aggregate`/`groupBy`/`count` sobre `stockProducaoConclusao` fora da porta = vermelho** — é assim, e só assim, que um total de período nasce.
+
+- ⭐ **`findFirst`/`findUnique`/`create` seguem livres de propósito:** a etiqueta, o `resolverAlvo` e o estorna-e-relança precisam da linha ESPECÍFICA pelo id, e proibir isso faria o guard virar parede (a lição do CHECK com vocabulário fechado, 21/09). Quem decide se aquela linha vale é `conclusaoEstaEstornada`, que eles chamam — e o guard exige isso.
+- ⭐ **Ele prova OS DOIS LADOS:** nada lê o cru **e** os 12 consumidores **chamam a porta**. *Guard que só proíbe o cru aprovaria o dia em que ninguém lê nada.*
+- ⚠️ **Exceção NOMEADA, com o motivo escrito** (uma só): o produtor de avisos faz um `findMany` **por ID** pra pegar *o nome de quem fez* — os LOTES dele vêm da porta. **Exceção sem motivo é a porta por onde o décimo leitor entra.**
+- ⭐ **AUTO-TESTE DO DETECTOR** (REGRA 11): ele pega a forma do defeito (inclusive quebrada em duas linhas pelo prettier), **não** morde leitura por id nem `create`, e **não se deixa absolver por comentário** — *o arquivo que documenta o defeito não pode ser o que o absolve*.
+
+### ⚠️ REGRA 11 — 10 DEFEITOS REPOSTOS, 10 VERMELHOS (baseline 0 · restaurado 0)
+
+a lista do dia voltando ao cru (**6**) · o R$ do painel no `aggregate` cru (**4**) · `lotesDaJanela` cru (**4**) · o fiscal cru (**3**) · a fila crua (**4**) · o rastro perdendo a marca de estornada (**1**) · a etiqueta saindo do lote desfeito (**1**) · a dupla correção liberada (**1**) · o invariante deixando de tolerar PARCIAL (**1**) · um consumidor voltando ao cru, contra o guard estrutural (**2**). **Nenhum veio verde.**
+
+⚠️ A sonda guarda backup pela **chave do caminho inteiro**, **ASSERTA que a substituição aplicou** e **conta suíte que não coletou como vermelho** — as três cicatrizes de sonda desta casa.
+
+**⚠️ 2 GUARDS ANTIGOS FICARAM VERMELHOS COM O CÓDIGO CERTO — REAPONTADOS, e os dois MAIS FORTES:**
+- o `pagina-da-ordem-v4` exigia o `fez` somando `conclusoes` **CRU** — e isso somava a estornada junto: **era o cartão duplo dentro do cabeçalho da ordem**. A pergunta não mudou (*soma as parciais*); agora ela soma **as que valem**, e o guard **proíbe a volta do cru**.
+- o `grandeza-da-conclusao` exigia a régua *"estornada não conta"* escrita **dentro** do `conclusao.ts` — e era exatamente essa a doença (escrita em dois lugares, faltando em nove). Agora ele exige as duas metades: a média **lê a porta** e **não tem régua própria**.
+
+**959 arquivos · 12.785 verdes · 2 todo · TS 0 · migration NENHUMA.**
+
 ## 🥖 O RETALHO VIROU VISÍVEL NA PÁGINA DA ORDEM (12/10/2026)
 
 **O caso real:** o dono criou uma ordem de **10 UN** de *metade de bolinha massa de pizza* declarando **10 KG de retalho de ontem**. A página mostrava *"deve sair ~12 UN (pela sua média)"* e **nenhum sinal do retalho**. A pergunta dele: *"não era certo mudar a quantidade que eu pedi?"* — e a resposta da casa é **NÃO** (o pedido comanda a separação; o retalho não gasta material da câmara). **Mas o retalho tinha que APARECER.**

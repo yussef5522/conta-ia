@@ -26,6 +26,7 @@ import { consumidoPorOrdem } from './ordens'
 import { eficienciaDaOrdem, type FiscalDoDeclarado } from './eficiencia-da-ordem'
 import { fichasParaConverter } from './fichas-para-converter'
 import { configDeRetalho, retalhoDasOrdens, unidadesDoRetalho } from './retalho'
+import { conclusoesVigentes } from './conclusoes-vigentes'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -135,10 +136,12 @@ export async function fiscalDeOrdens(
    * zero e **nada muda** pras 189 receitas.
    */
   const [conclusoes, consumo, cfgRetalho, retalhos] = await Promise.all([
-    db.stockProducaoConclusao.findMany({
-      where: { companyId, ordemId: { in: ids } },
-      select: { ordemId: true, qtdGerada: true },
-    }),
+    /**
+     * ⛔⛔ PORTA ÚNICA (12/10) — e aqui o estrago era GRANDE: somando as duas, o declarado da
+     * MAIONESE virava 68,53 contra um material pra ~34, e o fiscal ACUSARIA um lote CERTO.
+     * A correção do gerente passaria a criar o alarme falso que ela existe pra apagar.
+     */
+    conclusoesVigentes(companyId, { ordemIds: ids }, db),
     consumidoPorOrdem(companyId, ids, db),
     configDeRetalho(companyId, ordens.map((o) => o.fichaId), db),
     retalhoDasOrdens(companyId, ids, db),

@@ -24,6 +24,7 @@ import { faixaDoSelo, DESVIO_GRAVE } from '@/lib/stock/producao/eficiencia-da-or
 import { fichasParaConverter } from '@/lib/stock/producao/fichas-para-converter'
 import { fiscalDeOrdens, fichasComLoteTorto, type FiscalDoLote } from '@/lib/stock/producao/fiscal-dos-lotes'
 import type { NovoAviso } from '../tipos'
+import { conclusoesVigentes } from '@/lib/stock/producao/conclusoes-vigentes'
 
 /**
  * ⚠️⚠️ **O CLIENT VEM POR PARÂMETRO, e isso não é enfeite — foi um BUG MEU pego antes de rodar.**
@@ -387,11 +388,8 @@ async function loteDeGrandezaImpossivel(companyId: string, r: ResumoDaCarga, db:
  */
 async function fiscalDoDeclaradoNoSininho(companyId: string, r: ResumoDaCarga, db: Db): Promise<void> {
   const desde = new Date(Date.now() - JANELA_DIAS * 86400000)
-  const conclusoes = await db.stockProducaoConclusao.findMany({
-    where: { companyId, criadoEm: { gte: desde } },
-    select: { ordemId: true, colaboradorId: true, criadoEm: true },
-    orderBy: { criadoEm: 'asc' },
-  })
+  /** ⛔ PORTA ÚNICA (12/10): sem ela o sininho avisaria sobre a declaração que o gerente desfez */
+  const conclusoes = await conclusoesVigentes(companyId, { de: desde }, db)
   if (!conclusoes.length) {
     r.resolvidos += await reconciliarOrigem(companyId, 'FISCAL_DECLARADO', [], db)
     return

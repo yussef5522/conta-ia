@@ -99,8 +99,18 @@ describe('⭐⭐ 1. CABEÇALHO — logo 48 do dono único, nome 19px, pedido em 
     expect(t, 'o par escreve a palavra "fez"').toMatch(/fez\s/)
     /** ⛔ a tela não refaz a divisão: um `fez / pedido` aqui seria a 2ª conta do mesmo número */
     expect(t, 'nenhum percentual calculado na tela').not.toMatch(/fez\s*\/\s*pedido/)
-    /** ⚠️ soma as PARCIAIS: ordem pode fechar em dois dias */
-    expect(t).toMatch(/conclusoes\.reduce\(\(t, c\) => t \+ c\.qtdGerada, 0\)/)
+    /**
+     * ⚠️ soma as PARCIAIS: ordem pode fechar em dois dias.
+     *
+     * ⚠️⚠️ **REAPONTADO EM 12/10, e ficou MAIS FORTE.** Ele exigia a soma sobre `conclusoes`
+     * CRU — e isso somava a declaração **ESTORNADA** junto: era o cartão duplo de 12/10 dentro
+     * do cabeçalho da ordem (*"fez 68,53"* num lote de 34,296). A PERGUNTA não mudou (*soma as
+     * parciais*); o que mudou é que a soma passou a ser sobre **as que VALEM**, e o guard agora
+     * proíbe a volta do cru.
+     */
+    expect(t, 'soma as parciais que VALEM').toMatch(/valem\.reduce\(\(t, c\) => t \+ c\.qtdGerada, 0\)/)
+    expect(t, 'o cru somaria a declaração corrigida junto').not.toMatch(/conclusoes\.reduce\(\(t, c\) => t \+ c\.qtdGerada, 0\)/)
+    expect(t, 'e `valem` é quem filtra a estornada').toMatch(/conclusoes\.filter\(\(c\) => !c\.estornada\)/)
   })
 })
 

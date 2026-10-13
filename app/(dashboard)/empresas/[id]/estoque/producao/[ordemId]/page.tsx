@@ -60,7 +60,11 @@ interface CarimboDaConclusao {
   motivoDaCorrecao: string | null
 }
 
-interface Conclusao { id: string; qtdGerada: number; colaboradorNome: string | null; rendimento: number; custoLoteReal: number; custoUnitarioReal: number | null; validadeAte: string | null; parcial: boolean; criadoEm: string; conferencia: CarimboDaConclusao | null }
+/**
+ * ⚠️ `estornada` = declaração DESFEITA pela correção do gerente. Ela chega aqui de propósito
+ * (o rastro é lei) e **não entra em soma nenhuma** — ver o `valem` lá embaixo.
+ */
+interface Conclusao { id: string; qtdGerada: number; colaboradorNome: string | null; rendimento: number; custoLoteReal: number; custoUnitarioReal: number | null; validadeAte: string | null; parcial: boolean; criadoEm: string; estornada?: boolean; conferencia: CarimboDaConclusao | null }
 interface Colaborador { id: string; nome: string }
 interface EtapaAbertaNaTela { nome: string; executorNome: string | null }
 
@@ -333,14 +337,24 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
    * ⚠️ Ela só existe pra ordem CONCLUÍDA: antes disso o "produziu" não existe, e mostrar 0%
    * numa ordem em andamento seria acusar quem ainda está com a mão na massa.
    */
+  /**
+   * ⭐⭐⭐ AS CONCLUSÕES QUE **VALEM** (12/10) — a declaração desfeita pela correção do gerente
+   * fica na lista como HISTÓRIA e **sai de toda SOMA**.
+   *
+   * ⛔⛔ Sem isto a própria página da ordem dizia *"fez 68,53"* (34,236 + 34,296) e a eficiência
+   * comparava o dobro do que saiu contra o material de um lote — o fiscal acusaria um lote
+   * CERTO. É o mesmo defeito da lista do dia, por dentro.
+   */
+  const valem = useMemo(() => conclusoes.filter((c) => !c.estornada), [conclusoes])
+
   const eficiencia = useMemo(() => {
-    if (!ordem || ordem.estado !== 'CONCLUIDA' || !conclusoes.length) return null
-    const saiu = conclusoes.reduce((s, c) => s + c.qtdGerada, 0) // ⭐ soma as parciais
+    if (!ordem || ordem.estado !== 'CONCLUIDA' || !valem.length) return null
+    const saiu = valem.reduce((s, c) => s + c.qtdGerada, 0) // ⭐ soma as parciais
     return eficienciaDaOrdem({
       escala: ordem.escalaReceitas, loteBase: ordem.loteBase, qtdGerada: saiu,
       componentes: linhas.map((l) => ({ nome: l.nome, unidade: l.unidade, porLote: l.porLote, consumido: l.qtdConsumida })),
     })
-  }, [ordem, conclusoes, linhas])
+  }, [ordem, valem, linhas])
 
   if (ordem === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-[var(--prod-muted)]" /></div>
   if (ordem === null) return <div className="p-6 text-sm text-[var(--prod-muted)]">Ordem não encontrada.</div>
@@ -458,8 +472,9 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
               * ⚠️ Soma as PARCIAIS (`qtdGerada`), porque uma ordem pode fechar em dois dias.
               */}
             {(() => {
-              if (ordem.estado !== 'CONCLUIDA' || !conclusoes.length) return null
-              const fez = conclusoes.reduce((t, c) => t + c.qtdGerada, 0)
+              if (ordem.estado !== 'CONCLUIDA' || !valem.length) return null
+              /** ⛔ as que VALEM: somar a desfeita diria "fez 68,53" num dia de 34,30 */
+              const fez = valem.reduce((t, c) => t + c.qtdGerada, 0)
               const pil = pilulaDoPedido(fez, pedido.unidades, ordem.unidadeProduzido)
               return (
                 <p className="mt-1 flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
@@ -1143,7 +1158,14 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
       {/* histórico de conclusões + etiquetas */}
       {conclusoes.length > 0 && (
         <div>
-          <h2 className="mb-2 text-sm font-semibold text-[var(--prod-primary)]">Conclusões ({conclusoes.length})</h2>
+          <h2 className="mb-2 text-sm font-semibold text-[var(--prod-primary)]">
+            Conclusões ({valem.length})
+            {conclusoes.length > valem.length && (
+              <span className="ml-1 text-[11.5px] font-normal" style={{ color: 'var(--prod-muted)' }}>
+                + {conclusoes.length - valem.length} corrigida(s), abaixo como história
+              </span>
+            )}
+          </h2>
           <div className="space-y-2">
             {conclusoes.map((c) => {
               const conf = c.conferencia
@@ -1159,15 +1181,31 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                * pelo motor (`JA_CONFERIDA`) porque o carimbo é único por conclusão — oferecer o
                * botão ali seria mandar o dono clicar pra levar um "não".
                */
+              /**
+               * ⛔⛔⛔ **A DESFEITA É HISTÓRIA, NÃO TRABALHO (12/10).** Era a AUSÊNCIA de carimbo
+               * nela que a fazia parecer *"aguardando conferência"* — pedindo um trabalho que o
+               * gerente já tinha feito. Ela fica (o rastro é lei) e perde os dois gestos:
+               * corrigir de novo estornaria um movimento já estornado, e a etiqueta sairia com
+               * o número velho na caixa do freezer.
+               */
+              const desfeita = !!c.estornada
               const podeCorrigir =
-                !carregandoPerm && podePerm('stock.manage') &&
+                !desfeita && !carregandoPerm && podePerm('stock.manage') &&
                 (conf == null || conf.estado === 'AGUARDANDO_CONFERENCIA')
               const abertoAqui = corrigindo === c.id
               return (
-              <Card key={c.id}><CardContent className="p-4">
+              <Card key={c.id} style={desfeita ? { opacity: 0.6 } : undefined}><CardContent className="p-4">
                 <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-[var(--prod-primary)]">{num(c.qtdGerada)} {ordem.unidadeProduzido} {c.parcial && <span className="text-[11px] font-normal text-[var(--fam-ambar-ink)]">(parcial)</span>}</p>
+                  <p className="text-sm font-medium" style={{ color: 'var(--prod-primary)', textDecoration: desfeita ? 'line-through' : undefined }}>
+                    {num(c.qtdGerada)} {ordem.unidadeProduzido} {c.parcial && <span className="text-[11px] font-normal text-[var(--fam-ambar-ink)]">(parcial)</span>}
+                  </p>
+                  {desfeita && (
+                    <p className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                      ⊘ declaração corrigida pelo gerente — fica aqui como história e não conta em
+                      lista nem em total
+                    </p>
+                  )}
                   <p className="text-xs text-[var(--prod-muted)]">rendimento {num(c.rendimento)}/receita · custo {c.custoUnitarioReal == null ? '—' : formatBRL(c.custoUnitarioReal)}/un{c.colaboradorNome ? ` · ${c.colaboradorNome}` : ''}{c.validadeAte ? ` · val ${fmtDia(c.validadeAte)}` : ''}</p>
                   {/* ⭐ O SELO (item 2c) na página da ordem — a MESMA leitura da lista de concluídas */}
                   {conf && <SeloDaConferencia c={conf} unidade={ordem.unidadeProduzido} />}
@@ -1179,7 +1217,10 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                       <Pencil className="h-3.5 w-3.5" /> corrigir
                     </button>
                   )}
-                  <a href={`/empresas/${id}/estoque/producao/conclusoes/${c.id}/etiqueta`} className="inline-flex items-center gap-1 rounded-lg border border-[var(--prod-line-strong)] px-3 py-1.5 text-xs text-[var(--prod-secondary)] hover:bg-[var(--prod-surface-1)]"><Tag className="h-3.5 w-3.5" /> etiqueta</a>
+                  {/* ⛔ etiqueta de lote desfeito não sai (o servidor também recusa) */}
+                  {!desfeita && (
+                    <a href={`/empresas/${id}/estoque/producao/conclusoes/${c.id}/etiqueta`} className="inline-flex items-center gap-1 rounded-lg border border-[var(--prod-line-strong)] px-3 py-1.5 text-xs text-[var(--prod-secondary)] hover:bg-[var(--prod-surface-1)]"><Tag className="h-3.5 w-3.5" /> etiqueta</a>
+                  )}
                 </div>
                 </div>
 

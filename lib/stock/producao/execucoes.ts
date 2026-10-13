@@ -14,6 +14,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import type { Execucao } from './desempenho'
+import { conclusoesVigentes } from './conclusoes-vigentes'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -54,7 +55,8 @@ export async function execucoesDaJanela(
 
   const [itens, conclusoes, colaboradores] = await Promise.all([
     db.stockItem.findMany({ where: { id: { in: [...new Set(ordens.map((o) => o.itemProduzidoId))] } }, select: { id: true, nome: true, unidadeControle: true } }),
-    db.stockProducaoConclusao.findMany({ where: { companyId, ordemId: { in: [...vivas.keys()] } }, select: { ordemId: true, qtdGerada: true } }),
+    /** ⛔ PORTA ÚNICA (12/10): estornada não é execução — ela dobraria o un/min da pessoa */
+    conclusoesVigentes(companyId, { ordemIds: [...vivas.keys()] }, db),
     db.stockColaborador.findMany({ where: { companyId }, select: { id: true, nome: true } }),
   ])
   const nomeItem = new Map(itens.map((i) => [i.id, i.nome]))

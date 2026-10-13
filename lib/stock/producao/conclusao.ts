@@ -12,6 +12,7 @@ import { separadoPorItem, TIPO_CONSUMO, TIPO_DEVOLUCAO, TIPO_GERACAO, OrdemError
 import { escalaDoConsumo, avaliarVariacao, type Variacao } from './previsao-rendimento'
 import { avaliarPlausibilidade, type VeredictoDaPlausibilidade } from './plausibilidade'
 import { idsDeConclusoesEstornadas } from './conclusao-estornada'
+import { conclusoesVigentes, conclusoesComHistoria } from './conclusoes-vigentes'
 import { encerrarEtapasAbertas } from './encerrar-etapas-abertas'
 
 /**
@@ -108,12 +109,13 @@ export async function rendimentoMedidoDeFichas(
   // ⛔⛔ LOTE ESTORNADO NUNCA ENTRA NA MÉDIA (19/09). Sem isto o rendimento podre de 2858
   // continuaria sendo "o histórico" da maionese e envenenaria toda conclusão seguinte —
   // inclusive o guard de plausibilidade, que passaria a aprovar o erro por ele ser a norma.
-  const estornadas = await idsDeConclusoesEstornadas(companyId, db)
-  const fora = [...estornadas, ...(exceptConclusaoId ? [exceptConclusaoId] : [])]
-  const cs = await db.stockProducaoConclusao.findMany({
-    where: { companyId, ordemId: { in: [...fichaDaOrdem.keys()] }, ...(fora.length ? { id: { notIn: fora } } : {}) },
-    orderBy: { criadoEm: 'desc' }, select: { ordemId: true, rendimento: true },
-  })
+  // ⭐⭐ ATUALIZADO EM 12/10: a exclusão passou a vir da PORTA ÚNICA (`conclusoesVigentes`).
+  //   ⚠️ A régua aqui JÁ ESTAVA CERTA desde 19/09 — ela era um dos DOIS únicos consumidores
+  //   da `conclusao-estornada`. O que mudou é que ela deixou de ser uma cópia do filtro: com
+  //   N leitores escrevendo o mesmo `notIn`, o décimo nasce sem ele (e nasceu — foi o dia 12/10).
+  const cs = (await conclusoesVigentes(companyId, { ordemIds: [...fichaDaOrdem.keys()] }, db))
+    .filter((c) => c.id !== exceptConclusaoId)
+    .sort((a, b) => b.criadoEm.getTime() - a.criadoEm.getTime())
 
   const porFicha = new Map<string, number[]>()
   for (const c of cs) {
@@ -312,6 +314,12 @@ export interface ConclusaoView {
   validadeAte: string | null
   parcial: boolean
   criadoEm: string
+  /**
+   * ⭐ `true` = declaração DESFEITA pela correção do gerente. Ela fica na página da ordem como
+   * HISTÓRIA (o rastro é lei) e **sai de toda lista de período e de todo total** — a porta
+   * única (`conclusoesVigentes`) é quem garante isso.
+   */
+  estornada?: boolean
 }
 
 /**
@@ -323,10 +331,14 @@ export interface ConclusaoView {
  * campo novo.
  */
 export async function conclusoesNoPeriodo(companyId: string, de: Date, ate: Date, db: PrismaClient = defaultPrisma): Promise<(ConclusaoView & { ordemId: string })[]> {
-  const cs = await db.stockProducaoConclusao.findMany({
-    where: { companyId, criadoEm: { gte: de, lte: ate } },
-    orderBy: { criadoEm: 'desc' },
-  })
+  /**
+   * ⛔⛔⛔ **ERA AQUI QUE O CARTÃO DOBRAVA (12/10).** Esta função alimenta a lista
+   * *"Concluídas · hoje"*, o card *"Concluídas hoje"*, a faixa do topo e o painel — e ela
+   * lia a tabela CRUA, então a declaração ESTORNADA vinha junto da corrigida: dois cartões da
+   * mesma ordem, e `34,236 + 34,296 = 68,53 KG` num dia de 34,30.
+   */
+  const cs = (await conclusoesVigentes(companyId, { de, ate }, db))
+    .sort((a, b) => b.criadoEm.getTime() - a.criadoEm.getTime())
   return projetarConclusoes(companyId, cs, db)
 }
 
@@ -344,7 +356,16 @@ async function projetarConclusoes(companyId: string, cs: { id: string; ordemId: 
   }))
 }
 
+/**
+ * ⭐⭐ A LISTA DA PÁGINA DA ORDEM — **a HISTÓRIA inteira, com a estornada MARCADA** (12/10).
+ *
+ * ⛔⛔ O rastro *"era 107 → 127"* é **LEI** (ordem do dono): o que morre é o cartão duplicado
+ * na LISTA DO DIA e nos TOTAIS, **nunca a história da ordem**. Por isso aqui as duas voltam —
+ * e com `estornada` dito, porque era a AUSÊNCIA de carimbo na antiga que a fazia aparecer como
+ * *"aguardando conferência"*, ou seja **pedindo um trabalho que já tinha sido feito**.
+ */
 export async function listConclusoes(companyId: string, ordemId: string, db: PrismaClient = defaultPrisma): Promise<ConclusaoView[]> {
-  const cs = await db.stockProducaoConclusao.findMany({ where: { companyId, ordemId }, orderBy: { criadoEm: 'asc' } })
-  return projetarConclusoes(companyId, cs, db)
+  const cs = await conclusoesComHistoria(companyId, { ordemIds: [ordemId] }, db)
+  const vista = await projetarConclusoes(companyId, cs, db)
+  return vista.map((v, i) => ({ ...v, estornada: cs[i].estornada }))
 }

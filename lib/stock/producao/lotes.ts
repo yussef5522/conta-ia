@@ -8,6 +8,7 @@
 import { prisma as defaultPrisma } from '@/lib/db'
 import type { Lote } from './relatorios'
 import { minutosDoLote } from './plano-da-etapa'
+import { conclusoesVigentes } from './conclusoes-vigentes'
 
 type Db = typeof defaultPrisma
 
@@ -19,13 +20,12 @@ function diaBrasil(d: Date): string {
 export interface JanelaDeLotes { de?: Date; ate?: Date; tarefa?: string }
 
 export async function lotesDaJanela(companyId: string, janela: JanelaDeLotes = {}, db: Db = defaultPrisma): Promise<Lote[]> {
-  const conclusoes = await db.stockProducaoConclusao.findMany({
-    where: {
-      companyId,
-      ...(janela.de || janela.ate ? { criadoEm: { ...(janela.de ? { gte: janela.de } : {}), ...(janela.ate ? { lte: janela.ate } : {}) } } : {}),
-    },
-    select: { ordemId: true, qtdGerada: true, custoUnitarioReal: true, criadoEm: true },
-  })
+  /**
+   * ⛔⛔ PELA PORTA ÚNICA (12/10) — a declaração ESTORNADA não é lote. Lendo a tabela crua,
+   * a ordem corrigida virava DOIS lotes: o *"Rendimento do dia (de 20 lotes)"*, o relatório
+   * por dia e o placar do gerente todos contavam o número velho junto do novo.
+   */
+  const conclusoes = await conclusoesVigentes(companyId, { de: janela.de, ate: janela.ate }, db)
   if (!conclusoes.length) return []
 
   const ordemIds = [...new Set(conclusoes.map((c) => c.ordemId))]

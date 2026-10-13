@@ -17,6 +17,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { somenteEmAndamento, somentePendentes } from '@/lib/stock/producao/em-andamento'
+import { conclusoesVigentes } from '@/lib/stock/producao/conclusoes-vigentes'
 
 export class ColaboradorEmUsoError extends Error {}
 
@@ -69,7 +70,8 @@ export async function trabalhoPendurado(
       where: { companyId, colaboradorId, finalizadoEm: null },
       select: { id: true, ordemId: true, iniciadoEm: true, finalizadoEm: true },
     }),
-    db.stockProducaoConclusao.findMany({ where: { companyId, colaboradorId }, select: { qtdGerada: true } }),
+    /** ⛔ PORTA ÚNICA (12/10): o que a pessoa produziu não conta a declaração desfeita */
+    conclusoesVigentes(companyId, {}, db).then((cs) => cs.filter((c) => c.colaboradorId === colaboradorId)),
     db.stockOrdemEtapa.count({ where: { companyId, executorId: colaboradorId, finalizadoEm: { not: null } } }),
   ])
   const [emAndamento, designadas] = await Promise.all([

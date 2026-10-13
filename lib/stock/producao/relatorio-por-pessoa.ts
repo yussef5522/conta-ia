@@ -26,6 +26,7 @@ import {
   porTarefaDaEquipe, unidadesPorSemana, pctDoEsperado,
   type ExecucaoDeTarefa, type LinhaDaTarefa,
 } from './por-tarefa-da-equipe'
+import { conclusoesVigentes } from './conclusoes-vigentes'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -163,7 +164,8 @@ export async function relatorioPorPessoa(
   const ordemIds = [...new Set(etapas.map((e) => e.ordemId))]
   const [ordens, conclusoes] = await Promise.all([
     db.stockProductionOrder.findMany({ where: { companyId: input.companyId, id: { in: ordemIds } }, select: { id: true, itemProduzidoId: true, fichaId: true } }),
-    db.stockProducaoConclusao.findMany({ where: { companyId: input.companyId, ordemId: { in: ordemIds } }, select: { ordemId: true, qtdGerada: true, rendimento: true } }),
+    /** ⛔ PORTA ÚNICA (12/10): sem isto a correção DOBRAVA o produzido da pessoa no período */
+    conclusoesVigentes(input.companyId, { ordemIds }, db),
   ])
   const itens = await db.stockItem.findMany({
     where: { companyId: input.companyId, id: { in: [...new Set(ordens.map((o) => o.itemProduzidoId))] } },
@@ -186,10 +188,11 @@ export async function relatorioPorPessoa(
   //    inventado seria cobrar dela um número que ninguém nunca atingiu.
   const fichaIds = [...new Set(ordens.map((o) => o.fichaId))]
   const todasConclusoes = fichaIds.length
-    ? await db.stockProducaoConclusao.findMany({
-        where: { companyId: input.companyId, ordemId: { in: (await db.stockProductionOrder.findMany({ where: { companyId: input.companyId, fichaId: { in: fichaIds } }, select: { id: true } })).map((o) => o.id) } },
-        select: { ordemId: true, rendimento: true },
-      })
+    ? await conclusoesVigentes(
+        input.companyId,
+        { ordemIds: (await db.stockProductionOrder.findMany({ where: { companyId: input.companyId, fichaId: { in: fichaIds } }, select: { id: true } })).map((o) => o.id) },
+        db,
+      )
     : []
   const ordemDaFicha = new Map<string, string>()
   for (const o of await db.stockProductionOrder.findMany({ where: { companyId: input.companyId, fichaId: { in: fichaIds } }, select: { id: true, fichaId: true } })) {

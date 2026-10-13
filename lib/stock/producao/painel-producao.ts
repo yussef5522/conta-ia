@@ -27,6 +27,7 @@ import { preverSaida, avaliarVariacao, DESVIO_ALERTA, type FaixaVariacao } from 
 // ⭐ reexporta o dono ÚNICO (a definição mora em `data-da-ordem`, arquivo puro sem ciclo)
 export { ESTADOS_ABERTOS } from './data-da-ordem'
 import { ESTADOS_ABERTOS } from './data-da-ordem'
+import { conclusoesVigentes } from './conclusoes-vigentes'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
@@ -239,9 +240,11 @@ export async function cardsDoPainel(
 
 /** Σ do custo real dos lotes do período — coluna gravada pelo `concluir()`, não conta nova. */
 async function valorProduzido(companyId: string, periodo: { de: Date; ate: Date }, db: PrismaClient): Promise<number> {
-  const r = await db.stockProducaoConclusao.aggregate({
-    where: { companyId, criadoEm: { gte: periodo.de, lte: periodo.ate } },
-    _sum: { custoLoteReal: true },
-  })
-  return r._sum.custoLoteReal ?? 0
+  /**
+   * ⛔ PELA PORTA ÚNICA (12/10): o `aggregate` cru somava o custo do lote DUAS VEZES na ordem
+   * corrigida (o custo do lote não muda na correção — ver `estorna-e-relanca` —, então a soma
+   * dobrava exato). Era o *"R$ 5.516,73"* de um dia de R$ 4.877,60.
+   */
+  const cs = await conclusoesVigentes(companyId, { de: periodo.de, ate: periodo.ate }, db)
+  return cs.reduce((s, c) => s + c.custoLoteReal, 0)
 }

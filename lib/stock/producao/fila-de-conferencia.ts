@@ -28,6 +28,7 @@ import { esperadoComRetalho, unidadesDoRetalho, configDeRetalho, retalhoDasOrden
 import { pedidoDaOrdem, type OrigemDoPedido } from './pedido-da-ordem'
 import { fmtPedido } from './pedido-na-tela'
 import { carimbosDasConclusoes } from './conferencia'
+import { conclusoesVigentes } from './conclusoes-vigentes'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -96,22 +97,21 @@ export async function filaDeConferencia(
   agora: Date = new Date(),
 ): Promise<FilaDeConferencia> {
   const desde = new Date(agora.getTime() - JANELA_DA_FILA_HORAS * 3_600_000)
-  const concs = await db.stockProducaoConclusao.findMany({
-    where: { companyId, criadoEm: { gte: desde } },
-    select: { id: true, ordemId: true, qtdGerada: true, colaboradorId: true, criadoEm: true, escalaConsumida: true },
-    orderBy: { criadoEm: 'desc' },
-  })
+  /**
+   * ⛔ conclusão ESTORNADA não entra na fila: ela não vale mais, e pedir conferência de um
+   * número que já foi substituído seria cobrar trabalho sobre dado morto.
+   *
+   * ⚠️⚠️ **ATUALIZADO EM 12/10: a régua aqui JÁ ESTAVA CERTA — ela era um dos DOIS únicos
+   * lugares que a tinham.** O que mudou é que ela virou a **porta única**: enquanto cada leitor
+   * escrevia o próprio filtro, o décimo nascia sem ele — e nasceu (a lista do dia, a faixa, o
+   * R$, o rendimento, o fiscal e o juiz, todos somando a declaração desfeita).
+   */
+  const concs = (await conclusoesVigentes(companyId, { de: desde }, db))
+    .sort((a, b) => b.criadoEm.getTime() - a.criadoEm.getTime())
   if (!concs.length) return { cartoes: [], aguardando: 0, atrasados: 0 }
 
-  /** ⛔ conclusão ESTORNADA não entra na fila: ela não vale mais, e pedir conferência de um
-   *  número que já foi substituído seria cobrar trabalho sobre dado morto */
-  const estornadas = new Set(
-    (await db.stockConclusaoEstornada.findMany({ where: { companyId }, select: { conclusaoId: true } })).map((r) => r.conclusaoId),
-  )
   const carimbos = await carimbosDasConclusoes(companyId, concs.map((c) => c.id), db)
-  const pendentes = concs.filter(
-    (c) => !estornadas.has(c.id) && carimbos.get(c.id)?.estado === 'AGUARDANDO_CONFERENCIA',
-  )
+  const pendentes = concs.filter((c) => carimbos.get(c.id)?.estado === 'AGUARDANDO_CONFERENCIA')
   if (!pendentes.length) return { cartoes: [], aguardando: 0, atrasados: 0 }
 
   const ordemIds = [...new Set(pendentes.map((c) => c.ordemId))]

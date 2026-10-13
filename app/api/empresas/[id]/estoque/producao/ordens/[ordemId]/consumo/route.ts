@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { consumoDaOrdem } from '@/lib/stock/producao/ordens'
+import { conclusoesVigentes } from '@/lib/stock/producao/conclusoes-vigentes'
 
 interface Params { params: Promise<{ id: string; ordemId: string }> }
 
@@ -76,9 +77,12 @@ export async function GET(request: NextRequest, { params }: Params) {
    * `custoLoteReal` é `round2(Σ qtd×custo)` e o ledger guarda `Σ round2(qtd×custo)` — medido
    * em prod: maior diferença R$ 0,01 em 12 ordens.
    */
-  const conclusoes = await prisma.stockProducaoConclusao.findMany({
-    where: { companyId, ordemId }, select: { custoLoteReal: true },
-  })
+  /**
+   * ⛔ PORTA ÚNICA (12/10): o custo do lote NÃO muda na correção, então somar as duas dobrava
+   * exato — e a conferência *"o consumo bate com o custo do lote?"* passaria a dizer NÃO num
+   * lote certo.
+   */
+  const conclusoes = await conclusoesVigentes(companyId, { ordemIds: [ordemId] }, prisma)
   const custoLoteReal = conclusoes.length ? r2(conclusoes.reduce((s, c) => s + c.custoLoteReal, 0)) : null
   const tolerancia = Math.max(0.01, linhas.length * 0.01)
   const bate = custoLoteReal == null ? null : Math.abs(total - custoLoteReal) <= tolerancia

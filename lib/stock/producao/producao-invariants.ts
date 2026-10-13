@@ -9,6 +9,7 @@ import { emProducaoPorOrdem } from './em-producao'
 import { dosesSuspeitas, assinaturaDoDesvio, DESVIO_DA_DOSE } from './plausibilidade-da-dose'
 import { EFICIENCIA_MINIMA, DESVIO_GRAVE } from './eficiencia-da-ordem'
 import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
+import { conclusoesVigentes } from './conclusoes-vigentes'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -155,7 +156,14 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
   }
 
   // P3 — rendimento do lote fora de ±25% da média (desvio grave não revisado)
-  const conclusoes = await db.stockProducaoConclusao.findMany({ select: { id: true, companyId: true, ordemId: true, rendimento: true } })
+  /**
+   * ⛔⛔ PORTA ÚNICA (12/10) — e aqui o defeito era um **alarme falso ETERNO**: a declaração
+   * estornada é justamente a que tinha o número torto, e o P3 a comparava com a média LIMPA
+   * (que já a excluía). Resultado: ela desviava muito, era denunciada **toda noite**, e o
+   * e-mail cobrava uma correção que o gerente já tinha feito. *Alarme falso repetido é como
+   * um alarme morre.*
+   */
+  const conclusoes = await conclusoesVigentes(null, {}, db)
   const fichaDaOrdem = new Map(ordens.map((o) => [o.id, o.fichaId]))
   for (const c of conclusoes) {
     const fichaId = fichaDaOrdem.get(c.ordemId)
@@ -185,9 +193,8 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
    * não N); razão só num = dose/versão da ficha. Sem isso, três avisos de 21% na mesma ordem
    * mandariam o dono conferir três fichas que estão certas.
    */
-  const conclusoesM2 = await db.stockProducaoConclusao.findMany({
-    select: { id: true, companyId: true, ordemId: true },
-  })
+  /** ⛔ idem M2 (a dose efetiva): consumo ÷ unidades DESFEITAS é uma dose que não existiu */
+  const conclusoesM2 = await conclusoesVigentes(null, {}, db)
   for (const c of conclusoesM2) {
     const fichaId = fichaDaOrdem.get(c.ordemId)
     const itens = porOrdemItem.get(c.ordemId)

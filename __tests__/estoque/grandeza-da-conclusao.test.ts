@@ -130,10 +130,22 @@ describe('⛔⛔ a pergunta vem ANTES de qualquer escrita', () => {
 })
 
 describe('⛔⛔ lote estornado NUNCA entra na média', () => {
-  it('⭐ a média consulta os estornados e os exclui', () => {
+  /**
+   * ⚠️⚠️ **REAPONTADO EM 12/10 — a régua MUDOU DE CASA, e ficou mais forte.** Ele exigia
+   * `idsDeConclusoesEstornadas` + `notIn: fora` DENTRO do `conclusao.ts`, ou seja a régua
+   * *"estornada não conta"* escrita ali. E era exatamente essa a doença: ela estava escrita em
+   * DOIS lugares e **faltava nos outros nove** — a lista do dia, a faixa, o R$, o fiscal, as
+   * execuções e o juiz todos somando a declaração desfeita (o cartão duplo de 12/10).
+   *
+   * ⭐ A PERGUNTA não mudou (*lote estornado nunca entra na média*); o que mudou é que a
+   * resposta tem **um dono só** — e o guard passou a exigir as duas metades: a média **lê a
+   * porta** e **não tem régua própria** (régua própria é como o décimo leitor nasce sem ela).
+   */
+  it('⭐ a média lê pela PORTA ÚNICA — e não escreve régua própria', () => {
     const c = fonte('lib/stock/producao/conclusao.ts')
-    expect(usosDe(c, 'idsDeConclusoesEstornadas'), 'a desintoxicação sumiu — o rendimento podre voltaria a ser "o histórico"').toBeGreaterThan(0)
-    expect(c).toMatch(/notIn: fora/)
+    expect(usosDe(c, 'conclusoesVigentes'), 'a desintoxicação sumiu — o rendimento podre voltaria a ser "o histórico"').toBeGreaterThan(0)
+    expect(c, 'régua própria aqui é a 2ª resposta pra "esta declaração vale?"')
+      .not.toMatch(/stockConclusaoEstornada/)
   })
 
   it('⭐ estornar duas vezes é impossível por construção (unique no banco)', () => {

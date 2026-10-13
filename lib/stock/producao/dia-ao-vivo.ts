@@ -28,6 +28,7 @@ import { janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
 import { HORAS_ATE_ALARME } from './etapas'
 import { resolverEstadoDasEtapas } from './gestos-do-gerente'
 import { rotuloDoEstado, trabalhoConcluido, type EstadoDaEtapa } from './estado-da-etapa'
+import { conclusoesVigentes } from './conclusoes-vigentes'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -204,12 +205,11 @@ export async function diaAoVivo(
     ordemIds.length
       ? db.stockProductionOrder.findMany({ where: { companyId: input.companyId, id: { in: ordemIds } }, select: { id: true, itemProduzidoId: true } })
       : Promise.resolve([]),
-    ordemIds.length
-      ? db.stockProducaoConclusao.findMany({
-          where: { companyId: input.companyId, ordemId: { in: ordemIds } },
-          select: { ordemId: true, qtdGerada: true, custoUnitarioReal: true, criadoEm: true },
-        })
-      : Promise.resolve([]),
+    /**
+     * ⛔ PORTA ÚNICA (12/10): a declaração estornada penduraria um 2º lote na MESMA etapa da
+     * linha do tempo — *"finalizou · 34,236"* logo acima de *"finalizou · 34,296"*.
+     */
+    conclusoesVigentes(input.companyId, { ordemIds }, db),
     // ⭐ TODA pessoa ativa, não só quem tem tarefa: *"quem não tem nada hoje aparece — e é isso
     // que a tela tem de útil de manhã"*. Some da lista quem está INATIVO, não quem está livre.
     db.stockColaborador.findMany({ where: { companyId: input.companyId, ativo: true }, select: { id: true, nome: true } }),

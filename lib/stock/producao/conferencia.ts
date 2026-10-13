@@ -42,6 +42,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { OrdemError } from './ordens'
 import { estornarERelancar, preverRelancamento, type PreviewDoRelancamento } from './estorna-e-relanca'
+import { conclusaoEstaEstornada } from './conclusoes-vigentes'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -192,6 +193,22 @@ async function resolverAlvo(
     select: { id: true, ordemId: true, qtdGerada: true, colaboradorId: true, criadoPorId: true },
   })
   if (!conclusao) throw new ConferenciaError('Esta conclusão não existe nesta empresa.', 'NAO_ENCONTRADA')
+
+  /**
+   * ⛔⛔⛔ **DECLARAÇÃO JÁ CORRIGIDA NÃO SE CONFERE NEM SE CORRIGE DE NOVO (12/10).**
+   *
+   * ⚠️ O buraco era real e invisível: a correção manda o CARIMBO pra a conclusão NOVA, então a
+   * antiga fica **sem carimbo** — e o `JA_CONFERIDA` abaixo não a pegava. Corrigi-la outra vez
+   * estornaria um movimento já estornado e criaria uma TERCEIRA conclusão. Ela saiu da fila do
+   * gerente (ela nunca é oferecida), mas *a recusa é do SERVIDOR, não da ausência do botão* —
+   * a régua do FREIO da contagem (23/08).
+   */
+  if (await conclusaoEstaEstornada(input.companyId, input.conclusaoId, db)) {
+    throw new ConferenciaError(
+      'Esta declaração já foi corrigida — o lote que vale é o número novo. Confira ele, não este.',
+      'JA_CORRIGIDA',
+    )
+  }
 
   const ja = await db.stockConclusaoCarimbo.findUnique({ where: { conclusaoId: input.conclusaoId } })
   if (ja) {

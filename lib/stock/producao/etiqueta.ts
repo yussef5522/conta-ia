@@ -5,6 +5,8 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { conclusaoEstaEstornada } from './conclusoes-vigentes'
+import { OrdemError } from './ordens'
 
 const fmtDia = (d: Date | null) => (d ? d.toISOString().slice(0, 10).split('-').reverse().join('/') : '—')
 const loteCurto = (ordemId: string) => ordemId.slice(-8).toUpperCase()
@@ -21,7 +23,19 @@ export interface EtiquetaData {
 }
 
 export async function buildEtiqueta(companyId: string, conclusaoId: string, db: PrismaClient = defaultPrisma): Promise<EtiquetaData | null> {
+  /**
+   * ⛔⛔ **ETIQUETA DE LOTE DESFEITO NÃO SAI (12/10).** Ela leva a QUANTIDADE e o lote pra o
+   * freezer, e a declaração estornada carrega o número que o gerente corrigiu — imprimir dali
+   * colaria na caixa um número que o sistema já sabe que está errado. ⚠️ A recusa é do
+   * SERVIDOR, não do botão: a página mostra a estornada como história, mas a rota se chama por
+   * outro caminho (a régua do FREIO da contagem, 23/08).
+   */
   const c = await db.stockProducaoConclusao.findFirst({ where: { id: conclusaoId, companyId } })
+  if (c && (await conclusaoEstaEstornada(companyId, conclusaoId, db))) {
+    throw new OrdemError(
+      'Esta declaração foi corrigida pelo gerente — a etiqueta sai do lote conferido, não do número antigo.',
+    )
+  }
   if (!c) return null
   const ordem = await db.stockProductionOrder.findFirst({ where: { id: c.ordemId, companyId }, select: { itemProduzidoId: true, dataProducao: true } })
   if (!ordem) return null

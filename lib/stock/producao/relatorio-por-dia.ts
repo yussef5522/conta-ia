@@ -32,6 +32,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { lotesDaJanela, type JanelaDeLotes } from './lotes'
 import { foiMedido, ehRelampago, somarQuantidades, rendimentoDoLote, type Quantidade } from './desempenho'
 import { fmtPedido } from './pedido-na-tela'
+import { conclusoesVigentes } from './conclusoes-vigentes'
 
 type Db = PrismaClient
 
@@ -207,10 +208,8 @@ export async function relatorioPorDia(
       where: { companyId, ordemId: { in: ordemIds } },
       select: { ordemId: true, pctTeorico: true },
     }),
-    db.stockProducaoConclusao.findMany({
-      where: { companyId, ordemId: { in: ordemIds } },
-      select: { ordemId: true, custoLoteReal: true, colaboradorId: true },
-    }),
+    /** ⛔ PORTA ÚNICA (12/10): estornada não entra no R$ nem na coluna de quem concluiu */
+    conclusoesVigentes(companyId, { ordemIds }, db),
     db.stockProductionOrder.findMany({
       where: { companyId, id: { in: ordemIds } },
       select: { id: true, setorId: true },
