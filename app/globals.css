@@ -651,7 +651,30 @@
   --prod-verde-bg: #e4f7ef;
   --prod-ambar: #d97706;
   --prod-ambar-bg: #fcf0dc;
+
+  /**
+   * ⛔⛔⛔ A TINTA QUE VAI SOBRE O CORAL VIVO — e ela é ESCURA nos DOIS temas (14/10/2026).
+   *
+   * **Achado pela varredura L7 do CSS, que nasceu neste sprint:** o badge do Contas a Pagar e o
+   * contador do sininho pintavam `--prod-trilho-on` (branco) sobre `--prod-coral`, dando
+   * **3,75:1 no claro e 2,78:1 no escuro** num número de 10,5px — texto normal, piso 4,5.
+   * **Reprovava nos dois.**
+   *
+   * ⚠️⚠️ **E A CURA DE 10/10 (TROCAR O CHÃO PRO `-solid`) NÃO SERVE AQUI — medido:** no escuro
+   * o `--fam-coral-solid` é `#3a1917`, um marrom quase preto. Num disco de 17px dentro de um
+   * trilho escuro, **o badge de alarme ficaria invisível** — o número passaria e a FUNÇÃO
+   * morreria. Lá o chão era um cartão grande; aqui é um ponto de alerta.
+   *
+   * ⭐ **Então o que cede é a TINTA, não o chão:** o vermelho vivo que o dono pediu fica
+   * **idêntico** (`#e2544a` / `#f87168`) e o dígito vira o quase-preto da casa. Medido:
+   * **5,09:1 no claro · 6,87:1 no escuro** — passa nos dois com folga.
+   *
+   * ⚠️ Ela **não muda por tema**, e isso é a decisão: o coral vivo é claro nos DOIS temas, então
+   * a tinta que o cobre é escura nos dois. Espelhar com um valor claro no escuro devolveria o
+   * defeito.
+   */
   --prod-coral: #e2544a;
+  --prod-coral-on: #0a0f1e;
   --prod-coral-bg: #fdecea;
   /* ⚠️ MESMA correção na pílula "sem pedido": `#94a0b8` sobre `#f1f3f8` dava 2,37:1 — o que
      o olho lê como "apagado" era, na conta, texto que não se lê. O mudo vem do FUNDO cinza
@@ -703,6 +726,8 @@
   --prod-ambar: #f59e0b;
   --prod-ambar-bg: #352508;
   --prod-coral: #f87168;
+  /** ⭐ a MESMA tinta escura: o chão é claro nos dois temas (ver o motivo no `:root`) */
+  --prod-coral-on: #0a0f1e;
   --prod-coral-bg: #3a1917;
   --prod-mudo: #9aa3c0;
   --prod-mudo-bg: #1a1f33;
@@ -1048,7 +1073,7 @@
 .trilho .item .badge {
   margin-left: auto;
   background: var(--prod-coral);
-  color: var(--prod-trilho-on);
+  color: var(--prod-coral-on);
   font-size: 10.5px;
   font-weight: 800;
   border-radius: 999px;
@@ -1227,7 +1252,7 @@
   padding: 0 4px;
   border-radius: 999px;
   background: var(--prod-coral);
-  color: var(--prod-trilho-on);
+  color: var(--prod-coral-on);
   border: 2px solid var(--prod-surface);
   display: flex;
   align-items: center;

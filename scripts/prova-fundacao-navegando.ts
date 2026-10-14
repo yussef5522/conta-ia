@@ -29,6 +29,11 @@ import { prisma } from '@/lib/db'
 import { signToken } from '@/lib/auth'
 import { exigirEmpresaNesteBanco } from '@/lib/scripts/prova-banco'
 import { lerPreferenciaDeTela, gravarPreferencia } from '@/lib/tema/servidor'
+import {
+  declaracoesDe,
+  descreverViolacao,
+  violacoesL7NoCss,
+} from '@/lib/ui/varredura-l7'
 
 const CO = process.env.PROVA_COMPANY_ID ?? 'cmq17yapb00gnrndlh33sctbo'
 const CEL =
@@ -287,6 +292,23 @@ async function main() {
   ] as const) {
     console.log(`  ${ok(v)} ${q}`)
   }
+
+  // ───────────────── L7: A VARREDURA DO CSS, CONTRA O QUE PROD SERVE ─────────────────
+  /**
+   * ⭐⭐ **O MESMO DETECTOR QUE O GUARD USA, rodado aqui contra o CSS SERVIDO.** A REGRA 11
+   * mostrou que *arrancar a varredura do teste* (`it.skip`) **não produz vermelho nenhum** —
+   * nenhum teste pega o próprio desligamento. Com o detector numa lib e executado nos DOIS
+   * lugares, desligar um não esconde o outro.
+   */
+  console.log('\n── L7 a varredura do CSS SERVIDO (o mesmo detector do guard) ──')
+  const foraL7 = violacoesL7NoCss(css, {
+    claro: declaracoesDe(css, ':root'),
+    escuro: declaracoesDe(css, '.dark'),
+  })
+  console.log(
+    `  ${ok(foraL7.length === 0)} pares (tinta, chão) que reprovam no CSS servido: ${foraL7.length}`,
+  )
+  for (const v of foraL7) console.log(`      ⛔ ${descreverViolacao(v)}`)
 
   // ───────────────────────── L7: OS DOIS DEFEITOS CORRIGIDOS ─────────────────────────
   console.log('\n── L7 os dois defeitos de contraste, no que prod serve ──')

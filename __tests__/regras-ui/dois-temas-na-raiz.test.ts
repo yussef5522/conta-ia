@@ -20,6 +20,7 @@ import { join } from 'path'
 import { normalizarTema, classeDoTema, alternar, caraDoBotao, TEMA_PADRAO } from '@/lib/tema/preferencia'
 import { lerReferenciaVisual, CAMINHO_DA_FUNDACAO } from '@/lib/referencias/visual'
 import { telasDoApp } from './_leitura-de-fonte'
+import { descreverViolacao, paresDeCor, violacoesL7NoCss } from '@/lib/ui/varredura-l7'
 
 const RAIZ = process.cwd()
 const css = readFileSync(join(RAIZ, 'app/globals.css'), 'utf8')
@@ -553,6 +554,60 @@ describe('⛔⛔ os pares principais batem os contrastes que a referência CONFE
       }
     }
     expect(reprovam, `L7 violada — tinta clara sobre tom médio:\n  ${reprovam.join('\n  ')}`).toEqual([])
+  })
+
+  /**
+   * ⛔⛔⛔ A VARREDURA DO **CSS** — O FLANCO QUE O DETECTOR DE TELA NÃO ALCANÇA (14/10).
+   *
+   * **Achado medindo os contrastes pro relatório:** o badge do Contas a Pagar pinta
+   * `color: var(--prod-trilho-on)` sobre `background: var(--prod-coral)` **no `globals.css`** —
+   * e o detector de cima varre `telasDoApp()`, que é **TSX**. Resultado: **3,75:1 no claro e
+   * 2,78:1 no escuro**, texto de 10,5px (piso 4,5), e a varredura **não tinha como ver**.
+   *
+   * ⭐⭐ **É a lição do "guard que testa a vitrine aprova a prateleira vazia", em CSS:** par
+   * pintado por classe no `globals.css` é invisível pra quem lê JSX. E este flanco não é teórico
+   * — ele escondeu um par que o próprio brief nomeia (*"badge vermelho vivo (Contas a Pagar)"*).
+   *
+   * ⚠️ A régua aqui é **TODO par (color, background) do mesmo bloco**, não só `-mid` — no CSS o
+   * chão pode ser qualquer token, e foi um `--prod-coral` (não um `-mid`) que escapou.
+   */
+  it('⛔⛔⛔ L7 no CSS: todo par (tinta, chão) do mesmo bloco passa nos 2 temas', () => {
+    const fora = violacoesL7NoCss(css, { claro: CLARO, escuro: ESCURO })
+    expect(
+      fora.map(descreverViolacao),
+      'L7 violada no CSS (tinta sobre chão que reprova)',
+    ).toEqual([])
+  })
+
+  /**
+   * ⛔⛔ AUTO-TESTE DO DETECTOR DE CSS (REGRA 11) — ele tem que ver o par do BLOCO, e o badge do
+   * trilho é o caso que o motivou: foi ele que escapou da varredura de TSX.
+   */
+  it('⛔ o detector de CSS acha os pares de verdade do globals', () => {
+    const pares = paresDeCor(css)
+    expect(pares.length, 'o CSS da casa tem par (color,background) pra medir').toBeGreaterThan(5)
+    expect(
+      pares.some((p) => p.seletor.includes('.badge')),
+      'o badge do trilho é um par — foi ele que escapou da varredura de TSX',
+    ).toBe(true)
+  })
+
+  /**
+   * ⛔⛔ E O DETECTOR PEGA O DEFEITO REAL QUANDO ELE VOLTA — o contrafactual com os hex de hoje,
+   * executado. Sem isto, *"a varredura existe"* seria uma afirmação sobre o mundo bom.
+   */
+  it('⛔⛔ o detector reprova o par que o sprint corrigiu (contrafactual)', () => {
+    const cssComDefeito = `.x{background:var(--prod-coral);color:var(--prod-trilho-on)}`
+    const fora = violacoesL7NoCss(cssComDefeito, { claro: CLARO, escuro: ESCURO })
+    expect(fora.map((v) => v.tema), 'reprova nos DOIS temas').toEqual(['claro', 'escuro'])
+    expect(descreverViolacao(fora[0])).toContain('3,75:1')
+    expect(descreverViolacao(fora[1])).toContain('2,78:1')
+  })
+
+  /** ⭐ e o par que ficou no lugar dele PASSA nos dois — 5,09 e 6,87 */
+  it('⭐ o par novo (coral-on sobre o coral vivo) passa nos 2 temas', () => {
+    const cssOk = `.x{background:var(--prod-coral);color:var(--prod-coral-on)}`
+    expect(violacoesL7NoCss(cssOk, { claro: CLARO, escuro: ESCURO })).toEqual([])
   })
 
   /**
