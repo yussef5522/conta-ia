@@ -53,6 +53,11 @@ const LIBS = [
   'lib/margem/liga.ts',
   'lib/margem/casa.ts',
   'lib/margem/montador.ts',
+  // ⭐ v2 do cartão de produto (14/10): a cesta, o campo e a NA MESA
+  'lib/margem/cesta-do-veredito.ts',
+  'lib/margem/campo-de-preco.ts',
+  'lib/margem/na-mesa.ts',
+  'lib/margem/veredito-de-preco.ts',
 ]
   .map((p) => semComentarios(ler(R(p))))
   .join('\n')
@@ -716,9 +721,20 @@ describe('⛔⛔ O MONTADOR — o `<script>` da referência é o contrato', () =
     expect(SCRIPT_DA_REFERENCIA).toMatch(/inp\.onchange/)
     expect(TELA).toContain('w-[92px]')
     expect(usosDe(TELA, 'CampoDePreco')).toBeGreaterThan(1)
-    // ⛔ sanitizador da casa: digitar vírgula não pode zerar o número (a cicatriz de 28/08)
-    expect(TELA).toContain('sanitizarQtd')
-    expect(TELA).toContain('valorQtd')
+    /**
+     * ⚠️⚠️ **INVERTIDO EM 14/10 COM O MOTIVO ESCRITO.** Ele exigia `sanitizarQtd`/`valorQtd`
+     * — a régua de QUANTIDADE do estoque — no campo de PREÇO. A metade certa era *"digitar
+     * vírgula não pode zerar o número"* (a cicatriz de 28/08), e ela continua travada; o que
+     * estava errado era a régua: em modo KG o `sanitizarQtd` trata o ponto como DECIMAL, e
+     * `1.500` virava **1,5** — o dono digitando mil e quinhentos levaria um e meio.
+     *
+     * ⛔ E agora o guard é MAIS FORTE: a régua do estoque está **PROIBIDA** nesta tela.
+     */
+    expect(usosDe(TELA, 'digitar'), 'a régua de DINHEIRO').toBeGreaterThan(0)
+    expect(usosDe(TELA, 'precoDoCampo'), 'o número é DERIVADO do texto').toBeGreaterThan(0)
+    expect(TELA, 'a régua de QUANTIDADE do estoque não serve pra dinheiro').not.toMatch(
+      /sanitizarQtd|valorQtd/,
+    )
     expect(TELA).toContain('inputMode="decimal"')
   })
 
@@ -931,12 +947,33 @@ describe('⭐⭐⭐ v4 · AS 4 NOVIDADES QUE O DONO APROVOU', () => {
       const p = prod()
       expect(p).toContain('vendendo hoje a')
       expect(p, 'a tela DIZ que nada grava').toContain('nada grava')
-      expect(p, 'o preço vem do payload, não de uma 2ª conta').toContain('p.preco')
+      /**
+       * ⚠️ REAPONTADO em 14/10: a variável do produto escolhido virou `umSo` (a cesta pode
+       * ter N). *Grep não distingue "refatorei" de "quebrei"* — a PERGUNTA é a mesma (*o
+       * preço vem do payload?*) e ela ficou mais forte: além da procedência, o cartão está
+       * proibido de calcular uma 2ª média.
+       */
+      expect(p, 'a média do campo vem do PRODUTO').toContain('media={umSo.preco}')
+      expect(p, 'uma 2ª média aqui discordaria da liga a dez centímetros').not.toMatch(
+        /vendasValor|\/\s*unidades/,
+      )
     })
 
     it('⛔ sem venda no período → campo VAZIO, nunca R$ 0,00', () => {
       const p = prod()
-      expect(p).toContain("p.preco == null ? '' :")
+      /**
+       * ⚠️⚠️ REAPONTADO em 14/10: a régua *"sem média → campo vazio"* MUDOU DE CASA pra
+       * `campo-de-preco.ts` (`textoDoCampo`), onde ela é EXECUTADA em teste — aqui ela só
+       * podia ser conferida por literal, e foi um literal desses que deixou o ternário
+       * `precoTxt !== '' ? precoTxt : media` viver meses repondo a média no teclado do dono.
+       *
+       * ⛔ O guard virou a PROIBIÇÃO do defeito: o cartão não formata preço dentro do input.
+       */
+      expect(usosDe(p, 'CampoDePreco'), 'o campo é o pedaço único').toBeGreaterThan(0)
+      expect(p, 'o texto é do dono — a tela não formata por cima').not.toMatch(
+        /value=\{[^}]*toFixed/,
+      )
+      expect(p, '⛔ e nenhum fallback de média no JSX').not.toMatch(/precoTxt\s*!==\s*''/)
       expect(p).toContain('sem venda no período')
     })
 
@@ -946,9 +983,86 @@ describe('⭐⭐⭐ v4 · AS 4 NOVIDADES QUE O DONO APROVOU', () => {
     })
 
     it('⭐ o custo abre a FICHA — pela porta de custo do estoque, nada recalculado', () => {
-      expect(prod()).toContain('href={p.href}')
+      expect(prod(), 'reapontado: o produto escolhido virou `umSo`').toContain('href={umSo.href}')
       // ⛔ e o custo vem do payload (`custoUnitario` da ficha), não de uma soma aqui
       expect(prod(), 'somar componente aqui seria a 2ª explosão da receita').not.toMatch(/\.reduce\(/)
+    })
+  })
+
+  /**
+   * ⭐⭐⭐ A v2 DO CARTÃO (14/10) — a CESTA, o campo consertado e a NA MESA.
+   *
+   * ⚠️⚠️ **A PROCEDÊNCIA ESTÁ DECLARADA NA REFERÊNCIA, em comentário HTML:** esta seção
+   * DERIVA DO PEDIDO ESCRITO do dono, **não de um desenho aprovado** — e é por isso que o
+   * comentário está lá e este guard o cobra. *Inventar um visual e chamá-lo de "o mock
+   * aprovado" é o erro que o protocolo de 10/09 existe pra impedir* (mesmo tratamento da
+   * cascata em 10/10).
+   */
+  describe('⭐⭐ 3.2 · A CESTA / MODO COMBO (v2 do cartão de produto)', () => {
+    const prod = () => blocoDa('EscolhaUmProduto')
+
+    it('⛔⛔ a referência DECLARA que esta seção vem do pedido escrito, não de um mock', () => {
+      expect(cru(REFERENCIA)).toContain(cru('PROCEDÊNCIA DA v2 DESTE CARTÃO'))
+      expect(cru(REFERENCIA)).toContain(cru('DERIVAM DO PEDIDO ESCRITO DO DONO'))
+      expect(cru(REFERENCIA), 'e aponta onde o comportamento está EXECUTADO').toContain(
+        cru('lib/margem/{campo-de-preco,cesta-do-veredito,na-mesa}.ts'),
+      )
+    })
+
+    it('⭐ as frases do combo estão na referência E no código', () => {
+      frase('custo do combo')
+      frase('os mesmos, avulsos, custam pro cliente')
+      frase('teto do combo')
+      frase('vantagem pro cliente')
+      frase('combo SEM vantagem — ninguém leva')
+      frase('pra montar um combo')
+    })
+
+    it('⭐ as frases do campo consertado e da NA MESA, nos dois lados', () => {
+      frase('voltar pra média')
+      frase('NA MESA')
+      frase('segura o preço, não baixa')
+      frase('pros fixos')
+      frase('no montador ao lado')
+    })
+
+    it('⛔⛔ o <script> da referência é o CONTRATO do toque liga/desliga', () => {
+      expect(SCRIPT_DA_REFERENCIA, 'o toggle').toMatch(/cesta\s*=\s*naCesta\(ix\)\s*\?/)
+      expect(SCRIPT_DA_REFERENCIA, 'o ✓ no chip').toContain("on?'✓ ':''")
+      expect(SCRIPT_DA_REFERENCIA, 'a qtd mínima 1').toContain('Math.max(1,e.qtd+d)')
+      /**
+       * ⛔⛔ O TETO PONDERADO, lido DENTRO do `tetoDaCesta`.
+       *
+       * ⚠️ A 1ª versão desta asserção procurava `l.custo*l.qtd` no script inteiro e veio
+       * **VERDE com a média simples reposta**, porque a mesma expressão existe no
+       * `custoDaCesta` logo acima — *"menção, não uso"*. O que morde é o bloco da função.
+       */
+      const teto = SCRIPT_DA_REFERENCIA.slice(
+        SCRIPT_DA_REFERENCIA.indexOf('function tetoDaCesta'),
+      ).slice(0, 420)
+      expect(teto, 'o peso é o CUSTO da linha').toContain('w:l.custo*l.qtd')
+      expect(teto, 'média simples aqui faria o cartão cobrar um alvo que a cesta não tem')
+        .not.toMatch(/comPeso\.map\(l=>\(\{t:l\.teto,w:1\}\)\)/)
+      expect(usosDe(prod(), 'mudarQtd'), 'e a tela chama o gesto da lib').toBeGreaterThan(1)
+    })
+
+    it('⛔⛔⛔ o <script> da referência JÁ NÃO repõe a média — era o defeito do dono', () => {
+      /**
+       * ⚠️ A referência v4 tinha a MESMA doença da tela: `parseFloat(...)||precoProd`
+       * **restaurava o preço anterior quando o campo ficava vazio**. Aqui ela passa a
+       * distinguir `null` (nunca tocado) de `''` (apagou), como a lib.
+       */
+      expect(SCRIPT_DA_REFERENCIA, 'o fallback que repunha o preço MORREU').not.toMatch(
+        /\|\|\s*precoProd/,
+      )
+      expect(SCRIPT_DA_REFERENCIA, 'null = nunca tocado · "" = apagou').toContain('precoTxt=null')
+      expect(SCRIPT_DA_REFERENCIA, 'e o texto fica como veio').toMatch(/inp\.oninput/)
+      expect(SCRIPT_DA_REFERENCIA, 'sem preço, as sobras dizem "—"').toContain("preco==null?'—'")
+    })
+
+    it('⛔ a referência tem a âncora que a linha da pizza aponta', () => {
+      expect(REFERENCIA).toContain('<section id="montador"')
+      expect(REFERENCIA).toContain('href="#montador"')
     })
   })
 

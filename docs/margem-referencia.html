@@ -240,6 +240,21 @@ a,[role=button]{cursor:pointer}
 .fila-chip:hover{background:var(--ambar-50)}
 
 footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center}
+
+  /* ===== v2 do cartão de produto: a CESTA (deriva do pedido escrito do dono) ===== */
+  .cesta-linha{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0}
+  .qtd{display:inline-flex;align-items:center;gap:4px}
+  .qtd button{width:22px;height:22px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;line-height:1;cursor:pointer}
+  .qtd b{min-width:18px;text-align:center}
+  .vantagem{border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:600;margin-top:4px}
+  .vantagem.boa{background:var(--verde-50);color:var(--verde-esc)}
+  .vantagem.ruim{background:var(--coral-50);color:var(--coral-esc)}
+  .na-mesa{border:1px solid var(--ambar);background:var(--ambar-50);border-radius:12px;padding:8px 12px;margin-top:8px}
+  .na-mesa.ok{border-color:var(--verde);background:var(--verde-50)}
+  .na-mesa .t{font-size:12.5px;font-weight:600;color:var(--ambar-esc)}
+  .na-mesa.ok .t{color:var(--verde-esc)}
+  .na-mesa .mi{font-size:11px;color:var(--text-3);margin-top:3px}
+  .volta-media{font-size:11px;color:var(--text-3);text-decoration:underline;text-underline-offset:2px;background:none;border:0;cursor:pointer}
 </style>
 </head>
 <body>
@@ -429,7 +444,7 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
 
   <!-- 5 · MONTADOR DE PIZZA (+ CMV na v4) -->
   <!-- INTERATIVO nesta referência: trocar tamanho redesenha as fatias; clicar fatia abre a lista; preço editável recalcula. Conta = base(tamanho) + Σ(1 ocorrência × ficha do sabor) — regra 02/09, SEM fator. TUDO que existia continua IGUAL; o que nasce fica ABAIXO da conta. -->
-  <section class="card" aria-label="Monte uma pizza e veja o custo">
+  <section id="montador" class="card" aria-label="Monte uma pizza e veja o custo">
     <div class="card-head">
       <h2>🍕 Monte uma pizza e veja o custo</h2>
       <span class="hint">só simula — nada grava, nada baixa</span>
@@ -467,15 +482,25 @@ footer{margin-top:28px; font-size:11.5px; color:var(--text-3); text-align:center
        "a apurar" + convite pra criar a ficha (nunca número inventado).
        A busca usa casaBusca (acento/caixa). Os valores ABAIXO são
        EXEMPLO DE REFERÊNCIA, não dados reais. -->
+  <!-- ⚠️⚠️ PROCEDÊNCIA DA v2 DESTE CARTÃO (14/10/2026): a CESTA/COMBO, o
+       conserto do campo de preço, a "NA MESA" e a fatia dos fixos abaixo
+       DERIVAM DO PEDIDO ESCRITO DO DONO (sprint 🧺 "ESCOLHA PRODUTOS" v2),
+       não de um desenho aprovado. Inventar um visual e chamá-lo de "o mock
+       aprovado" é exatamente o que o protocolo de 10/09 existe pra impedir.
+       O que é COMPORTAMENTO está travado nas libs, EXECUTADO:
+       lib/margem/{campo-de-preco,cesta-do-veredito,na-mesa}.ts. -->
   <section class="card" aria-label="Escolha um produto e veja o preço ideal">
     <div class="card-head">
       <h2>🍔 Escolha um produto e veja o preço ideal</h2>
-      <span class="hint">só simula — custo da ficha + preço médio real do PDV</span>
+      <span class="hint">toque em 1 pra ver o preço ideal · em 2 ou mais pra montar um combo</span>
     </div>
     <div class="busca-prod">
       <span class="lupa">🔎</span>
       <input id="buscaProd" placeholder="buscar produto… (xis, hambúrguer, frango — ignora acento)">
     </div>
+    <!-- o toque LIGA/DESLIGA (✓ no chip). 1 item = o cartão de sempre;
+         2 ou mais = MODO COMBO. Produto-pizza aponta o montador ao lado:
+         este cartão NÃO monta pizza por sabor. -->
     <div class="prod-chips" id="prodChips"></div>
     <div class="prod-conta num" id="prodConta"></div>
     <!-- alvos da categoria lanche: 30/35/45 · porção: 35/40/45 (os chips
@@ -590,6 +615,34 @@ function dica(custo,preco,teto,tipo){
   return '<b>Especialista:</b> saudável. O jogo agora é a média do cardápio inteiro.';
 }
 
+/* ⭐ o ideal do canal PRINCIPAL (o balcão) — a MESMA conta do canaisHtml.
+   Em prod é `precosIdeais` da porta única (`veredito-de-preco.ts`). */
+function idealDoCanal(custo,alvoPct){ return custo==null?null:charm(custo/(alvoPct/100)); }
+
+/* ⭐ A FATIA DOS FIXOS: custo fixo do período ÷ unidades vendidas no período.
+   ⚠️ As unidades são as TOTAIS (dentro + fora da obra): dividir só pelas que
+   têm custo conhecido quase DOBRARIA a fatia — a venda sem ficha fechada
+   continua pagando aluguel. ⛔ E aqui o R$ vai COM centavos (redondo é régua
+   de milhar: R$ 4 no lugar de R$ 3,52 é 14% de erro). EXEMPLO de referência. */
+const FIXO_POR_UN = 3.52;
+
+/* ⭐⭐ A frase do especialista, agora com os estados do COMBO.
+   ⚠️ A ORDEM É A DO PREJUÍZO: "o ideal não fecha" vem primeiro porque ali o
+   problema NÃO é o combo — é o preço avulso de um item da cesta, e mandar o
+   dono mexer no combo o faria caçar no lugar errado. */
+function dicaDoCartao(custo,preco,teto,combo,avulsos,ideal){
+  if(!combo) return dica(custo,preco,teto,'produto');
+  if(custo==null) return '<b>Especialista:</b> tem item sem ficha na cesta — cria a ficha que eu calculo o combo inteiro.';
+  if(ideal!=null && avulsos!=null && ideal>avulsos+0.005) return '<b>Especialista:</b> nesse alvo o combo não fecha — o problema tá no preço avulso de algum item da cesta.';
+  if(preco!=null && preco>0 && avulsos!=null && avulsos>0 && (avulsos-preco)/avulsos>0.20) return '<b>Especialista:</b> generoso demais — 10–15% já leva o cliente.';
+  if(preco!=null && preco>0){
+    const cmv=100*custo/preco;
+    if(cmv>45) return '<b>Especialista:</b> sobe o preço ou tira o item caro da cesta.';
+    if(avulsos!=null && avulsos>0) return `<b>Especialista:</b> cliente ganha ${pctBR((avulsos-preco)/avulsos*100)}, a casa fica com CMV ${pctBR(cmv)}.`;
+  }
+  return '<b>Especialista:</b> digita o preço do combo que eu dou o veredito.';
+}
+
 function desenha(){
   const t=TAMANHOS[tam]; const n=t.fatias;
   const svg=document.getElementById('pizzaSvg');
@@ -666,40 +719,135 @@ document.querySelectorAll('.alvoPz').forEach(c=>c.onclick=()=>{
    custo = ficha (porta única); preco = média real do PDV no período
    (editável só na simulação); busca via casaBusca; teto por categoria. */
 const PRODUTOS=[
-  {nome:'xis completo',        custo:13.40, preco:29.90, teto:35},
-  {nome:'xis coração',         custo:16.80, preco:33.90, teto:35},
-  {nome:'hambúrguer da casa',  custo:9.00,  preco:27.90, teto:35},
-  {nome:'prato alaminuta',     custo:11.20, preco:20.40, teto:40},
-  {nome:'porção frango frito', custo:null,  preco:24.90, teto:40},
+  {nome:'xis completo',        custo:13.40, preco:29.90, teto:35, secao:'XIS',     un:212},
+  {nome:'xis coração',         custo:16.80, preco:33.90, teto:35, secao:'XIS',     un:96},
+  {nome:'hambúrguer da casa',  custo:9.00,  preco:27.90, teto:35, secao:'BURGERS', un:134},
+  {nome:'mini fritas',         custo:3.11,  preco:9.99,  teto:40, secao:'PORCOES', un:399},
+  {nome:'prato alaminuta',     custo:11.20, preco:20.40, teto:40, secao:'PRATOS',  un:58},
+  {nome:'pizza grande',        custo:12.56, preco:89.90, teto:33, secao:'PIZZAS',  un:174},
+  {nome:'porção frango frito', custo:null,  preco:24.90, teto:40, secao:'PORCOES', un:71},
 ];
-let prodSel=0, precoProd=PRODUTOS[0].preco;
+/* ⭐ A CESTA: lista de {ix,qtd}. O toque LIGA/DESLIGA; 1 item = o cartão de
+   sempre; 2+ = MODO COMBO. Em prod isto é `lib/margem/cesta-do-veredito.ts`
+   (a SOMA mora na lib, a tela ecoa). */
+let cesta=[{ix:0,qtd:1}];
+/* ⛔⛔ O CAMPO DE PREÇO É DONO DO TEXTO: `null` = NUNCA TOCADO (aí a média do
+   PDV é um bom palpite inicial) e `''` = o dono APAGOU. Com os dois colapsados
+   em `''`, QUALQUER fallback vira reposição — era o defeito que o dono
+   reportou ("quando vou troca numero eu excluir ele volta na hora mesmo
+   numero"). Em prod isto é `lib/margem/campo-de-preco.ts`. */
+let precoTxt=null;
 const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+const naCesta=ix=>cesta.some(e=>e.ix===ix);
+const itensDaCesta=()=>cesta.map(e=>({...PRODUTOS[e.ix],ix:e.ix,qtd:e.qtd}));
+const umSo=()=>cesta.length===1?itensDaCesta()[0]:null;
+/* a MÉDIA só existe no produto único — combo não tem média no PDV */
+const mediaDoCampo=()=>{const u=umSo();return u?u.preco:null;};
+const textoDoCampo=()=>{const m=mediaDoCampo();return precoTxt!==null?precoTxt:(m==null?'':m.toFixed(2).replace('.',','));};
+const precoDoCampo=()=>{const m=mediaDoCampo();if(precoTxt===null)return m;const n=parseFloat(precoTxt.replace(/\./g,'').replace(',','.'));return isFinite(n)?n:null;};
 function prodChips(filtro){
   const f=filtro?norm(filtro):'';
   document.getElementById('prodChips').innerHTML=PRODUTOS.map((p,ix)=>{
     if(f && norm(p.nome).indexOf(f)<0) return '';
-    return `<span class="sabor-chip ${p.custo==null?'sem':''} ${ix===prodSel?'onp':''}" data-ix="${ix}" style="${ix===prodSel?'background:var(--indigo-50);color:var(--indigo-900);border-color:transparent;font-weight:600':''}">${p.nome}${p.custo==null?' · sem ficha ⚠':''}</span>`;
+    const on=naCesta(ix);
+    return `<span class="sabor-chip ${p.custo==null?'sem':''} ${on?'onp':''}" data-ix="${ix}" aria-pressed="${on}" style="${on?'background:var(--indigo-50);color:var(--indigo-900);border-color:transparent;font-weight:600':''}">${on?'✓ ':''}${p.nome}${p.custo==null?' · sem ficha ⚠':''}</span>`;
   }).join('')||'<span class="hint">nenhum produto com esse nome</span>';
   document.querySelectorAll('#prodChips .sabor-chip').forEach(c=>c.onclick=()=>{
-    prodSel=+c.dataset.ix; precoProd=PRODUTOS[prodSel].preco; prodDraw();
+    const ix=+c.dataset.ix;
+    /* ⛔ o toque RESETA o preço: tirar ou pôr item muda O QUE A CESTA É, e o
+       campo pode estar carregando a média do produto que acabou de sair. */
+    cesta = naCesta(ix) ? cesta.filter(e=>e.ix!==ix) : cesta.concat([{ix,qtd:1}]);
+    precoTxt=null; prodDraw();
   });
 }
+/* ⛔ o −/+ nunca chega a ZERO: zero não é quantidade, é a ausência do item —
+   e quem quer tirar usa o toque no chip, que é reversível e visível. */
+function mudarQtd(ix,d){cesta=cesta.map(e=>e.ix===ix?{...e,qtd:Math.max(1,e.qtd+d)}:e);prodDraw();}
+/* ⭐ CUSTO e AVULSOS da cesta. ⛔ UM item sem ficha derruba o combo INTEIRO
+   pra "a apurar": somar só os que têm custo daria um número MENOR que o real
+   e PLAUSÍVEL, e num cartão de preço o palpite é OBEDECIDO. */
+const custoDaCesta=()=>itensDaCesta().some(l=>l.custo==null)?null:itensDaCesta().reduce((a,l)=>a+l.custo*l.qtd,0);
+const avulsosDaCesta=()=>itensDaCesta().some(l=>l.preco==null)?null:itensDaCesta().reduce((a,l)=>a+l.preco*l.qtd,0);
+/* ⛔ TETO DO COMBO = média dos tetos PONDERADA PELO CUSTO (o xis pesa mais que
+   a coca). A média simples daria outro número e o cartão cobraria um alvo que
+   a cesta não tem. */
+function tetoDaCesta(){
+  const ls=itensDaCesta(), comPeso=ls.filter(l=>l.custo!=null&&l.custo>0);
+  const base=comPeso.length?comPeso.map(l=>({t:l.teto,w:l.custo*l.qtd})):ls.map(l=>({t:l.teto,w:1}));
+  const sw=base.reduce((a,x)=>a+x.w,0);
+  return Math.round(base.reduce((a,x)=>a+x.t*x.w,0)/sw);
+}
 function prodDraw(){
-  const p=PRODUTOS[prodSel];
   prodChips(document.getElementById('buscaProd').value);
-  const fz=farol(p.custo,precoProd,p.teto);
+  const u=umSo(), combo=cesta.length>=2;
+  const preco=precoDoCampo();
+  const custo=combo?custoDaCesta():(u?u.custo:null);
+  const teto=combo?tetoDaCesta():(u?u.teto:35);
+  const fz=farol(custo,preco,teto);
+  const campo=`<input class="preco-input num" id="precoProd" value="${textoDoCampo()}" placeholder="89,90">`
+    /* ⭐ o gesto EXPLÍCITO que substitui a reposição automática — sem ele,
+       tirar o automatismo viraria um beco ("e agora, como eu volto?") */
+    + (mediaDoCampo()!=null && precoTxt!==null ? ` <button class="volta-media" id="voltaMedia">↺ voltar pra média</button>` : '');
   let html='';
-  html+=`<div class="row"><span class="mut">custo pela ficha <span class="hint">(toque abre a ficha)</span></span><span style="font-weight:700">${p.custo==null?'<span style="color:var(--ambar-esc)">a definir</span>':fmt(p.custo)}</span></div>`;
-  html+=`<div class="row"><span class="mut">vendendo hoje a <input class="preco-input num" id="precoProd" value="${precoProd.toFixed(2).replace('.',',')}"> <span class="hint">média real do PDV · editável</span></span><span class="farol ${fz.cls}">${fz.rot}</span></div>`;
-  if(p.custo!=null){
-    html+=`<div class="row"><span class="mut">no balcão, sobra</span><span class="sobra-verde">~${fmt(precoProd-p.custo)}</span></div>`;
-    html+=`<div class="row"><span class="mut">no iFood (taxa 20%), sobra</span><span class="sobra-ambar">~${fmt(precoProd*(1-TAXA_IFOOD)-p.custo)}</span></div>`;
+  if(!cesta.length){
+    html=`<div class="row"><span class="mut">toque num produto pra ver o preço ideal — ou em <b>2 ou mais</b> pra montar um combo.</span></div>`;
+  } else if(combo){
+    /* ═══ MODO COMBO ═══ */
+    html+=`<div class="row"><span style="font-weight:600">🧺 combo de ${cesta.length} produtos</span></div>`;
+    itensDaCesta().forEach(l=>{
+      const v=l.custo==null?'<span style="color:var(--ambar-esc)">a definir</span>':`${fmt(l.custo)} × ${l.qtd} = <b>${fmt(l.custo*l.qtd)}</b>`;
+      html+=`<div class="cesta-linha"><span class="mut"><span class="qtd"><button data-m="${l.ix}">−</button><b>${l.qtd}</b><button data-p="${l.ix}">+</button></span> ${l.nome}</span><span>${v}</span></div>`;
+    });
+    html+=`<div class="row"><span class="mut">custo do combo</span><span style="font-weight:700">${custo==null?'a apurar':fmt(custo)}</span></div>`;
+    const av=avulsosDaCesta();
+    html+=`<div class="row"><span class="mut">os mesmos, avulsos, custam pro cliente</span><span>${av==null?'a apurar':fmt(av)}</span></div>`;
+    html+=`<div class="row"><span class="hint">teto do combo ${teto}% · média dos tetos ponderada pelo custo</span></div>`;
+    html+=`<div class="row"><span class="mut">vendendo o combo a ${campo} <span class="hint">o combo não tem média no PDV — digite pra simular</span></span><span class="farol ${fz.cls}">${fz.rot}</span></div>`;
+    /* ⭐ A LINHA DA VANTAGEM. ⛔ preço ≥ avulsos é CORAL: combo que custa igual
+       ou mais que os itens separados não é promoção, é linha morta. */
+    if(preco!=null && preco>0 && av!=null && av>0){
+      const dif=av-preco;
+      html += dif>0.005
+        ? `<div class="vantagem boa">vantagem pro cliente: ${fmt(dif)} (${(dif/av*100).toFixed(1).replace('.',',')}% mais barato que avulso)</div>`
+        : `<div class="vantagem ruim">combo SEM vantagem — ninguém leva</div>`;
+    }
+  } else {
+    /* ═══ MODO PRODUTO ÚNICO — o cartão de sempre ═══ */
+    /* ⛔⛔ PIZZA SEPARADA: este cartão NÃO monta pizza por sabor */
+    if(u.secao==='PIZZAS') html+=`<div class="row"><span class="hint">🍕 sabores e custo por fatia: <a href="#montador">no montador ao lado →</a></span></div>`;
+    html+=`<div class="row"><span class="mut">custo pela ficha <span class="hint">(toque abre a ficha)</span></span><span style="font-weight:700">${u.custo==null?'<span style="color:var(--ambar-esc)">a definir</span>':fmt(u.custo)}</span></div>`;
+    html+=`<div class="row"><span class="mut">vendendo hoje a ${campo} <span class="hint">média real do PDV · editável só pra simular, nada grava</span></span><span class="farol ${fz.cls}">${fz.rot}</span></div>`;
+    /* ⛔ preço apagado/ilegível → sobras "—", NUNCA a média de volta */
+    if(u.custo!=null){
+      html+=`<div class="row"><span class="mut">no balcão, sobra</span><span class="sobra-verde">${preco==null?'—':'~'+fmt(preco-u.custo)}</span></div>`;
+      html+=`<div class="row"><span class="mut">no iFood (taxa 20%), sobra</span><span class="sobra-ambar">${preco==null?'—':'~'+fmt(preco*(1-TAXA_IFOOD)-u.custo)}</span></div>`;
+    }
+    /* ⭐⭐ NA MESA — e ela usa o preço REAL, nunca o simulado: a pergunta é
+       retrospectiva ("quanto entraria no PERÍODO"). ⛔ Quando o preço de hoje
+       JÁ ganha do alvo, isto NUNCA sugere baixar. */
+    const ideal=idealDoCanal(u.custo,alvoPr);
+    if(u.custo!=null && u.preco!=null && ideal!=null){
+      const dif=ideal-u.preco;
+      html += dif>0.005
+        ? `<div class="na-mesa"><div class="t">🍽️ NA MESA: subindo pro ideal, entravam +R$ ${Math.round(dif*u.un).toLocaleString('pt-BR')} no período</div><div class="mi">${u.un} un × a diferença, pela média real do PDV</div><div class="mi">cada unidade ainda precisa deixar ~${fmt(FIXO_POR_UN)} pros fixos</div></div>`
+        : `<div class="na-mesa ok"><div class="t">🍽️ NA MESA: nada — teu preço já ganha desse alvo</div><div class="mi">segura o preço, não baixa.</div><div class="mi">cada unidade ainda precisa deixar ~${fmt(FIXO_POR_UN)} pros fixos</div></div>`;
+    }
   }
   document.getElementById('prodConta').innerHTML=html;
   const inp=document.getElementById('precoProd');
-  inp.onchange=()=>{ precoProd=parseFloat(inp.value.replace('.','').replace(',','.'))||precoProd; prodDraw(); };
-  document.getElementById('canaisPr').innerHTML=canaisHtml(p.custo,alvoPr);
-  document.getElementById('dicaPr').innerHTML=dica(p.custo,precoProd,p.teto,'produto');
+  if(inp){
+    /* ⛔⛔ `oninput`, e o texto fica COMO VEIO: apagar deixa vazio e NUNCA
+       repõe — nem no blur. O número é DERIVADO do texto. */
+    inp.oninput=()=>{ precoTxt=inp.value.replace(/[^\d.,]/g,''); prodDraw(); };
+  }
+  const vm=document.getElementById('voltaMedia');
+  if(vm) vm.onclick=()=>{ precoTxt=null; prodDraw(); };
+  document.querySelectorAll('#prodConta .qtd button').forEach(b=>{
+    if(b.dataset.m!==undefined) b.onclick=()=>mudarQtd(+b.dataset.m,-1);
+    if(b.dataset.p!==undefined) b.onclick=()=>mudarQtd(+b.dataset.p,+1);
+  });
+  document.getElementById('canaisPr').innerHTML=canaisHtml(custo,alvoPr);
+  document.getElementById('dicaPr').innerHTML=dicaDoCartao(custo,preco,teto,combo,avulsosDaCesta(),idealDoCanal(custo,alvoPr));
 }
 document.querySelectorAll('.alvoPr').forEach(c=>c.onclick=()=>{
   document.querySelectorAll('.alvoPr').forEach(x=>x.classList.remove('on'));

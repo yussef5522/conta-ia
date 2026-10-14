@@ -49,12 +49,22 @@ import {
   reguaDaSecao,
   type BlocoDoVeredito,
   type Farol,
+  type TipoDoVeredito,
   type TomDoFarol,
 } from '@/lib/margem/veredito-de-preco'
 import {
   filtrarProdutosDoVeredito,
   type ProdutoDoVeredito,
 } from '@/lib/margem/produto-do-veredito'
+import {
+  alternarNaCesta, estaNaCesta, mudarQtd, vereditoDaCesta,
+  type ItemDaCesta,
+} from '@/lib/margem/cesta-do-veredito'
+import {
+  CAMPO_INTOCADO, digitar, mostrarVoltarParaMedia, precoDoCampo, textoDoCampo,
+  type TextoDoCampo,
+} from '@/lib/margem/campo-de-preco'
+import { fatiaDosFixos, naMesa } from '@/lib/margem/na-mesa'
 import {
   linhaDaCobertura, montarCarregadores,
   type Carregador,
@@ -67,7 +77,6 @@ import { montarCascata, CMV_SAUDAVEL, type CartaoDaCascata } from '@/lib/margem/
 import { montarPizza, type PizzaMontada, type SaborDisponivel } from '@/lib/margem/montador'
 import type { CatalogoDoMontador } from '@/lib/margem/leitura-montador'
 import type { TamanhoDePizza } from '@/lib/margem/tamanhos'
-import { sanitizarQtd, valorQtd } from '@/lib/stock/quantidade'
 import { COBERTURA_MINIMA } from '@/lib/margem/casa'
 import type { PeriodoDaMargem } from '@/lib/margem/janela'
 import type { MargemDaTela } from '@/lib/margem/leitura'
@@ -822,51 +831,121 @@ function LigaCard({
 /* ═══════════════ 7 · ESCOLHA UM PRODUTO (FRENTE C da v4) ═══════════════ */
 
 /**
- * ⭐⭐⭐ O IRMÃO DO MONTADOR — xis, hambúrguer, prato, qualquer produto com ficha.
+ * ⭐⭐⭐ O IRMÃO DO MONTADOR — xis, hambúrguer, prato, e agora a CESTA (combo).
  *
  * ⛔⛔ **ANATOMIA IDÊNTICA, COMPONENTES IDÊNTICOS.** O farol e o bloco de preço ideal são os
  * MESMOS do montador (`PilulaDoFarol`, `BlocoDoPrecoIdeal`), alimentados pela MESMA porta
  * (`montarBlocoDoVeredito`). Dois desenhos divergiriam no primeiro ajuste de tom — e estes
  * dois cartões ficam **na mesma dobra, lado a lado**.
  *
- * ⭐ É esta dupla que mata o vazio da esquerda (as palavras da referência).
+ * ⭐⭐ **1 ITEM = O CARTÃO DE HOJE, LITERALMENTE.** No modo de um produto a chamada é a MESMA
+ * linha de antes (`montarBlocoDoVeredito` com `tipo: 'produto'`) — não passa pela cesta. É a
+ * forma mais forte de cumprir *"o cartão fica EXATAMENTE como hoje"*: não há o que divergir
+ * porque é o mesmo código. A cesta só entra com **2 ou mais**, e um teste prova que, com 1
+ * item, as duas portas devolvem farol, teto, alvos e canais **idênticos**.
  *
- * ⛔ **ZERO ESCRITA.** O preço é editável **só pra simular** — e a tela DIZ isso. Nada grava:
- * o único POST desta tela é o da config de canais/base, no montador.
+ * ⛔⛔ **E A SOMA DO COMBO MORA NA LIB, NUNCA AQUI** (ordem do dono: *"combo = soma na LIB,
+ * não na tela"*). Esta tela não soma custo, não soma avulsos e não calcula vantagem — ela
+ * ecoa o que `vereditoDaCesta` decidiu. Uma soma no JSX seria a 2ª conta do mesmo dinheiro
+ * **no mesmo cartão**.
+ *
+ * ⛔⛔ **PIZZA NÃO SE MONTA AQUI** (ordem do dono): produto-pizza do PDV entra na cesta como UM
+ * produto, com o custo da ficha dele, e o cartão aponta o montador ao lado. O montador fica
+ * **INTOCADO**.
+ *
+ * ⛔ **ZERO ESCRITA.** Cesta, quantidade, alvo e preço são SIMULAÇÃO — e a tela DIZ isso.
+ * Nada grava: o único POST desta tela é o da config de canais/base, no montador.
  */
 function EscolhaUmProduto({ d, empresaId }: { d: MargemDaTela; empresaId: string }) {
+  const produtos = d.produtos
+
   // ⚠️ hooks no TOPO (REGRA 9)
   const [busca, setBusca] = useState('')
-  const [sel, setSel] = useState<string | null>(null)
-  const [precoTxt, setPrecoTxt] = useState('')
+  /**
+   * ⭐ a cesta nasce com o CAMPEÃO de volume (a lista já vem ordenada por isso) — o produto
+   * que mais sai é o que mais move o bolso, e é nele que o dono vai tocar primeiro. Com ele
+   * JÁ na cesta, o chip dele nasce com ✓ e o toque o TIRA: o gesto é reversível desde o 1º
+   * render, sem um estado fantasma de "selecionado mas não escolhido".
+   */
+  const [escolhas, setEscolhas] = useState<ItemDaCesta[]>(() =>
+    produtos[0] ? [{ chave: produtos[0].chave, qtd: 1 }] : [],
+  )
+  const [precoTxt, setPrecoTxt] = useState<TextoDoCampo>(CAMPO_INTOCADO)
   const [alvo, setAlvo] = useState<number | null>(null)
 
-  const produtos = d.produtos
   const filtrados = filtrarProdutosDoVeredito(produtos, busca)
-  // ⭐ o default é o CAMPEÃO de volume (a lista já vem ordenada por isso) — o produto que
-  //    mais sai é o que mais move o bolso, e é nele que o dono vai tocar primeiro.
-  const p = produtos.find((x) => x.chave === sel) ?? produtos[0] ?? null
+  const canais = (d.canais ?? []).map((c) => ({ canal: c.nome, taxaPct: c.taxaPct }))
 
-  // ⛔ o preço EDITADO é só da simulação; o default é a MÉDIA REAL DO PDV no período.
-  //    ⚠️ `precoTxt` vazio = usa o real; nunca sobrescreve o que o dono digitou.
-  const precoSimulado = precoTxt.trim() === '' ? null : Number(precoTxt.replace(/\./g, '').replace(',', '.'))
-  const preco = precoSimulado != null && Number.isFinite(precoSimulado) ? precoSimulado : (p?.preco ?? null)
+  /**
+   * ⛔ O TOQUE RESETA PREÇO E ALVO — e o `−/+` NÃO.
+   *
+   * Tirar ou pôr um item muda **o que a cesta é**, e o campo pode estar carregando a média do
+   * PDV do produto que acabou de sair (no combo não existe média: o campo nasce vazio). Já a
+   * quantidade é um dial sobre a MESMA cesta: ali o dono quer justamente ver o preço que ele
+   * digitou ser rejulgado contra o custo novo.
+   */
+  function tocar(chave: string) {
+    setEscolhas((e) => alternarNaCesta(e, chave))
+    setPrecoTxt(CAMPO_INTOCADO)
+    setAlvo(null)
+  }
 
-  const bloco = montarBlocoDoVeredito({
-    custo: p?.custo ?? null,
-    preco,
-    tetoPct: p?.regua.tetoPct ?? 40,
-    alvosPct: p?.regua.alvosPct ?? [35, 40, 45],
-    alvoPct: alvo ?? p?.regua.tetoPct ?? 40,
-    canais: (d.canais ?? []).map((c) => ({ canal: c.nome, taxaPct: c.taxaPct })),
-    tipo: 'produto',
-  })
+  /** ⚠️ a cesta na ORDEM EM QUE ELE TOCOU (a lib preserva) — a lista de chips segue por volume */
+  const naCesta = escolhas
+    .map((e) => produtos.find((x) => x.chave === e.chave))
+    .filter((x): x is ProdutoDoVeredito => x != null)
+
+  const umSo = naCesta.length === 1 ? naCesta[0] : null
+  const ehCombo = naCesta.length >= 2
+
+  // ⛔ a média só existe no produto ÚNICO — combo não tem média no PDV
+  const preco = precoDoCampo(precoTxt, umSo?.preco ?? null)
+
+  /** ⭐ MODO PRODUTO ÚNICO: a chamada de hoje, sem uma vírgula de diferença */
+  const blocoDoProduto = umSo
+    ? montarBlocoDoVeredito({
+        custo: umSo.custo,
+        preco,
+        tetoPct: umSo.regua.tetoPct,
+        alvosPct: umSo.regua.alvosPct,
+        alvoPct: alvo ?? umSo.regua.tetoPct,
+        canais,
+        tipo: 'produto',
+      })
+    : null
+
+  const vCesta = ehCombo
+    ? vereditoDaCesta({ produtos, escolhas, preco, alvoPct: alvo, canais })
+    : null
+
+  const bloco = blocoDoProduto ?? vCesta?.bloco ?? null
+
+  /**
+   * ⭐⭐ A "NA MESA" USA O PREÇO **REAL**, NUNCA O SIMULADO — e é de propósito.
+   *
+   * A pergunta é retrospectiva (*"quanto entraria no PERÍODO"*), com as unidades que ele
+   * **já vendeu**; o simulado é um e-se do farol. Usar o digitado aqui faria a tela afirmar
+   * um dinheiro do passado a partir de um preço que nunca foi cobrado.
+   */
+  const mesa = umSo
+    ? naMesa({
+        preco: umSo.preco,
+        ideal: blocoDoProduto?.canais[0]?.preco ?? null,
+        unidades: umSo.unidades,
+      })
+    : null
+
+  /** ⚠️ unidades TOTAIS do período (dentro + fora da obra) — ver o porquê na lib */
+  const fixos = fatiaDosFixos(
+    d.casa.custoFixo,
+    d.sobras.cobertura.unidadesDentro + d.sobras.cobertura.unidadesFora,
+  )
 
   return (
     <Cartao id="produto">
       <CabecaDoCartao
         titulo="🍔 Escolha um produto e veja o preço ideal"
-        dica="custo = a ficha · preço = média real do PDV no período"
+        dica="custo = a ficha · preço = média real do PDV · toque em 2 ou mais pra montar um combo"
       />
 
       {produtos.length === 0 ? (
@@ -895,95 +974,122 @@ function EscolhaUmProduto({ d, empresaId }: { d: MargemDaTela; empresaId: string
                 nenhum dos {produtos.length} produtos casa com «{busca}»
               </p>
             ) : (
-              recorteDaColuna(filtrados, false, 12).visiveis.map((x) =>
-                /* ⭐ produto SEM ficha aparece TRACEJADO ÂMBAR — esconder faria o cartão
-                   mentir sobre o cardápio e tiraria da frente a fila que sobe a cobertura */
-                <button
-                  key={x.chave}
-                  type="button"
-                  onClick={() => { setSel(x.chave); setPrecoTxt(''); setAlvo(null) }}
-                  className={`rounded-full border px-[11px] py-[4px] text-[12.5px] ${x.temFicha ? '' : 'border-dashed'}`}
-                  style={
-                    x.chave === p?.chave
-                      ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)', borderColor: 'transparent', fontWeight: 600 }
-                      : x.temFicha
-                        ? { borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }
-                        : { borderColor: 'var(--fam-ambar-mid)', color: 'var(--fam-ambar-ink)' }
-                  }
-                >
-                  {x.nome}{x.temFicha ? '' : ' · sem ficha ⚠'}
-                </button>
-              )
+              recorteDaColuna(filtrados, false, 12).visiveis.map((x) => {
+                const dentro = estaNaCesta(escolhas, x.chave)
+                return (
+                  /* ⭐ o toque LIGA/DESLIGA (✓ no chip) · produto SEM ficha aparece TRACEJADO
+                     ÂMBAR — esconder faria o cartão mentir sobre o cardápio e tiraria da
+                     frente a fila que sobe a cobertura */
+                  <button
+                    key={x.chave}
+                    type="button"
+                    onClick={() => tocar(x.chave)}
+                    aria-pressed={dentro}
+                    className={`rounded-full border px-[11px] py-[4px] text-[12.5px] ${x.temFicha ? '' : 'border-dashed'}`}
+                    style={
+                      dentro
+                        ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)', borderColor: 'transparent', fontWeight: 600 }
+                        : x.temFicha
+                          ? { borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }
+                          : { borderColor: 'var(--fam-ambar-mid)', color: 'var(--fam-ambar-ink)' }
+                    }
+                  >
+                    {dentro ? '✓ ' : ''}{x.nome}{x.temFicha ? '' : ' · sem ficha ⚠'}
+                  </button>
+                )
+              })
             )}
           </div>
 
-          {p && (
+          {/* ⛔ cesta VAZIA é estado legítimo (o toque tem que ser reversível) — e ela DIZ o
+              que fazer, nunca fica muda */}
+          {naCesta.length === 0 && (
+            <p className="px-[18px] pb-[16px] text-[13px]" style={{ color: 'var(--prod-muted)' }}>
+              toque num produto pra ver o preço ideal dele — ou em <b>2 ou mais</b> pra montar um combo.
+            </p>
+          )}
+
+          {/* ═══ MODO PRODUTO ÚNICO — o cartão de hoje, intacto ═══ */}
+          {umSo && (
             <div className="px-[18px] pb-[4px] text-[14px]">
               {/* ⭐ a seção, com a marca de PROPOSTA quando o dono ainda não bateu o martelo */}
               <div className="flex flex-wrap items-center justify-between gap-[8px] py-[3px]">
                 <span style={{ color: 'var(--prod-secondary)' }}>
-                  categoria <b style={{ color: 'var(--prod-primary)' }}>{p.secao}</b>
-                  {p.secaoSugerida && (
+                  categoria <b style={{ color: 'var(--prod-primary)' }}>{umSo.secao}</b>
+                  {umSo.secaoSugerida && (
                     <span className="text-[11.5px]" style={{ color: 'var(--fam-ambar-ink)' }}> · sugerida, confirme no cardápio</span>
                   )}
-                  {p.regua.origem === 'DERIVADO' && (
-                    <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}> · teto {p.regua.tetoPct}% derivado</span>
+                  {umSo.regua.origem === 'DERIVADO' && (
+                    <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}> · teto {umSo.regua.tetoPct}% derivado</span>
                   )}
                 </span>
                 <span className="text-[11.5px] tabular-nums" style={{ color: 'var(--prod-muted)' }}>
-                  {p.unidades} un no período
+                  {umSo.unidades} un no período
                 </span>
               </div>
+
+              {/* ⛔⛔ PIZZA: este cartão NÃO monta por sabor — ele aponta o montador ao lado.
+                  E a linha LEVA (âncora), porque *"no montador ao lado"* sem o caminho é
+                  ordem, não caminho. */}
+              {umSo.secao === 'PIZZAS' && (
+                <p className="py-[3px] text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                  🍕 sabores e custo por fatia:{' '}
+                  <a href="#montador" className="underline underline-offset-2">no montador ao lado →</a>
+                </p>
+              )}
 
               {/* ⛔ custo SEM FICHA não mostra número: diz "a definir" e o porquê */}
               <div className="flex flex-wrap items-center justify-between gap-[10px] py-[3px]">
                 <span style={{ color: 'var(--prod-secondary)' }}>
                   custo pela ficha{' '}
-                  {p.href && <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>(toque abre a ficha)</span>}
+                  {umSo.href && <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>(toque abre a ficha)</span>}
                 </span>
-                {p.custo == null ? (
+                {umSo.custo == null ? (
                   <span className="text-right">
                     <b style={{ color: 'var(--fam-ambar-ink)' }}>a definir</b>
                     <span className="block text-[11px]" style={{ color: 'var(--prod-secondary)' }}>
-                      {p.porque}
-                      {p.custoParcial > 0 ? ` · parcial ${formatBRL(p.custoParcial)}` : ''}
+                      {umSo.porque}
+                      {umSo.custoParcial > 0 ? ` · parcial ${formatBRL(umSo.custoParcial)}` : ''}
                     </span>
                   </span>
-                ) : p.href ? (
-                  <a href={p.href} className="font-bold tabular-nums underline-offset-2 hover:underline" style={{ color: 'var(--prod-primary)' }}>
-                    {formatBRL(p.custo)}
+                ) : umSo.href ? (
+                  <a href={umSo.href} className="font-bold tabular-nums underline-offset-2 hover:underline" style={{ color: 'var(--prod-primary)' }}>
+                    {formatBRL(umSo.custo)}
                   </a>
                 ) : (
-                  <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{formatBRL(p.custo)}</b>
+                  <b className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{formatBRL(umSo.custo)}</b>
                 )}
               </div>
 
               {/* ⭐⭐ "VENDENDO HOJE A" = a MÉDIA REAL DO PDV no período. Editável SÓ pra
-                  simular — e a tela DIZ que nada grava. ⛔ Sem venda no período o campo nasce
-                  VAZIO: zero afirmaria que o produto saiu de graça. */}
+                  simular — e a tela DIZ que nada grava. ⛔ Apagar NÃO repõe a média: o campo é
+                  dono do texto enquanto se digita (a dor de 14/10), e o caminho de volta é o
+                  "↺ voltar pra média", explícito. */}
               <div className="flex flex-wrap items-center justify-between gap-[10px] py-[3px]">
                 <span className="flex flex-wrap items-center gap-[6px]" style={{ color: 'var(--prod-secondary)' }}>
                   vendendo hoje a{' '}
                   <CampoDePreco
-                    valor={precoTxt !== '' ? precoTxt : p.preco == null ? '' : p.preco.toFixed(2).replace('.', ',')}
-                    aoMudar={setPrecoTxt}
+                    txt={precoTxt}
+                    media={umSo.preco}
+                    aoDigitar={setPrecoTxt}
+                    rotulo={`preço de venda de ${umSo.nome}`}
                   />
                   <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
-                    {p.preco == null
+                    {umSo.preco == null
                       ? 'sem venda no período — digite pra simular'
-                      : p.precoOrigem === 'praticado'
+                      : umSo.precoOrigem === 'praticado'
                         ? 'média real do PDV · editável só pra simular, nada grava'
                         : 'preço de cardápio · editável só pra simular, nada grava'}
                   </span>
                 </span>
-                <PilulaDoFarol farol={bloco.farol} />
+                {bloco && <PilulaDoFarol farol={bloco.farol} />}
               </div>
 
               {/* ⭐ as sobras no preço de HOJE (ou no simulado) — as MESMAS 3 linhas do
                   montador, pela mesma régua: a taxa incide no PREÇO, nunca na sobra. */}
-              {p.custo != null &&
-                bloco.canais.map((c) => {
-                  const custo = p.custo as number
+              {umSo.custo != null &&
+                blocoDoProduto?.canais.map((c) => {
+                  const custo = umSo.custo as number
                   const sobra =
                     preco == null || c.taxaPct == null ? null : preco * (1 - c.taxaPct) - custo
                   return (
@@ -1009,10 +1115,59 @@ function EscolhaUmProduto({ d, empresaId }: { d: MargemDaTela; empresaId: string
                   )
                 })}
 
+              {/* ⭐⭐ NA MESA — o dinheiro que o preço de hoje deixou passar no período.
+                  ⛔ Quando o preço de hoje JÁ ganha do alvo, isto NUNCA sugere baixar. */}
+              {mesa && (
+                <div
+                  className="mt-[8px] rounded-[12px] border px-[12px] py-[8px]"
+                  style={
+                    mesa.tom === 'ambar'
+                      ? { borderColor: 'var(--fam-ambar-mid)', background: 'var(--fam-ambar-bg)' }
+                      : mesa.tom === 'verde'
+                        ? { borderColor: 'var(--fam-verde-mid)', background: 'var(--fam-verde-bg)' }
+                        : { borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface-1)' }
+                  }
+                >
+                  <p
+                    className="text-[12.5px] font-semibold"
+                    style={{
+                      color:
+                        mesa.tom === 'ambar'
+                          ? 'var(--fam-ambar-ink)'
+                          : mesa.tom === 'verde'
+                            ? 'var(--fam-verde-ink)'
+                            : 'var(--prod-muted)',
+                    }}
+                  >
+                    🍽️ NA MESA: {mesa.frase}
+                  </p>
+                  {mesa.conselho && (
+                    <p className="text-[11.5px]" style={{ color: 'var(--fam-verde-ink)' }}>
+                      {mesa.conselho}
+                    </p>
+                  )}
+                  {mesa.porque && (
+                    <p className="text-[11px]" style={{ color: 'var(--prod-secondary)' }}>
+                      {mesa.porque}
+                    </p>
+                  )}
+                  {mesa.tom === 'ambar' && mesa.valorTexto && (
+                    <p className="text-[11px] tabular-nums" style={{ color: 'var(--prod-secondary)' }}>
+                      {mesa.unidades} un × a diferença, pela média real do PDV · {mesa.valorTexto.cheio}
+                    </p>
+                  )}
+                  {/* ⭐ a letra miúda da casa: a unidade não paga só a ficha, paga aluguel também */}
+                  <p className="mt-[3px] text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+                    {fixos.frase}
+                    {fixos.porque ? ` (${fixos.porque})` : ''}
+                  </p>
+                </div>
+              )}
+
               {/* ⭐ sem ficha, o CONVITE — e ele LEVA (cartão que cobra sem dar caminho é cobrança) */}
-              {p.custo == null && (
+              {umSo.custo == null && (
                 <a
-                  href={`/empresas/${empresaId}/estoque/cardapio/${encodeURIComponent(p.chave)}`}
+                  href={`/empresas/${empresaId}/estoque/cardapio/${encodeURIComponent(umSo.chave)}`}
                   className="mt-[6px] inline-block rounded-[8px] px-[10px] py-[5px] text-[12.5px] font-semibold"
                   style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}
                 >
@@ -1022,7 +1177,127 @@ function EscolhaUmProduto({ d, empresaId }: { d: MargemDaTela; empresaId: string
             </div>
           )}
 
-          {p && <BlocoDoPrecoIdeal bloco={bloco} aoTrocarAlvo={setAlvo} tipo="produto" />}
+          {/* ═══ MODO COMBO — 2 ou mais na cesta ═══ */}
+          {vCesta && (
+            <div className="px-[18px] pb-[4px] text-[14px]">
+              <p className="py-[3px] text-[12.5px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
+                🧺 combo de {vCesta.cesta.itens} produtos
+              </p>
+
+              {/* a cesta item a item · o toque abre a ficha · −/+ com mínimo 1 */}
+              {vCesta.cesta.linhas.map((l) => (
+                <div key={l.chave} className="flex flex-wrap items-center justify-between gap-[8px] py-[4px]">
+                  <span className="flex items-center gap-[6px]" style={{ color: 'var(--prod-secondary)' }}>
+                    <span className="inline-flex items-center gap-[4px]">
+                      <button
+                        type="button"
+                        onClick={() => setEscolhas((e) => mudarQtd(e, l.chave, -1))}
+                        aria-label={`menos um ${l.nome}`}
+                        className="h-[22px] w-[22px] rounded-[6px] border text-[13px] leading-none"
+                        style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}
+                      >
+                        −
+                      </button>
+                      <b className="w-[18px] text-center tabular-nums" style={{ color: 'var(--prod-primary)' }}>{l.qtd}</b>
+                      <button
+                        type="button"
+                        onClick={() => setEscolhas((e) => mudarQtd(e, l.chave, +1))}
+                        aria-label={`mais um ${l.nome}`}
+                        className="h-[22px] w-[22px] rounded-[6px] border text-[13px] leading-none"
+                        style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}
+                      >
+                        +
+                      </button>
+                    </span>
+                    {l.href ? (
+                      <a href={l.href} className="underline-offset-2 hover:underline" style={{ color: 'var(--prod-primary)' }}>
+                        {l.nome}
+                      </a>
+                    ) : (
+                      <span style={{ color: 'var(--prod-primary)' }}>{l.nome}</span>
+                    )}
+                  </span>
+                  {l.custoTotal == null ? (
+                    <span className="text-right">
+                      <b style={{ color: 'var(--fam-ambar-ink)' }}>a definir</b>
+                      {l.porque && (
+                        <span className="block text-[11px]" style={{ color: 'var(--prod-secondary)' }}>{l.porque}</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>
+                      {formatBRL(l.custoUn as number)} × {l.qtd} = <b>{formatBRL(l.custoTotal)}</b>
+                    </span>
+                  )}
+                </div>
+              ))}
+
+              <div className="mt-[4px] border-t border-dashed pt-[6px]" style={{ borderColor: 'var(--prod-line-strong)' }}>
+                <LinhaDaConta
+                  rotulo="custo do combo"
+                  valor={vCesta.cesta.custoDoCombo == null ? 'a apurar' : formatBRL(vCesta.cesta.custoDoCombo)}
+                />
+                <LinhaDaConta
+                  rotulo="os mesmos, avulsos, custam pro cliente"
+                  valor={vCesta.cesta.avulsos == null ? 'a apurar' : formatBRL(vCesta.cesta.avulsos)}
+                />
+                {/* ⚠️ o teto do combo é a média dos tetos PONDERADA PELO CUSTO — linha pequena,
+                    porque ela explica o alvo, não é o alvo */}
+                <p className="pt-[2px] text-[11px]" style={{ color: 'var(--prod-muted)' }}>
+                  teto do combo {vCesta.cesta.regua.tetoPct}% · {vCesta.cesta.regua.porque}
+                </p>
+              </div>
+
+              {/* ⛔ "vendendo o combo a" NASCE VAZIO — combo não tem média no PDV */}
+              <div className="flex flex-wrap items-center justify-between gap-[10px] py-[6px]">
+                <span className="flex flex-wrap items-center gap-[6px]" style={{ color: 'var(--prod-secondary)' }}>
+                  vendendo o combo a{' '}
+                  <CampoDePreco
+                    txt={precoTxt}
+                    media={null}
+                    aoDigitar={setPrecoTxt}
+                    rotulo="preço de venda do combo"
+                  />
+                  <span className="text-[11.5px]" style={{ color: 'var(--prod-muted)' }}>
+                    o combo não tem média no PDV — digite pra simular, nada grava
+                  </span>
+                </span>
+                <PilulaDoFarol farol={vCesta.bloco.farol} />
+              </div>
+
+              {/* ⭐⭐ A LINHA DA VANTAGEM — e o "SEM vantagem" é CORAL de propósito: combo que
+                  custa igual ou mais que os avulsos não é promoção, é linha morta no cardápio */}
+              {vCesta.vantagem.frase && (
+                <p
+                  className="rounded-[10px] px-[10px] py-[6px] text-[12.5px] font-semibold"
+                  style={
+                    vCesta.vantagem.tom === 'verde'
+                      ? { background: 'var(--fam-verde-bg)', color: 'var(--fam-verde-ink)' }
+                      : { background: 'var(--fam-coral-bg)', color: 'var(--fam-coral-ink)' }
+                  }
+                >
+                  {vCesta.vantagem.frase}
+                </p>
+              )}
+
+              {vCesta.cesta.custoDoCombo == null && (
+                <p className="pt-[4px] text-[11.5px]" style={{ color: 'var(--fam-ambar-ink)' }}>
+                  {vCesta.cesta.porque} — crie a ficha que eu calculo o combo inteiro.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ⭐ o preço ideal por canal — o MESMO componente e o MESMO motor nos dois modos.
+              ⚠️ No combo a frase é a do COMBO (ela conhece os avulsos, que o produto único não
+              tem); no produto único é a de hoje. */}
+          {bloco && (
+            <BlocoDoPrecoIdeal
+              bloco={vCesta ? { ...vCesta.bloco, frase: vCesta.frase } : bloco}
+              aoTrocarAlvo={setAlvo}
+              tipo={vCesta ? 'combo' : 'produto'}
+            />
+          )}
         </>
       )}
     </Cartao>
@@ -1073,7 +1348,7 @@ function PilulaDoFarol({ farol }: { farol: Farol }) {
  */
 function BlocoDoPrecoIdeal({
   bloco, aoTrocarAlvo, tipo,
-}: { bloco: BlocoDoVeredito; aoTrocarAlvo: (a: number) => void; tipo: 'pizza' | 'produto' }) {
+}: { bloco: BlocoDoVeredito; aoTrocarAlvo: (a: number) => void; tipo: TipoDoVeredito }) {
   return (
     <>
       <div
@@ -1165,7 +1440,12 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
   const [buscaSabor, setBuscaSabor] = useState('')
   // ⚠️ deriva da MESMA lista que o montador usa — filtro com fonte própria divergiria
   const saboresFiltrados = (cat?.sabores ?? []).filter((s) => casaBusca(s.nome, buscaSabor))
-  const [precoTxt, setPrecoTxt] = useState('')
+  /**
+   * ⚠️ `TextoDoCampo` com `media: null` — a pizza MONTADA não tem média no PDV (ela nasce
+   * na bancada), então o campo nasce VAZIO e o "↺ voltar pra média" nunca aparece. O tipo é o
+   * MESMO do cartão de produto: um pedaço só, dois cartões.
+   */
+  const [precoTxt, setPrecoTxt] = useState<TextoDoCampo>(CAMPO_INTOCADO)
   const [salvando, setSalvando] = useState(false)
   // ⭐ FRENTE B (v4): o alvo de CMV da pizza. ⛔ O default é o TETO da categoria (o chip do
   //    meio), nunca um número digitado aqui — o mapa é o dono (ver `reguaDaSecao`).
@@ -1219,7 +1499,7 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
     ? montarPizza({
         tamanho,
         escolhas,
-        precoVenda: valorQtd(precoTxt),
+        precoVenda: precoDoCampo(precoTxt, null),
         canais: cat?.canais ?? [],
       })
     : null
@@ -1259,7 +1539,7 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
   })
 
   return (
-    <Cartao>
+    <Cartao id="montador">
       <CabecaDoCartao
         titulo="🍕 Monte uma pizza e veja o custo"
         dica="só simula — nada grava, nada baixa"
@@ -1394,7 +1674,7 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
                 {pizza.canais.length === 0 ? (
                   <div className="flex items-center gap-[6px] py-[3px]" style={{ color: 'var(--prod-secondary)' }}>
                     <span>vendendo a</span>
-                    <CampoDePreco valor={precoTxt} aoMudar={setPrecoTxt} />
+                    <CampoDePreco txt={precoTxt} media={null} aoDigitar={setPrecoTxt} rotulo="preço de venda da pizza" />
                     <span className="text-[11.5px]" style={{ color: 'var(--fam-ambar-ink)' }}>
                       — nenhum canal cadastrado, sem eles não dá pra dizer quanto sobra no iFood
                     </span>
@@ -1405,7 +1685,7 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
                       <span className="flex flex-wrap items-center gap-[6px]" style={{ color: 'var(--prod-secondary)' }}>
                         {i === 0 ? (
                           <>
-                            vendendo a <CampoDePreco valor={precoTxt} aoMudar={setPrecoTxt} /> no {cn.canal}, sobra
+                            vendendo a <CampoDePreco txt={precoTxt} media={null} aoDigitar={setPrecoTxt} rotulo="preço de venda da pizza" /> no {cn.canal}, sobra
                           </>
                         ) : (
                           <>
@@ -1525,18 +1805,56 @@ function MontadorDePizza({ empresaId }: { empresaId: string }) {
   )
 }
 
-/** `.preco-input` — 92px, negrito, alinhado à direita. ⛔ Sanitizador da casa: vírgula não zera */
-function CampoDePreco({ valor, aoMudar }: { valor: string; aoMudar: (v: string) => void }) {
+/**
+ * ⛔⛔⛔ O CAMPO DE PREÇO — **um pedaço só, nos DOIS cartões** (14/10/2026).
+ *
+ * A dor do dono: *"quando vou troca numero eu excluir ele volta na hora mesmo numero"*. A
+ * causa era o ternário `valor={precoTxt !== '' ? precoTxt : media}` no cartão de produto:
+ * apagar tudo caía no fallback e **a média do PDV voltava no mesmo teclado**.
+ *
+ * ⭐⭐ **A RÉGUA MORA NA LIB** (`campo-de-preco.ts`), nunca aqui: o projeto roda em
+ * `environment: node`, sem jsdom, e *regra que vive num `value={...}` é regra que ninguém
+ * prova*. Lá a digitação REAL (apagar tudo · `"7"` · `"78,"` · vazio + blur) está travada em
+ * teste; aqui só se ECOA o que ela decide.
+ *
+ * ⚠️ **E O SANITIZADOR É O DE DINHEIRO, não o de quantidade do estoque.** Aquele tira a
+ * precisão da UNIDADE (6 casas em KG) e trata o ponto como decimal em modo KG — `1.500`
+ * virava **1,5**, e o dono digitando mil e quinhentos levaria um e meio.
+ */
+function CampoDePreco({
+  txt, media, aoDigitar, rotulo,
+}: {
+  txt: TextoDoCampo
+  /** a média real do PDV · `null` = não existe pra onde voltar (é o caso do combo e da pizza) */
+  media: number | null
+  aoDigitar: (t: TextoDoCampo) => void
+  rotulo: string
+}) {
   return (
-    <input
-      value={valor}
-      onChange={(e) => aoMudar(sanitizarQtd(e.target.value, 'KG'))}
-      inputMode="decimal"
-      placeholder="89,90"
-      aria-label="preço de venda da pizza"
-      className="w-[92px] rounded-[8px] border px-2 py-[3px] text-right text-[14px] font-semibold tabular-nums"
-      style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }}
-    />
+    <span className="inline-flex items-center gap-[6px]">
+      <input
+        value={textoDoCampo(txt, media)}
+        onChange={(e) => aoDigitar(digitar(e.target.value))}
+        inputMode="decimal"
+        placeholder="89,90"
+        aria-label={rotulo}
+        className="w-[92px] rounded-[8px] border px-2 py-[3px] text-right text-[14px] font-semibold tabular-nums"
+        style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }}
+      />
+      {/* ⭐ o gesto EXPLÍCITO que substitui a reposição automática: a tela deixou de repor
+          sozinha, então precisa existir um caminho de volta — senão tirar o automatismo
+          viraria um beco (*"e agora, como eu volto pro número real?"*). */}
+      {mostrarVoltarParaMedia(txt, media) && (
+        <button
+          type="button"
+          onClick={() => aoDigitar(CAMPO_INTOCADO)}
+          className="whitespace-nowrap text-[11px] underline-offset-2 hover:underline"
+          style={{ color: 'var(--prod-muted)' }}
+        >
+          ↺ voltar pra média
+        </button>
+      )}
+    </span>
   )
 }
 

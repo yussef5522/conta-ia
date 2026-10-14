@@ -457,11 +457,22 @@ describe('⛔⛔⛔ O MONTADOR É SÓ SIMULAÇÃO — nada grava, nada baixa', (
   it('⛔ o campo de preço usa o sanitizador da casa — digitar vírgula não pode zerar o número', () => {
     // ⚠️ REAPONTADO (v3): o campo virou `CampoDePreco` (a referência o repete em cada linha de
     // canal, e duas cópias do input divergiriam no 1º ajuste). A régua é a mesma.
+    /**
+     * ⚠️⚠️ **E REAPONTADO DE NOVO EM 14/10, COM O MOTIVO ESCRITO.** Ele exigia
+     * `sanitizarQtd`/`valorQtd` — a régua de QUANTIDADE do ESTOQUE — num campo de DINHEIRO.
+     * A pergunta não mudou (*digitar vírgula não pode zerar o número*) e continua travada;
+     * errada estava a régua: em modo KG o `sanitizarQtd` trata o ponto como DECIMAL, então
+     * `1.500` virava **1,5** e o dono digitando mil e quinhentos levaria um e meio.
+     *
+     * ⛔ E ficou MAIS FORTE: a régua do estoque está PROIBIDA no campo.
+     */
     const campo = blocoDa('CampoDePreco')
-    expect(campo).toContain('sanitizarQtd')
+    expect(usosDe(campo, 'digitar'), 'a régua de DINHEIRO (`campo-de-preco.ts`)').toBeGreaterThan(0)
+    expect(campo, 'a régua do estoque não serve pra dinheiro').not.toMatch(/sanitizarQtd|valorQtd/)
     expect(campo).toContain('inputMode="decimal"')
     expect(campo).toContain('w-[92px]')
-    expect(blocoDa('MontadorDePizza')).toContain('valorQtd')
+    expect(usosDe(blocoDa('MontadorDePizza'), 'precoDoCampo'), 'o montador lê pela mesma lib')
+      .toBeGreaterThan(0)
   })
 
   it('⛔⛔ o GET do montador não semeia — ler não escreve (a régua de 08/09)', () => {

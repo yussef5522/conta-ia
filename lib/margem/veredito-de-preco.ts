@@ -265,6 +265,48 @@ export function reguaDaSecao(secao: string | null | undefined): ReguaDaCategoria
   )
 }
 
+/**
+ * ⭐⭐⭐ O TETO DE UMA CESTA — média dos tetos **PONDERADA PELO CUSTO** (ordem do dono).
+ *
+ * ⛔ Média simples seria errada de um jeito caro: num combo de **xis (teto 35) + coca (teto
+ * 40)**, o xis custa R$ 12 e a coca R$ 2 — a média simples daria 37,5, tratando a coca como
+ * metade da decisão quando ela é **1/7 do custo**. Ponderando pelo dinheiro, o teto fica em
+ * ~35,7: *quem manda no CMV do combo é quem pesa no custo dele*.
+ *
+ * ⚠️ **Item SEM custo entra com peso ZERO** — não dá pra ponderar pelo que não se sabe, e o
+ * combo inteiro já vai sair *"a apurar"* nesse caso (o teto ali é informativo). ⚠️ E se
+ * NENHUM item tem custo, cai na **média simples**: é o único peso disponível, e calar o teto
+ * deixaria a linha pequena sem número nenhum sem motivo.
+ *
+ * ⛔ O resultado é **arredondado** (o dono fala em teto inteiro: *"pizza 33 · lanche 35"*) e os
+ * alvos saem do MESMO `alvosDe` do mapa — um `[teto−5, teto, 45]` escrito à mão aqui seria a
+ * 2ª régua de alvo.
+ */
+export function reguaPonderada(
+  itens: readonly { tetoPct: number; peso: number | null }[],
+): ReguaDaCategoria {
+  if (itens.length === 0) {
+    return derivado(TETO_SEM_SECAO, 'cesta vazia — vale o teto mais frouxo')
+  }
+  const comPeso = itens.filter((i) => i.peso != null && i.peso > 0) as { tetoPct: number; peso: number }[]
+  const base = comPeso.length > 0 ? comPeso : itens.map((i) => ({ tetoPct: i.tetoPct, peso: 1 }))
+  const somaPeso = base.reduce((a, i) => a + i.peso, 0)
+  const tetoPct = Math.round(base.reduce((a, i) => a + i.tetoPct * i.peso, 0) / somaPeso)
+
+  const tetosDistintos = new Set(itens.map((i) => i.tetoPct)).size
+  return {
+    tetoPct,
+    alvosPct: alvosDe(tetoPct),
+    origem: 'DERIVADO',
+    porque:
+      tetosDistintos === 1
+        ? `todos os itens da cesta têm teto ${tetoPct}%`
+        : comPeso.length > 0
+          ? `média dos tetos da cesta ponderada pelo custo (${itens.length} itens)`
+          : 'média simples dos tetos — nenhum item da cesta tem custo pra ponderar',
+  }
+}
+
 // ────────────────────────────────────────────────────────────────
 // O BLOCO — o que os DOIS cartões desenham
 // ────────────────────────────────────────────────────────────────
@@ -317,7 +359,13 @@ export function montarBlocoDoVeredito(opts: {
 // A FRASE DO ESPECIALISTA
 // ────────────────────────────────────────────────────────────────
 
-export type TipoDoVeredito = 'pizza' | 'produto'
+/**
+ * ⚠️ `'combo'` entra aqui (e não só na `fraseDoCombo`) por uma razão de segurança: o bloco do
+ * combo SUBSTITUI a frase pela do combo, e se amanhã alguém ler `bloco.frase` sem substituir,
+ * a frase tem que ser verdadeira pra uma CESTA — nunca a do produto único falando de "ficha"
+ * no singular. Cada tipo responde por si no ramo do "fora do padrão".
+ */
+export type TipoDoVeredito = 'pizza' | 'produto' | 'combo'
 
 /**
  * ⭐ AS FRASES DA REFERÊNCIA — curtas, língua do balcão, uma por estado.
@@ -338,19 +386,80 @@ export function fraseDoEspecialista(
   tipo: TipoDoVeredito,
 ): string {
   if (custo == null) {
-    return 'sem ficha eu não calculo — cria a ficha que eu te digo o preço na hora.'
+    return tipo === 'combo'
+      ? 'tem item sem ficha na cesta — cria a ficha que eu calculo o combo inteiro.'
+      : 'sem ficha eu não calculo — cria a ficha que eu te digo o preço na hora.'
   }
   if (preco == null || preco <= 0) {
-    return 'digita o preço de hoje que eu dou o veredito.'
+    return tipo === 'combo'
+      ? 'digita o preço do combo que eu dou o veredito.'
+      : 'digita o preço de hoje que eu dou o veredito.'
   }
   const cmvPct = custo / preco
   if (cmvPct > TETO_AMBAR_PCT / 100 + 1e-9) {
-    return tipo === 'pizza'
-      ? 'esse sabor não cabe na tabela comum. Ou vira linha premium com preço próprio, ou o mix compensa.'
+    if (tipo === 'pizza') {
+      return 'esse sabor não cabe na tabela comum. Ou vira linha premium com preço próprio, ou o mix compensa.'
+    }
+    return tipo === 'combo'
+      ? 'sobe o preço ou tira o item caro da cesta.'
       : 'esse produto tá consumindo demais do preço. Ou sobe a tabela, ou revisa a ficha.'
   }
   if (cmvPct > tetoPct / 100 + 1e-9) {
     return 'acima do teto — só fecha se o resto do cardápio segurar a média.'
   }
   return 'saudável. O jogo agora é a média do cardápio inteiro.'
+}
+
+/** ⭐ acima disso o desconto deixou de ser atrativo e passou a ser dinheiro dado */
+export const VANTAGEM_GENEROSA_PCT = 20
+
+/**
+ * ⭐⭐ A FRASE DO COMBO — estados do mock, curta, no máximo 2 frases.
+ *
+ * ⛔ Mora AQUI e não na tela porque frase de veredito tem um dono (o guard
+ * `veredito-tem-uma-porta-so` existe por isso) — mas os ESTADOS são próprios do combo e não
+ * cabiam no `fraseDoEspecialista`: eles dependem de `avulsos` e da vantagem, que só existem
+ * quando há cesta. Reusar aquele exigiria dois parâmetros que não significam nada no produto
+ * único.
+ *
+ * ⚠️ **A ORDEM DOS ESTADOS É A DO PREJUÍZO**, não a do mock: *"o ideal não fecha"* vem antes
+ * de tudo porque ali o problema **não é o combo** — é o preço avulso de um item da cesta, e
+ * mandar o dono mexer no combo o faria caçar no lugar errado (a lição de 16/09).
+ */
+export function fraseDoCombo(opts: {
+  custoDoCombo: number | null
+  avulsos: number | null
+  /** o preço que o dono digitou pro combo — `null` = ainda não digitou */
+  preco: number | null
+  /** o ideal no alvo ligado, pro canal principal */
+  ideal: number | null
+  tetoPct: number
+  /** FRAÇÃO (0.18 = 18%) · `null` = não dá pra calcular */
+  vantagemPct: number | null
+}): string {
+  if (opts.custoDoCombo == null) {
+    return 'tem item sem ficha na cesta — cria a ficha que eu calculo o combo inteiro.'
+  }
+  /**
+   * ⛔⛔ O IDEAL ACIMA DOS AVULSOS é o diagnóstico mais importante do cartão: significa que
+   * vender junto no alvo pedido sairia MAIS CARO que vender separado — ou seja, **o preço
+   * avulso de algum item já está abaixo do que ele deveria custar**. O combo não tem como
+   * consertar isso.
+   */
+  if (opts.ideal != null && opts.avulsos != null && opts.ideal > opts.avulsos + 0.005) {
+    return 'nesse alvo o combo não fecha — o problema tá no preço avulso de algum item da cesta.'
+  }
+  if (opts.vantagemPct != null && opts.vantagemPct > VANTAGEM_GENEROSA_PCT / 100 + 1e-9) {
+    return 'generoso demais — 10–15% já leva o cliente.'
+  }
+  if (opts.preco != null && opts.preco > 0) {
+    const cmvPct = opts.custoDoCombo / opts.preco
+    if (cmvPct > TETO_AMBAR_PCT / 100 + 1e-9) {
+      return 'sobe o preço ou tira o item caro da cesta.'
+    }
+    if (opts.vantagemPct != null) {
+      return `cliente ganha ${pctBR(opts.vantagemPct)}, a casa fica com CMV ${pctBR(cmvPct)}.`
+    }
+  }
+  return 'digita o preço do combo que eu dou o veredito.'
 }
