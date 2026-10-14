@@ -56,21 +56,12 @@ import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
 import { usePermissoes } from '@/lib/hooks/use-permissoes'
 import { ProvedorPermissoesMenu } from './permissoes-menu'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
-import { classeDoTrilho, TRILHO_PADRAO, type Trilho } from '@/lib/trilho/preferencia'
-import { BotaoRecolher } from './botao-recolher'
 import { useWorkspace } from '@/lib/contexts/workspace-context'
 
 interface GlobalSidebarProps {
   userName?: string
   userEmail?: string
   onNavigate?: () => void
-  /**
-   * ⭐ O ESTADO PERSISTIDO DO TRILHO — vem do SERVIDOR (o layout lê a preferência do usuário).
-   * ⚠️ Não é `useState` com default: a classe tem que estar certa no PRIMEIRO PAINT, senão o
-   * menu pisca em 230px e encolhe pra 64px na frente do dono. É a mesma razão de a classe do
-   * tema ser decidida no servidor.
-   */
-  trilhoInicial?: Trilho
   /**
    * ⛔⛔ NA GAVETA O TRILHO É SEMPRE ABERTO — e não é a preferência sendo ignorada, é o `:hover`
    * NÃO EXISTIR no toque. Recolhido num celular seriam 64px de ícones sem rótulo e **sem gesto
@@ -79,7 +70,7 @@ interface GlobalSidebarProps {
   naGaveta?: boolean
 }
 
-export function GlobalSidebar({ onNavigate, trilhoInicial = TRILHO_PADRAO, naGaveta }: GlobalSidebarProps) {
+export function GlobalSidebar({ onNavigate, naGaveta }: GlobalSidebarProps) {
   const pathname = usePathname()
   const { currentEmpresaId } = useEmpresa()
   const { workspaceType, currentProfileId } = useWorkspace()
@@ -222,11 +213,14 @@ export function GlobalSidebar({ onNavigate, trilhoInicial = TRILHO_PADRAO, naGav
       * estrutura pra trocar a cor seria pagar um risco de regressão de ACESSO por um ganho de
       * pintura. O que mudou é o CHASSI: o container, a logomarca, o «» e os kickers.
       *
-      * ⛔ O `rec` sai do SERVIDOR (`trilhoInicial`) e o CSS faz o resto — o hover que cresce é
-      * `:hover` no pai, zero JavaScript. Ver o bloco do `.trilho` em `app/globals.css`.
+      * ⭐⭐ O `rec` É CRAVADO (14/10, tarde) — era prop do servidor enquanto o «» podia fixar
+      * aberto. Sem o «», *"recolhido"* deixou de ser preferência e virou o ESTADO em que o
+      * trilho vive: o `:hover` no pai é o único jeito de crescer, e ele volta sozinho ao sair.
+      * ⛔ A prop morreu do TIPO, não ficou aceitando valor que ninguém manda — prop viva "por
+      * compatibilidade" é o caminho de um gesto que não existe mais.
       */}
     <nav
-      className={`trilho${naGaveta ? ' gaveta' : ''}${naGaveta ? '' : ` ${classeDoTrilho(trilhoInicial)}`}`.trimEnd()}
+      className={`trilho${naGaveta ? ' gaveta' : ' rec'}`}
       aria-label="Menu principal"
     >
       {/**
@@ -243,10 +237,14 @@ export function GlobalSidebar({ onNavigate, trilhoInicial = TRILHO_PADRAO, naGav
         </div>
       </div>
 
-      {/* ⛔ na gaveta não existe «»: ali o trilho é sempre aberto, então um botão de recolher
-          seria um controle que não faz nada — e botão morto é clique errado esperando (09/10) */}
-      {!naGaveta && <BotaoRecolher trilhoInicial={trilhoInicial} />}
-      <div className="flex min-h-0 flex-1 flex-col">
+      {/**
+        * ⭐⭐ A LISTA ROLA, A LOGOMARCA FICA (14/10, tarde). `.lista` é quem tem o
+        * `overflow-y:auto`; o `.trilho` é a moldura de altura fixa. Ver o bloco `.trilho .lista`
+        * em `app/globals.css`.
+        * ⛔ E ela é FILHA do nav de propósito: o `:hover` que cresce é no PAI, então rolar aqui
+        * não encosta no cresce-no-mouse.
+        */}
+      <div className="lista">
         <SidebarItem
           perm="transaction.view"
           icon={LayoutDashboard}

@@ -8,6 +8,7 @@ import { garantirFichaDeRevenda, FichaDeRevendaError } from './ficha-de-revenda'
 import { parseSuitable, type VendaLinhaSuitable } from './parse-suitable'
 import { type ResultadoDaSanidade } from './sanidade-do-import'
 import { medirSanidade } from './medir-sanidade'
+import { exigirEscolha, EscolhaVaziaError } from '../texto-de-escolha'
 
 export interface LinhaResolvida extends VendaLinhaSuitable {
   mapeado: boolean
@@ -101,6 +102,29 @@ export async function previewImportSuitable(companyId: string, html: string, db:
  * dentro de uma `$transaction` (o `lancamento-manual` usa o client de topo).
  */
 export async function upsertVendaMap(companyId: string, nomeSuitable: string, alvo: { tipo: 'FICHA'; fichaId: string } | { tipo: 'REVENDA'; itemId: string } | { tipo: 'IGNORAR' }, userId?: string, db: PrismaClient = defaultPrisma) {
+  /**
+   * ⛔⛔⛔ `'   '` NÃO É UM NOME — a trava de 14/10, e ela mora AQUI porque aqui é o choke-point.
+   *
+   * **O buraco era real e alcançável pela rota de hoje:** o zod valida `z.string().min(1)` e
+   * **`'   '` tem comprimento 3**; o CHECK do banco é `"nomeSuitable" <> ''`, e `<> ''` **só pega
+   * a string vazia**. As duas camadas aprovavam três espaços, e nascia uma linha cuja chave
+   * `(companyId, nomeSuitable)` **não casa com nome nenhum do PDV** — um IGNORAR que não ignora
+   * nada, ocupando a chave única pra sempre.
+   *
+   * ⭐ A trava é na PORTA (não na rota) pelo mesmo motivo do guard dos 3 níveis que mora dez
+   * linhas abaixo: os três chamadores — dropdown do hub, tela do Suitable, lançamento manual —
+   * passam por aqui, e **não há uma quarta pra alguém esquecer**. A armadura do BANCO é o
+   * trigger `stock_texto_de_escolha` (migration `20261014190000`), que é a camada 1.
+   *
+   * ⚠️ E ela vale pros TRÊS destinos: o `nomeSuitable` é a CHAVE do mapa, não um campo do alvo.
+   */
+  try {
+    exigirEscolha(nomeSuitable, 'O nome do produto no PDV')
+  } catch (e) {
+    if (e instanceof EscolhaVaziaError) throw new VendaMapError(e.message)
+    throw e
+  }
+
   /**
    * ⭐⭐⭐ IGNORAR CHEGOU AO MAPA DE PRODUTOS (14/09) — pedido do dono na revisão:
    * *"os ~30 doces/milkshakes/açaí que POR MINHA DECISÃO não controlam estoque param de

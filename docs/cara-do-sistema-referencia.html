@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CAIXAOS — A CARA DO SISTEMA · REFERÊNCIA OFICIAL v1.1 (trilho recolhível)</title>
+<title>CAIXAOS — A CARA DO SISTEMA · REFERÊNCIA OFICIAL v1.2 (trilho hover-only, com rolagem)</title>
 <style>
 /* ============================================================================
    CAIXAOS · A CARA DO SISTEMA — REFERÊNCIA OFICIAL v1 (13/10/2026, madrugada)
@@ -23,14 +23,35 @@
      largamos a grade pesada de 2012.
 
    AS 7 LEIS DA CARA:
-   L1. TRILHO DE MARCA, DOIS ESTADOS (pedido do dono 14/10, como Linx/EVO
-       e a maioria dos grandes): RECOLHIDO (64px, só os símbolos) é o
-       padrão; PAROU O MOUSE em cima, ele cresce e mostra os nomes;
-       tirou o mouse, volta pros símbolos; o botão «» FIXA aberto. No
-       recolhido o badge vira mini sobre o ícone. Escuro nos DOIS
-       temas, pílula cheia no item ativo, kicker
-       de grupo. Em prod a escolha fica LEMBRADA por usuário (mesma casa
-       da preferência de tema). No celular o trilho vira gaveta pelo ☰.
+   L1. TRILHO DE MARCA, HOVER-ONLY (pedido do dono 14/10, tarde — como
+       Linx/EVO e a maioria dos grandes): o trilho vive RECOLHIDO (64px,
+       só os símbolos); PAROU O MOUSE em cima, ele cresce e mostra os
+       nomes; tirou o mouse, volta pros símbolos. SEM FIXAR — o botão «»
+       foi APOSENTADO, nas palavras do dono: "nao ajuda em nada entao
+       melhor tirar pq so chega com mouse la lista aparece e so sair
+       lista fica pequena de novo". Ele só era alcançável DEPOIS de o
+       trilho ter crescido, e aí a lista já estava na tela. Não há
+       preferência a lembrar: recolhido deixou de ser escolha e virou o
+       estado em que o trilho vive.
+       No recolhido o badge vira mini sobre o ícone. Escuro nos DOIS
+       temas, pílula cheia no item ativo, kicker de grupo. No celular o
+       trilho vira gaveta pelo ☰.
+   L1b. O TRILHO ROLA (regra NOVA, 14/10 tarde — o buraco era da
+       referência, que descrevia o trilho sem dizer isso, e o dono achou
+       em prod: "lista aparace ate relatorios so e nao consigo ir para
+       baixou"). A LOGOMARCA fica FIXA no topo e a LISTA rola embaixo
+       dela, nos DOIS estados (símbolos e crescido) e na gaveta do
+       celular, com barra discreta no estilo da casa (6px, pintada pelo
+       token da borda do trilho). TODOS os grupos — FINANCEIRO, ESTOQUE,
+       BANCOS e o que mais houver — alcançáveis em qualquer altura de
+       tela.
+       A causa do defeito é de ALTURA, não de overflow, e isso vira
+       régua: o NAV é a moldura (height:100% + overflow:hidden) e quem
+       rola é a lista (flex:1 + min-height:0 + overflow-y:auto). Um
+       overflow num elemento de altura "auto" não faz nada — ele cresce
+       com o conteúdo e o estouro é cortado pelo pai. E a rolagem NUNCA
+       pode quebrar o cresce-no-mouse: quem cresce é o PAI, quem rola é
+       a FILHA.
    L2. TRÊS TINTAS, NUNCA MAIS: forte (títulos, números, nomes), média
        (apoio), fraca (dica). Proibido texto de conteúdo em tinta fraca.
    L3. NÚMERO É PROTAGONISTA: dinheiro em 800, tabular, grande. Centavos
@@ -117,13 +138,26 @@ svg.ic{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;
 
 /* ================= L1 · O TRILHO (dois estados) ================= */
 .app{display:flex;min-height:100vh}
-.trilho{width:230px;flex:none;background:var(--trilho);
+/* L1b — o NAV é a MOLDURA: altura definida e NÃO rola (a logomarca fica
+   fixa nele). Sem height, o overflow da lista não teria o que estourar. */
+.trilho{width:230px;flex:none;height:100vh;background:var(--trilho);
   border-right:1px solid var(--trilho-borda);
   display:flex;flex-direction:column;padding:16px 12px 18px;gap:1px;
+  overflow:hidden;
   transition:width .18s ease}
-/* --- estado RECOLHIDO (o padrão): só os símbolos.
+/* L1b — e a LISTA é quem rola. O min-height:0 é o que faz o overflow
+   existir: filho de flex nasce min-height:auto e não encolhe abaixo do
+   conteúdo. A barra é fina e de token — o trilho é escuro nos 2 temas. */
+.lista{display:flex;flex-direction:column;flex:1;min-height:0;
+  overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--trilho-borda) transparent}
+.lista::-webkit-scrollbar{width:6px}
+.lista::-webkit-scrollbar-track{background:transparent}
+.lista::-webkit-scrollbar-thumb{background:var(--trilho-borda);border-radius:999px}
+.lista::-webkit-scrollbar-thumb:hover{background:var(--trilho-kicker)}
+/* --- estado RECOLHIDO (o único): só os símbolos.
        Parou o MOUSE em cima → o trilho CRESCE e mostra os nomes;
-       tirou o mouse → volta pros símbolos. O «» fixa aberto de vez. --- */
+       tirou o mouse → volta pros símbolos. SEM FIXAR (o «» morreu). --- */
 .trilho.rec{width:64px;padding:16px 8px 18px}
 .trilho.rec:hover{width:230px;padding:16px 12px 18px}
 .trilho.rec:not(:hover) .rotulo,
@@ -135,14 +169,8 @@ svg.ic{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;
 .trilho.rec:not(:hover) .item{justify-content:center;padding:10px 0;position:relative}
 .trilho.rec:not(:hover) .badge{position:absolute;top:3px;right:7px;margin:0;
   font-size:9px;padding:1px 5px}
-.recolhe{border:1px solid var(--trilho-borda);background:var(--trilho-hover);
-  color:var(--trilho-tx);border-radius:8px;height:30px;display:flex;
-  align-items:center;justify-content:center;cursor:pointer;
-  margin:0 0 8px;font:inherit;width:100%}
-.recolhe:hover{color:#fff}
-.recolhe svg{transition:transform .18s ease}
-.trilho.rec .recolhe svg{transform:rotate(180deg)}
-.logo{display:flex;align-items:center;gap:10px;padding:2px 10px 16px}
+/* o CSS do «» saiu junto com o botão (14/10, tarde) */
+.logo{display:flex;align-items:center;gap:10px;padding:2px 10px 16px;flex:none}
 .logo .marca{width:30px;height:30px;border-radius:9px;
   background:linear-gradient(135deg,var(--trilho-pilula),var(--acao-quente));
   display:flex;align-items:center;justify-content:center;
@@ -305,9 +333,8 @@ footer{padding:18px;text-align:center;font-size:11.5px;color:var(--tinta-3)}
       <div class="marca">C</div>
       <div><span class="nome">CAIXAOS</span><span class="casa">caçula mix · PJ</span></div>
     </div>
-    <button class="recolhe" onclick="document.getElementById('trilho').classList.toggle('rec')" aria-label="expandir ou recolher o menu">
-      <svg class="ic" style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg>
-    </button>
+    <!-- L1b: a lista rola DENTRO do nav; a logomarca acima dela fica fixa -->
+    <div class="lista">
     <div class="kicker">FINANCEIRO</div>
     <div class="item" data-nome="Contas a Pagar · 22"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="rotulo">Contas a Pagar</span><span class="badge">22</span></div>
     <div class="item" data-nome="Contas a Receber"><svg class="ic" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg><span class="rotulo">Contas a Receber</span></div>
@@ -321,6 +348,12 @@ footer{padding:18px;text-align:center;font-size:11.5px;color:var(--tinta-3)}
     <div class="item" data-nome="Posição"><svg class="ic" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5v8l-9 5-9-5V8"/></svg><span class="rotulo">Posição</span></div>
     <div class="item" data-nome="Produção"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3c2 3 5 4.5 5 8a5 5 0 0 1-10 0c0-3.5 3-5 5-8z"/><path d="M12 13c.8 1 2 1.8 2 3.2a2 2 0 0 1-4 0c0-1.4 1.2-2.2 2-3.2z"/></svg><span class="rotulo">Produção</span></div>
     <div class="item" data-nome="Contagem"><svg class="ic" viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg><span class="rotulo">Contagem</span></div>
+    <div class="kicker">BANCOS</div>
+    <div class="item" data-nome="Contas bancárias"><svg class="ic" viewBox="0 0 24 24"><path d="M3 10l9-6 9 6"/><path d="M5 10v9h14v-9M9 19v-5h6v5"/></svg><span class="rotulo">Contas bancárias</span></div>
+    <div class="item" data-nome="Conciliação"><svg class="ic" viewBox="0 0 24 24"><path d="M4 7h11l-3-3M20 17H9l3 3"/></svg><span class="rotulo">Conciliação</span></div>
+    <div class="item" data-nome="Empréstimos"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 12h6M12 9v6"/></svg><span class="rotulo">Empréstimos</span></div>
+    <div class="item" data-nome="Cartões"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 11h20"/></svg><span class="rotulo">Cartões</span></div>
+    </div>
   </nav>
 
   <div class="corpo">

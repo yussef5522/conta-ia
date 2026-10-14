@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { semComentarios, usosDe } from './_leitura-de-fonte'
@@ -44,7 +44,9 @@ const ROUPA = [
   // o trilho (FRENTE B) — o visual dele
   'components/sidebar/global-sidebar.tsx',
   'components/sidebar/sidebar-item.tsx',
-  'components/sidebar/botao-recolher.tsx',
+  // ⚠️ `botao-recolher.tsx` SAIU DESTA LISTA porque SAIU DO REPO (14/10, tarde): o dono
+  // aposentou o «» (*"nao ajuda em nada entao melhor tirar pq so chega com mouse"*). O guard
+  // que prova a ausência dele mora em `__tests__/trilho/o-trilho-nasce-recolhido.test.ts`.
 ]
 
 /**
@@ -53,8 +55,8 @@ const ROUPA = [
  */
 const ROTAS_PERMITIDAS: Record<string, string[]> = {
   // ⭐ a preferência de TELA — as duas irmãs, uma por botão
+  // ⚠️ era "as duas irmãs, uma por botão" — o «» morreu e a do trilho com ele; sobrou o tema
   'components/layout/botao-tema.tsx': ['/api/tema'],
-  'components/sidebar/botao-recolher.tsx': ['/api/trilho'],
   // ⚠️ SESSÃO e ferramenta de dev — nasceram antes; não é dado de negócio
   'components/layout/user-menu.tsx': [
     '/api/auth/logout',
@@ -65,11 +67,18 @@ const ROTAS_PERMITIDAS: Record<string, string[]> = {
   'components/sidebar/global-sidebar.tsx': ['/api/empresas/'],
 }
 
-/** ⭐ A PORTA — os três arquivos que PODEM escrever, e só a preferência. */
+/**
+ * ⭐ A PORTA — os arquivos que PODEM escrever, e só a preferência.
+ *
+ * ⚠️⚠️ **ERAM TRÊS, SOBRARAM DOIS (14/10, tarde).** A `regua` (`lib/trilho/preferencia.ts`) e a
+ * `rota` do trilho foram APAGADAS com o «»: sem o botão, não há escolha de trilho a normalizar
+ * nem a gravar. A pergunta deste describe não mudou — *a escrita da preferência tem UM dono* —;
+ * o que mudou é que a preferência em jogo é a do TEMA.
+ */
 const A_PORTA = {
-  regua: 'lib/trilho/preferencia.ts',
   servidor: 'lib/tema/servidor.ts',
-  rota: 'app/api/trilho/route.ts',
+  rota: 'app/api/tema/route.ts',
+  regua: 'lib/tema/preferencia.ts',
 }
 
 describe('⛔⛔ REDE 1 — quem é ROUPA não fala com o banco nem busca dado de negócio', () => {
@@ -137,7 +146,7 @@ describe('⛔⛔⛔ REDE 2 — a ESCRITA do sprint é UMA SÓ', () => {
   })
 
   /** ⭐ E a rota é CASCA — quem conhece o Prisma é a porta, nunca o handler. */
-  it('⭐ a rota do trilho é casca sobre a porta', () => {
+  it('⭐ a rota do TEMA é casca sobre a porta', () => {
     const src = semComentarios(ler(A_PORTA.rota))
     expect(src, 'a rota não toca o Prisma').not.toMatch(/\bprisma\b/)
     expect(src, 'a rota delega pra porta').toMatch(/lib\/tema\/servidor/)
@@ -147,7 +156,7 @@ describe('⛔⛔⛔ REDE 2 — a ESCRITA do sprint é UMA SÓ', () => {
    * ⛔⛔ **E A RÉGUA NÃO ESCREVE NADA** — ela normaliza. Régua que grava viraria a 2ª porta
    * por dentro, sem precisar tocar na tabela com o nome do model.
    */
-  it('⛔ a régua do trilho é PURA', () => {
+  it('⛔ a régua do TEMA é PURA', () => {
     const src = semComentarios(ler(A_PORTA.regua))
     expect(src, 'a régua não conhece o banco').not.toMatch(/\bprisma\b/)
     expect(VERBOS.test(src), 'a régua não grava').toBe(false)
@@ -167,10 +176,25 @@ describe('⛔⛔ REDE 3 — as MIGRATIONS do sprint só mexem na tabela da prefe
    */
   const DIR_BASE = 'prisma/migrations'
 
-  /** as migrations do dia — descobertas, nunca digitadas (lista à mão envelhece no próximo fix) */
+  /**
+   * ⚠️⚠️ **REAPONTADO DE NOVO (14/10, tarde) — E O MOTIVO É O MESMO DE ANTES, UM GRAU ACIMA.**
+   * A descoberta era `startsWith('20261014')`: **a DATA**. Funcionou enquanto a fundação era a
+   * única coisa a subir naquele dia; no instante em que o item 3 do sprint do trilho trouxe a
+   * armadura dos CHECKs do ESTOQUE (uma migration de trigger, do MESMO dia), o guard varreu uma
+   * frente que não é dele e acusou *"encosta em estoque"* — **falso vermelho contra código
+   * certo**.
+   *
+   * ⭐ A pergunta nunca foi *"o que subiu hoje?"* — é ***"toda migration que mexe na preferência
+   * mexe SÓ nela?"***. Agora a descoberta é por ISSO, e não por data: data é um proxy que quebra
+   * no primeiro dia em que duas frentes andam juntas. (Mesma classe do guard que CONTAVA
+   * migrations e cobrava por arquivo novo — ele media o tamanho, não a doença.)
+   */
   const doSprint = () =>
     readdirSync(join(RAIZ, DIR_BASE))
-      .filter((d) => d.startsWith('20261014'))
+      .filter((d) => {
+        const f = join(RAIZ, DIR_BASE, d, 'migration.sql')
+        return existsSync(f) && readFileSync(f, 'utf8').includes('user_tema_preferencia')
+      })
       .sort()
 
   /** ⚠️ Lê só os comandos — o cabeçalho de cada arquivo explica a decisão e cita outras tabelas. */

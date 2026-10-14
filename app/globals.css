@@ -884,9 +884,22 @@
    ⭐⭐⭐ O TRILHO (L1) — ESCURO DE MARCA NOS DOIS TEMAS (14/10/2026)
 
    Cópia 1:1 do `.trilho` de `docs/cara-do-sistema-referencia.html`, a referência aprovada pelo
-   dono. **Ordem dele:** *"nasce RECOLHIDO (64px, só símbolos); PAROU O MOUSE em cima → cresce e
-   mostra os nomes; tirou → recolhe; o botão «» FIXA aberto. No recolhido o badge vira mini
-   sobre o ícone."*
+   dono. **Ordem dele (14/10, tarde — SUBSTITUI a da manhã):** *"nasce RECOLHIDO (64px, só
+   símbolos); PAROU O MOUSE em cima → cresce e mostra os nomes; tirou → recolhe. **Sem fixar.**
+   No recolhido o badge vira mini sobre o ícone."*
+
+   ⚠️⚠️ **O «» FOI APOSENTADO, com as palavras dele:** *"nao ajuda em nada entao melhor tirar pq
+   so chega com mouse la lista aparece e so sair lista fica pequena de novo"*. O botão só era
+   alcançável DEPOIS de o trilho ter crescido — e aí a lista já estava na tela. O que ele
+   resolvia, o `:hover` resolve de graça. A preferência que ele gravava está **aposentada**: a
+   coluna dorme no banco (nada de ALTER), sem leitor nem escritor.
+
+   ⛔⛔ **E A LISTA ROLA — foi o 2º defeito que o dono achou em prod:** *"lista aparace ate
+   relatorios so e nao consigo ir para baixou"*. A causa era de ALTURA, não de `overflow`: o
+   `.trilho` já tinha `overflow-y:auto` e, **com altura `auto`, isso não faz nada** — o nav
+   crescia com os itens além da viewport e o estouro era cortado pelo `overflow-hidden` do pai.
+   Agora o NAV é a moldura (`height:100%` + `overflow:hidden`, o logo fica fixo nele) e quem
+   rola é a `.lista`. Ver o bloco `.trilho .lista` abaixo.
 
    ⛔⛔ **POR QUE CSS DE VERDADE E NÃO CLASSE DO TAILWIND NO COMPONENTE:** o comportamento todo é
    **seletor de DESCENDENTE sobre estado de HOVER DO PAI**
@@ -908,15 +921,65 @@
 .trilho {
   width: 230px;
   flex: none;
+  /**
+   * ⛔⛔ A ALTURA É O QUE FAZ A ROLAGEM EXISTIR. Sem ela o nav cresce com o conteúdo, o
+   * `overflow` não tem o que estourar, e o pedaço de baixo é cortado pelo `overflow-hidden`
+   * do shell — era o defeito de 14/10 (*"não consigo ir para baixo"*). O wrapper do shell é
+   * `md:flex`, então o nav já esticaria por `align-items:stretch`; o `100%` é o cinto.
+   */
+  height: 100%;
   background: var(--prod-trilho);
   border-right: 1px solid var(--prod-trilho-borda);
   display: flex;
   flex-direction: column;
   padding: 16px 12px 18px;
   gap: 1px;
+  /**
+   * ⛔ O NAV NÃO ROLA: ele é a MOLDURA. Com `overflow-y:auto` aqui, a LOGOMARCA rolaria junto
+   * e o dono perderia a âncora que diz *"esta coluna de 64px é o menu"* — e no recolhido ela é
+   * a ÚNICA coisa legível. Quem rola é a `.lista`.
+   */
+  overflow: hidden;
+  transition: width 0.18s ease;
+}
+
+/**
+ * ⭐⭐ A LISTA — É ELA QUE ROLA, nos DOIS estados (símbolos e crescido).
+ *
+ * ⛔⛔ O `min-height: 0` NÃO É ENFEITE: filho de flex nasce com `min-height:auto`, que o impede
+ * de encolher abaixo do conteúdo. Sem ele a lista fica do tamanho dos 51 itens e o
+ * `overflow-y:auto` **volta a não fazer nada** — exatamente o defeito de hoje, um nível abaixo.
+ *
+ * ⚠️ `overflow-x: hidden` porque no recolhido os rótulos existem com `display:none`, mas
+ * qualquer conteúdo largo que sobre viraria barra HORIZONTAL numa coluna de 64px.
+ *
+ * ⛔ E ela NÃO mexe em largura: largura é decisão do PAI (é o `:hover` dele que cresce). Pôr
+ * `width` aqui romperia o cresce-no-mouse, que é o vermelho que o dono nomeou.
+ */
+.trilho .lista {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  transition: width 0.18s ease;
+  /* ⭐ a barra discreta do Firefox — token, nunca hex (o trilho é escuro nos DOIS temas) */
+  scrollbar-width: thin;
+  scrollbar-color: var(--prod-trilho-borda) transparent;
+}
+/* ⭐ e a do WebKit/Blink, no mesmo tom: 6px é fina o bastante pra não roubar o ícone em 64px */
+.trilho .lista::-webkit-scrollbar {
+  width: 6px;
+}
+.trilho .lista::-webkit-scrollbar-track {
+  background: transparent;
+}
+.trilho .lista::-webkit-scrollbar-thumb {
+  background: var(--prod-trilho-borda);
+  border-radius: 999px;
+}
+.trilho .lista::-webkit-scrollbar-thumb:hover {
+  background: var(--prod-trilho-kicker);
 }
 
 /* ---------- o estado RECOLHIDO (o PADRÃO): só os símbolos ---------- */
@@ -972,31 +1035,8 @@
   padding: 1px 5px;
 }
 
-/* ---------- o «» que FIXA aberto ---------- */
-.trilho .recolhe {
-  border: 1px solid var(--prod-trilho-borda);
-  background: var(--prod-trilho-hover);
-  color: var(--prod-trilho-tx);
-  border-radius: 8px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  margin: 0 0 8px;
-  font: inherit;
-  width: 100%;
-  flex: none;
-}
-.trilho .recolhe:hover {
-  color: var(--prod-trilho-on);
-}
-.trilho .recolhe svg {
-  transition: transform 0.18s ease;
-}
-.trilho.rec .recolhe svg {
-  transform: rotate(180deg);
-}
+/* ⚠️ O CSS DO «» SAIU JUNTO COM O BOTÃO (14/10, tarde). Regra órfã de um controle que não
+   existe mais é o convite pra alguém redesenhá-lo — a cicatriz do `GruposSugeridos`. */
 
 /* ---------- a logomarca em gradiente ---------- */
 .trilho .logo {

@@ -13,7 +13,6 @@ import { EmpresaProvider } from '@/lib/contexts/empresa-context'
 // Sprint PF Fatia 1 — dual workspace (PJ + PF)
 import { WorkspaceProvider } from '@/lib/contexts/workspace-context'
 import type { Tema } from '@/lib/tema/preferencia'
-import type { Trilho } from '@/lib/trilho/preferencia'
 
 interface DashboardShellProps {
   userName: string
@@ -22,16 +21,10 @@ interface DashboardShellProps {
   devToolsEnabled?: boolean
   /** ⭐ o tema resolvido no SERVIDOR — o botão nasce com o ícone certo, sem piscar */
   tema: Tema
-  /**
-   * ⭐ o estado do TRILHO resolvido no SERVIDOR — pelo MESMO motivo do tema: a classe tem que
-   * estar certa no PRIMEIRO PAINT, senão o menu abre em 230px e encolhe pra 64px na frente do
-   * dono. Resolver no cliente seria o flash de largura errada, irmão do flash de tema errado.
-   */
-  trilho: Trilho
   children: React.ReactNode
 }
 
-export function DashboardShell({ userName, userEmail, devToolsEnabled = false, tema, trilho, children }: DashboardShellProps) {
+export function DashboardShell({ userName, userEmail, devToolsEnabled = false, tema, children }: DashboardShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
@@ -62,8 +55,16 @@ export function DashboardShell({ userName, userEmail, devToolsEnabled = false, t
 
         <div className="flex flex-1 overflow-hidden">
           {/* DESKTOP: Sidebar única */}
-          <div className="hidden md:block shrink-0">
-            <GlobalSidebar userName={userName} userEmail={userEmail} trilhoInicial={trilho} />
+          {/**
+            * ⛔⛔ `md:flex`, NÃO `md:block` (14/10, tarde) — e esta linha é metade do conserto da
+            * rolagem. O wrapper em `block` não dava altura definida ao `.trilho`, então o nav
+            * crescia com os itens além da viewport e o pedaço de baixo era cortado pelo
+            * `overflow-hidden` desta row: *"lista aparace ate relatorios so e nao consigo ir
+            * para baixou"*. Como flex, o nav estica por `align-items:stretch` e aí o
+            * `overflow-y:auto` da `.lista` tem altura pra estourar.
+            */}
+          <div className="hidden md:flex shrink-0">
+            <GlobalSidebar userName={userName} userEmail={userEmail} />
           </div>
 
           {/* MOBILE: drawer */}
@@ -74,8 +75,11 @@ export function DashboardShell({ userName, userEmail, devToolsEnabled = false, t
             <SheetContent side="left" className="w-72 max-w-[85vw] border-0 bg-transparent p-0">
               {/* ⛔ `naGaveta`: aqui o trilho é SEMPRE aberto — no toque não existe `:hover`, e
                   recolhido seriam 64px de ícones sem rótulo e sem gesto nenhum pra ver os nomes
-                  (a "porta sem maçaneta" em forma de menu). A preferência do dono vale no
-                  desktop, que é onde o mouse existe. */}
+                  (a "porta sem maçaneta" em forma de menu). No desktop o mouse existe, e é ele
+                  que cresce o trilho.
+                  ⭐ E a gaveta ROLA pela MESMA regra do desktop (`.trilho .lista`): o
+                  `SheetContent` é `inset-y-0 h-full`, então o nav tem altura e a lista estoura
+                  nela. Uma composição, não duas. */}
               <GlobalSidebar
                 userName={userName}
                 userEmail={userEmail}

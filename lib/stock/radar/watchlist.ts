@@ -15,6 +15,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { saldosDaEmpresa } from '@/lib/stock/saldo'
+import { exigirEscolha, EscolhaVaziaError } from '../texto-de-escolha'
 
 /**
  * ⭐ O VOCABULÁRIO DAS LISTAS — e ele mora AQUI, não num CHECK do banco.
@@ -139,11 +140,30 @@ export async function montarSemente(
   return { caros, revenda, porcoes }
 }
 
-/** ⭐ pôr é IDEMPOTENTE pelo ÚNICO do banco — o dono toca duas vezes e o resultado é o mesmo */
+/** ⚠️ erro próprio pra a rota traduzir em 422 com a frase, nunca um 500 mudo */
+export class RadarListaError extends Error {}
+
+/**
+ * ⭐ pôr é IDEMPOTENTE pelo ÚNICO do banco — o dono toca duas vezes e o resultado é o mesmo.
+ *
+ * ⛔ **E `'   '` não entra (14/10).** Aqui a trava é **CINTO, declarado como tal**: a rota valida
+ * com `z.enum(LISTAS)`, então três espaços **não chegam por ali**. Ela existe pro caminho que
+ * NÃO passa pela rota — script, lib nova, lançamento em lote —, e foi por um caminho desses que
+ * o `IGNORAR` do mapa de produtos ficou **9 dias morto em prod** (23/09). O CHECK do banco é
+ * `"lista" <> ''`, que aprova espaço; a camada 1 de verdade é o trigger
+ * `stock_texto_de_escolha`.
+ */
 export async function porNaLista(
   input: { companyId: string; lista: Lista; itemId: string; quem?: string },
   db: PrismaClient = defaultPrisma,
 ): Promise<void> {
+  try {
+    exigirEscolha(input.lista, 'A lista do radar')
+    exigirEscolha(input.itemId, 'O item')
+  } catch (e) {
+    if (e instanceof EscolhaVaziaError) throw new RadarListaError(e.message)
+    throw e
+  }
   await db.stockRadarItem.upsert({
     where: { companyId_lista_itemId: { companyId: input.companyId, lista: input.lista, itemId: input.itemId } },
     create: { companyId: input.companyId, lista: input.lista, itemId: input.itemId, criadoPorId: input.quem ?? null },

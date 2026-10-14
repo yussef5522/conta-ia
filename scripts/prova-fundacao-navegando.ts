@@ -28,7 +28,7 @@
 import { prisma } from '@/lib/db'
 import { signToken } from '@/lib/auth'
 import { exigirEmpresaNesteBanco } from '@/lib/scripts/prova-banco'
-import { lerPreferenciaDeTela, gravarPreferencia } from '@/lib/tema/servidor'
+import { lerPreferenciaDeTela } from '@/lib/tema/servidor'
 import {
   declaracoesDe,
   descreverViolacao,
@@ -95,7 +95,7 @@ async function main() {
 
   const linhasAntes = await prisma.userTemaPreferencia.count()
   const prefAntes = await lerPreferenciaDeTela(u.id)
-  console.log(`estado do dono ANTES: tema=${prefAntes.tema} · trilho=${prefAntes.trilho}`)
+  console.log(`estado do dono ANTES: tema=${prefAntes.tema} (a preferência do TRILHO foi aposentada)`)
 
   const pega = async (url: string, ua: string) => {
     const t0 = Date.now()
@@ -265,30 +265,46 @@ async function main() {
     }
   }
 
-  // ── a GAVETA: o ☰ do celular abre o trilho ──
-  const chunkDoBotao = await (async () => {
+  // ── A ROLAGEM E O «» MORTO, no CSS e no bundle que prod SERVE ──
+  /**
+   * ⭐⭐ ESTE BLOCO SUBSTITUI o do «» (14/10, tarde). O antigo conferia que o botão gravava a
+   * preferência; o botão foi aposentado, então o que importa provar é o oposto — que ele NÃO
+   * está mais no que prod serve — e a regra que entrou no lugar dele: **a lista rola**.
+   *
+   * ⚠️⚠️ **"E NENHUMA ROTA DE NEGÓCIO" CONTINUA FORA DAQUI — não é atribuível no bundle.** O
+   * chunk do trilho **junta vários componentes** (e com eles o badge que lê
+   * `/api/empresas/.../retiradas-pendentes`), então achar `/api/empresas` ali **não diz de quem
+   * é a chamada**. *Achado não atribuível não é achado* (a cicatriz de 06/10). Quem garante a
+   * procedência é o guard, que lê a FONTE arquivo por arquivo com a lista fechada.
+   */
+  console.log('\n── A ROLAGEM DO TRILHO (item 2) e o «» MORTO (item 1) ──')
+  const bundleDoTrilho = await (async () => {
     const h = htmlPorTela['Quem paga a casa'] ?? ''
     const srcs = [...h.matchAll(/src="([^"]+\.js[^"]*)"/g)].map((m) => m[1])
-    let achado = ''
-    for (const s of srcs) {
-      const r = await fetch(s.startsWith('http') ? s : `${base}${s}`)
-      const txt = await r.text()
-      if (txt.includes('/api/trilho')) achado += txt
+    let tudo = ''
+    for (const sc of srcs) {
+      const r = await fetch(sc.startsWith('http') ? sc : `${base}${sc}`)
+      tudo += await r.text()
     }
-    return achado
+    return tudo
   })()
-  console.log('\n── A GAVETA E O «», no bundle servido ──')
-  /**
-   * ⚠️⚠️ **"E NENHUMA ROTA DE NEGÓCIO" SAIU DAQUI — não é atribuível no bundle.** A 1ª rodada
-   * deu vermelho: o chunk que carrega o «» **junta vários componentes** (o trilho inteiro, e
-   * com ele o badge que lê `/api/empresas/.../retiradas-pendentes`), então achar
-   * `/api/empresas` ali **não diz de quem é a chamada**. *Achado não atribuível não é achado*
-   * (a cicatriz de 06/10). Quem garante a procedência é o guard, que lê a FONTE arquivo por
-   * arquivo com a lista fechada de rotas por arquivo.
-   */
+  const corpoDaRegra = (sel: string) => {
+    const m = css.match(
+      new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`),
+    )
+    return m?.[1] ?? ''
+  }
+  const trilhoCss = corpoDaRegra('.trilho')
+  const listaCss = corpoDaRegra('.trilho .lista')
   for (const [q, v] of [
-    ['o «» grava a preferência (/api/trilho)', chunkDoBotao.includes('/api/trilho')],
-    ['o PUT que falha DIZ o motivo', temFrase(chunkDoBotao, 'não consegui')],
+    ['o nav tem ALTURA (height:100%) — é o que faz o scroll existir', /height:100%|height: 100%/.test(trilhoCss)],
+    ['e NÃO rola ele mesmo (a logomarca fica fixa)', /overflow:hidden|overflow: hidden/.test(trilhoCss)],
+    ['a LISTA rola na vertical', /overflow-y:auto|overflow-y: auto/.test(listaCss)],
+    ['e pode encolher (min-height:0) — sem isso o overflow não ativa', /min-height:0|min-height: 0/.test(listaCss)],
+    ['a barra é FINA e de token', css.includes('scrollbar-width:thin') || css.includes('scrollbar-width: thin')],
+    ['o cresce-no-mouse segue de pé', /\.trilho\.rec:hover\{[^}]*width:230px/.test(css.replace(/\s+/g, ''))],
+    ['⛔ o CSS do «» (.recolhe) MORREU', !css.includes('.recolhe')],
+    ['⛔ o «» não está no bundle', !bundleDoTrilho.includes('/api/trilho')],
   ] as const) {
     console.log(`  ${ok(v)} ${q}`)
   }
@@ -337,70 +353,45 @@ async function main() {
     `  ${ok(solid.some((s) => s.includes(':root') && !s.includes('.dark')) && solid.some((s) => s.includes('.dark')))} o par solid/on existe nos DOIS temas`,
   )
 
-  // ───────────────────────── A PREFERÊNCIA, PELA PORTA ÚNICA ─────────────────────────
-  console.log('\n── A PREFERÊNCIA (a ÚNICA escrita do sprint) ──')
-  const put = async (trilho: string) => {
-    const r = await fetch(`${base}/api/trilho`, {
-      method: 'PUT',
-      headers: { cookie, 'content-type': 'application/json', 'user-agent': DESK },
-      body: JSON.stringify({ trilho }),
-    })
-    return { status: r.status, corpo: await r.text() }
-  }
-  const a1 = await put('aberto')
-  const dep1 = await lerPreferenciaDeTela(u.id)
-  console.log(`  ${ok(a1.status === 200 && dep1.trilho === 'aberto')} PUT aberto → ${a1.status} · o banco diz "${dep1.trilho}"`)
-  const htmlAberto = (await pega(`/empresas/${CO}/margem`, DESK)).html
-  const classeAberta = (htmlAberto.match(/class="(trilho[^"]*)"/) ?? [])[1] ?? ''
-  console.log(`  ${ok(!classeAberta.includes('rec'))} e a TELA nasce aberta: class="${classeAberta}"`)
+  // ───────────────── A PREFERÊNCIA DO TRILHO, APOSENTADA ─────────────────
+  /**
+   * ⚠️⚠️ **ESTA SEÇÃO FOI INVERTIDA, COM O MOTIVO ESCRITO.** Até a manhã de 14/10 ela fazia o
+   * ciclo `PUT aberto → PUT recolhido → "ABERTO" tolerado → "gaveta" 400` e devolvia o estado do
+   * dono. O dono aposentou o «» na tarde do mesmo dia, então **não há mais escolha de trilho a
+   * gravar** — e o que vale provar passou a ser o contrário: *a rota não existe, e a coluna
+   * dorme*.
+   *
+   * ⭐ A METADE QUE FICA É O TEMA: ele segue vivo, pela MESMA porta única, intocado.
+   */
+  console.log('\n── A PREFERÊNCIA DO TRILHO FOI APOSENTADA (item 1) ──')
+  const rotaMorta = await fetch(`${base}/api/trilho`, {
+    method: 'PUT',
+    headers: { cookie, 'content-type': 'application/json', 'user-agent': DESK },
+    body: JSON.stringify({ trilho: 'aberto' }),
+  })
+  console.log(`  ${ok(rotaMorta.status === 404)} PUT /api/trilho → ${rotaMorta.status} (a rota não existe mais)`)
 
-  const a2 = await put('recolhido')
-  const dep2 = await lerPreferenciaDeTela(u.id)
-  console.log(`  ${ok(a2.status === 200 && dep2.trilho === 'recolhido')} PUT recolhido → ${a2.status} · o banco diz "${dep2.trilho}"`)
+  const htmlDesk = (await pega(`/empresas/${CO}/margem`, DESK)).html
+  const classeDoNav = (htmlDesk.match(/class="(trilho[^"]*)"/) ?? [])[1] ?? ''
+  console.log(
+    `  ${ok(classeDoNav.includes('rec'))} e a TELA nasce SEMPRE recolhida: class="${classeDoNav}" (sem fixar)`,
+  )
 
   /**
-   * ⚠️⚠️ **O TORTO DA ROTA É O DESCONHECIDO, NÃO A CAIXA ALTA — e a 1ª rodada me corrigiu.**
-   * Eu mandei `'ABERTO'` chamando de torto e levei 200: a rota **tolera caixa e espaço** e
-   * normaliza ANTES de gravar (é a régua de leitura, e é o que mantém o banco só com o
-   * normalizado). O que ela recusa — e está escrito no arquivo dela — é o valor que ela não
-   * conhece: *"aceitar 'gaveta' e gravar 'recolhido' faria o «» responder ok e fazer outra
-   * coisa — a família do salvo que mentia"*. **Caixa alta é torto pro CHECK do BANCO; valor
-   * desconhecido é torto pra ROTA.** Duas perguntas, e eu as misturei.
+   * ⛔ A COLUNA DORME — e a prova é medir o BANCO, não afirmar. Ela segue existindo com o
+   * default e o CHECK; o que não existe mais é alguém escrevendo nela.
    */
-  const tolerado = await put('ABERTO')
-  const depTolerado = await lerPreferenciaDeTela(u.id)
+  const colunaDorme = await prisma.$queryRawUnsafe<{ column_default: string | null }[]>(
+    `SELECT column_default FROM information_schema.columns
+      WHERE table_name = 'user_tema_preferencia' AND column_name = 'trilho'`,
+  )
   console.log(
-    `  ${ok(tolerado.status === 200 && depTolerado.trilho === 'aberto')} PUT "ABERTO" é TOLERADO e normalizado → ${tolerado.status} · o banco diz "${depTolerado.trilho}" (nunca 'ABERTO')`,
+    `  ${ok(colunaDorme.length === 1)} a coluna \`trilho\` continua no banco, dormindo (default ${colunaDorme[0]?.column_default ?? '—'})`,
   )
 
-  const torto = await put('gaveta')
-  console.log(`  ${ok(torto.status === 400)} PUT "gaveta" (desconhecido) → ${torto.status} ${torto.corpo.slice(0, 70)}`)
-  const depTorto = await lerPreferenciaDeTela(u.id)
-  console.log(
-    `  ${ok(depTorto.trilho === 'aberto')} e NADA gravou — segue no último válido: "${depTorto.trilho}"`,
-  )
-
-  // ⭐ o TEMA não foi sobrescrito por nenhum dos PUTs do trilho
-  console.log(
-    `  ${ok(depTorto.tema === prefAntes.tema)} o TEMA sobreviveu aos PUTs do trilho: "${depTorto.tema}" (era "${prefAntes.tema}")`,
-  )
-
-  // ── devolver o estado do dono ──
-  await gravarPreferencia(u.id, { tema: prefAntes.tema, trilho: prefAntes.trilho })
-  const fim = await lerPreferenciaDeTela(u.id)
+  const depois = await lerPreferenciaDeTela(u.id)
   const linhasDepois = await prisma.userTemaPreferencia.count()
   console.log(
-    `\n  ⭐ DEVOLVIDO: tema=${fim.tema} trilho=${fim.trilho} · linhas ${linhasAntes} → ${linhasDepois} ${
-      fim.tema === prefAntes.tema && fim.trilho === prefAntes.trilho && linhasAntes === linhasDepois
-        ? '⭐ como encontrou'
-        : '⛔ MUDOU'
-    }`,
+    `  ${ok(depois.tema === prefAntes.tema && linhasAntes === linhasDepois)} o TEMA intocado: "${depois.tema}" (era "${prefAntes.tema}") · linhas ${linhasAntes} → ${linhasDepois} ⭐ ZERO ESCRITA`,
   )
 }
-
-main()
-  .catch((e) => {
-    console.error('⛔ prova falhou:', e?.message ?? e)
-    process.exitCode = 1
-  })
-  .finally(() => prisma.$disconnect())

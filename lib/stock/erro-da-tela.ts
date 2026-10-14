@@ -24,6 +24,7 @@ import { ReunitizarError } from './reunitizar-item'
 import { SaidaError } from './saida'
 import { portaDoNegativo, type FatosDoNegativo } from './porta-do-negativo'
 import { VendaMapError } from './vendas/venda-map'
+import { RadarListaError } from './radar/watchlist'
 import { GrandezaImplausivelError } from './producao/conclusao'
 // ⭐ 04/10 — o assistente de conversão KG→UN: a recusa mais importante dele é a 2ª conversão
 // ("já foi convertida enquanto você decidia"), e ela PRECISA chegar ao dono com a frase inteira.
@@ -64,6 +65,14 @@ const DE_DOMINIO = [
    * uma recusa que ela sabe explicar — o defeito de 16/09, que custou um dia de import parado.
    */
   ConferenciaError, PinError,
+  /**
+   * ⭐ 14/10 — a trava do `'   '` no radar. ⛔ Ela TEM mensagem pro dono (*"espaço em branco não
+   * é uma escolha"*); fora desta lista escaparia como **500 sem corpo** e a tela diria "não
+   * consegui" sobre uma recusa que ela sabe explicar — a mesma cicatriz de 16/09.
+   * ⚠️ A irmã dela no mapa de venda (`VendaMapError`) já está acima: a rota do mapear traduz
+   * aquela em 422 por conta própria, e esta entra pelo tradutor único.
+   */
+  RadarListaError,
 ] as const
 
 export function ehErroDeDominio(e: unknown): e is Error {

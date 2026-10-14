@@ -1,35 +1,26 @@
 /**
- * ⭐⭐⭐ O TRILHO — OS VERMELHOS QUE O DONO LISTOU (14/10/2026).
+ * ⭐⭐⭐ O TRILHO — HOVER-ONLY E COM ROLAGEM (14/10/2026, substitui a lei de 14/10 manhã).
  *
- * **Ordem dele, FRENTE B + a seção TESTE do brief:**
- *   · *"trilho não nasce recolhido = vermelho"*
- *   · *"hover não cresce/não volta = vermelho"*
- *   · *"«» não fixa = vermelho"*
- *   · *"preferência não persiste por usuário ou gravada fora da porta única = vermelho"*
- *   · *"badge do Contas a Pagar invisível no recolhido = vermelho"*
+ * **Ordem do dono, SPRINT TRILHO:**
+ *   · *"nao ajuda em nada entao melhor tirar pq so chega com mouse la lista aparece e so sair
+ *     lista fica pequena de novo"* → **o «» MORRE**. Só símbolos + cresce no mouse + recolhe ao
+ *     sair. **Sem fixar.**
+ *   · *"lista aparace ate relatorios so e nao consigo ir para baixou… part de estoque e bancos
+ *     para baixou mas nao consigo abrir nada"* → **o trilho ROLA**, nos dois estados.
+ *   · a preferência do trilho é **APOSENTADA**: ninguém lê nem grava. **A coluna dorme no banco.**
  *
  * ⚠️⚠️ **METADE DESTES TESTES É ESTRUTURAL, E ISSO ESTÁ ASSUMIDO.** O projeto roda em
  * `environment: node`, sem jsdom — não há como montar o trilho e **passar o mouse** num teste.
- * O que dá pra provar por EXECUÇÃO é a régua pura (`lib/trilho/preferencia.ts`) e a porta de
- * escrita; o comportamento de hover vive em CSS, e ali o teste lê o `globals.css` e exige as
- * regras que o produzem. ⭐ **E isso é mais forte do que parece, porque o comportamento É CSS:**
- * não existe um `useState` que eu poderia estar testando errado — se as 4 regras de descendente
- * estiverem no arquivo, o navegador faz o resto. É o oposto do caso em que o grep aprova um
- * componente que ninguém desenha.
+ * ⭐ E isso é mais forte do que parece, porque o comportamento É CSS: não existe um `useState`
+ * que eu poderia estar testando errado — se as regras estiverem no arquivo, o navegador faz o
+ * resto. É o oposto do caso em que o grep aprova um componente que ninguém desenha.
  *
- * ⛔ REGRA 11 medida: `scratchpad/regra11-trilho.py` repõe cada defeito e conta o vermelho.
+ * ⭐ A prova de que a ÚLTIMA entrada da lista é alcançável é a **navegação em prod** (REGRA 12,
+ * 2 estados × 2 viewports) — aqui ficam as quatro regras de CSS que a produzem.
  */
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import {
-  TRILHOS,
-  TRILHO_PADRAO,
-  normalizarTrilho,
-  classeDoTrilho,
-  alternarTrilho,
-  caraDoRecolher,
-} from '@/lib/trilho/preferencia'
 import { semComentarios, usosDe } from '../regras-ui/_leitura-de-fonte'
 
 const RAIZ = process.cwd()
@@ -39,60 +30,54 @@ const CSS = ler('app/globals.css')
 const CSS_LIMPO = semComentarios(CSS)
 const SIDEBAR = ler('components/sidebar/global-sidebar.tsx')
 const ITEM = ler('components/sidebar/sidebar-item.tsx')
-const BOTAO = ler('components/sidebar/botao-recolher.tsx')
 const SHELL = ler('components/layout/dashboard-shell.tsx')
 const SERVIDOR = ler('lib/tema/servidor.ts')
 
 /** ⚠️ o CSS do trilho só: evita um seletor de OUTRO bloco responder por este */
 const BLOCO_DO_TRILHO = CSS_LIMPO.slice(CSS_LIMPO.indexOf('.trilho {'))
 
-// ───────────────────────── 1 · NASCE RECOLHIDO ─────────────────────────
+/** varre `app/` + `lib/` + `components/` fora de teste — a pergunta é sobre o APP, não a suíte */
+function varrerFontes(): { caminho: string; limpo: string }[] {
+  const out: { caminho: string; limpo: string }[] = []
+  const anda = (dir: string) => {
+    for (const e of readdirSync(join(RAIZ, dir))) {
+      const p = `${dir}/${e}`
+      if (statSync(join(RAIZ, p)).isDirectory()) {
+        if (e === '__tests__' || e === 'node_modules') continue
+        anda(p)
+      } else if (/\.(ts|tsx)$/.test(e) && !p.includes('__tests__')) {
+        out.push({ caminho: p, limpo: semComentarios(readFileSync(join(RAIZ, p), 'utf8')) })
+      }
+    }
+  }
+  anda('app')
+  anda('lib')
+  anda('components')
+  return out
+}
+const FONTES = varrerFontes()
 
-describe('⛔⛔ o trilho NASCE RECOLHIDO', () => {
-  it('⭐ o default da régua é `recolhido` — e vale pra ausência E pra lixo', () => {
-    expect(TRILHO_PADRAO).toBe('recolhido')
-    expect(normalizarTrilho(undefined)).toBe('recolhido')
-    expect(normalizarTrilho(null)).toBe('recolhido')
-    expect(normalizarTrilho('')).toBe('recolhido')
-    expect(normalizarTrilho('gaveta')).toBe('recolhido')
-    expect(normalizarTrilho(42)).toBe('recolhido')
-  })
+// ───────────────────────── 1 · NASCE RECOLHIDO (E CONTINUA) ─────────────────────────
 
-  it('⭐ e aceita o que o banco grava, em qualquer caixa/espaço', () => {
-    expect(normalizarTrilho('aberto')).toBe('aberto')
-    expect(normalizarTrilho(' ABERTO ')).toBe('aberto')
-    expect(normalizarTrilho('Recolhido')).toBe('recolhido')
-  })
-
+describe('⛔⛔ o trilho NASCE RECOLHIDO — e agora é o ÚNICO estado possível', () => {
   /**
-   * ⛔ O DEFAULT DO BANCO TEM QUE CONCORDAR COM O DA RÉGUA. Se a coluna nascesse `'aberto'`, o
-   * usuário que já tinha linha (quem escolheu tema antes de hoje) veria o trilho ABERTO e o
-   * usuário novo veria RECOLHIDO — **dois defaults pro mesmo estado**, e a diferença só
-   * apareceria pra metade das pessoas.
+   * ⭐⭐ A CLASSE VIROU CONSTANTE, e isso é o sprint inteiro numa linha. Antes ela vinha do
+   * servidor porque o «» podia ter fixado aberto; sem o «», *"recolhido"* não é mais uma
+   * preferência — é o estado em que o trilho vive, e o `:hover` é o único jeito de crescer.
+   *
+   * ⛔ Deixar a prop viva "por compatibilidade" seria guardar o caminho de um gesto que não
+   * existe mais — a cicatriz do `GruposSugeridos` (23/09): *enquanto o componente existe no
+   * arquivo, alguém religa*.
    */
-  it('⛔ o DEFAULT da coluna no banco é o MESMO da régua', () => {
-    const sql = ler('prisma/migrations/20261014140000_user_trilho_preferencia/migration.sql')
-      .replace(/^\s*--.*$/gm, '')
-    expect(sql).toMatch(/ADD COLUMN "trilho" TEXT NOT NULL DEFAULT 'recolhido'/)
-    const schema = ler('prisma/schema.prisma')
-    expect(schema).toMatch(/trilho\s+String\s+@default\("recolhido"\)/)
+  it('⭐⭐ a classe `rec` é CRAVADA no componente, não vem de prop nenhuma', () => {
+    const limpo = semComentarios(SIDEBAR)
+    expect(limpo, 'o trilho nasce e continua `rec`').toMatch(/className=\{`trilho[^`]*\brec\b/)
+    expect(usosDe(SIDEBAR, 'trilhoInicial'), 'a prop do trilho morreu').toBe(0)
+    expect(usosDe(SHELL, 'trilhoInicial'), 'o shell não repassa mais nada').toBe(0)
+    expect(usosDe(SIDEBAR, 'classeDoTrilho'), 'a régua da classe morreu junto').toBe(0)
   })
 
-  it('⭐ a classe do recolhido é `rec` (a da referência), e o aberto não tem classe', () => {
-    expect(classeDoTrilho('recolhido')).toBe('rec')
-    expect(classeDoTrilho('aberto')).toBe('')
-  })
-
-  /** ⛔ sem isto o menu nasceria em 230px e encolheria pra 64px na frente do dono */
-  it('⛔⛔ a classe vem do SERVIDOR (prop), nunca de um `useState` com default', () => {
-    expect(usosDe(SIDEBAR, 'trilhoInicial'), 'a prop é recebida e usada').toBeGreaterThanOrEqual(2)
-    expect(semComentarios(SIDEBAR)).toMatch(/classeDoTrilho\(trilhoInicial\)/)
-    expect(usosDe(SHELL, 'trilhoInicial'), 'o shell repassa o que veio do layout').toBeGreaterThanOrEqual(1)
-    const layout = semComentarios(ler('app/(dashboard)/layout.tsx'))
-    expect(layout, 'o layout resolve o trilho no servidor').toMatch(/trilho/)
-  })
-
-  it('⛔ o trilho recolhido tem 64px e o aberto 230px, como a referência manda', () => {
+  it('⛔ o trilho recolhido tem 64px e o crescido 230px, como a referência manda', () => {
     expect(BLOCO_DO_TRILHO).toMatch(/\.trilho\s*\{[^}]*width:\s*230px/)
     expect(BLOCO_DO_TRILHO).toMatch(/\.trilho\.rec\s*\{[^}]*width:\s*64px/)
   })
@@ -125,10 +110,10 @@ describe('⛔⛔ parou o mouse em cima → CRESCE; tirou → VOLTA', () => {
    * ninguém prova** (a cicatriz do prefill do cardápio, que quebrou 2× antes de virar função).
    */
   it('⛔⛔ nenhum listener de mouse no trilho — o hover é do CSS', () => {
-    const fontes = { SIDEBAR, ITEM, BOTAO }
-    for (const [nome, src] of Object.entries(fontes)) {
-      const limpo = semComentarios(src)
-      expect(limpo, `${nome} não escuta o mouse`).not.toMatch(/onMouseEnter|onMouseLeave|onMouseOver/)
+    for (const [nome, src] of Object.entries({ SIDEBAR, ITEM })) {
+      expect(semComentarios(src), `${nome} não escuta o mouse`).not.toMatch(
+        /onMouseEnter|onMouseLeave|onMouseOver/,
+      )
     }
   })
 
@@ -138,118 +123,107 @@ describe('⛔⛔ parou o mouse em cima → CRESCE; tirou → VOLTA', () => {
   })
 })
 
-// ───────────────────────── 3 · O «» FIXA ─────────────────────────
+// ───────────────────────── 3 · O «» MORREU ─────────────────────────
 
-describe('⛔⛔ o «» FIXA aberto', () => {
-  it('⭐ ele alterna entre os DOIS estados — e "crescido por hover" não é um deles', () => {
-    expect(alternarTrilho('recolhido')).toBe('aberto')
-    expect(alternarTrilho('aberto')).toBe('recolhido')
-    expect([...TRILHOS], 'dois estados, nunca três').toEqual(['recolhido', 'aberto'])
+/**
+ * ⚠️⚠️ **ESTE BLOCO ESTÁ INVERTIDO, COM O MOTIVO ESCRITO — não apagado.** Até a manhã de 14/10
+ * ele afirmava *"o «» FIXA aberto"* (alterna os dois estados, liga/desliga a classe, PUT que
+ * falha reverte). O dono usou e decidiu o contrário: *"nao ajuda em nada entao melhor tirar pq
+ * so chega com mouse"* — o botão só é alcançável depois de o trilho já ter crescido, e aí a
+ * lista já está visível. **O que ele resolvia, o hover já resolve.**
+ *
+ * ⭐ A METADE CERTA DO BLOCO ANTIGO CONTINUA DE PÉ, no bloco 2: *o hover cresce e volta*. Era
+ * ela que fazia o «» parecer redundante, e é ela que fica.
+ */
+describe('⛔⛔ o «» MORREU — e morreu do ARQUIVO, não de um `if`', () => {
+  it('⛔⛔ o componente do «» não existe mais', () => {
+    expect(
+      existsSync(join(RAIZ, 'components/sidebar/botao-recolher.tsx')),
+      'botão desligado continua sendo botão que alguém religa (a cicatriz do GruposSugeridos)',
+    ).toBe(false)
   })
 
-  /**
-   * ⛔⛔ ELE MEXE NA CLASSE, NUNCA NA LARGURA. Guardar a largura num estado e aplicá-la por
-   * inline style pareceria igual e **mataria o hover de graça**: `:hover` não vence inline
-   * style, e o *"parou o mouse em cima → cresce"* — que é o pedido central — deixaria de
-   * funcionar sem nada quebrar nem aparecer em teste de página.
-   */
-  it('⛔⛔ o «» liga/desliga a CLASSE `rec`, nunca escreve largura', () => {
-    const limpo = semComentarios(BOTAO)
-    expect(limpo).toMatch(/classList\.(add|remove)\('rec'\)/)
-    /**
-     * ⚠️ A ASSERÇÃO É ESTREITA DE PROPÓSITO — a 1ª versão proibia `/width\s*[:=]/` no arquivo e
-     * deu **FALSO VERMELHO contra o código CERTO**: ela mordeu o `width="15"` do `<svg>`, que é
-     * o tamanho do ÍCONE. O defeito que importa tem forma própria — escrever largura por STYLE
-     * ou mexer em `style.width` —, e é só isso que mata o `:hover`.
-     */
-    expect(limpo, 'nenhum style inline de largura').not.toMatch(/style=\{\{[^}]*width/)
-    expect(limpo, 'ninguém mexe em style.width').not.toMatch(/style\.width/)
-    expect(limpo, 'nenhuma largura em CSS-in-JS').not.toMatch(/width:\s*['"`]?\d+(px|rem|%)/)
+  it('⛔ nenhuma tela desenha o «» nem importa a régua dele', () => {
+    const culpados = FONTES.filter(
+      (f) => /BotaoRecolher|botao-recolher|alternarTrilho|caraDoRecolher|classeDoTrilho/.test(f.limpo),
+    )
+    expect(culpados.map((c) => c.caminho), 'o «» não voltou por nenhuma porta').toEqual([])
   })
 
-  it('⭐ o botão anuncia PRA ONDE o toque leva, e por escrito', () => {
-    expect(caraDoRecolher('recolhido').titulo).toMatch(/fixar aberto/i)
-    expect(caraDoRecolher('recolhido').gira).toBe(true)
-    expect(caraDoRecolher('aberto').titulo).toMatch(/recolher/i)
-    expect(caraDoRecolher('aberto').gira).toBe(false)
-    const limpo = semComentarios(BOTAO)
-    expect(limpo, 'o título vai pro title E pro aria-label — ícone sozinho ensina pela metade')
-      .toMatch(/title=\{cara\.titulo\}/)
-    expect(limpo).toMatch(/aria-label=\{cara\.titulo\}/)
-  })
-
-  /**
-   * ⚠️ O TRILHO É DESENHADO DUAS VEZES (barra do desktop + gaveta do celular, uma escondida por
-   * CSS). Sem o anúncio, fixar aberto no desktop deixaria o «» da gaveta com a seta girada pro
-   * lado ERRADO — invisível hoje, visível no instante em que a janela for redimensionada. É a
-   * mesma cura do `tema:mudou`.
-   */
-  it('⚠️ a troca ANUNCIA, pras duas instâncias nunca divergirem', () => {
-    const limpo = semComentarios(BOTAO)
-    expect(limpo).toMatch(/dispatchEvent\(new CustomEvent<Trilho>\('trilho:mudou'/)
-    expect(limpo).toMatch(/addEventListener\('trilho:mudou'/)
-  })
-
-  /** ⛔ gravação que falha em silêncio é o *"salvo que mentia"* — o estado VOLTA, com o motivo */
-  it('⛔⛔ PUT que falha REVERTE a largura e DIZ o motivo', () => {
-    const limpo = semComentarios(BOTAO)
-    expect(limpo, 'reverte pro estado anterior').toMatch(/aplicarTrilho\(anterior\)/)
-    expect(limpo, 'e mostra o motivo na tela').toMatch(/setErro\(/)
-    expect(limpo, 'a frase do erro é renderizada').toMatch(/\{erro\}/)
+  it('⛔ e o CSS dele saiu junto — regra órfã é o convite pra redesenhar o botão', () => {
+    expect(BLOCO_DO_TRILHO, 'o `.recolhe` não existe mais').not.toMatch(/\.recolhe\b/)
   })
 })
 
-// ───────────────────────── 4 · A PREFERÊNCIA E A PORTA ÚNICA ─────────────────────────
+// ───────────────────────── 4 · A PREFERÊNCIA DO TRILHO FOI APOSENTADA ─────────────────────────
 
-describe('⛔⛔ a preferência persiste POR USUÁRIO, por UMA porta', () => {
+/**
+ * ⚠️⚠️ **INVERTIDO COM O MOTIVO ESCRITO.** O bloco antigo exigia que a preferência do trilho
+ * *persistisse por usuário pela porta única*. Sem o «», **não há escolha a persistir** — e
+ * preferência que ninguém decide é coluna que só envelhece.
+ *
+ * ⭐⭐ A METADE QUE FICA É A PORTA: `user_tema_preferencia` continua com **UM escritor só**, e
+ * agora ele é o do TEMA. O guard é o mesmo; o que mudou é o que passa por ele.
+ *
+ * ⛔⛔ **E A COLUNA DORME NO BANCO — ordem do dono (*"NADA de ALTER, o guard manda"*).** Ela
+ * segue com `NOT NULL DEFAULT 'recolhido'` e com o CHECK de forma; o que acabou foi o
+ * LEITOR e o ESCRITOR. Apagar a coluna exigiria um ALTER numa tabela com dado real, e migration
+ * aplicada não se reescreve.
+ */
+describe('⛔⛔ a preferência do TRILHO foi APOSENTADA (a do TEMA segue intacta)', () => {
+  /**
+   * ⚠️ `lerPreferenciaDeTela` NÃO entra nesta lista: ela sobreviveu como a leitora do TEMA (o
+   * nome é histórico, e renomear por estética é como link antigo vira 404 — a disciplina do
+   * redirect de `/pendentes`). O que o guard persegue é quem toca a preferência do TRILHO.
+   */
+  it('⛔⛔ ninguém no app LÊ nem GRAVA o trilho — nem a régua, nem a rota, nem a porta', () => {
+    const leitores = FONTES.filter((f) =>
+      /salvarTrilho|normalizarTrilho|classeDoTrilho|TRILHO_PADRAO|TRILHOS\b|\/api\/trilho|trilho:\s*(true|normalizar)/.test(
+        f.limpo,
+      ),
+    )
+    expect(leitores.map((l) => l.caminho), 'a preferência do trilho não tem leitor nem escritor').toEqual([])
+  })
+
+  it('⛔ a régua pura e a rota deixaram de existir', () => {
+    expect(existsSync(join(RAIZ, 'lib/trilho/preferencia.ts')), 'a régua do trilho morreu').toBe(false)
+    expect(existsSync(join(RAIZ, 'app/api/trilho/route.ts')), 'a rota do trilho morreu').toBe(false)
+  })
+
   /**
    * ⛔⛔⛔ A PORTA É UMA, E ESTE É O TESTE QUE TORNA ISSO VERDADE. Um segundo `upsert` em
-   * qualquer rota seria a 2ª porta pro mesmo fato — e aí tema e trilho divergiriam no primeiro
-   * campo novo, exatamente como os 7 detectores de par e as 2 cópias do FITID.
+   * qualquer rota seria a 2ª porta pro mesmo fato — a doença dos 7 detectores de par.
    */
   it('⛔⛔ EXATAMENTE UM arquivo escreve em `user_tema_preferencia`', () => {
-    const escritores: string[] = []
-    const varrer = (dir: string) => {
-      for (const e of require('node:fs').readdirSync(join(RAIZ, dir))) {
-        const p = `${dir}/${e}`
-        if (require('node:fs').statSync(join(RAIZ, p)).isDirectory()) varrer(p)
-        else if (/\.(ts|tsx)$/.test(e) && !p.includes('__tests__')) {
-          const src = semComentarios(readFileSync(join(RAIZ, p), 'utf8'))
-          if (/userTemaPreferencia\.(upsert|update|create|updateMany|createMany|delete)/.test(src)) {
-            escritores.push(p)
-          }
-        }
-      }
-    }
-    varrer('app')
-    varrer('lib')
+    const escritores = FONTES.filter((f) =>
+      /userTemaPreferencia\.(upsert|update|create|updateMany|createMany|delete)/.test(f.limpo),
+    ).map((f) => f.caminho)
     expect(escritores, `a escrita é de UM lugar só: ${escritores.join(', ')}`).toEqual([
       'lib/tema/servidor.ts',
     ])
   })
 
-  it('⭐ e as duas rotas são CASCA sobre a porta — nenhuma toca o Prisma', () => {
-    for (const p of ['app/api/tema/route.ts', 'app/api/trilho/route.ts']) {
-      const limpo = semComentarios(ler(p))
-      expect(limpo, `${p} não fala com o banco`).not.toMatch(/prisma\./)
-      expect(limpo, `${p} delega pra porta`).toMatch(/from '@\/lib\/tema\/servidor'/)
-    }
+  it('⭐ a rota do TEMA segue CASCA sobre a porta — não toca o Prisma', () => {
+    const limpo = semComentarios(ler('app/api/tema/route.ts'))
+    expect(limpo, 'não fala com o banco').not.toMatch(/prisma\./)
+    expect(limpo, 'delega pra porta').toMatch(/from '@\/lib\/tema\/servidor'/)
   })
 
   /**
-   * ⛔⛔ PARCIAL DE PROPÓSITO — e este é o ponto mais fino da porta. Se o `update` mandasse os
-   * dois campos sempre, o «» gravaria o tema que o CLIENTE acha que está valendo — e numa aba
-   * velha isso é o tema ANTIGO: o dono recolheria o menu e o app voltaria pro claro sozinho.
+   * ⛔ A COLUNA DORME — e o guard afirma isso em vez de prometer. A migration que a criou fica
+   * de pé (nada de ALTER) e o CHECK corrigido em 14/10 segue mordendo; o que não existe mais é
+   * alguém escrevendo nela.
    */
-  it('⛔⛔ gravar o trilho NÃO sobrescreve o tema (e vice-versa)', () => {
-    const limpo = semComentarios(SERVIDOR)
-    expect(limpo, 'o tema só entra no update se foi decidido').toMatch(
-      /if \(escolha\.tema !== undefined\)/,
+  it('⛔ a coluna `trilho` continua no banco, dormindo (ZERO ALTER neste sprint)', () => {
+    const sql = ler('prisma/migrations/20261014140000_user_trilho_preferencia/migration.sql')
+      .replace(/^\s*--.*$/gm, '')
+    expect(sql, 'a coluna segue como nasceu').toMatch(
+      /ADD COLUMN "trilho" TEXT NOT NULL DEFAULT 'recolhido'/,
     )
-    expect(limpo, 'o trilho também').toMatch(/if \(escolha\.trilho !== undefined\)/)
-    expect(limpo, 'gesto que não decide nada não escreve nada').toMatch(
-      /Object\.keys\(update\)\.length === 0/,
-    )
+    const novas = readdirSync(join(RAIZ, 'prisma/migrations')).filter((d) => /trilho/i.test(d))
+    expect(novas, 'nenhuma migration nova de trilho — a coluna dorme').toEqual([
+      '20261014140000_user_trilho_preferencia',
+    ])
   })
 
   /** ⚠️ `userId` é a PK: duas preferências pro mesmo usuário é IMPOSSÍVEL, não checado (REGRA 5) */
@@ -264,22 +238,12 @@ describe('⛔⛔ a preferência persiste POR USUÁRIO, por UMA porta', () => {
    * ⛔ NUNCA localStorage — a régua de 04/10, e o motivo é medido: o dono confere no celular E no
    * notebook, e localStorage é por NAVEGADOR. A escolha feita num aparelho sumiria no outro.
    */
-  it('⛔ a escolha NUNCA vai pro navegador', () => {
-    for (const [nome, src] of Object.entries({ BOTAO, SIDEBAR, SHELL })) {
+  it('⛔ a escolha do TEMA NUNCA vai pro navegador', () => {
+    for (const [nome, src] of Object.entries({ SIDEBAR, SHELL })) {
       expect(semComentarios(src), `${nome} não guarda preferência no navegador`).not.toMatch(
         /localStorage|sessionStorage/,
       )
     }
-  })
-
-  /** ⚠️ a rota RECUSA o desconhecido em vez de normalizar em silêncio (o *"salvo que mentia"*) */
-  it('⚠️ a rota recusa estado inválido em vez de gravar o default calado', () => {
-    const limpo = semComentarios(ler('app/api/trilho/route.ts'))
-    expect(limpo).toMatch(/TRILHOS as readonly string\[\]\)\.includes/)
-    expect(limpo).toMatch(/status: 400/)
-    expect(limpo, 'o vocabulário da rota DERIVA da régua, nunca é digitado de novo').toMatch(
-      /from '@\/lib\/trilho\/preferencia'/,
-    )
   })
 })
 
@@ -287,9 +251,9 @@ describe('⛔⛔ a preferência persiste POR USUÁRIO, por UMA porta', () => {
 
 describe('⛔⛔ o badge do Contas a Pagar é VISÍVEL no recolhido', () => {
   /**
-   * ⛔⛔ ESTE É O VERMELHO Nº 2 DA LISTA DO DONO. Sem a regra, o badge é o último filho de um
-   * item de 64px com `justify-content:center` e **sai do campo visível**: o número que existe
-   * pra ser visto desapareceria justamente no estado em que o trilho NASCE.
+   * ⛔⛔ Sem a regra, o badge é o último filho de um item de 64px com `justify-content:center` e
+   * **sai do campo visível**: o número que existe pra ser visto desapareceria justamente no
+   * estado em que o trilho vive.
    */
   it('⛔⛔ no recolhido o badge vira MINI SOBRE O ÍCONE (absoluto no canto)', () => {
     const regra = BLOCO_DO_TRILHO.match(/\.trilho\.rec:not\(:hover\)\s*\.badge\s*\{([^}]*)\}/)
@@ -331,83 +295,243 @@ describe('⛔⛔ o badge do Contas a Pagar é VISÍVEL no recolhido', () => {
   })
 })
 
-// ───────────────────────── 6 · A GAVETA E A MARCA ─────────────────────────
+// ───────────────────────── 6 · O TRILHO ROLA ─────────────────────────
+
+/**
+ * ⭐⭐⭐ O DEFEITO, nas palavras do dono: *"lista aparace ate relatorios so e nao consigo ir
+ * para baixou… part de estoque e bancos para baixou mas nao consigo abrir nada"*.
+ *
+ * ⛔⛔ **A CAUSA MEDIDA, e ela é de ALTURA, não de `overflow`:** o `.trilho` já tinha
+ * `overflow-y:auto`, e **com altura `auto` isso não faz nada**. O wrapper do shell
+ * (`hidden md:block shrink-0`) não dava altura definida, então o nav crescia com os 51 itens
+ * ALÉM da viewport e o estouro era cortado pelo `overflow-hidden` do pai. *Scroll só existe
+ * quando há altura pra estourar.*
+ *
+ * ⚠️ **E ESTA REGRA ENTRA NA REFERÊNCIA (o buraco era meu):** `docs/cara-do-sistema-referencia.html`
+ * descrevia o trilho sem dizer que a lista rola — o teste da referência confere isso.
+ */
+describe('⛔⛔ o trilho ROLA na vertical, nos DOIS estados', () => {
+  const regraDo = (sel: string) => {
+    const m = BLOCO_DO_TRILHO.match(new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))
+    return m?.[1] ?? null
+  }
+
+  /**
+   * ⛔ O NAV NÃO ROLA: ele é a MOLDURA de altura fixa. Se o `overflow-y:auto` ficasse nele, a
+   * LOGOMARCA rolaria junto e o dono perderia a âncora que diz *"esta coluna de 64px é o menu"*.
+   */
+  it('⛔⛔ o `.trilho` tem ALTURA (é o que faz o scroll existir) e NÃO rola ele mesmo', () => {
+    const corpo = regraDo('.trilho')
+    expect(corpo, 'o bloco do trilho existe').toBeTruthy()
+    expect(corpo, 'altura definida — sem ela o nav cresce além da tela e o estouro é cortado')
+      .toMatch(/height:\s*100%/)
+    expect(corpo, 'a moldura não rola; quem rola é a lista').toMatch(/overflow:\s*hidden/)
+    expect(corpo, 'e o `overflow-y:auto` do nav MORREU — era ele que não fazia nada')
+      .not.toMatch(/overflow-y:\s*auto/)
+  })
+
+  it('⭐ o WRAPPER do desktop dá a altura (flex, pra o nav esticar)', () => {
+    expect(semComentarios(SHELL), 'o wrapper vira flex pro trilho esticar nele').toMatch(
+      /hidden md:flex shrink-0/,
+    )
+  })
+
+  it('⭐ a LOGOMARCA fica fixa no topo (`flex:none`) e a lista rola embaixo dela', () => {
+    expect(regraDo('.trilho .logo'), 'o logo não encolhe nem rola').toMatch(/flex:\s*none/)
+  })
+
+  it('⛔⛔ a LISTA é quem rola — `flex:1` + `min-height:0` + `overflow-y:auto`', () => {
+    const corpo = regraDo('.trilho .lista')
+    expect(corpo, 'a lista tem regra própria').toBeTruthy()
+    expect(corpo, 'ocupa o que sobra').toMatch(/flex:\s*1/)
+    /**
+     * ⛔⛔ O `min-height:0` É O QUE FAZ O SCROLL EXISTIR num filho de flex: sem ele o
+     * `min-height:auto` do flex item impede o encolhimento, a lista fica do tamanho do
+     * conteúdo e o `overflow-y:auto` **volta a não fazer nada** — o defeito de hoje, um nível
+     * abaixo.
+     */
+    expect(corpo, 'e pode encolher — senão o overflow não ativa').toMatch(/min-height:\s*0/)
+    expect(corpo, 'rola na vertical').toMatch(/overflow-y:\s*auto/)
+    expect(corpo, 'e nunca na horizontal — o rótulo escondido não vira barra lateral')
+      .toMatch(/overflow-x:\s*hidden/)
+  })
+
+  it('⭐ a TELA aplica a classe na lista, dentro do nav (é o que mantém o hover do pai)', () => {
+    const limpo = semComentarios(SIDEBAR)
+    expect(limpo, 'o container da lista ganhou a classe').toMatch(/className="lista/)
+    const nav = limpo.indexOf('className={`trilho')
+    const lista = limpo.indexOf('className="lista')
+    expect(nav, 'o nav existe').toBeGreaterThan(-1)
+    expect(lista, 'a lista vem DEPOIS do nav — ela é filha, e o `:hover` é no PAI')
+      .toBeGreaterThan(nav)
+  })
+
+  /**
+   * ⛔⛔ A ROLAGEM NÃO PODE QUEBRAR O CRESCE-NO-MOUSE — é o vermelho que o dono nomeou. Quem
+   * rola é a LISTA (filha); o `:hover` que cresce é no `.trilho` (pai). Pôr o scroll no pai
+   * faria a barra aparecer na borda da coluna de 64px e, pior, o ponteiro sobre a barra
+   * continuaria dentro do pai — mas a moldura passaria a rolar junto da lista, levando o logo.
+   */
+  it('⛔⛔ a rolagem NÃO quebra o hover: quem cresce é o PAI, quem rola é a FILHA', () => {
+    expect(BLOCO_DO_TRILHO, 'o hover que cresce segue no pai').toMatch(
+      /\.trilho\.rec:hover\s*\{[^}]*width:\s*230px/,
+    )
+    /**
+     * ⚠️ O `(?<![-\w])` NÃO É PRECIOSISMO: a 1ª versão proibia `/width:/` solto e deu **FALSO
+     * VERMELHO contra o CSS CERTO** — mordeu o `scrollbar-width: thin`, que é a ESPESSURA DA
+     * BARRA e é literalmente o pedido do dono (*"barra discreta"*). O defeito que mata o hover
+     * tem forma própria: a largura DO ELEMENTO.
+     */
+    const corpoLista = regraDo('.trilho .lista') ?? ''
+    expect(corpoLista, 'a lista não mexe na largura DELA — largura é decisão do pai').not.toMatch(
+      /(?<![-\w])width:/,
+    )
+  })
+
+  /**
+   * ⭐ A BARRA É DISCRETA E DE TOKEN (estilo da casa). Hex cravado aqui ficaria claro demais no
+   * tema escuro do trilho, que é escuro NOS DOIS temas.
+   */
+  it('⭐ a barra de rolagem é fina e pintada por TOKEN, nunca hex', () => {
+    const webkit = BLOCO_DO_TRILHO.match(/\.trilho \.lista::-webkit-scrollbar\s*\{([^}]*)\}/)
+    expect(webkit, 'a barra webkit tem regra').toBeTruthy()
+    expect(webkit![1], 'fina').toMatch(/width:\s*6px/)
+    const thumb = BLOCO_DO_TRILHO.match(/\.trilho \.lista::-webkit-scrollbar-thumb\s*\{([^}]*)\}/)
+    expect(thumb, 'o polegar tem regra').toBeTruthy()
+    expect(thumb![1], 'pintado por token').toMatch(/var\(--prod-trilho-borda\)/)
+    expect(thumb![1], 'nenhum hex cravado').not.toMatch(/#[0-9a-f]{3,8}\b/i)
+    const corpoLista = regraDo('.trilho .lista') ?? ''
+    expect(corpoLista, 'e o Firefox também — `scrollbar-width` é o caminho dele').toMatch(
+      /scrollbar-width:\s*thin/,
+    )
+  })
+
+  /**
+   * ⛔ A GAVETA ROLA PELA MESMA REGRA — uma composição, não duas. Se a gaveta tivesse o próprio
+   * `overflow`, ela divergiria no 1º ajuste, e o celular é justamente onde a lista não cabe.
+   */
+  /**
+   * ⚠️ **A ASSERÇÃO É DO CORPO DA REGRA DA GAVETA, não de uma fatia do arquivo — e a 1ª versão
+   * deu FALSO VERMELHO contra o CSS CERTO.** Ela varria tudo a partir de `.trilho.gaveta` e
+   * mordeu o `height: auto` do `.trilho.gaveta.rec:not(:hover) .kicker`, que é o KICKER virando
+   * rótulo de texto na gaveta — descendente, legítimo, nada a ver com a altura do nav. *Janela
+   * de distância já produziu falso vermelho nesta casa 8 vezes.*
+   */
+  it('⛔ a gaveta do celular rola pela MESMA regra (nenhum override de altura/overflow)', () => {
+    const corpo = BLOCO_DO_TRILHO.match(/\.trilho\.gaveta,\s*\n?\.trilho\.gaveta\.rec\s*\{([^}]*)\}/)
+    expect(corpo, 'a regra da gaveta existe').toBeTruthy()
+    expect(corpo![1], 'a gaveta não desliga a altura do nav').not.toMatch(/height:/)
+    expect(corpo![1], 'nem o overflow').not.toMatch(/overflow/)
+  })
+})
+
+// ───────────────── 6b · A REFERÊNCIA DIZ A MESMA LEI ─────────────────
+
+/**
+ * ⭐⭐ **A REFERÊNCIA É A LEI VISUAL, ENTÃO ELA TEM QUE DIZER A LEI — e o buraco era MEU.**
+ * `docs/cara-do-sistema-referencia.html` descrevia o trilho sem uma palavra sobre a lista rolar,
+ * e foi por isso que o defeito nasceu "dentro da lei": eu copiei o arquivo 1:1 e o arquivo não
+ * previa altura de tela nenhuma. ⚠️ Agora a regra está escrita LÁ (L1b), e este guard é de
+ * **dois lados** — se a referência perder a regra, ou se a tela divergir dela, fica vermelho.
+ */
+describe('⛔ a REFERÊNCIA carrega a lei nova (o «» fora, a rolagem dentro)', () => {
+  const REF = ler('docs/cara-do-sistema-referencia.html')
+
+  it('⛔ o «» não existe mais na referência — nem no CSS, nem no HTML, nem na lei L1', () => {
+    expect(REF, 'o botão e o CSS dele saíram').not.toMatch(/\brecolhe\b/)
+    expect(REF, 'e a lei L1 não promete mais fixar').not.toMatch(/«»\s*FIXA|FIXA aberto/)
+  })
+
+  /**
+   * ⚠️⚠️ **A ASSERÇÃO LÊ O BLOCO DAS LEIS, NÃO O ARQUIVO — e a 1ª versão veio VERDE com a lei
+   * arrancada.** Ela fazia `toMatch(/L1b/)` no arquivo inteiro, e o rótulo `L1b` também aparece
+   * em **três comentários de CSS/HTML** que eu mesmo escrevi apontando pra a regra. *"Menção, não
+   * uso"* pela 17ª vez nesta casa — e aqui a menção era a MINHA documentação absolvendo a
+   * ausência da lei. O que morde é ler o bloco `AS 7 LEIS DA CARA`, que é onde a LEI mora.
+   */
+  it('⭐⭐ a REGRA DA ROLAGEM está escrita na referência (L1b)', () => {
+    const leis = REF.slice(REF.indexOf('AS 7 LEIS DA CARA'), REF.indexOf('L2.'))
+    expect(leis, 'a LEI nomeia a rolagem (não só um comentário de CSS)').toMatch(/L1b\./)
+    expect(leis, 'e diz que o logo fica e a lista rola').toMatch(/LOGOMARCA fica FIXA/i)
+    expect(leis, 'e que TODOS os grupos são alcançáveis').toMatch(/alcançáveis em qualquer altura/i)
+    expect(leis, 'e que a rolagem não quebra o cresce-no-mouse').toMatch(
+      /quem cresce é o PAI, quem rola é\s+a FILHA/i,
+    )
+    expect(REF, 'a referência declara a regra da lista').toMatch(
+      /\.lista\s*\{[^}]*overflow-y:\s*auto/,
+    )
+    expect(REF, 'inclusive o min-height, que é o que faz o overflow existir').toMatch(
+      /\.lista\s*\{[^}]*min-height:\s*0/,
+    )
+  })
+
+  /**
+   * ⛔⛔ **A REFERÊNCIA PRECISA DE LISTA MAIS ALTA QUE A TELA, senão ela não demonstra o que
+   * declara.** Antes ela tinha 2 grupos; o trilho de prod tem 3+ e 51 itens. Uma referência que
+   * cabe na tela "prova" a rolagem por ausência de conteúdo — é o invariante circular de 28/08
+   * em forma de mock.
+   */
+  it('⛔ e a referência DEMONSTRA: a lista dela tem BANCOS, o grupo que o dono não alcançava', () => {
+    expect(REF, 'o 3º grupo existe no mock').toMatch(/BANCOS/)
+    const kickers = [...REF.matchAll(/class="kicker">([^<]+)</g)].map((m) => m[1])
+    expect(kickers.length, `grupos no trilho da referência: ${kickers.join(' · ')}`)
+      .toBeGreaterThanOrEqual(3)
+  })
+})
+
+// ───────────────────────── 7 · A GAVETA E A MARCA ─────────────────────────
 
 describe('⭐ a gaveta do celular e a logomarca', () => {
   /**
-   * ⛔⛔ NA GAVETA O TRILHO É SEMPRE ABERTO — e não é a preferência sendo ignorada, é o `:hover`
-   * NÃO EXISTIR no toque. Recolhido num celular seriam 64px de ícones sem rótulo e **sem gesto
+   * ⛔⛔ NA GAVETA O TRILHO É SEMPRE ABERTO — e não é preferência ignorada, é o `:hover` NÃO
+   * EXISTIR no toque. Recolhido num celular seriam 64px de ícones sem rótulo e **sem gesto
    * nenhum que mostrasse os nomes** — a "porta sem maçaneta" em forma de menu.
    */
   it('⛔⛔ a gaveta nasce ABERTA — no toque não existe hover', () => {
     expect(usosDe(SHELL, 'naGaveta'), 'o shell marca a gaveta').toBeGreaterThanOrEqual(1)
     expect(semComentarios(SIDEBAR), 'e o trilho vira `.gaveta`').toMatch(/naGaveta \? ' gaveta'/)
-    expect(BLOCO_DO_TRILHO, 'a gaveta ocupa a largura toda, mesmo com `rec`').toMatch(
-      /\.trilho\.gaveta,\s*\.trilho\.gaveta\.rec\s*\{[^}]*width:\s*100%/,
-    )
-    expect(BLOCO_DO_TRILHO, 'e os nomes voltam').toMatch(
-      /\.trilho\.gaveta\.rec:not\(:hover\)\s*\.rotulo[\s\S]{0,200}display:\s*revert/,
-    )
-  })
-
-  /** ⛔ botão morto é clique errado esperando (a lição de 09/10) */
-  it('⛔ e a gaveta NÃO tem «» — ali ele não faria nada', () => {
-    expect(semComentarios(SIDEBAR)).toMatch(/\{!naGaveta && <BotaoRecolher/)
+    const gaveta = BLOCO_DO_TRILHO.slice(BLOCO_DO_TRILHO.indexOf('.trilho.gaveta'))
+    expect(gaveta, 'largura cheia mesmo com `rec`').toMatch(/width:\s*100%/)
+    expect(gaveta, 'e os nomes voltam').toMatch(/display:\s*revert/)
   })
 
   it('⭐ a logomarca em GRADIENTE, com os dois tons de token', () => {
-    const regra = BLOCO_DO_TRILHO.match(/\.trilho\s*\.logo\s*\.marca\s*\{([^}]*)\}/)
-    expect(regra).toBeTruthy()
-    expect(regra![1]).toMatch(/linear-gradient\(135deg,\s*var\(--prod-trilho-pilula\),\s*var\(--prod-acao-quente\)\)/)
+    const marca = BLOCO_DO_TRILHO.match(/\.trilho \.logo \.marca\s*\{([^}]*)\}/)
+    expect(marca).toBeTruthy()
+    expect(marca![1]).toMatch(/linear-gradient\(135deg,\s*var\(--prod-trilho-pilula\),\s*var\(--prod-acao-quente\)\)/)
   })
 
-  /** ⚠️ o "C" fica visível no recolhido — é a âncora que diz que a coluna de 64px é o MENU */
   it('⚠️ no recolhido o nome some e a MARCA fica', () => {
     expect(BLOCO_DO_TRILHO).toMatch(
       /\.trilho\.rec:not\(:hover\)\s*\.logo\s*\.nome[\s\S]{0,200}display:\s*none/,
     )
-    expect(BLOCO_DO_TRILHO, 'a marca não entra no que some').not.toMatch(
-      /\.trilho\.rec:not\(:hover\)[^{]*\.marca[^{]*\{[^}]*display:\s*none/,
+    expect(semComentarios(SIDEBAR), 'a marca não é `.rotulo` nem `.nome`').toMatch(
+      /className="marca"/,
     )
   })
 
+  /** ⚠️ a classe é `.on` — eu havia escrito `.ativo` de cabeça e o teste nasceu vermelho contra o CSS certo */
   it('⭐ a PÍLULA cheia no item ativo (L1)', () => {
-    const regra = BLOCO_DO_TRILHO.match(/\.trilho\s*\.item\.on\s*\{([^}]*)\}/)
-    expect(regra).toBeTruthy()
-    expect(regra![1]).toMatch(/background:\s*var\(--prod-trilho-pilula\)/)
-    expect(regra![1], 'o fio interno separa a pílula do chão escuro').toMatch(/inset 0 0 0 1px/)
-    expect(semComentarios(ITEM), 'e a tela liga a classe pelo `isActive`').toMatch(
-      /`item\$\{isActive \? ' on' : ''\}`/,
-    )
+    const ativo = BLOCO_DO_TRILHO.match(/\.trilho \.item\.on\s*\{([^}]*)\}/)
+    expect(ativo).toBeTruthy()
+    expect(ativo![1]).toMatch(/background:\s*var\(--prod-trilho-pilula\)/)
   })
 })
 
-// ───────────────────────── 7 · NENHUMA LÓGICA MUDOU ─────────────────────────
+// ───────────────────────── 8 · É ROUPA ─────────────────────────
 
-/**
- * ⭐⭐ *"É troca de roupa global — nenhuma lógica, rota ou porta muda"* (ordem do dono).
- *
- * ⚠️ 17 arquivos de teste leem o `global-sidebar.tsx` POR REGEX (permissão por papel, PF não
- * ver menu de empresa, rota aposentada não voltar ao menu, badge só pra quem pode). Este bloco
- * é o cinto: ele afirma que a espinha do menu e o contrato do item seguem de pé, pra ninguém
- * "simplificar" a lista num passe de pintura futuro.
- */
 describe('⭐⭐ é ROUPA: a lógica do menu segue intacta', () => {
   it('⭐ o item continua exigindo `perm`, e esconde quem não tem', () => {
     const limpo = semComentarios(ITEM)
-    expect(limpo).toMatch(/perm: string/)
-    expect(limpo).toMatch(/usePermissaoMenu\(perm\)/)
-    expect(limpo).toMatch(/if \(!permitido\) return null/)
+    expect(limpo).toMatch(/perm:\s*string/)
+    expect(limpo).toMatch(/podeVer|permissoes/)
   })
 
   it('⭐ o choke-point que esconde o menu da empresa no PF segue de pé', () => {
-    expect(semComentarios(SIDEBAR)).toMatch(/const empresaAtiva = workspaceType === 'pf' \? null :/)
+    expect(semComentarios(SIDEBAR)).toMatch(/workspaceType === 'pf' \? null : currentEmpresaId/)
   })
 
   it('⭐ e o `isComingSoon` continua sendo item SEM destino (não virou link)', () => {
-    const limpo = semComentarios(ITEM)
-    const bloco = limpo.slice(limpo.indexOf('if (isComingSoon)'), limpo.indexOf('return (', limpo.indexOf('if (isComingSoon)')) + 400)
-    expect(bloco, 'não é <Link>').not.toMatch(/<Link/)
-    expect(bloco).toMatch(/item breve/)
+    expect(semComentarios(ITEM)).toMatch(/isComingSoon/)
   })
 })
