@@ -10601,6 +10601,185 @@ Nasceu do `FITID == YYMMDD`: a regra funcionou nos arquivos da época, **armou**
 
 **MEMÓRIA — leitura DURANTE o build de 26/08 (o gatilho (b) NÃO disparou):** memória disponível no pico **431 MB** de 3.915 · swap **68 MB** de 2.047 · **zero OOM kills**. O build come ~3,5 GB e sobrevive, mas com ~11% de folga. O gatilho (b) do upgrade 4→8 GB é *"swap usado em operação normal, FORA de build"* — swap está em 68 MB, bem abaixo dos 256 MB do N1. **Não disparou.** ⚠️ E com o deploy em diretório separado, um OOM durante o build passou a ser **inofensivo** (o symlink não move): a urgência do resize CAIU. O gatilho que continua valendo é o **(a)** — a rotina real começar.
 
+## ⛔⛔⛔ O TRILHO PERDEU O «» E GANHOU ROLAGEM · E OS 2 CHECKs FRACOS DO ESTOQUE (14/10/2026, tarde)
+
+**Substitui a L1 da fundação de 14/10 manhã** (que declarava *"o «» FIXA aberto"*). A lei nova é
+**só símbolos + cresce no mouse + recolhe ao sair, sem fixar**, e o trilho **ROLA**.
+
+### ⭐ ITEM 1 — O «» MORREU, E MORREU DO ARQUIVO
+
+**Palavras do dono:** *"nao ajuda em nada entao melhor tirar pq so chega com mouse la lista
+aparece e so sair lista fica pequena de novo."* ⭐ **E ele está certo pela anatomia do próprio
+gesto:** o botão só é alcançável **depois** de o trilho ter crescido — e aí a lista já está
+visível. **O que ele resolvia, o `:hover` já resolve.**
+
+- `components/sidebar/botao-recolher.tsx` **APAGADO**, não desligado — *botão que existe no arquivo
+  é botão que alguém religa* (a cicatriz do `GruposSugeridos`, 23/09). O `.recolhe` saiu do CSS
+  junto: **regra órfã é o convite pra alguém redesenhar o controle**.
+- **A PREFERÊNCIA FOI APOSENTADA:** `lib/trilho/preferencia.ts` e `app/api/trilho/route.ts`
+  apagados, a prop `trilhoInicial` morreu, e a classe **`rec` é CRAVADA no componente**. Sem o
+  «», *"recolhido"* deixou de ser preferência e passou a ser **o estado em que o trilho vive**.
+- ⛔⛔ **A COLUNA DORME NO BANCO: zero ALTER, zero migration de trilho.** O guard da casa reprova
+  `ALTER`, e **coluna que dorme não machuca ninguém** — o que não existe mais é alguém escrevendo
+  nela. A porta única (`lib/tema/servidor.ts`) ficou **só com o TEMA**, e `salvarTrilho` morreu.
+- **A referência versionada acompanhou** (`docs/cara-do-sistema-referencia.html` v1.2): a L1 virou
+  hover-only com as palavras dele, e o `<button class="recolhe">` saiu do mock.
+
+### ⭐⭐⭐ ITEM 2 — A ROLAGEM: `overflow` SEM **ALTURA** NÃO FAZ NADA
+
+**Palavras do dono:** *"lista aparace ate relatorios so e nao consigo ir para baixou… part de
+estoque e bancos para baixou mas nao consigo abrir nada."*
+
+**⛔⛔ A CAUSA, MEDIDA:** o `.trilho` tinha **`overflow-y:auto` com `height:auto`**, e o wrapper do
+desktop era `md:block` — **que não passa a altura da linha**. Com 51 itens o nav **crescia além da
+viewport** e o overflow era **cortado pelo pai**. Os itens existiam no DOM e eram **inalcançáveis**.
+
+⭐ **A lei de flexbox que fecha a classe, escrita na referência como L1b:** ***quem cresce é o PAI,
+quem rola é a FILHA.*** `overflow` só rola com **(a) altura definida na moldura** e **(b)
+`min-height:0` no filho flex** — filho flex nasce `min-height:auto` e **se recusa a encolher abaixo
+do conteúdo**, então sem isso o `overflow-y:auto` fica decorativo.
+
+- o wrapper virou **`md:flex`** (passa a altura) · `.trilho` é a **MOLDURA** (`height:100%` +
+  `overflow:hidden` — a logomarca fica fixa) · **`.trilho .lista` é quem ROLA**
+  (`flex:1` + `min-height:0` + eixo y rolável) · barra de **6px por token**, igual nos 2 temas.
+- ⚠️ **A filha NÃO toca a própria largura** — se tocasse, mataria o cresce-no-mouse. Há guard.
+- **A gaveta do celular rola pela MESMA regra** (`SheetContent` é `inset-y-0 h-full`).
+- **O mock passou a DEMONSTRAR o que declara:** ganhou um grupo **BANCOS** (tinha 2 grupos; prod
+  tem 7) — *referência que declara rolagem e não rola não prova nada*.
+
+**⭐⭐ A PROVA DO ÚLTIMO GRUPO — 2 ESTADOS × 2 VIEWPORTS, e ela confirma as palavras dele ao pixel:**
+```
+o menu REAL: 7 grupos · 51 itens · TODOS dentro do scroller (0 fora, 0 depois do </nav>)
+             Financeiro · Estoque · Tributário · Cadastros · Inteligência · Sistema · Em breve
+
+ESTADO 2 (crescido, 230px): conteúdo ~2.175px  → passa 1.407px num notebook de 768 · 1.095px num desktop de 1080
+ESTADO 1 (símbolos, 64px):  conteúdo ~2.100px  → passa ~1.300px · ~1.000px   (o kicker colapsa a 1px, o item fica)
+⭐ a rolagem é NECESSÁRIA em 4 de 4 (2 estados × 2 viewports)
+
+E O CORTE CAI ONDE ELE DISSE:  "Relatórios" em y~830px · o grupo "Estoque" em y~897px · "Bancos" em y~1.586px
+```
+⭐ *"lista aparece até relatórios só"* + *"a parte de estoque e bancos pra baixo"* = **exatamente o
+que 850-900px de altura útil alcança num conteúdo de 2.175px.** O relato dele era a medida.
+
+⚠️⚠️ **E O QUE A SONDA NÃO PODE AFIRMAR, dito antes dos números:** sem navegador nesta sessão
+(extensão do Chrome desligada) ela **não rola com o mouse**. Ela prova que o último grupo está
+**DENTRO do elemento que rola** (*fora dele, rolar nunca o alcançaria — e era esse o defeito*),
+que o conteúdo **passa da tela nos 4 casos**, e que a geometria está completa no **CSS SERVIDO**.
+**O dedo do dono é REGRA 2 e é dele.**
+
+### ⭐⭐ ITEM 3 — OS 2 CHECKs FRACOS: FECHADO PELOS **DOIS** CAMINHOS
+
+`"coluna" <> ''` **só pega a string VAZIA** — pra `'   '` os dois CHECKs davam `true`
+(`stock_radar_item.lista` 21/09 e `stock_venda_ignorado.nomeSuitable` 23/09). `ALTER` é proibido
+em migration de estoque **e** migration aplicada não se reescreve → **trigger + trava na porta**:
+
+- **CAMADA 1 (banco):** `stock_texto_de_escolha()` nas duas tabelas, `BEFORE INSERT OR UPDATE`,
+  **uma função só** via `TG_ARGV` (duas divergiriam no primeiro caractere novo). **VOCABULARY-FREE
+  de propósito** — ele não pergunta *quais* listas existem, só se há CONTEÚDO (a cicatriz de 21/09,
+  em que CHECK com lista fechada virou parede em UM DIA).
+- **CAMADA 2 (porta):** `lib/stock/texto-de-escolha.ts` é o dono único da régua, com **422** no
+  `upsertVendaMap` e no `porNaLista`. ⭐ **A porta existe porque a rota de mapear alcança o buraco
+  HOJE** (`z.string().min(1)` aprova três espaços) **e só ela dá uma frase que ENSINA**; no radar é
+  cinto sobre suspensório (a rota já tem `z.enum`).
+- ⚠️ `RadarListaError` entrou na lista **FECHADA** de erros de domínio — sem isso ele escaparia
+  como **500 sem corpo** (a cicatriz de 16/09).
+- ⛔ **ZERO correção de dado:** o estrago atual é **inerte** (só-espaço não casa lista nenhuma nem
+  nome nenhum do PDV). **É armadura, não resgate.**
+
+### ⛔⛔⛔ E A PROVA DA REGRA 13 ACHOU UM FURO NO TRIGGER QUE EU ACABEI DE ESCREVER
+
+**Medido no banco de prod, na 1ª rodada:**
+```
+length(trim(E'\t')) → 1     length(trim(E'\n')) → 1     length(trim('   ')) → 0
+```
+**O `btrim` do Postgres apara, por default, SOMENTE o caractere espaço** — ao contrário do
+`String.prototype.trim()` do JS, que apara a classe inteira. O trigger da manhã mordia o `'   '`
+e **não mordia `'\t'` nem `'\n'`**.
+
+⚠️⚠️ **E ISSO EU HAVIA ESCRITO AO CONTRÁRIO.** O comentário de `texto-de-escolha.ts` dizia que o
+`trim()` do JS ser mais estrito era *"a direção segura"*, porque a PORTA recusaria antes. **Vale
+pra quem passa pela porta — e a camada 1 existe pro caminho que NÃO passa.** ⭐ **Nenhum teste que
+exercitasse a porta pegaria este furo**, porque o JS apara tudo; quem achou foi a prova REGRA 13
+contra Postgres, que insere o torto por `$executeRawUnsafe` — **o caminho exato que a camada 1
+cobre.** Corrigido por **migration NOVA** (`CREATE OR REPLACE FUNCTION` é CREATE-only; os triggers
+amarram pelo NOME e herdaram de graça), com a classe **escrita por extenso** (` \t\n\r\f\v`) —
+`btrim` não aceita regex, e **caractere que não está na lista é caractere que passa**.
+
+**⚠️ E O GUARD TINHA UM FURO DE MÉTODO, corrigido junto:** ele lia a migration de **ORIGEM**, e com
+`CREATE OR REPLACE` o corpo que roda no banco é o da migration **MAIS RECENTE**. Ler a de origem
+faria o teste afirmar a REGRA 13 sobre código que o Postgres já não executa — e **a próxima
+substituição poderia derrubar o `IS NULL` com os testes VERDES**. É a classe do *"menção, não
+uso"*: o arquivo tem o texto certo e o banco tem outro. Agora ele resolve a **função VIGENTE**.
+
+**REGRA 13 em prod, depois do fix: 9 de 9 tortos recusados pela constraint certa** (espaço · vazio
+· tab · newline · espaço+tab+newline · UPDATE pra torto, nas duas tabelas) · **4 de 4 legítimos
+aceitos** (incluindo *"COCA COLA 2L"*, com espaço no MEIO) · **zero escrita líquida**.
+
+### ⚠️⚠️ REGRA 11 — 17 DEFEITOS REPOSTOS, 17 VERMELHOS. E DOIS VIERAM VERDES: *"MENÇÃO, NÃO USO"* PELA **17ª** VEZ
+
+- **o guard da lei L1b lia o ARQUIVO INTEIRO**, e o rótulo `L1b` também aparece em **três
+  comentários de CSS/HTML que eu mesmo escrevi** apontando pra regra — ***a minha documentação
+  absolvendo a ausência da lei***. Agora ele lê o bloco `AS 7 LEIS DA CARA`, que é onde a LEI mora.
+- **o guard do trigger procurava o NOME DA TABELA SOLTO**, e `stock_venda_ignorado` aparece **4×**
+  no arquivo (cabeçalho, ROLLBACK, fragmento). Agora exige o **`CREATE TRIGGER` inteiro**: nome +
+  evento + tabela + a coluna.
+
+**⚠️ E UM GUARD DE 14/10 MANHÃ FOI REAPONTADO, não afrouxado:** ele descobria *"as migrations do
+sprint"* por **DATA** (`startsWith('20261014')`) e varreu a migration de **ESTOQUE** de hoje pra
+dentro de um teste que afirma *"não toca `stock_`"*. **A pergunta nunca foi *"o que subiu hoje"*, e
+sim *"toda migration que mexe na preferência mexe SÓ nela"*** — data é proxy que quebra no primeiro
+dia em que duas frentes sobem juntas. Reapontado pro **CONTEÚDO**.
+
+### ⚠️ TRÊS ERROS DE SONDA, os três meus, e cada um com cara de defeito de prod
+
+1. **A prova do trilho definia `main()` e NUNCA a chamava** — exit **0** com **ZERO linha de
+   saída**. É a forma mais convincente de verde falso que existe: nenhuma asserção roda, nada
+   falha, e quem lê o `exit=0` conclui que passou. Ganhou a chamada e um `.catch` com `exit(1)`.
+2. **A sonda da rolagem lia a forma ESCRITA, não a servida:** o minificador colapsa
+   `overflow-x:hidden` + `overflow-y:auto` no atalho de dois valores **`overflow:hidden auto`**
+   (equivalente exato) — e ela acusou **⛔ numa tela CERTA**. É a família do `Sa\xeddas:` de 15/09:
+   ***no bundle se mede o que o build SERVE, nunca a forma que eu escrevi.***
+3. **A prova REGRA 13 colidia consigo mesma:** a linha do teste de UPDATE fica gravada (o UPDATE
+   pra torto é recusado, o INSERT não) e, com lista `REVENDA`, batia no índice único
+   `(companyId, lista, itemId)` quando a REDE 2 inseria o legítimo `REVENDA` do mesmo item — ela
+   acusava ***"RECUSOU o legítimo"* com o banco inteiramente correto**.
+
+⚠️ **E a sonda da REGRA 11 guarda backup pela CHAVE DO CAMINHO INTEIRO** (duas telas se chamam
+`page.tsx` — a cicatriz de 09/10), **ASSERTA que a substituição aplicou** (a do `perl` que não
+aplicou e deu verde) e **conta suíte que NÃO COLETOU como vermelho** (os 35 testes mortos que
+devolveram *"0 failed"*, 07/10).
+
+### A PROVA EM PROD
+
+```
+prova-fundacao-navegando   54 de 54 asserções ✓ · 0 falhas
+   o trilho vem do SERVIDOR: class="trilho rec" (celular E desktop)
+   ✓ o nav tem ALTURA · ✓ e NÃO rola ele mesmo · ✓ a LISTA rola no eixo y
+   ✓ e pode encolher (min-height:0) · ✓ a barra é FINA e de token · ✓ o cresce-no-mouse de pé
+   ⛔→✓ o CSS do «» (.recolhe) MORREU · ⛔→✓ o «» não está no bundle
+   ✓ PUT /api/trilho → 404 (a rota não existe mais)
+   ✓ a coluna `trilho` continua no banco, dormindo (default 'recolhido')
+   ✓ o TEMA intocado: "claro" · linhas 2 → 2 ⭐ ZERO ESCRITA
+   ✓ L7 no CSS servido: 0 pares (tinta, chão) reprovando
+
+prova-check-estoque-so-espaco (REGRA 13)   9/9 tortos recusados · 4/4 legítimos · 0 escrita
+   ⭐ CONTRAFACTUAL medido no banco: `'   ' <> ''` → true ⇒ PASSAVA · `length(trim('   '))>0`
+      → false ⇒ RECUSA  ·  `length(trim(E'\t'))>0` → true ⇒ o trim simples PASSARIA ·
+      `btrim(…, ' \t\n\r\f\v')` → false ⇒ RECUSA
+   ⭐ pg_trigger: trg_stock_radar_item_escolha · trg_stock_venda_ignorado_escolha
+```
+
+**977 arquivos · 13.115 verdes · 2 todo · TS 0 · `pg_dump pre-trilho-estoque-20261014-180114.dump`
+(9.296.307 bytes, tamanho conferido) · 2 migrations CREATE-only (FUNCTION + 2 TRIGGERs; e a
+correção do `btrim`) · deploys 4/4 (`676WzTxoq6KRnyEcI0tUK`, `ufkduCogqjmSPwehK4ee2`) ·
+Δ chunks +0 KB.**
+
+📋 **FICA PRO DONO (REGRA 2, o olho é dele):** passar o mouse no trilho e **rolar até o fim da
+lista** — no notebook e no monitor, nos dois temas — e abrir a **gaveta pelo ☰ no celular**. A prova
+mede o que prod serve (a geometria nos 2 estados, o último grupo dentro do scroller, o conteúdo
+passando da tela nos 4 casos); **quem confirma que o dedo chega lá é ele**. ⚠️ Screenshot
+indisponível (extensão do Chrome desligada nesta sessão).
+
 ## Ordem de deploy (PJ + PF)
 
 **⚠️ SWAP DE 2GB É OBRIGATÓRIO NO SERVIDOR (25/08).** O `npm run build` do Next roda o type-check num worker que chega a **~1,9 GB de RSS**; o servidor tem 3,9 GB e estava **sem swap nenhum** → o OOM killer matava o worker (`signal: SIGKILL`) e o `.next` ficava **sem `BUILD_ID`**, deixando o pm2 em loop de erro. **Não adianta mexer no `--max-old-space-size`:** teto alto (2560) o kernel mata igual; teto baixo (1400) o próprio V8 aborta por heap insuficiente (`SIGABRT`) — o type-check PRECISA de ~2 GB. Criado em 25/08: `fallocate -l 2G /swapfile && chmod 600 && mkswap && swapon` + linha no `/etc/fstab` (persiste no reboot). Build voltou a passar de primeira. **Servidor novo nasce quebrado sem isso** — incluir no provisionamento junto com o poppler. Pra desfazer: `swapoff /swapfile && rm /swapfile` + tirar a linha do fstab.
