@@ -299,7 +299,21 @@ async function main() {
   for (const [q, v] of [
     ['o nav tem ALTURA (height:100%) — é o que faz o scroll existir', /height:100%|height: 100%/.test(trilhoCss)],
     ['e NÃO rola ele mesmo (a logomarca fica fixa)', /overflow:hidden|overflow: hidden/.test(trilhoCss)],
-    ['a LISTA rola na vertical', /overflow-y:auto|overflow-y: auto/.test(listaCss)],
+    /**
+     * ⚠️⚠️ **O MINIFICADOR COLAPSA `overflow-x` + `overflow-y` NO ATALHO DE DOIS VALORES.**
+     * No fonte estão as duas longhands; no CSS que prod serve sai **`overflow:hidden auto`**
+     * (x=hidden, y=auto) — equivalente exato. A 1ª versão desta sonda procurava `overflow-y:auto`
+     * e deu **⛔ numa tela CERTA**, que é a família do `Sa\xeddas:` de 15/09: ***no bundle se mede
+     * o que o build SERVE, nunca a forma que eu escrevi***. As três grafias que de fato rolam na
+     * vertical: a longhand, o `overflow:auto` de um valor (vale pros dois eixos) e o atalho de
+     * dois valores com `auto` no SEGUNDO (que é o eixo y).
+     */
+    [
+      'a LISTA rola na vertical',
+      /overflow-y:\s*auto/.test(listaCss) ||
+        /overflow:\s*auto\b/.test(listaCss) ||
+        /overflow:\s*\S+\s+auto\b/.test(listaCss),
+    ],
     ['e pode encolher (min-height:0) — sem isso o overflow não ativa', /min-height:0|min-height: 0/.test(listaCss)],
     ['a barra é FINA e de token', css.includes('scrollbar-width:thin') || css.includes('scrollbar-width: thin')],
     ['o cresce-no-mouse segue de pé', /\.trilho\.rec:hover\{[^}]*width:230px/.test(css.replace(/\s+/g, ''))],
