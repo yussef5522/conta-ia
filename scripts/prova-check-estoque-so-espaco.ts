@@ -83,12 +83,30 @@ async function main() {
     { nome: 'ignorado · nome VAZIO', esperado: TRIGGER_NOME, run: () => insereIgnorado('i2', '') },
     { nome: 'ignorado · nome TAB', esperado: TRIGGER_NOME, run: () => insereIgnorado('i3', '\t') },
     /**
+     * ⭐⭐ O TAB E A QUEBRA DE LINHA SÃO CASO PRÓPRIO, e foi esta prova que achou o furo.
+     * `trim()` do Postgres apara **somente o caractere espaço** — medido neste banco:
+     * `length(trim(E'\t'))` → **1** e `length(trim('   '))` → **0**. O trigger da manhã morria
+     * aqui, e a porta em TypeScript (que usa o `trim()` do JS, que apara a classe inteira)
+     * **escondia o furo de qualquer teste que passasse por ela**. A migration
+     * `20261014201500_stock_escolha_trim_branco` troca pro `btrim` com a classe por extenso.
+     */
+    { nome: 'radar · lista NEWLINE', esperado: TRIGGER_RADAR, run: () => insereRadar('r4', '\n') },
+    { nome: 'ignorado · nome ESPAÇO+TAB+NEWLINE', esperado: TRIGGER_NOME, run: () => insereIgnorado('i4', ' \t\n ') },
+    /**
      * ⭐⭐ O CASO QUE ISOLA O TRIGGER DO CHECK VELHO: o `''` já era recusado pelo CHECK de
      * origem; **o `'   '` NÃO era, e é o defeito deste sprint**. Os dois ficam aqui — o vazio
      * prova que o CHECK antigo segue de pé, e o espaço prova que a camada nova morde.
      */
+    /**
+     * ⚠️⚠️ A LISTA AQUI É `PORCOES`, NÃO `REVENDA` — e o motivo é um erro MEU que a 1ª rodada
+     * em prod expôs: esta linha fica gravada (o UPDATE pra torto é recusado, o INSERT não), e
+     * com `REVENDA` ela batia no índice único `(companyId, lista, itemId)` quando a REDE 2
+     * inseria o legítimo `REVENDA` do mesmo item — a prova acusava **"RECUSOU o legítimo"**
+     * com o banco inteiramente correto. ***Sonda que colide consigo mesma dá um vermelho tão
+     * convincente quanto um defeito real.***
+     */
     { nome: 'radar · UPDATE pra só-espaço (corrigir PRA torto)', esperado: TRIGGER_RADAR, run: async () => {
-      await insereRadar('r9', 'REVENDA')
+      await insereRadar('r9', 'PORCOES')
       return prisma.$executeRawUnsafe(`UPDATE "stock_radar_item" SET "lista" = '  ' WHERE "id" = 'prova-r9'`)
     } },
   ]
@@ -155,11 +173,19 @@ async function main() {
    * afirmação minha: `length(trim(NULL))` devolve **NULL**, e CHECK com expressão NULL **PASSA**.
    */
   const [tres] = await prisma.$queryRawUnsafe<
-    { ingenua: boolean | null; espaco_passa: boolean; forte: boolean }[]
+    {
+      ingenua: boolean | null
+      espaco_passa: boolean
+      forte: boolean
+      tab_no_trim: boolean
+      tab_no_btrim: boolean
+    }[]
   >(
     `SELECT (length(trim(NULL::text)) > 0) AS ingenua,
             ('   ' <> '')                  AS espaco_passa,
-            (length(trim('   ')) > 0)      AS forte`,
+            (length(trim('   ')) > 0)      AS forte,
+            (length(trim(E'\t')) > 0)      AS tab_no_trim,
+            (length(btrim(E'\t', E' \t\n\r\f\v')) > 0) AS tab_no_btrim`,
   )
   console.log(
     `  ⭐ contrafactual NULL: \`length(trim(NULL))>0\` → ${tres.ingenua === null ? 'NULL' : tres.ingenua}` +
@@ -168,6 +194,14 @@ async function main() {
   console.log(
     `  ⭐ contrafactual ESPAÇO: a forma VELHA \`'   ' <> ''\` → ${tres.espaco_passa}` +
       ` ⇒ PASSAVA · a forma do trigger \`length(trim('   '))>0\` → ${tres.forte} ⇒ RECUSA`,
+  )
+  /**
+   * ⭐⭐ O CONTRAFACTUAL DO TAB — a medição que achou o furo da manhã, no próprio banco em vez
+   * de na minha cabeça: `trim()` apara SÓ espaço, `btrim` com a classe por extenso apara tudo.
+   */
+  console.log(
+    `  ⭐ contrafactual TAB: \`length(trim(E'\\t'))>0\` → ${tres.tab_no_trim}` +
+      ` ⇒ o trim simples PASSARIA · \`btrim(…, ' \\t\\n\\r\\f\\v')\` → ${tres.tab_no_btrim} ⇒ RECUSA`,
   )
 
   console.log('\n── REDE 4: os triggers existem de verdade ──')

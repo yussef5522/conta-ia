@@ -141,13 +141,42 @@ describe('⛔⛔ a PORTA ÚNICA recusa `\'   \'` — e DIZ por quê', () => {
 
 describe('⛔⛔ a armadura do BANCO: trigger, porque ALTER é proibido', () => {
   const dir = join(process.cwd(), 'prisma/migrations')
+  const semComentario = (sql: string) =>
+    sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n')
+
+  /** a migration que CRIA os triggers (eles amarram pelo NOME da função, e nunca mudam) */
   const migracao = () => {
     const d = readdirSync(dir).find((x) => /stock_so_espaco/.test(x))
     expect(d, 'a migration do trigger existe').toBeTruthy()
     return readFileSync(join(dir, d!, 'migration.sql'), 'utf8')
   }
-  const semComentario = (sql: string) =>
-    sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n')
+
+  /**
+   * ⭐⭐ **A FUNÇÃO QUE VALE É A ÚLTIMA `CREATE OR REPLACE`, NÃO A PRIMEIRA — e a 1ª versão deste
+   * guard lia a migration de origem.** Com `CREATE OR REPLACE FUNCTION` o corpo que de fato roda
+   * no banco é o da migration MAIS RECENTE que substitui a função; ler a de origem faria o guard
+   * afirmar a REGRA 13 sobre um código que o Postgres já não executa — e a próxima substituição
+   * poderia derrubar o `IS NULL` com os testes **verdes**. ⚠️ É a mesma classe do *"menção, não
+   * uso"*: o arquivo tem o texto certo e o banco tem outro.
+   */
+  const corpoVigente = () => {
+    const comFuncao = readdirSync(dir)
+      .filter((d) => {
+        const f = join(dir, d, 'migration.sql')
+        return (
+          existsSync(f) &&
+          /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+stock_texto_de_escolha/i.test(
+            readFileSync(f, 'utf8'),
+          )
+        )
+      })
+      .sort()
+    expect(comFuncao.length, 'alguma migration define a função').toBeGreaterThan(0)
+    const sql = semComentario(
+      readFileSync(join(dir, comFuncao[comFuncao.length - 1], 'migration.sql'), 'utf8'),
+    )
+    return sql.slice(sql.search(/CREATE\s+OR\s+REPLACE\s+FUNCTION/i))
+  }
 
   /**
    * ⛔⛔ **POR QUE TRIGGER E NÃO ALTER DO CHECK:** migration de estoque é **CREATE-only por regra
@@ -200,14 +229,40 @@ describe('⛔⛔ a armadura do BANCO: trigger, porque ALTER é proibido', () => 
    * isso que ele tem que estar escrito: **a migration que um dia tornar a coluna nullable não vai
    * lembrar de revisar este trigger.**
    */
-  it('⛔⛔ REGRA 13: o NULL é tratado EXPLICITAMENTE e PRIMEIRO', () => {
-    const sql = semComentario(migracao())
-    const fn = sql.slice(sql.search(/CREATE\s+(OR REPLACE\s+)?FUNCTION/i))
+  it('⛔⛔ REGRA 13: o NULL é tratado EXPLICITAMENTE e PRIMEIRO (na função VIGENTE)', () => {
+    const fn = corpoVigente()
     const posNull = fn.search(/IS\s+NULL/i)
-    const posTrim = fn.search(/length\s*\(\s*trim/i)
+    const posConteudo = fn.search(/length\s*\(\s*(b?trim|limpo)/i)
     expect(posNull, 'o IS NULL existe').toBeGreaterThan(-1)
-    expect(posTrim, 'e a comparação de conteúdo também').toBeGreaterThan(-1)
-    expect(posNull, 'o NULL é tratado ANTES do conteúdo').toBeLessThan(posTrim)
+    expect(posConteudo, 'e a comparação de conteúdo também').toBeGreaterThan(-1)
+    expect(posNull, 'o NULL é tratado ANTES do conteúdo').toBeLessThan(posConteudo)
+  })
+
+  /**
+   * ⛔⛔⛔ **`trim()` DO POSTGRES APARA SÓ O CARACTERE ESPAÇO — TAB E NEWLINE PASSAVAM.**
+   * Medido no banco de prod: `length(trim(E'\t'))` → **1** · `length(trim('   '))` → **0**.
+   * O trigger de 14/10 manhã mordia o `'   '` e deixava `'\t'` entrar por fora da porta, e
+   * ***nenhum teste que passasse pela porta pegaria isso***, porque o `trim()` do JS apara a
+   * classe inteira. Quem achou foi a prova REGRA 13 contra Postgres, que insere o torto por
+   * `$executeRawUnsafe` — o caminho que a camada 1 existe pra cobrir.
+   *
+   * ⚠️ `btrim` não aceita regex: a classe vai **por extenso**, e caractere que não está na lista
+   * é caractere que passa. Por isso o guard conta os seis, um a um.
+   */
+  it('⛔⛔ a função VIGENTE apara a CLASSE de branco, não só o espaço', () => {
+    const fn = corpoVigente()
+    expect(fn, 'usa btrim com a classe explícita').toMatch(/btrim\s*\(\s*valor\s*,/i)
+    const classe = fn.match(/btrim\s*\(\s*valor\s*,\s*E'([^']*)'/i)?.[1] ?? ''
+    for (const [nome, seq] of [
+      ['espaço', ' '],
+      ['tab', '\\t'],
+      ['newline', '\\n'],
+      ['carriage return', '\\r'],
+      ['form feed', '\\f'],
+      ['vertical tab', '\\v'],
+    ] as const) {
+      expect(classe, `${nome} está na classe aparada`).toContain(seq)
+    }
   })
 
   /** ⭐ e o ROLLBACK está escrito — trigger sem rollback documentado é trigger que ninguém desfaz */
