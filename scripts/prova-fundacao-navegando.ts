@@ -395,3 +395,17 @@ async function main() {
     `  ${ok(depois.tema === prefAntes.tema && linhasAntes === linhasDepois)} o TEMA intocado: "${depois.tema}" (era "${prefAntes.tema}") · linhas ${linhasAntes} → ${linhasDepois} ⭐ ZERO ESCRITA`,
   )
 }
+
+/**
+ * ⚠️⚠️ **ESTA CHAMADA FALTAVA — o script definia `main()` e NUNCA a invocava.** Rodado em prod,
+ * ele saía com **exit 0 e ZERO linha de saída**, que é a forma mais convincente de verde falso
+ * que existe: nenhuma asserção roda, nada falha, e quem lê o `exit=0` conclui que passou.
+ * ***Sonda errada dá um verde tão convincente quanto um vermelho.*** O `.catch` com `exit(1)` é
+ * o que impede o inverso (falha engolida virando sucesso silencioso).
+ */
+main()
+  .catch((e) => {
+    console.error('⛔ falhou:', e)
+    process.exit(1)
+  })
+  .finally(() => prisma.$disconnect())
