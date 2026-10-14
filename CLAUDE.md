@@ -4004,6 +4004,103 @@ As **4 bases de pizza** vieram `custo: a apurar`, e a causa foi medida component
 
 ⭐ **O v4 responde a isso do jeito certo:** farol **neutro "fecha a pizza"**, canais **"a apurar"**, **zero número inventado** — é o vermelho do dono sendo obedecido, não contornado. ⚠️ **Consequência de desenho que vale registrar:** o custo da base **oscila com o saldo**, então ele vira "a apurar" todo dia em que a massa zerar na prateleira. O caso filé+bacon foi provado com o **custo que o dono mediu (25,42)**; a conta canônica de 08/10 (`2×massa 0,54 + 2×queijo 4,20 + caixa 2,74 = 12,22` + sabores `9,00 + 4,29`) dá **25,51**, que é a confirmação independente de que é o mesmo caso.
 
+## 🧺⭐⭐⭐ O CARTÃO DE PRODUTO VIROU CESTA + O CAMPO DE PREÇO CONSERTADO (14/10/2026)
+
+**A dor, nas palavras do dono:** *"quando vou troca numero eu excluir ele volta na hora mesmo numero"*. E o pedido grande: o cartão *"Escolha um produto"* passa a aceitar **2+ produtos** e virar **MODO COMBO**.
+
+### ⛔⛔⛔ 1 · O CAMPO — A CURA É DISTINGUIR `null` DE `''`
+
+**O campo era `value={preco ?? media}`.** Com "nunca digitado" e "apagado" **colapsados no mesmo estado**, QUALQUER fallback é uma **reposição**: o dono apaga, o React re-renderiza, e a média volta no mesmo keystroke. ⭐ **A cura é de TIPO, não de `if`:** `TextoDoCampo = string | null` — **`null` = intocado (vale a média) · `''` = APAGADO (vale vazio)**. Enquanto digita, **o campo é DONO do texto**: nunca reformatar, nunca repor, **nem no blur**.
+
+⛔⛔ **E A RÉGUA MORA EM LIB PURA (`campo-de-preco.ts`), NUNCA NO `value={...}`** — o projeto roda em `environment: node`, sem jsdom: ***regra que mora num `value={...}` é regra que ninguém prova***. É a cicatriz do prefill do cardápio (28/08), que quebrou **duas vezes** antes de virar função.
+
+**⭐ `↺ voltar pra média` aparece SÓ quando o valor difere da média (ou está vazio) e SOME quando volta** — link que fica sempre na tela deixa de ser informação. ⚠️ **E o campo é UM COMPONENTE PRA OS DOIS CARTÕES** (`CampoDePreco`): o montador de pizza tinha a MESMA doença, e duas cópias divergiriam no primeiro ajuste — a doença do B1 em forma de input.
+
+### ⭐⭐ 2-3 · A CESTA E O MODO COMBO — A CONTA MORA NA LIB, A TELA ECOA
+
+`lib/margem/cesta-do-veredito.ts`: toque **LIGA/DESLIGA** (✓ no chip), qtd **−/+ com mínimo 1**, e **1 item = o cartão de HOJE, campo por campo** — o caminho de um item chama o **`montarBlocoDoVeredito` de sempre, com `tipo: 'produto'`**, e um teste compara farol/teto/alvos/canais dos dois lados **nos três alvos**. ⛔ *Regressão travada por EXECUÇÃO, não por promessa.*
+
+**⛔⛔ O MOTOR DO VEREDITO É O MESMO — `tipo: 'combo'` é um RAMO, não um segundo motor.** `vereditoDaCesta` chama `montarBlocoDoVeredito` com o custo da cesta; charme, gross-up do iFood e os alvos vêm da porta única de 13/10. **Uma conta de veredito na TELA = vermelho** (guard).
+
+- **`custo do combo` = Σ das linhas ao centavo** · **`os mesmos, avulsos` = Σ (média PDV × qtd)**.
+- ⛔⛔ **ITEM SEM FICHA NULA O COMBO INTEIRO** (`custoDoCombo: null`), com o convite *"cria a ficha que eu calculo"* — **número inventado NUNCA**. Idem item sem venda no período nos avulsos.
+- ⛔ **`vendendo o combo a` NASCE VAZIO** — combo não tem média no PDV, e pré-preencher afirmaria um preço que ninguém praticou.
+- **⭐⭐ TETO DO COMBO = média dos tetos PONDERADA PELO CUSTO** (`reguaPonderada`): o xis pesa mais que a coca. **Medido no caso real: 36% ponderado contra 38% de média simples** — e no caso de 3 itens 35/40/25 com pesos 10/5/1 dá **36%**, onde a média simples diria 33%.
+- **A LINHA DA VANTAGEM:** preço < avulsos → **verde** com o % por `pctBR`; preço ≥ avulsos → **coral "combo SEM vantagem — ninguém leva"**. ⚠️ No estado neutro a `frase` é `null` e **a faixa não renderiza** — ausência de notícia não vira faixa vazia.
+
+**⛔ PIZZA SEPARADA (ordem do dono):** produto da seção PIZZAS ganha **linha discreta** *"sabores e custo por fatia: no montador ao lado"* com âncora `#montador`. **O montador ficou INTOCADO** — provado por regressão em prod (3 canais, 4 tamanhos, 63 sabores, 52 com ficha).
+
+### ⭐⭐ 4 · NA MESA — E A METADE QUE ELE NUNCA PODE DIZER
+
+`naMesa()`: ideal > hoje → âmbar *"subindo pro ideal, entravam +R$ X no período"* = `(ideal − hoje) × unidades`. ⛔⛔ **Hoje ≥ ideal → VERDE, valor ZERO, conselho "segura o preço, não baixa"** — a diferença negativa imprimiria *"entravam −R$ 800"* ou *"descendo pro ideal"*, ou seja **o sistema sugerindo baixar preço**, que é a ordem do dono ao contrário. ⭐ **A decisão mora num `tom` fechado**: um `Math.abs` ou um sinal solto na tela reabririam o flanco.
+
+**A FATIA DOS FIXOS** (letra miúda): `custo fixo do período ÷ unidades vendidas`, pelas portas que as telas já usam. ⚠️⚠️ **As unidades são as TOTAIS (dentro + fora da obra), e é escolha MEDIDA:** a cobertura é ~55%, então dividir só pelas unidades COM custo conhecido quase **DOBRARIA** a fatia — a tela cobraria de cada unidade a parte dos fixos que as outras também pagam. ⛔ **E aqui o R$ vai COM CENTAVOS**, ao contrário dos cartões do topo: a fatia é de poucos reais, e o redondo transformaria `R$ 12,64` em `R$ 13` — redondo é régua de MILHAR (`valorDoCartao` segue dono único do redondo).
+
+### ⛔⛔⛔ 5 · A PREMISSA DO ITEM 5 CAIU NA MEDIÇÃO — e o achado é mais útil
+
+A ordem dizia *"provável que as seções do dono já estejam certas e o mapa só não conheça os nomes"*. **Medido em prod: `seções que o MAPA NÃO CONHECE: 0`** — as 10 seções do cardápio dele são exatamente as 10 do mapa. ***O conserto de 1 linha que a ordem previa NÃO EXISTE***, e os 121 derivados vêm de **DUAS** causas, nenhuma delas o mapa:
+
+| # | causa | tamanho | o gesto |
+|---|---|---|---|
+| **1** | **CLASSIFICAR** — a régua de palavra não soube o que o produto é, e `OUTROS` é derivado **por desenho** | **81 produtos · 1.923 un** | o do Cardápio (08/09), e é **DELE** |
+| **2** | **DECLARAR O TETO** — BEBIDAS (1.247 un) e DOCES (111 un) estão na seção CERTA e o teto nunca foi declarado | **40 produtos · 1.358 un** | **2 números dele** |
+
+⛔ **E eu NÃO alarguei a régua de palavra por conta própria** — a decisão de 08/09 é explícita: *nome desconhecido em Outros é 1 clique; nome na seção ERRADA é um número errado no relatório de cobertura, e ninguém desconfia de número.* ⚠️⚠️ **E medir mostrou que alargar nem resolveria o "derivado":** ~59 dos 81 são MILKSHAKE/SUNDAE/CASQUINHA/MIX, que cairiam em **DOCES — que também é DERIVADO**. ***Classificar move o produto de uma seção derivada pra outra; o que tira o "derivado" é o número do dono.***
+
+**⭐⭐ E O CASO QUE O DONO PINOU NO BRIEF É UM DOS 81.** Ele escreveu *"(95,90 − 78,34) × 212 = +R$ 3.723"*; medido, é o **CACULA BOX HAMBURGUERES** (215 un, hoje R$ 78,64, custo R$ 32,50) — o **2º maior volume de OUTROS**. E o teto derivado custa dinheiro na conta dele:
+
+```
+OUTROS (derivado, hoje)   teto 40% · ideal R$  92,90 → entravam +R$ 3.066 no período
+LANCHES (se classificado) teto 35% · ideal R$ 108,90 → entravam +R$ 6.506 no período
+                                              ⛔ R$ 3.440 de diferença, num produto só
+```
+
+### A PROVA EM PROD, NAVEGANDO, NOS DOIS VIEWPORTS (REGRA 12)
+
+```
+celular 200 em 586ms · desktop 200 em 158ms · chunk DESTA tela 94 KB
+  ⭐ 22/22 peças do sprint nos dois · ⛔ hex cravado: 0 · ✓ os 24 tokens nos DOIS mapas do CSS
+
+O CAMPO (digitação real)   nasce "95,90" ↺não → apago "" ↺SIM → "7" → "78," → apago ""
+  ⭐ o campo VAZIO continua vazio (nem no blur ele repõe) · ⭐ o ↺ devolve a média e SOME
+
+1 ITEM == O CARTÃO DE HOJE, nos 3 alvos (farol · teto · alvos · canais idênticos)
+  30% balcão R$ 29,90 · iFood R$ 37,90   |   35% R$ 25,90 · R$ 32,90   |   45% R$ 19,90 · R$ 24,90
+
+A CESTA REAL (XIS - COMPLETO ×3 + MINI FRITAS ×2)
+  ⭐ qtd mínima 1 (pedi −5, ficou 1)
+  ⛔ Σ custo das linhas R$ 32,59 == custo do combo R$ 32,59 → FECHA
+  ⛔ Σ avulsos        R$ 83,76 == avulsos        R$ 83,76 → FECHA
+  ⭐ TETO 36% (ponderado pelo CUSTO) × 38% de média simples · alvos 31 · 36 · 45
+  a R$ 71,20 → [verde] "vantagem pro cliente: R$ 12,56 (15,0% mais barato que avulso)"
+  a R$ 83,76 → [coral] "combo SEM vantagem — ninguém leva"
+  com «MAIONESE CASEIRA» (sem ficha) na cesta → ⭐ custo do combo "a apurar"
+
+NA MESA  «XIS - COMPLETO» hoje 21,26 · ideal 29,90 · 226 un → [ambar] +R$ 1.953 no período
+         «MINI FRITAS»   hoje  9,99 · ideal  8,90 · 421 un → [verde] "nada — teu preço já
+                                        ganha desse alvo · segura o preço, não baixa"
+  ⛔ alguma frase sugere BAIXAR o preço? NÃO ✓
+FATIA DOS FIXOS: ~R$ 12,64 por unidade  ← R$ 87.198,72 ÷ 6.901 un
+MONTADOR (regressão): 3 canais · 4 tamanhos · 63 sabores (52 com ficha) — INTOCADO
+movimentos 7926→7926 · versões 340→340 · canais 3→3  ⭐ ZERO ESCRITA
+```
+
+**REGRA 11 — 17 defeitos repostos** (13 nas libs/tela + 4 na referência), **e QUATRO vieram VERDES:**
+1. ⛔⛔ **o encaixe do teto ponderado** — meu teste chamava `reguaPonderada` **DIRETO** e nada exercia a chamada dentro de `montarCesta`. ***Guard que testa a função não prova o encaixe de quem a chama*** (a cicatriz da mediana de 03/10). Ganhou o caso de cesta real (XIS + FRITAS → 36 contra 38 simples), e aí morde.
+2. a asserção pt-BR com `not.toContain('.')` **pegou o ponto final da frase** (`…CMV 30,0%.`) — apertada pro padrão `\d\.\d`.
+3. ⛔ **o grep do "zero escrita" mordeu o COMENTÁRIO do próprio arquivo** (o cabeçalho diz que ele não conhece `prisma`/`react`) — passou a ler via `semComentarios`: ***o arquivo que documenta a regra não pode ser o que a reprova***.
+4. o teto da referência casou `l.custo*l.qtd` **dentro do `custoDaCesta`** em vez do bloco do `tetoDaCesta` — apertado pro bloco certo.
+
+**⚠️ E A SONDA DA REGRA 11 DEU UM VERDE FALSO CONVINCENTE:** `npx vitest run $G` com `$G` **sem aspas** — **zsh não faz word-splitting**, então os guards rodaram contra **zero arquivo** e imprimiram nada. É a cicatriz de 23/09 cometida de novo. ⚠️ **E a prova em prod me pegou chutando campo** duas vezes (`farol.frase` em vez de `rotulo`; `m.canais` sem a tradução que a TELA faz) — *sonda errada dá um vermelho tão convincente quanto um defeito real.*
+
+**⚠️ 5 GUARDS REAPONTADOS, nenhum afrouxado, 4 MAIS FORTES:** os de `sanitizarQtd`/`valorQtd` foram **INVERTIDOS com o motivo escrito** — a régua de QUANTIDADE do estoque num campo de DINHEIRO fazia `1.500` virar `1,5` (precisão vem da UNIDADE lá; dinheiro é sempre 2 casas e ponto é MILHAR), e agora o proibido é ela voltar. Os de `p.preco`/`href` foram repontados pro `umSo` e dois ganharam a procedência (`media={umSo.preco}` + proibição de uma 2ª média; proibição do `value={...toFixed}` e do fallback `precoTxt !== ''`).
+
+**⚠️ E A REFERÊNCIA É LEI — EU TINHA RENOMEADO O CARTÃO.** Troquei o título por *"🧺 Escolha produtos…"*; `docs/margem-referencia.html` é a régua versionada, então **o título exato voltou** (*"🍔 Escolha um produto e veja o preço ideal"*) e o combo é dito na `dica`. ⭐ A seção que eu escrevi na referência **declara a procedência num comentário HTML** (deriva do brief ESCRITO do dono, **não** de um desenho aprovado) — o precedente da cascata de 10/10: *inventar um visual e chamá-lo de "o mock aprovado" é exatamente o erro que o protocolo de 10/09 existe pra impedir*.
+
+**970 arquivos · 12.987 verdes · 2 todo · TS 0 · migration NENHUMA · deploy 4/4 (`N1sFwm9HE6vTeVOO9JejB`) · Δ chunks +4 KB.**
+
+📋 **FICA PRO DONO (o clique é dele, REGRA 2):** navegar a cesta no celular e no notebook (xis bacon SOZINHO, depois XIS - COMPLETO + MINI FRITAS, digitando e apagando o preço) · **declarar o teto de BEBIDAS e de DOCES** (2 números, matam 1.358 un de derivado) · e **classificar os 81 de OUTROS** pelo gesto do Cardápio — começando pelos de volume: Combo Caçula (564), CACULA BOX (215), MAIONESE CASEIRA (126), ORIGINAL (93), PRENSADO COMPLETO (81). ⚠️ *"tele entrega" (16 un) não é comida* — é taxa, e vale uma decisão à parte.
+
 ## ⭐⭐ QUEM PAGA A CASA v3.1 — A LEI DE LAYOUT: LARGURA CHEIA + DUPLAS (08/10/2026)
 
 **O dono substituiu `docs/margem-referencia.html` pela v3.1** (o rodapé do arquivo diz a versão). A mudança é **SÓ DE LAYOUT**, e nasceu comentada no CSS dele como **"LEI DE LAYOUT"**:
