@@ -22,6 +22,12 @@ import { resolve } from 'node:path'
 /** ⚠️ a referência da margem continua acessível pelo nome antigo — os 2 leitores dela não mudam */
 export const CAMINHO_DA_REFERENCIA = 'docs/margem-referencia.html'
 export const CAMINHO_DA_REFERENCIA_IMPORTAR = 'docs/importar-referencia.html'
+/**
+ * ⭐⭐ A referência da FUNDAÇÃO (14/10) — ela manda nos TOKENS do sistema inteiro, não numa tela.
+ * HIERARQUIA: esta referência manda na fundação (tinta, linha, trilho, topo, raio, sombra); as
+ * de TELA mandam na estrutura das telas delas. Em conflito de token, a fundação vence.
+ */
+export const CAMINHO_DA_FUNDACAO = 'docs/cara-do-sistema-referencia.html'
 
 export interface ReferenciaVisual {
   /** o arquivo inteiro */
@@ -32,6 +38,15 @@ export interface ReferenciaVisual {
   script: string
   /** os tokens do `:root{}` (antes do 1º `@media`), na ordem do arquivo */
   tokens: string[]
+  /**
+   * ⭐ os VALORES hex do `:root{}` — `{'--bg': '#f3f5fa', …}`, sempre em minúscula.
+   * ⚠️ Existe porque o guard da fundação compara VALOR (a cor que o token carrega), não só a
+   * presença do nome: token presente com tom ajustado "no olho" passaria por uma régua que só
+   * conta nomes — foi assim que o guard do mock da Conciliação nasceu cego em 13/09.
+   */
+  valores: Record<string, string>
+  /** ⭐ os valores do bloco `:root[data-theme="dark"]{}` (o tema escuro declarado) */
+  valoresEscuros: Record<string, string>
   /** as hierarquias de letra declaradas (`font-size:Npx`) */
   letras: string[]
   /** as medidas de ELEMENTO (`width`/`height`/`min-width`) */
@@ -56,6 +71,25 @@ export function lerReferenciaVisual(
   const topo = css.slice(0, css.indexOf('@media'))
   const tokens = [...topo.matchAll(/(--[a-z0-9-]+):\s*#[0-9A-Fa-f]{3,8}/g)].map((m) => m[1])
 
+  /** ⚠️ minúscula sempre: a referência escreve `#F3F5FA` e o CSS da casa `#f3f5fa` — comparar
+   *  hex com caixa diferente daria vermelho sobre dois valores IDÊNTICOS. */
+  const hexDe = (trecho: string): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const m of trecho.matchAll(/(--[a-z0-9-]+):\s*(#[0-9A-Fa-f]{3,8})/g)) {
+      out[m[1]] = m[2].toLowerCase()
+    }
+    return out
+  }
+  const valores = hexDe(topo)
+
+  /** ⭐ o bloco do interruptor explícito. ⚠️ A referência declara o escuro DUAS vezes (no
+   *  `@media (prefers-color-scheme: dark)` e aqui) de propósito — é o que faz o botão de tema
+   *  ganhar nos dois sentidos. Leio o do `[data-theme]` porque é o que a classe `.dark` da casa
+   *  espelha; o teste abaixo confere que os dois blocos da referência concordam. */
+  const abreEscuro = css.indexOf(':root[data-theme="dark"]{')
+  const valoresEscuros =
+    abreEscuro === -1 ? {} : hexDe(css.slice(abreEscuro, css.indexOf('}', abreEscuro)))
+
   const unico = (xs: string[]) => [...new Set(xs)]
   const letras = unico([...css.matchAll(/font-size:\s*([\d.]+)px/g)].map((m) => m[1]))
 
@@ -74,5 +108,5 @@ export function lerReferenciaVisual(
     [...css.matchAll(/@media\s*\((?:min|max)-width:\s*([\d.]+)px\)/g)].map((m) => m[1]),
   )
 
-  return { html, css, script, tokens, letras, medidas, cortes }
+  return { html, css, script, tokens, valores, valoresEscuros, letras, medidas, cortes }
 }

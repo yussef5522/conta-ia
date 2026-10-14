@@ -65,7 +65,10 @@ export function StatCard({ tone, label, value, sub, icon: Icon, onClick, active,
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
-            <p className={`mt-0.5 truncate text-xl font-semibold tabular-nums ${VALUE_COLOR[tone]}`}>{value}</p>
+            {/* ⭐ L3 (14/10): o número é PROTAGONISTA — `dinheiro` é o dono único do peso 800 +
+                tabular (`globals.css`). Era `font-semibold tabular-nums` escrito aqui, ou
+                seja o peso do dinheiro declarado num componente em vez de na fundação. */}
+            <p className={`dinheiro mt-0.5 truncate text-xl ${VALUE_COLOR[tone]}`}>{value}</p>
             {sub && <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>}
           </div>
           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${ICON_WRAP[tone]}`}>

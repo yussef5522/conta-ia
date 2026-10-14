@@ -103,8 +103,12 @@ export function UserMenu({ userName, userEmail, devToolsEnabled = false }: Props
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-muted hover:bg-accent text-xs font-semibold text-foreground transition-colors"
+          /* ⭐ `avatar` = o disco de 34px da referência (14/10), com as INICIAIS.
+             ⚠️ Iniciais, nunca foto: o sistema não guarda foto de ninguém, e um bonequinho
+             genérico diria menos que as duas letras de quem está logado. */
+          className="avatar"
           aria-label="Menu do usuário"
+          title={userName}
         >
           {initials(userName)}
         </button>

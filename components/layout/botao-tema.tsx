@@ -81,12 +81,8 @@ export function BotaoTema({ temaInicial }: { temaInicial: Tema }) {
         disabled={salvando}
         title={cara.titulo}
         aria-label={cara.titulo}
-        className="flex h-9 w-9 items-center justify-center rounded-lg border transition-colors disabled:opacity-60"
-        style={{
-          borderColor: 'var(--prod-line)',
-          background: 'var(--prod-surface)',
-          color: 'var(--prod-secondary)',
-        }}
+        /* ⭐ o MESMO chassi `icbt` do sino e do ☰ (a referência de 14/10) */
+        className="icbt"
       >
         {cara.icone === 'sol' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </button>

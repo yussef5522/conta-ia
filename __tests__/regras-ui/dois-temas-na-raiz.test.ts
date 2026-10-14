@@ -18,6 +18,8 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { normalizarTema, classeDoTema, alternar, caraDoBotao, TEMA_PADRAO } from '@/lib/tema/preferencia'
+import { lerReferenciaVisual, CAMINHO_DA_FUNDACAO } from '@/lib/referencias/visual'
+import { telasDoApp } from './_leitura-de-fonte'
 
 const RAIZ = process.cwd()
 const css = readFileSync(join(RAIZ, 'app/globals.css'), 'utf8')
@@ -55,20 +57,185 @@ const SEM_ESPELHO_ESCURO = new Set(['--radius'])
 
 // ───────────────────────────────── a RAIZ ─────────────────────────────────
 
-describe('⭐⭐ os dois mapas vivem na RAIZ, e são espelho um do outro', () => {
-  it('⭐ o `:root` define os tokens de produção e de família', () => {
-    expect(CLARO['--prod-bg'], 'canvas claro na raiz').toBe('#f8fafc')
-    expect(CLARO['--prod-surface']).toBe('#fff')
-    expect(CLARO['--prod-line']).toBe('#e2e8f0')
-    expect(CLARO['--prod-primary']).toBe('#0f172a')
-    expect(CLARO['--fam-indigo-bg']).toBeTruthy()
+/**
+ * ⭐⭐⭐ A REFERÊNCIA DA FUNDAÇÃO É LEI — O GUARD ABRE O ARQUIVO (14/10/2026).
+ *
+ * ⚠️ ESTES TESTES SUBSTITUÍRAM 8 VALORES CRAVADOS, COM O MOTIVO ESCRITO. Até 13/10 eles
+ * afirmavam o canvas `#f8fafc` / `#16151d`, a superfície `#fff` / `#1e1d28` etc. — **os tons que
+ * o dono pediu EM PROSA em 04/10**. A `docs/cara-do-sistema-referencia.html`, aprovada por ele,
+ * declara outros: `#F3F5FA` / `#0B0E1C`, `#FFFFFF` / `#141829`. **A HIERARQUIA DAS LEIS resolve:
+ * a referência da fundação manda nos TOKENS do sistema; as de TELA mandam na estrutura das telas
+ * delas; em conflito de token, a fundação vence.** Então o valor saiu da memória de um pedido e
+ * passou a ser LIDO do arquivo versionado — tom ajustado "no olho" fica vermelho apontando o hex
+ * que o arquivo manda, em vez de passar porque o literal do teste foi editado junto.
+ *
+ * ⛔⛔ E A COMPARAÇÃO É POR **VALOR**, nunca por presença de nome: o `margem-bate-com-a-referencia`
+ * casa token→token por NOME (e está certo no papel dele, que é estrutura de tela); aqui o que
+ * importa é a COR que o token carrega. Guard que só conta nomes aprova a paleta trocada — foi
+ * exatamente como o guard do mock da Conciliação nasceu cego em 13/09.
+ */
+const REF = lerReferenciaVisual(CAMINHO_DA_FUNDACAO)
+
+/** ⚠️ `#fff` e `#FFFFFF` são a MESMA cor — comparar sem normalizar daria vermelho sobre valores idênticos */
+function hexCheio(v: string | undefined): string | undefined {
+  if (!v) return v
+  const h = v.trim().toLowerCase()
+  if (!/^#[0-9a-f]{3}$/.test(h)) return h
+  return `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}`
+}
+
+/**
+ * ⭐ O ESCURO DA REFERÊNCIA É A CASCATA, NÃO O BLOCO: o `:root[data-theme="dark"]` só redefine o
+ * que ele LISTA — tudo que falta ali segue valendo do `:root`. É isso que torna *"o trilho é
+ * igual nos 2 temas"* (L1) uma consequência do arquivo, não um combinado: a referência declara
+ * os 7 tokens do trilho UMA vez e não os redefine no escuro.
+ */
+const REF_ESCURO = { ...REF.valores, ...REF.valoresEscuros }
+
+/**
+ * O mapa 1:1 por PAPEL (referência → os tokens da casa que carregam aquela cor).
+ *
+ * ⛔ Fica FORA de propósito, e cada ausência tem motivo:
+ *  · `--fam-{azul,teal,rosa,cinza}-*` — identidade de PRODUTO (a bolinha do `caraDaReceita`); a
+ *    própria referência usa esses tons cravados nos `.ponto` dela, não como token;
+ *  · `--fam-*-{solid,on,on-soft}` — o chão que INVERTE por tema é desenho da CASA (10/10); a
+ *    referência não tem o conceito de `-solid`, então aqui eles são validados pelo NÚMERO (os
+ *    testes de contraste mais abaixo), que é a régua certa pra eles;
+ *  · `--prod-acao-ink` — nasceu pra consertar a L7 que a própria referência viola (`.bt.p` com
+ *    branco sobre o índigo claro dá 2,98:1); ela não tem token pra isso.
+ */
+const MAPA_DA_FUNDACAO: Record<string, string[]> = {
+  '--bg': ['--prod-bg'],
+  '--card': ['--prod-surface'],
+  '--card-2': ['--prod-surface-1', '--prod-mudo-bg'],
+  '--linha': ['--prod-line'],
+  '--linha-forte': ['--prod-line-strong'],
+  '--tinta': ['--prod-primary'],
+  '--tinta-2': ['--prod-secondary', '--prod-mudo'],
+  '--acao': ['--prod-accent', '--prod-acao-bg', '--fam-indigo-mid'],
+  '--acao-quente': ['--prod-acao-quente'],
+  '--acao-50': ['--prod-surface-2', '--fam-indigo-bg'],
+  '--acao-tinta': ['--fam-indigo-ink'],
+  '--trilho': ['--prod-trilho'],
+  '--trilho-borda': ['--prod-trilho-borda'],
+  '--trilho-tx': ['--prod-trilho-tx'],
+  '--trilho-kicker': ['--prod-trilho-kicker'],
+  '--trilho-on': ['--prod-trilho-on'],
+  '--trilho-pilula': ['--prod-trilho-pilula'],
+  '--trilho-hover': ['--prod-trilho-hover'],
+  '--verde': ['--prod-verde', '--fam-verde-mid'],
+  '--verde-50': ['--prod-verde-bg', '--fam-verde-bg'],
+  '--verde-tinta': ['--fam-verde-ink'],
+  '--coral': ['--prod-coral', '--fam-coral-mid'],
+  '--coral-50': ['--prod-coral-bg', '--fam-coral-bg'],
+  '--coral-tinta': ['--fam-coral-ink'],
+  '--ambar': ['--prod-ambar', '--fam-ambar-mid'],
+  '--ambar-50': ['--prod-ambar-bg', '--fam-ambar-bg'],
+  '--ambar-tinta': ['--fam-ambar-ink'],
+}
+
+/**
+ * ⚠️⚠️ AS DUAS DIVERGÊNCIAS DELIBERADAS — cada uma com a MEDIÇÃO que a justifica, porque a
+ * régua desta casa é *"a medição vence a letra do pedido"* (o precedente de 10/10, quando o
+ * `-mid` como chão de texto branco reprovou em 6 dos 8 casos e o desenho mudou).
+ */
+const DIVERGENCIAS_MEDIDAS: Record<string, { casa: [string, string]; porque: string }> = {
+  '--tinta-3': {
+    casa: ['#7e89a4', '#6a7390'],
+    porque:
+      'a tinta de DICA da referência (#8B94AD) dá 2,78:1 sobre o papel e 2,83:1 sobre o bloco — ' +
+      'abaixo até do piso de 3:1 de TEXTO GRANDE. Os tons da casa dão 3,21 e 3,47 no pior chão.',
+  },
+}
+
+describe('⭐⭐⭐ a fundação é LEI — os tokens da casa batem com a referência, valor a valor', () => {
+  it('⛔⛔ o `:root` carrega os valores que a referência declara pro tema CLARO', () => {
+    const divergem: string[] = []
+    for (const [daRef, naCasa] of Object.entries(MAPA_DA_FUNDACAO)) {
+      const esperado = hexCheio(REF.valores[daRef])
+      expect(esperado, `a referência não declara ${daRef} — o mapa envelheceu`).toBeTruthy()
+      for (const token of naCasa) {
+        const achado = hexCheio(CLARO[token])
+        if (achado !== esperado) divergem.push(`${token}=${achado} ≠ ${daRef}=${esperado}`)
+      }
+    }
+    expect(divergem, `tom ajustado fora da referência: ${divergem.join(' | ')}`).toEqual([])
   })
 
-  it('⭐ o `.dark` traz o escuro premium que o dono pediu', () => {
-    expect(ESCURO['--prod-bg']).toBe('#16151d')
-    expect(ESCURO['--prod-surface']).toBe('#1e1d28')
-    expect(ESCURO['--prod-line']).toBe('#2a2936')
-    expect(ESCURO['--prod-primary']).toBe('#f4f3fb')
+  it('⛔⛔ o `.dark` carrega os valores que a referência declara pro tema ESCURO', () => {
+    const divergem: string[] = []
+    for (const [daRef, naCasa] of Object.entries(MAPA_DA_FUNDACAO)) {
+      const esperado = hexCheio(REF_ESCURO[daRef])
+      for (const token of naCasa) {
+        const achado = hexCheio(ESCURO[token])
+        if (achado !== esperado) divergem.push(`${token}=${achado} ≠ ${daRef}=${esperado}`)
+      }
+    }
+    expect(divergem, `tom ajustado fora da referência: ${divergem.join(' | ')}`).toEqual([])
+  })
+
+  /**
+   * ⭐ A L1 VIRA CONSEQUÊNCIA, NÃO COMBINADO: o trilho é escuro NOS DOIS TEMAS porque é a MARCA.
+   * Sem este teste, "igual nos dois" é uma frase de comentário; com ele, clarear o trilho no
+   * escuro — que o olho pediria, e que era o que a casa fazia até 13/10 — fica vermelho.
+   */
+  it('⭐ os 7 tokens do TRILHO são IDÊNTICOS nos dois temas (L1 — é a marca, não o tema)', () => {
+    const trilho = Object.keys(CLARO).filter((k) => k.startsWith('--prod-trilho'))
+    expect(trilho.length, 'os 7 tokens do trilho na raiz').toBe(7)
+    const diferentes = trilho.filter((k) => hexCheio(CLARO[k]) !== hexCheio(ESCURO[k]))
+    expect(diferentes, `trilho mudou de cor no escuro: ${diferentes.join(', ')}`).toEqual([])
+  })
+
+  /** ⚠️ divergência SEM a medição escrita é "ajustei no olho" com outro nome */
+  it('⚠️ as divergências da referência são EXATAMENTE as declaradas, com a medição', () => {
+    for (const [daRef, { casa, porque }] of Object.entries(DIVERGENCIAS_MEDIDAS)) {
+      const [claro, escuro] = casa
+      expect(hexCheio(CLARO['--prod-muted']), `${daRef} claro`).toBe(claro)
+      expect(hexCheio(ESCURO['--prod-muted']), `${daRef} escuro`).toBe(escuro)
+      expect(hexCheio(REF.valores[daRef]), `a referência mudou ${daRef} — remedir`).not.toBe(claro)
+      expect(porque.length, 'a divergência tem que dizer o número').toBeGreaterThan(60)
+    }
+  })
+
+  /** ⭐ geometria e elevação também são da fundação (L6 + raios 16/12) */
+  it('⭐ raios e sombra vêm da referência', () => {
+    expect(REF.css).toContain('--r-painel:16px')
+    expect(REF.css).toContain('--r-cartao:12px')
+    expect(CLARO['--prod-r-painel']).toBe('16px')
+    expect(CLARO['--prod-r-cartao']).toBe('12px')
+    expect(ESCURO['--prod-r-painel']).toBe('16px')
+    expect(ESCURO['--prod-r-cartao']).toBe('12px')
+
+    /** ⚠️ L6: sombra curta de 2 camadas SÓ no claro; no escuro a elevação é SUPERFÍCIE */
+    expect(CLARO['--prod-sombra']).toMatch(/rgba\(10,\s*15,\s*30/)
+    expect((CLARO['--prod-sombra'] ?? '').split('px ').length, '2 camadas no claro').toBeGreaterThan(2)
+    expect(REF.css).toContain('--sombra:none')
+    expect(ESCURO['--prod-sombra']).not.toMatch(/rgba\(10,\s*15,\s*30/)
+  })
+
+  /**
+   * ⛔ A referência declara o escuro DUAS vezes (no `@media` e no `[data-theme]`) de propósito —
+   * é o que faz o botão de tema ganhar nos dois sentidos. Se os dois blocos DIVERGIREM, metade
+   * dos usuários (os que nunca tocaram no botão) vê uma paleta e a outra metade vê outra.
+   */
+  it('⛔ os dois blocos escuros DA REFERÊNCIA concordam entre si', () => {
+    const media = REF.css.slice(REF.css.indexOf('@media (prefers-color-scheme: dark)'))
+    const bloco = media.slice(0, media.indexOf('}}'))
+    const doMedia: Record<string, string> = {}
+    for (const m of bloco.matchAll(/(--[a-z0-9-]+):\s*(#[0-9A-Fa-f]{3,8})/g)) {
+      doMedia[m[1]] = m[2].toLowerCase()
+    }
+    expect(Object.keys(doMedia).length, 'o `@media` escuro da referência tem tokens').toBeGreaterThan(10)
+    const divergem = Object.keys(doMedia).filter((k) => doMedia[k] !== REF.valoresEscuros[k])
+    expect(divergem, `a referência se contradiz no escuro: ${divergem.join(', ')}`).toEqual([])
+  })
+})
+
+describe('⭐⭐ os dois mapas vivem na RAIZ, e são espelho um do outro', () => {
+  it('⭐ o `:root` define os tokens de produção e de família', () => {
+    expect(CLARO['--prod-bg'], 'canvas claro na raiz').toBeTruthy()
+    expect(CLARO['--prod-surface']).toBeTruthy()
+    expect(CLARO['--fam-indigo-bg']).toBeTruthy()
   })
 
   /**
@@ -270,6 +437,179 @@ describe('⛔⛔ o CARTÃO SÓLIDO passa WCAG nos 4 × 2 temas', () => {
   })
 })
 
+/**
+ * ⭐⭐⭐ A VARREDURA WCAG CONTRA OS CONTRASTES **ESCRITOS NA REFERÊNCIA** (14/10/2026).
+ *
+ * **Exigência do dono (TESTE da fundação):** *"VARREDURA WCAG automatizada nos 2 temas: texto
+ * branco sobre tom médio = vermelho (L7); **pares principais têm que bater os contrastes
+ * escritos na referência**"*.
+ *
+ * ⛔⛔ **OS NÚMEROS SÃO LIDOS DO ARQUIVO, não digitados aqui.** A referência confere 6 pares no
+ * comentário do `<script>` dela (*"tinta/#FFF 17,9:1 · tinta-2/#FFF 7,6:1 · …"*). Guard com os
+ * números cravados passaria no dia em que o dono trocasse um tom e editasse o literal junto —
+ * é a mesma disciplina que fez os 8 valores de 13/10 saírem da memória de um pedido pro arquivo.
+ */
+describe('⛔⛔ os pares principais batem os contrastes que a referência CONFERIU', () => {
+  /** o comentário do `<script>` da referência, de onde os pares saem */
+  const CONFERIDOS = REF.script
+
+  /** `7,6:1` → 7.6 (a referência escreve com vírgula, como o Brasil) */
+  const numero = (s: string) => Number(s.replace(',', '.'))
+
+  /**
+   * ⚠️ O par é achado pelo RÓTULO que a referência usa, e a tolerância é de **0,05** — não é
+   * folga: a referência arredonda na 1ª casa (`6,3:1`) e a casa mede `6,29:1`. Exigir igualdade
+   * exata daria vermelho sobre a MESMA cor por causa do arredondamento do texto.
+   */
+  const PARES: { rotulo: string; texto: string; chao: string; tema: 'claro' | 'escuro' }[] = [
+    { rotulo: 'tinta/#FFF', texto: '--prod-primary', chao: '--prod-surface', tema: 'claro' },
+    { rotulo: 'tinta-2/#FFF', texto: '--prod-secondary', chao: '--prod-surface', tema: 'claro' },
+    { rotulo: 'trilho-tx/trilho', texto: '--prod-trilho-tx', chao: '--prod-trilho', tema: 'claro' },
+    { rotulo: 'escuro: tinta/#141829', texto: '--prod-primary', chao: '--prod-surface', tema: 'escuro' },
+    { rotulo: 'tinta-2/#141829', texto: '--prod-secondary', chao: '--prod-surface', tema: 'escuro' },
+  ]
+
+  it('⛔ a referência ainda CONFERE os pares (senão o guard compara com o vazio)', () => {
+    expect(CONFERIDOS, 'o bloco de contrastes saiu da referência').toMatch(/Contrastes conferidos/)
+    for (const p of PARES) {
+      expect(CONFERIDOS, `o par "${p.rotulo}" saiu da referência`).toContain(p.rotulo)
+    }
+  })
+
+  it('⛔⛔ a casa alcança ou supera cada par conferido, no tema dele', () => {
+    const abaixo: string[] = []
+    for (const p of PARES) {
+      const m = new RegExp(`${p.rotulo.replace(/[/.*+?^${}()|[\]\\]/g, '\\$&')}\\s+([\\d,]+):1`).exec(CONFERIDOS)
+      expect(m, `não achei o número do par "${p.rotulo}"`).toBeTruthy()
+      const esperado = numero(m![1])
+      const mapa = p.tema === 'claro' ? CLARO : ESCURO
+      const medido = razao(mapa[p.texto], mapa[p.chao])
+      if (medido + 0.05 < esperado) {
+        abaixo.push(`${p.rotulo} (${p.tema}): a referência confere ${esperado}:1, a casa mede ${medido.toFixed(2)}:1`)
+      }
+    }
+    expect(abaixo, `pares abaixo do conferido:\n  ${abaixo.join('\n  ')}`).toEqual([])
+  })
+
+  /**
+   * ⛔⛔⛔ **L7 COMO VARREDURA DE USO — e ela achou DOIS defeitos VIVOS em 14/10.**
+   *
+   * **A lei:** *"texto branco só sobre degrau 700+ da família (a cicatriz WCAG dos tons médios
+   * continua valendo)"*. ⚠️⚠️ E a régua é o **USO**, não o tom: medir *"nenhum `-mid` alcança
+   * 4,5 com branco"* seria uma afirmação FALSA sobre o arquivo (índigo 6,29 · azul 5,17 · teal
+   * 5,06 · rosa 5,11 no claro **passam**) — e a própria referência confere *"branco/pílula
+   * índigo 6,3:1"*. O que a lei proíbe é **PINTAR** branco num chão que reprova.
+   *
+   * ⛔ **E o perigo real é a INVERSÃO:** os quatro que passam no claro **reprovam no escuro**
+   * (índigo cai pra 2,98), porque o `-mid` CLAREIA. Então tela que usa mid+branco funciona num
+   * tema e quebra no outro — por isso a varredura mede **os dois**.
+   *
+   * **OS DOIS ACHADOS, corrigidos no mesmo commit:**
+   *  · `producao/[ordemId]` — o botão *"concluir agora"* do aviso de ordem parada: `text-white`
+   *    sobre `--fam-ambar-mid` = **3,19:1 claro / 2,15:1 escuro**, os dois reprovando;
+   *  · `estoque/itens/[itemId]` — *"confirmar a troca"*: âmbar médio com `--prod-acao-ink`, que
+   *    é **BRANCO no tema claro** (ele pareia com o índigo `--prod-acao-bg`). ⚠️ Mais sutil: o
+   *    token usado É o da "tinta sobre fundo forte", só estava sobre o chão ERRADO.
+   */
+  /**
+   * ⭐⭐ O DETECTOR TEM NOME E TEM AUTO-TESTE. ⚠️⚠️ A REGRA 11 cobrou isto: com os dois defeitos
+   * já corrigidos, **enfraquecer o detector não produz vermelho nenhum** (medido: tirar a linha
+   * do `text-white` deixa a varredura VERDE com o defeito reposto na tela). Ou seja — sem o
+   * auto-teste, a próxima mão que mexer aqui deixa o defeito voltar INVISÍVEL. É a terceira vez
+   * que esta casa paga por guard que nasceu cego.
+   */
+  const TINTA_CLARA = [
+    { marca: /text-white/, hex: () => '#ffffff' },
+    { marca: /color:\s*'#(fff|ffffff)'/i, hex: () => '#ffffff' },
+    /** ⚠️ o `acao-ink` é BRANCO no claro (ele pareia com o índigo `--prod-acao-bg`) — foi por
+     *  esta porta que o 2º defeito de 14/10 entrou, com o token "certo" no chão errado. */
+    { marca: /--prod-acao-ink/, hex: (t: 'claro' | 'escuro') => (t === 'claro' ? CLARO : ESCURO)['--prod-acao-ink'] },
+    { marca: /--prod-trilho-on/, hex: () => CLARO['--prod-trilho-on'] },
+  ]
+
+  /** devolve as violações de L7 de UMA linha de tela (vazio = limpa) */
+  function violaL7(linha: string): string[] {
+    /** ⚠️ o arquivo que DOCUMENTA o defeito removido não pode ser o que o acusa (21/09) */
+    if (/^\s*(\{?\s*\/\*|\*|\/\/)/.test(linha)) return []
+    const fam = /--fam-([a-z]+)-mid/.exec(linha)?.[1]
+    if (!fam || !/background|bg-\[/.test(linha)) return []
+    const tinta = TINTA_CLARA.find((t) => t.marca.test(linha))
+    if (!tinta) return []
+    const fora: string[] = []
+    for (const tema of ['claro', 'escuro'] as const) {
+      const mapa = tema === 'claro' ? CLARO : ESCURO
+      const r = razao(tinta.hex(tema), mapa[`--fam-${fam}-mid`])
+      if (r < 4.5) fora.push(`${tema} ${fam}-mid ${r.toFixed(2)}:1`)
+    }
+    return fora
+  }
+
+  it('⛔⛔⛔ L7: nenhuma TELA pinta tinta clara sobre um chão que reprova, nos 2 temas', () => {
+    const reprovam: string[] = []
+    for (const arq of telasDoApp()) {
+      const src = readFileSync(join(RAIZ, arq), 'utf8')
+      for (const [n, linha] of src.split('\n').entries()) {
+        for (const v of violaL7(linha)) reprovam.push(`${arq}:${n + 1} ${v}`)
+      }
+    }
+    expect(reprovam, `L7 violada — tinta clara sobre tom médio:\n  ${reprovam.join('\n  ')}`).toEqual([])
+  })
+
+  /**
+   * ⛔⛔ AUTO-TESTE DO DETECTOR (REGRA 11) — as DUAS formas reais do defeito de 14/10, e as
+   * formas que ele **não** pode morder (senão alarme falso no dia 1 mata a varredura).
+   */
+  it('⛔⛔ o detector pega as 2 formas reais, e não morde o que é legítimo', () => {
+    expect(
+      violaL7(`<a className="rounded-lg bg-[var(--fam-ambar-mid)] px-3 text-xs font-bold text-white">x</a>`),
+      'forma 1: `text-white` sobre o âmbar médio (o botão da ordem parada)',
+    ).toEqual(['claro ambar-mid 3.19:1', 'escuro ambar-mid 2.15:1'])
+
+    expect(
+      violaL7(`style={{ background: 'var(--fam-ambar-mid)', color: 'var(--prod-acao-ink)' }}>`),
+      'forma 2: o `acao-ink` (branco no claro) sobre o âmbar médio',
+    ).toEqual(['claro ambar-mid 3.19:1'])
+
+    /** ⭐ o que NÃO é violação: */
+    expect(violaL7(`<div style={{ width: '40%', background: 'var(--fam-verde-mid)' }} />`),
+      'barra de progresso não tem texto em cima').toEqual([])
+    expect(violaL7(`style={{ background: 'var(--fam-indigo-mid)', color: 'var(--prod-acao-ink)' }}`),
+      'o índigo de ação PASSA (6,29:1) — a exceção que a referência confere').toEqual([])
+    expect(violaL7(`style={{ background: 'var(--fam-ambar-solid)', color: 'var(--fam-ambar-on)' }}`),
+      'o chão SÓLIDO é o certo').toEqual([])
+    expect(violaL7(`   /* era bg-[var(--fam-ambar-mid)] com text-white — corrigido em 14/10 */`),
+      'o comentário que documenta o defeito não pode acusar o arquivo').toEqual([])
+  })
+
+  /**
+   * ⛔⛔ O CONTRAFACTUAL DA VARREDURA — sem ele ela seria uma afirmação sobre o mundo bom: o
+   * detector tem que PEGAR a forma exata do defeito que existia (a cicatriz de 14/10).
+   */
+  it('⛔⛔ e a varredura PEGA a forma do defeito que existia', () => {
+    const defeito = `<a className="bg-[var(--fam-ambar-mid)] text-white">x</a>`
+    const fam = /--fam-([a-z]+)-mid/.exec(defeito)![1]
+    expect(razao('#ffffff', CLARO[`--fam-${fam}-mid`]), 'claro').toBeLessThan(4.5)
+    expect(razao('#ffffff', ESCURO[`--fam-${fam}-mid`]), 'escuro').toBeLessThan(4.5)
+    /** ⚠️ e o `--prod-acao-ink` é BRANCO no claro — foi por aí que o 2º defeito entrou */
+    expect(CLARO['--prod-acao-ink']).toMatch(/#(fff|ffffff)/i)
+  })
+
+  /** ⭐ e o CHÃO (-solid) carrega branco nas 8 famílias × 2 temas — o outro lado da L7 */
+  it('⭐ o chão SÓLIDO passa com a tinta dele nas 8 famílias × 2 temas', () => {
+    const reprovam: string[] = []
+    for (const tema of ['claro', 'escuro'] as const) {
+      const mapa = tema === 'claro' ? CLARO : ESCURO
+      for (const f of FAMILIAS) {
+        const chao = mapa[`--fam-${f}-solid`]
+        if (!chao) continue
+        const r = razao(mapa[`--fam-${f}-on`], chao)
+        if (r < 4.5) reprovam.push(`${f}/${tema} ${r.toFixed(2)}:1`)
+      }
+    }
+    expect(reprovam, `chão sólido sem contraste: ${reprovam.join(' · ')}`).toEqual([])
+  })
+})
+
 // ───────────────────────── a PREFERÊNCIA (nunca localStorage) ─────────────────────────
 
 
@@ -290,9 +630,27 @@ describe('⛔⛔ a escolha vive em TABELA, nunca no navegador', () => {
     }
   })
 
-  it('⭐ a tabela é a fonte: o layout lê pelo `lerTema` do servidor', () => {
+  /**
+   * ⚠️ REAPONTADO EM 14/10, E FICOU MAIS FORTE. Ele exigia o literal `lerTema(` no layout, e em
+   * 14/10 a leitura virou `lerPreferenciaDeTela` (uma consulta pras DUAS preferências, tema e
+   * trilho, que moram na mesma linha) — então ele ficou **vermelho com o código CERTO**, que é
+   * a razão de existir da REGRA 3: *grep não distingue "refatorei" de "quebrei"*.
+   *
+   * ⭐ A PERGUNTA NÃO MUDOU (*"a tabela é a fonte, e quem lê é o SERVIDOR"*); o que mudou é que
+   * ela passou a ser feita por ESTRUTURA — o layout importa a porta do servidor e NÃO toca em
+   * `localStorage`. Isso cobre o defeito antigo **e mais um que o literal não via**: alguém
+   * trocar a leitura por uma preferência de navegador, que é exatamente o que o dono proibiu
+   * (*"nunca localStorage"* — ele confere no celular E no notebook).
+   */
+  it('⭐ a tabela é a fonte: o layout lê pela porta do SERVIDOR, nunca do navegador', () => {
     const layout = readFileSync(join(RAIZ, 'app/(dashboard)/layout.tsx'), 'utf8')
-    expect(layout).toMatch(/lerTema\(/)
+    expect(layout, 'o layout importa a porta de leitura do servidor').toMatch(
+      /from\s*'@\/lib\/tema\/servidor'/,
+    )
+    expect(layout, 'e a CHAMA (uso, nunca menção)').toMatch(/(lerTema|lerPreferenciaDeTela)\(/)
+    expect(semComentario(layout), 'preferência de tela não vem do navegador').not.toMatch(
+      /localStorage/,
+    )
     const servidor = readFileSync(join(RAIZ, 'lib/tema/servidor.ts'), 'utf8')
     expect(servidor).toMatch(/userTemaPreferencia/)
   })
@@ -376,19 +734,43 @@ describe('⛔⛔ a classe `dark` vai no documentElement — portal não fica cla
     expect(shell).toMatch(/var\(--prod-bg\)/)
   })
 
+  /**
+   * ⚠️ REAPONTADO EM 14/10 — e a pergunta não mudou: *"a barra global lê TOKEN?"*. O que mudou é
+   * **onde a resposta mora**: o chão do topo saiu do `style` inline e virou a classe `.topo` do
+   * CSS, 1:1 com a referência. Continuar procurando `var(--prod-surface)` no TSX seria *grep que
+   * não distingue "refatorei" de "quebrei"* — a razão de existir da REGRA 3. Agora o guard
+   * confere o CSS (onde a regra está) **e** proíbe cor cravada no TSX (onde o defeito voltaria).
+   */
   it('⛔ e a barra global também lê token (faixa branca no topo do escuro = tema quebrado)', () => {
     const bar = semComentario(readFileSync(join(RAIZ, 'components/layout/top-bar.tsx'), 'utf8'))
+    expect(bar, 'a barra é a classe da referência, não cor cravada').toMatch(/className="topo/)
     expect(bar).not.toMatch(/bg-white/)
-    expect(bar).toMatch(/var\(--prod-surface\)/)
+    expect(bar, 'hex cravado no topo = faixa branca no escuro').not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
+
+    const topo = semComentario(css).slice(semComentario(css).indexOf('\n.topo {'))
+    expect(topo.slice(0, 400), 'o chão do topo sai do token da superfície').toMatch(
+      /background: var\(--prod-surface\)/,
+    )
+    expect(topo.slice(0, 400), 'e a linha de baixo é a linha-forte da fundação').toMatch(
+      /border-bottom: 1px solid var\(--prod-line-strong\)/,
+    )
   })
 })
 
 describe('⭐ REGRA 12 — o botão é o MESMO componente nos 2 viewports', () => {
-  it('⭐ TopBar (desktop) e header do celular usam `BotaoTema`', () => {
+  /**
+   * ⚠️ REAPONTADO EM 14/10: a 2ª barra (`md:hidden` no shell) MORREU — o topo virou uma
+   * composição só. *"Nos 2 viewports"* passou a ser garantido por o shell renderizar a barra
+   * única **sem gate**, em vez de por duas cópias que alguém mantinha iguais na mão.
+   */
+  it('⭐ a barra ÚNICA usa `BotaoTema`, e o shell a renderiza sem gate de viewport', () => {
     const bar = readFileSync(join(RAIZ, 'components/layout/top-bar.tsx'), 'utf8')
     const shell = readFileSync(join(RAIZ, 'components/layout/dashboard-shell.tsx'), 'utf8')
     expect(bar).toMatch(/<BotaoTema\s/)
-    expect(shell).toMatch(/<BotaoTema\s/)
+    expect(shell).toMatch(/<TopBar\b/)
+    expect(shell, 'barra atrás de `hidden md:block` obriga uma 2ª cópia pro celular')
+      .not.toMatch(/hidden md:block[\s\S]{0,120}<TopBar/)
+    expect(shell, 'o toggle desenhado 2× é a barra duplicada de volta').not.toMatch(/<BotaoTema\s/)
   })
 
   /**

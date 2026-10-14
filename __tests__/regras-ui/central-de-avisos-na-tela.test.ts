@@ -22,21 +22,46 @@ const HOME = 'app/(dashboard)/empresas/[id]/estoque/producao/page.tsx'
 const BLOCO = 'components/avisos/bloco-do-setor.tsx'
 const SINO = 'components/avisos/sininho.tsx'
 
+/**
+ * ⚠️⚠️ **GUARD REAPONTADO EM 14/10, E ELE FICOU MAIS FORTE — não afrouxado.** Ele perguntava
+ * *"o sininho está nas DUAS barras?"* e quebrou **com o código CERTO**, porque a 2ª barra
+ * deixou de existir: o topo virou UMA composição só (`.topo` + `.menu-m` escondendo o ☰ no
+ * desktop). A pergunta continua a MESMA — *"o sininho é global nos dois viewports?"* — e a
+ * resposta passou de **combinado** (duas cópias que alguém tinha que lembrar de manter iguais)
+ * pra **construção**. Por isso o guard agora exige as duas metades: a barra carrega o sininho
+ * **E** não existe uma 2ª composição no shell pra divergir dela.
+ */
 describe('⭐⭐ o sininho é GLOBAL — e nos DOIS viewports (REGRA 12)', () => {
-  it('⭐ TopBar (desktop) e header do celular usam o MESMO componente', () => {
+  it('⭐ a barra ÚNICA do topo carrega o sininho', () => {
     expect(ler('components/layout/top-bar.tsx')).toMatch(/<Sininho\s*\/>/)
-    expect(ler('components/layout/dashboard-shell.tsx')).toMatch(/<Sininho\s*\/>/)
+  })
+
+  /**
+   * ⛔⛔ O SHELL RENDERIZA A BARRA SEM GATE DE VIEWPORT. Era `hidden md:block` em volta dela, e
+   * é isso que obrigava a 2ª cópia a existir pro celular. Com a barra renderizando nos dois, o
+   * ☰ aparece/some por CSS e nenhum controle precisa ser escrito duas vezes.
+   */
+  it('⛔⛔ e o shell NÃO tem uma 2ª composição da barra pra divergir dela', () => {
+    const shell = semComentario(ler('components/layout/dashboard-shell.tsx'))
+    expect(shell, 'o shell renderiza o topo').toMatch(/<TopBar\b/)
+    expect(shell, 'e NÃO atrás de `hidden md:block` — senão o celular precisa de outra barra')
+      .not.toMatch(/hidden md:block[\s\S]{0,120}<TopBar/)
+    for (const tag of ['Sininho', 'BotaoTema', 'UserMenu', 'WorkspaceSwitcherDual']) {
+      expect(shell, `${tag} desenhado 2× = a barra duplicada de volta`).not.toMatch(
+        new RegExp(`<${tag}\\b`),
+      )
+    }
   })
 
   /**
    * ⛔⛔ A ORDEM do pedido: *"entre o sininho e a ação primária da tela"* — o 🌙/☀️ fica DEPOIS
-   * do sininho. Não é estética: o dono vai procurar o sininho no mesmo lugar nas duas barras.
+   * do sininho. Não é estética: o dono procura o sininho no mesmo lugar sempre, e a referência
+   * de 14/10 desenha exatamente esta ordem (sino → tema → avatar).
    */
-  it('⭐ a ordem é sininho → 🌙/☀️ → usuário, nas duas barras', () => {
-    for (const f of ['components/layout/top-bar.tsx', 'components/layout/dashboard-shell.tsx']) {
-      const s = ler(f)
-      expect(s.indexOf('<Sininho'), `${f}: sininho antes do tema`).toBeLessThan(s.indexOf('<BotaoTema'))
-    }
+  it('⭐ a ordem é sininho → 🌙/☀️ → usuário', () => {
+    const s = ler('components/layout/top-bar.tsx')
+    expect(s.indexOf('<Sininho'), 'sininho antes do tema').toBeLessThan(s.indexOf('<BotaoTema'))
+    expect(s.indexOf('<BotaoTema'), 'tema antes do usuário').toBeLessThan(s.indexOf('<UserMenu'))
   })
 
   /**

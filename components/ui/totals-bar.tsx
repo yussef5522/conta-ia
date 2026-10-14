@@ -48,7 +48,8 @@ export function TotalsBar({ itens, total, totalLabel = 'Total', formatar = forma
           const conteudo = (
             <>
               <span className="text-xs uppercase tracking-wide text-muted-foreground">{i.label}:</span>
-              <span className={`font-medium tabular-nums ${TONE[i.tone]}`}>{formatar(i.valor)}</span>
+              {/* ⭐ L3: peso e tabular vêm do dono único `dinheiro` (globals.css) */}
+              <span className={`dinheiro ${TONE[i.tone]}`}>{formatar(i.valor)}</span>
               {i.n != null && <span className="text-[11px] tabular-nums text-muted-foreground/70">({i.n})</span>}
             </>
           )
@@ -64,7 +65,7 @@ export function TotalsBar({ itens, total, totalLabel = 'Total', formatar = forma
           )
         })}
         <div className="flex-1" />
-        <div className="text-sm font-medium tabular-nums">
+        <div className="dinheiro text-sm">
           {totalLabel}: <span className="text-foreground">{formatar(geral)}</span>
         </div>
       </div>

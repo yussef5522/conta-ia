@@ -4334,12 +4334,24 @@ model Aviso {
   @@map("aviso")
 }
 
+/// ⭐⭐ A PREFERÊNCIA DE TELA DESTE USUÁRIO — tema E trilho na MESMA linha (14/10/2026).
+/// ⚠️ O nome do model/tabela ficou `…TemaPreferencia` por HISTÓRIA (nasceu só com o tema em
+/// 05/10) e NÃO se renomeia: a tabela tem dado e o rename custaria um ALTER de nome por um
+/// ganho de estética. Quem diz o que ela guarda é este comentário e o `lib/tema/servidor.ts`,
+/// que é a PORTA ÚNICA de escrita das duas colunas.
 model UserTemaPreferencia {
   userId       String   @id
   /// 'claro' | 'escuro'. ⚠️ O VOCABULÁRIO vive em `lib/tema/preferencia.ts`; o CHECK do banco
   /// valida só a FORMA (não-vazio, minúsculo) — a cicatriz de 21/09, em que CHECK com lista
   /// fechada numa tabela de CONFIGURAÇÃO virou parede no dia seguinte.
   tema         String
+  /// 'recolhido' | 'aberto' — o trilho nasce RECOLHIDO (ordem do dono, FRENTE B de 14/10).
+  /// ⛔ NOT NULL com DEFAULT de propósito: sem NULL, o CHECK de forma não tem lógica de três
+  /// valores pra escapar (a cicatriz do `chk_aviso_acao_completa`, 04/10). Vocabulário em
+  /// `lib/trilho/preferencia.ts`; o banco valida só a FORMA.
+  /// ⚠️ O estado "crescido por hover" NÃO mora aqui — é transitório, do CSS. Persistir ele
+  /// faria o trilho nascer aberto amanhã só porque o mouse passou hoje.
+  trilho       String   @default("recolhido")
   atualizadoEm DateTime @updatedAt
 
   @@map("user_tema_preferencia")
@@ -4987,10 +4999,10 @@ model StockItemCategoriaTrocada {
 /// recomputável** — `memoriaPelaHistoria` replaya o ledger e dá o mesmo número; é ela que o
 /// backfill e o **juiz E17** usam. Ausência de linha = "a definir".
 model StockItemCustoVigente {
-  id         String @id @default(cuid())
-  companyId  String
-  itemId     String // stock_item
-  custoMedio Float // > 0 (CHECK) — custo zero/negativo não é memória, é estado impossível
+  id           String   @id @default(cuid())
+  companyId    String
+  itemId       String // stock_item
+  custoMedio   Float // > 0 (CHECK) — custo zero/negativo não é memória, é estado impossível
   /// ⚠️ RASTRO: qual entrada ensinou este número (`null` no backfill, que replaya a história
   /// inteira e não tem um movimento único pra apontar).
   movimentoId  String?
@@ -5002,10 +5014,10 @@ model StockItemCustoVigente {
 }
 
 model StockReceitaPrincipal {
-  id        String  @id @default(cuid())
-  companyId String
-  fichaId   String // stock_ficha (IDENTIDADE, nunca stock_ficha_versao)
-  principal Boolean @default(false)
+  id           String   @id @default(cuid())
+  companyId    String
+  fichaId      String // stock_ficha (IDENTIDADE, nunca stock_ficha_versao)
+  principal    Boolean  @default(false)
   /// ⚠️ rastro de quem mexeu por último — sobrevive ao desmarcar (por isso a coluna
   /// `principal` existe em vez de "desmarcar = apagar a linha").
   marcadoPorId String?

@@ -3,77 +3,115 @@
 @tailwind utilities;
 
 @layer base {
+  /* ═══════════════════════════════════════════════════════════════════════════
+     ⭐⭐⭐ OS TOKENS DO shadcn PASSARAM A LER A FUNDAÇÃO (14/10/2026).
+
+     Mapa 1:1 com `docs/cara-do-sistema-referencia.html`: `--background`=papel · `--card`=cartão ·
+     `--foreground`=tinta forte · `--border`/`--input`=linha · `--primary`/`--ring`=a ação índigo
+     ÚNICA · `--accent`=o 50 do índigo · `--destructive`=coral.
+     ⚠️ O formato é HSL porque é o que o `tailwind.config.ts` consome (`hsl(var(--background))`);
+     hex aqui geraria `hsl(#F3F5FA)`, cor inválida, e o fundo cairia pro transparente em silêncio.
+     O hex de origem vai no comentário de cada linha, pra conferência contra a referência.
+
+     ⚠️⚠️ DUAS DIVERGÊNCIAS DO MAPA ÓBVIO, as duas MEDIDAS — e as duas são CONSERTO:
+
+     1) `--muted-foreground` = a tinta de APOIO (`--tinta-2` #46516B), **não** a de DICA
+        (`--tinta-3` #8B94AD). A referência reserva a dica pra metadado (L3), mas no shadcn o
+        `muted-foreground` é o secundário de CORPO, usado em centenas de rótulos pequenos.
+        Medido: hoje ele é `#64748B` e dá **4,76:1** sobre branco; com a dica cairia pra
+        **3,21:1** (REGRESSÃO, abaixo do piso AA); com a tinta de apoio sobe pra **7,27:1**.
+        A tinta de dica continua existindo — em `--prod-muted`, pra quem precisa dela.
+
+     2) `--destructive` no CLARO = o CHÃO coral (#9F2D25), **não** o tom médio (#E2544A).
+        ⛔ O valor de hoje (`#ef4444`) dá **3,76:1 nas DUAS direções** — como texto sobre papel
+        E como fundo com texto branco: ***ele já reprovava AA antes deste sprint.*** O chão dá
+        **6,69:1** como texto e **7,30:1** com branco. É a L7 (*"tom médio nunca carrega texto
+        branco"*) pagando dívida, não troca de gosto. No ESCURO fica o tom claro (#F87168), que
+        é o certo lá: 6,91:1 como texto e 6,91:1 com a tinta escura por cima.
+     ═══════════════════════════════════════════════════════════════════════════ */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --background: 222.9 41.2% 96.7%;   /* #F3F5FA — o papel */
+    --foreground: 225 50% 7.8%;        /* #0A0F1E — tinta forte */
+    --card: 0 0% 100%;                 /* #FFFFFF — o cartão */
+    --card-foreground: 225 50% 7.8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    /* Sprint 4.0.5.a — indigo-500 (Linear/Stripe vibe), antes era azul Conta IA 221 83% 53% */
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 239 84% 67%;
-    --radius: 0.5rem;
-    --sidebar: 222.2 47.4% 11.2%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-border: 217.2 32.6% 17.5%;
+    --popover-foreground: 225 50% 7.8%;
+    /* ⭐ L5: UMA cor de ação no sistema inteiro — o índigo #4F46E5 */
+    --primary: 243.4 75.4% 58.6%;      /* #4F46E5 */
+    --primary-foreground: 0 0% 100%;   /* branco · 6,29:1 */
+    --secondary: 230 50% 97.6%;        /* #F6F7FC — o bloco */
+    --secondary-foreground: 222.2 20.9% 34.7%;  /* #46516B · 7,41:1 */
+    --muted: 230 50% 97.6%;            /* #F6F7FC */
+    --muted-foreground: 222.2 20.9% 34.7%;      /* #46516B — ver divergência 1 · 7,27:1 */
+    --accent: 232.5 88.9% 96.5%;       /* #EEF0FE — índigo 50 */
+    --accent-foreground: 243.7 54.5% 41.4%;     /* #3730A3 · 8,77:1 */
+    --destructive: 11.2 62.2% 38.8%;   /* #9F2D25 — ver divergência 2 · 6,69:1 */
+    --destructive-foreground: 0 0% 100%;        /* branco · 7,30:1 */
+    --border: 224 36.6% 92%;           /* #E3E7F2 — a linha */
+    --input: 224 36.6% 92%;
+    --ring: 243.4 75.4% 58.6%;         /* #4F46E5 */
+    /**
+     * ⭐⭐ O RAIO DO CARTÃO DA REFERÊNCIA (`--r-cartao: 12px`), e por que ELE é o `--radius`:
+     * o `--radius` do shadcn é o que alimenta `rounded-lg` em **161 arquivos** que usam `Card`,
+     * mais botão, input e select. Trocar aqui aplica a métrica da fundação ao sistema inteiro
+     * **por construção** — era 0.5rem (8px), e um raio de 8 ao lado de um painel de 16 é o que
+     * faz a tela parecer remendada.
+     * ⚠️ `rounded-md` passa a 10px e `rounded-sm` a 8px (derivados do `--radius` no Tailwind):
+     * os 10px do botão ficam a 1px do que a referência desenha nos dela (9px) — mais perto que
+     * os 6px de antes. ⛔ `--prod-r-painel`/`--prod-r-cartao` seguem existindo pro CSS da
+     * fundação, que escreve a medida direto; aqui é a ponte pro utilitário.
+     */
+    --radius: 0.75rem;
+    /* ⚠️ O TRILHO É ESCURO NOS DOIS TEMAS (L1) — é a marca, não o tema. Por isso estes três
+       são IDÊNTICOS no `.dark`: um trilho que clareia no escuro viraria a parte mais clara da
+       tela e inverteria a hierarquia. ⛔ Hoje ninguém consome `bg-sidebar`/`text-sidebar-*`
+       (o trilho lê `--prod-trilho-*`); ficam apontados pra cá pra não existir um 2º valor. */
+    --sidebar: 235.3 48.7% 15.3%;      /* #14173A */
+    --sidebar-foreground: 234 39.7% 75.3%;      /* #A7ACD9 · 7,87:1 */
+    --sidebar-border: 235.9 38.6% 22.4%;        /* #23264F */
   }
 
   /* ═══════════════════════════════════════════════════════════════════════════
-     ⭐⭐ O ESPELHO ESCURO DOS TOKENS DO shadcn (04/10/2026).
+     ⭐⭐ O ESPELHO ESCURO DOS TOKENS DO shadcn — agora pela FUNDAÇÃO (14/10/2026).
 
-     ⛔⛔ **ELE NÃO EXISTIA — e sem ele o tema escuro era IMPOSSÍVEL por construção.**
-     Medido antes de escrever: `darkMode: ['class']` no Tailwind desde sempre, **109 arquivos
-     com 1.012 utilitários `dark:`** escritos ao longo de meses… e ZERO bloco `.dark` pros
-     tokens. Ou seja: `bg-background`, `text-foreground`, `border-border` e `bg-card` — que são
-     o chão e o texto de QUASE TODA tela do app — continuariam **claros** com a classe ligada.
-     O resultado seria a pior metade do caminho: componente colorido escurecendo e o fundo
-     branco, que é mais ilegível que o tema claro inteiro.
+     ⛔⛔ **ELE NÃO EXISTIA até 04/10 — e sem ele o tema escuro era IMPOSSÍVEL por construção.**
+     Medido naquele dia: `darkMode: ['class']` no Tailwind desde sempre, **109 arquivos com
+     1.012 utilitários `dark:`** escritos ao longo de meses… e ZERO bloco `.dark` pros tokens.
+     Ou seja: `bg-background`, `text-foreground`, `border-border` e `bg-card` — o chão e o texto
+     de QUASE TODA tela — continuariam **claros** com a classe ligada: componente escurecendo
+     sobre fundo branco, mais ilegível que o tema claro inteiro.
 
-     ⚠️ Os valores vêm do pedido do dono (*"escuro premium: canvas ~#16151D, superfícies
-     ~#1E1D28 com borda #2A2936, texto #F4F3FB, secundário lavanda-acinzentado"*), convertidos
-     pra HSL porque é o formato que o `tailwind.config.ts` consome (`hsl(var(--background))`).
-     Escrever hex aqui faria o Tailwind gerar `hsl(#16151D)`, que é cor inválida — e o fundo
-     cairia silenciosamente pro transparente.
+     ⭐ Os valores de 04/10 vinham do pedido do dono em prosa (*"canvas ~#16151D…"*); agora vêm
+     do `@media (prefers-color-scheme: dark)` da referência aprovada, token a token. Nenhum tom
+     foi ajustado "no olho" — o que mudou de lá pra cá está medido no comentário do `:root`.
      ═══════════════════════════════════════════════════════════════════════════ */
   .dark {
-    --background: 249 14% 10%;        /* #16151D — o canvas */
-    --foreground: 252 47% 97%;        /* #F4F3FB */
-    --card: 249 14% 14%;              /* #1E1D28 — a superfície */
-    --card-foreground: 252 47% 97%;
-    --popover: 249 14% 14%;
-    --popover-foreground: 252 47% 97%;
-    /* ⭐ o índigo CLARO do escuro — o mesmo tom do botão de ação (#7F77DD) */
-    --primary: 244 59% 67%;
-    /* ⚠️ e o texto SOBRE ele vira ESCURO: índigo claro com texto branco não tem contraste */
-    --primary-foreground: 249 14% 10%;
-    --secondary: 249 13% 18%;
-    --secondary-foreground: 252 30% 92%;
-    --muted: 249 13% 18%;
-    --muted-foreground: 250 12% 65%;  /* lavanda-acinzentado */
-    --accent: 249 13% 22%;
-    --accent-foreground: 252 30% 92%;
-    --destructive: 0 72% 60%;
-    --destructive-foreground: 252 47% 97%;
-    --border: 248 13% 19%;            /* #2A2936 */
-    --input: 248 13% 19%;
-    --ring: 244 59% 67%;
-    /* ⚠️ a sidebar JÁ era escura no claro (222 47% 11%) — no escuro ela acompanha o canvas,
-       senão ela viraria a parte mais CLARA da tela, invertendo a hierarquia visual. */
-    --sidebar: 249 14% 12%;
-    --sidebar-foreground: 252 47% 97%;
-    --sidebar-border: 248 13% 19%;
+    --background: 229.4 43.6% 7.6%;    /* #0B0E1C — o canvas */
+    --foreground: 227.1 63.6% 95.7%;   /* #EDF0FB · 16,87:1 */
+    --card: 228.6 34.4% 12%;           /* #141829 — a superfície */
+    --card-foreground: 227.1 63.6% 95.7%;       /* 15,48:1 */
+    --popover: 228.6 34.4% 12%;
+    --popover-foreground: 227.1 63.6% 95.7%;
+    /* ⭐ a ação CLAREIA no escuro (#818CF8) e o texto SOBRE ela vira ESCURO — índigo claro com
+       branco dá 2,98:1, que é o furo da própria referência (`.bt.p`); aqui o par inverte. */
+    --primary: 234.5 89.5% 73.9%;      /* #818CF8 */
+    --primary-foreground: 229.4 43.6% 7.6%;     /* #0B0E1C · 6,44:1 */
+    --secondary: 228 32.5% 15.1%;      /* #1A1F33 — o bloco */
+    --secondary-foreground: 225.8 23.2% 67.8%;  /* #9AA3C0 · 6,50:1 */
+    --muted: 228 32.5% 15.1%;
+    --muted-foreground: 225.8 23.2% 67.8%;      /* #9AA3C0 — ver divergência 1 · 7,02:1 */
+    --accent: 235.9 38.6% 22.4%;       /* #23264F — índigo 50 do escuro */
+    --accent-foreground: 235.7 100% 89%;        /* #C7CBFF · 9,18:1 */
+    --destructive: 3.7 91.1% 69%;      /* #F87168 — no escuro o tom CLARO é o certo · 6,91:1 */
+    --destructive-foreground: 229.4 43.6% 7.6%; /* #0B0E1C · 6,91:1 */
+    --border: 227.6 28.7% 19.8%;       /* #242A41 — a linha */
+    --input: 227.6 28.7% 19.8%;
+    --ring: 234.5 89.5% 73.9%;         /* #818CF8 */
+    /* ⚠️⚠️ IDÊNTICOS AO CLARO, DE PROPÓSITO (L1): o trilho é a MARCA, não o tema. Em 04/10 ele
+       acompanhava o canvas aqui; a referência de 14/10 fixa o mesmo escuro nos dois temas. */
+    --sidebar: 235.3 48.7% 15.3%;      /* #14173A */
+    --sidebar-foreground: 234 39.7% 75.3%;      /* #A7ACD9 */
+    --sidebar-border: 235.9 38.6% 22.4%;        /* #23264F */
   }
 }
 
@@ -449,6 +487,97 @@
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   ⭐⭐⭐ L4 — LINHA FIRME NA TABELA DE DADOS (FRENTE A item 3, 14/10/2026).
+
+   **A lei, escrita na referência:** *"borda de cartão 1px sólida; divisor de linha 1px;
+   cabeçalho de tabela com régua forte; zebra sutil. Nada de 0.5px fantasma em superfície de
+   dados."* O desenho copiado é o `.tab` dela (régua de 2px na `--linha-forte`, cabeçalho
+   11px/800 em caixa alta na tinta média, divisor de 1px na `--linha`).
+
+   ⭐⭐ **POR QUE PENDURADO NO `density-*` E NÃO NUMA CLASSE NOVA:** 22 telas de dados já usam
+   essa convenção (*"a receita da tabela"*, 23/08), então a lei entra nelas **sem tocar uma
+   linha de tela** — que é o que *"troca de roupa global"* quer dizer. Classe nova seria opt-in
+   tela por tela, e aí não é global: é fase 2 com outro nome.
+
+   ⚠️⚠️ **E ISTO NÃO EDITA O `.density-*` QUE A CASA MANDA NÃO EDITAR.** A proibição (CLAUDE.md)
+   existe porque `lib/contas-pagar/virtualization.ts` DUPLICA as ALTURAS (36/48/60) pra
+   virtualizar >100 linhas, e mexer nelas quebra o cálculo. Aqui nenhuma altura é tocada: só
+   borda, peso e cor. As declarações originais ficam intactas acima.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ⭐ A RÉGUA FORTE DO CABEÇALHO — 2px na linha-forte. Medido antes: das 22 tabelas, só 3 têm
+   borda/fundo próprios no `th`, e nelas isto TROCA um `border-b` fino pela régua que a lei
+   manda. Zero conflito nos outros 19. */
+.density-compact thead th,
+.density-normal thead th,
+.density-comfortable thead th {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--prod-secondary);
+  border-bottom: 2px solid var(--prod-line-strong);
+}
+
+/* ⭐ O DIVISOR DE 1px — mede zero conflito: nenhuma das 22 tabelas declara borda no `td`.
+   É ele que mata o *"0.5px fantasma em superfície de dados"* que a lei nomeia. */
+.density-compact tbody td,
+.density-normal tbody td,
+.density-comfortable tbody td {
+  border-bottom: 1px solid var(--prod-line);
+}
+
+/**
+ * ⛔⛔ A ZEBRA É **OPT-IN** (`.zebra`), E A MEDIÇÃO É O MOTIVO — não é preguiça.
+ *
+ * Varri as 22: **13 pintam o FUNDO DA LINHA por ESTADO** (linha anulada, divergência, suspeita,
+ * "já conciliada"). Uma zebra global vence o `bg-amber-50` da tela por especificidade
+ * (`.density-normal tbody tr:nth-child(even) td` = 0,2,1 contra 0,1,0 de uma classe do Tailwind)
+ * e ***apagaria o sinal de estado em 13 de 22 tabelas*** — trocaria "listra bonita" por
+ * "informação que desapareceu". É a cicatriz de 29/09, quando o zebrado por `style` inline
+ * matou o `hover:` de metade da lista.
+ *
+ * ⚠️ Então a zebra entra tela por tela (`<table className="density-normal zebra">`), depois de
+ * conferir que aquela tabela não pinta linha por estado. Isso é fase 2, declarado.
+ */
+.zebra tbody tr:nth-child(even) td {
+  background: var(--prod-surface-1);
+}
+
+/**
+ * ⚠️ O HOVER ÍNDIGO-CLARO SÓ EM LINHA CLICÁVEL, e também por medição de UX: a lei pede *"hover
+ * índigo-claro nas LINHAS CLICÁVEIS"*. Hover em linha que não clica promete um gesto que não
+ * existe (a régua de afordância de 30/08). `:has(a, button)` cobre quem já tem link dentro;
+ * `.clicavel`/`[role='button']` é pra linha cujo clique mora num `onClick` do `<tr>`, que não
+ * deixa marca no DOM — essas se declaram na tela (fase 2).
+ */
+.density-compact tbody tr:is(.clicavel, [role='button'], :has(a, button)):hover td,
+.density-normal tbody tr:is(.clicavel, [role='button'], :has(a, button)):hover td,
+.density-comfortable tbody tr:is(.clicavel, [role='button'], :has(a, button)):hover td {
+  background: var(--prod-surface-2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   ⭐⭐ L3 — NÚMERO É PROTAGONISTA (FRENTE A item 2, 14/10/2026).
+
+   **A lei:** *"dinheiro em 800, tabular, grande"*. ⛔ `.num` (acima) resolve só metade — ele é
+   tabular e **não** declara peso, então servia pra qualquer número (o contador do sino usa ele
+   em 700). `.dinheiro` é o dono único do DINHEIRO: 800 + tabular, um lugar.
+
+   ⚠️ **E ele nasce COM CHAMADOR** — os dois primitivos de dinheiro da casa (`ui/stat-card`, 12
+   telas, e `ui/totals-bar`, 9) passam a consumi-lo. Classe de fundação sem consumidor é o
+   `registry.parse` decorativo que esta casa já pagou: existia, ninguém chamava, e ninguém
+   descobria que estava errada.
+   ⚠️ A COR fica de fora de propósito: verde/coral/âmbar dependem do que o número SIGNIFICA, e
+   isso é do `tone` de quem desenha — pintar aqui faria todo dinheiro nascer verde.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.dinheiro {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    ⭐⭐⭐ OS DOIS TEMAS DA CASA — DOIS MAPAS DE TOKENS NA RAIZ (04/10/2026).
 
@@ -472,65 +601,138 @@
    `#E2E8F0`, texto `#0F172A`. Os cartões coloridos e o índigo da ação **seguem como estavam**.
    ═══════════════════════════════════════════════════════════════════════════ */
 :root {
-  /* ─── CLARO: slate frio ─── */
-  --prod-bg: #f8fafc;
+  /* ═══════════════════════════════════════════════════════════════════════════
+     ⭐⭐⭐ A FUNDAÇÃO (14/10/2026) — os tokens vêm de `docs/cara-do-sistema-referencia.html`,
+     a LEI VISUAL do sistema inteiro, mapeados 1:1 como o próprio arquivo manda.
+
+     HIERARQUIA DAS LEIS: esta referência manda na FUNDAÇÃO (tinta, linha, sombra, raio,
+     trilho, topo); as referências de TELA (`docs/margem-referencia.html` etc.) mandam na
+     ESTRUTURA de cada tela. Em conflito de token, a fundação vence — e o `:root` das
+     referências de tela foi atualizado pra cá, pro guard `*-bate-com-a-referencia`
+     continuar sendo lei sem brigar com esta.
+
+     ⛔⛔ DUAS DIVERGÊNCIAS DELIBERADAS, as duas por MEDIÇÃO (a precedência de 10/10: *a letra
+     do pedido era o `-mid`, a medição reprovou, o desenho mudou*):
+       1. a tinta de DICA da referência é `#8B94AD` e ela dá **2,78:1 sobre o papel** e 2,83
+          sobre o bloco — abaixo do piso de 3:1 até pra texto grande. Fica `#7e89a4` (3,21 no
+          pior chão), o tom mais próximo que PASSA. Mesma coisa no escuro: `#5E6683` dá 2,88
+          sobre o bloco → `#6a7390` (3,47).
+       2. a referência pinta `.bt.p` e `.chip.on` com `background:var(--acao); color:#fff`, e no
+          escuro `--acao` CLAREIA pra `#818CF8` → branco dá **2,98:1**. Ou seja ela **viola a
+          própria L7** no único botão forte da tela. O par `--prod-acao-bg`/`--prod-acao-ink`
+          desta casa (04/10) já resolve, e é ele que vale: a tinta ESCURECE no escuro.
+     ═══════════════════════════════════════════════════════════════════════════ */
+  /* ─── CLARO: o papel frio da referência (não bege) ─── */
+  --prod-bg: #f3f5fa;
   --prod-surface: #fff;
-  /* ⭐ surface-1: o degrau de hover/zebra */
-  --prod-surface-1: #f1f5f9;
-  --prod-surface-2: #e8effd;
-  /* ⭐⭐ texto PRINCIPAL escuro de verdade (o dono: "nada de cinza lavado") */
-  --prod-primary: #0f172a;
-  --prod-secondary: #475569;
-  /* ⚠️ `#94a3b8` (slate-400) era o "muted" óbvio e **MEDIDO ele reprova**: 2,56:1 sobre branco,
-     abaixo até do piso de 3:1. Discreto é tom, não ilegibilidade — slate-500 dá 4,76:1. */
-  --prod-muted: #64748b;
-  --prod-line: #e2e8f0;
-  /* ⚠️ a divisória entre linhas é mais clara que a borda do rodapé — é hierarquia, não enfeite */
-  --prod-line-strong: #cbd5e1;
-  --prod-accent: #534ab7;
-  --prod-verde: #0f9d58;
-  --prod-verde-bg: #e7f7ee;
-  --prod-ambar: #c47b0a;
-  --prod-ambar-bg: #fdf3e0;
-  --prod-coral: #e5484d;
-  --prod-coral-bg: #fdecec;
+  /* ⭐ surface-1: o bloco interno / a zebra da tabela (`--card-2` da referência) */
+  --prod-surface-1: #f6f7fc;
+  /* ⭐⭐ L4: hover de LINHA CLICÁVEL é índigo-claro, não cinza — é o `.tab tr:hover` da
+     referência, e é o que faz a tabela parecer viva em vez de uma grade de 2012. */
+  --prod-surface-2: #eef0fe;
+  /* ⭐⭐ L2 · AS TRÊS TINTAS, NUNCA MAIS: forte (títulos, números, nomes de produto) */
+  --prod-primary: #0a0f1e;
+  /* L2: média — apoio */
+  --prod-secondary: #46516b;
+  /* ⚠️ L2: fraca — **SÓ dica/metadado**. Proibido texto de conteúdo aqui.
+     Histórico: `#94a3b8` reprovava 2,56:1; `#64748b` dava 4,76 mas é mais pesado que a
+     fundação pede; `#8B94AD` (a letra da referência) reprova 2,78. Este passa com folga. */
+  --prod-muted: #7e89a4;
+  /* ⭐ L4 · LINHA FIRME: divisor 1px SÓLIDO — nada de 0.5px fantasma em superfície de dados */
+  --prod-line: #e3e7f2;
+  /* ⚠️ a borda de CARTÃO e a régua de cabeçalho de tabela são mais firmes que o divisor —
+     é hierarquia, não enfeite */
+  --prod-line-strong: #c9d0e3;
+  /* ⭐ L5 · UMA COR DE AÇÃO: o índigo elétrico */
+  --prod-accent: #4f46e5;
+  /* ⭐ o fim do gradiente da logomarca do trilho — o único gradiente da marca */
+  --prod-acao-quente: #6d28d9;
+  --prod-verde: #0e9f6e;
+  --prod-verde-bg: #e4f7ef;
+  --prod-ambar: #d97706;
+  --prod-ambar-bg: #fcf0dc;
+  --prod-coral: #e2544a;
+  --prod-coral-bg: #fdecea;
   /* ⚠️ MESMA correção na pílula "sem pedido": `#94a0b8` sobre `#f1f3f8` dava 2,37:1 — o que
      o olho lê como "apagado" era, na conta, texto que não se lê. O mudo vem do FUNDO cinza
      ao lado das pílulas coloridas, não de apagar a tinta. */
-  --prod-mudo: #475569;
-  --prod-mudo-bg: #f1f3f8;
-  --prod-sombra: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --prod-mudo: #46516b;
+  --prod-mudo-bg: #f6f7fc;
+  /* ⭐ L6 · PROFUNDIDADE CALMA: sombra curta de DUAS camadas no claro (a da referência) */
+  --prod-sombra: 0 1px 2px rgba(10, 15, 30, 0.06), 0 2px 6px rgba(10, 15, 30, 0.05);
+  /* ⭐ os raios da referência: 16 no painel grande, 12 no cartão interno */
+  --prod-r-painel: 16px;
+  --prod-r-cartao: 12px;
+  /* ═══ L1 · O TRILHO DE MARCA — ESCURO NOS DOIS TEMAS, porque ele É a marca ═══
+     ⚠️ Estes 7 tokens NÃO invertem por tema de propósito: o trilho é a identidade (a lição do
+     Toast/EVO que a referência cita), e um trilho que muda de cor com o tema deixa de ser
+     reconhecível de longe. O espelho no `.dark` existe (o guard exige) com o MESMO valor. */
+  --prod-trilho: #14173a;
+  --prod-trilho-borda: #23264f;
+  --prod-trilho-tx: #a7acd9;
+  --prod-trilho-kicker: #5e63a0;
+  --prod-trilho-on: #fff;
+  --prod-trilho-pilula: #4f46e5;
+  --prod-trilho-hover: #1c2048;
   /* ⭐⭐ A AÇÃO PRIMÁRIA tem TOKEN de fundo **e de texto** — e o texto é a metade que importa.
      No claro é índigo forte com texto branco; no escuro o fundo CLAREIA (#7F77DD) e o texto
      tem que ESCURECER junto. Com `text-white` cravado no JSX (como estava), o botão do tema
      escuro seria branco sobre lilás claro: ilegível exatamente no único botão forte da tela. */
-  --prod-acao-bg: #534ab7;
+  --prod-acao-bg: #4f46e5;
   --prod-acao-ink: #fff;
 }
 
 .dark {
-  /* ─── ESCURO premium ─── */
-  --prod-bg: #16151d;
-  --prod-surface: #1e1d28;
-  --prod-surface-1: #262533;
-  --prod-surface-2: #2f2d3e;
-  --prod-primary: #f4f3fb;
-  --prod-secondary: #a9a5bd;
-  --prod-muted: #7d7a93;
-  --prod-line: #2a2936;
-  --prod-line-strong: #3b3950;
-  --prod-accent: #8a81f0;
-  --prod-verde: #3ecf8e;
-  --prod-verde-bg: #11291f;
-  --prod-ambar: #e8a33d;
-  --prod-ambar-bg: #2b2114;
-  --prod-coral: #ff6369;
-  --prod-coral-bg: #2d1618;
-  --prod-mudo: #a9a5bd;
-  --prod-mudo-bg: #262533;
-  --prod-sombra: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --prod-acao-bg: #7f77dd;
-  --prod-acao-ink: #16151d;
+  /* ─── ESCURO: o da referência (azul-noite, não cinza-roxo) ─── */
+  --prod-bg: #0b0e1c;
+  --prod-surface: #141829;
+  --prod-surface-1: #1a1f33;
+  /* ⚠️ no escuro o hover índigo-claro é o `--acao-50` escuro — clarear pelo cinza faria a
+     linha clicável parecer desabilitada */
+  --prod-surface-2: #23264f;
+  --prod-primary: #edf0fb;
+  --prod-secondary: #9aa3c0;
+  /* ⚠️ a letra da referência (`#5E6683`) dá 2,88:1 sobre o bloco — reprova. Este dá 3,47. */
+  --prod-muted: #6a7390;
+  --prod-line: #242a41;
+  --prod-line-strong: #333b58;
+  --prod-accent: #818cf8;
+  --prod-acao-quente: #6d28d9;
+  --prod-verde: #34d399;
+  --prod-verde-bg: #0c2e24;
+  --prod-ambar: #f59e0b;
+  --prod-ambar-bg: #352508;
+  --prod-coral: #f87168;
+  --prod-coral-bg: #3a1917;
+  --prod-mudo: #9aa3c0;
+  --prod-mudo-bg: #1a1f33;
+  /**
+   * ⭐⭐ L6 AO PÉ DA LETRA: **`none`** — *"no escuro a elevação é por SUPERFÍCIE, não por
+   * sombra"*, e é isso que a referência declara (`--sombra:none`).
+   *
+   * ⚠️⚠️ ATÉ 14/10 AQUI HAVIA UM FIO (`0 1px 2px rgba(0,0,0,.4)`) com a justificativa escrita
+   * *"o shell empilha painel sobre painel e sem nada eles se fundem"*. **A MEDIÇÃO DERRUBOU A
+   * JUSTIFICATIVA**, e os números são o argumento: no escuro o degrau canvas→cartão é
+   * **1,09:1** (#0b0e1c × #141829) e a linha sobre o cartão é **1,24:1** (#141829 × #242a41) —
+   * ***exatamente os mesmos degraus do tema claro*** (1,09 e 1,24), onde ninguém nunca reclamou
+   * de painel se fundindo. A superfície + a linha de 1px (L4) separam igual nos dois temas; o
+   * fio era precaução sem lastro, contra uma lei escrita. *A medição vence a precaução.*
+   */
+  --prod-sombra: none;
+  --prod-r-painel: 16px;
+  --prod-r-cartao: 12px;
+  /* ⭐⭐ o trilho é IGUAL nos dois temas (é a marca) — espelho com o mesmo valor, de propósito */
+  --prod-trilho: #14173a;
+  --prod-trilho-borda: #23264f;
+  --prod-trilho-tx: #a7acd9;
+  --prod-trilho-kicker: #5e63a0;
+  --prod-trilho-on: #fff;
+  --prod-trilho-pilula: #4f46e5;
+  --prod-trilho-hover: #1c2048;
+  /* ⛔ a tinta da ação ESCURECE quando o fundo clareia — a referência erra isso (branco sobre
+     `#818CF8` = 2,98:1) e aqui ela passa em 6,44:1 */
+  --prod-acao-bg: #818cf8;
+  --prod-acao-ink: #0b0e1c;
 }
 
 /* ⭐ a fonte TABULAR que o dono pediu pros números — alinhamento de coluna financeira.
@@ -556,11 +758,15 @@
    um bloco claro queimando no meio de uma tela preta.
    ───────────────────────────────────────────────────────────────────────────── */
 :root {
-  --fam-indigo-bg: #efedfb; --fam-indigo-mid: #534ab7; --fam-indigo-ink: #322c80;
+  /* ⭐ a FUNDAÇÃO (14/10) remapeou índigo/verde/âmbar/coral; azul, teal, rosa e cinza
+     seguem como estavam — são identidade de PRODUTO (a bolinha do `caraDaReceita`), e a
+     própria referência as usa cravadas nos `.ponto` dela (#2E86D9, #0FA5A8, #D4518A).
+     ⚠️ L5 ("uma cor de ação") fala da AÇÃO, não da paleta de identidade. */
+  --fam-indigo-bg: #eef0fe; --fam-indigo-mid: #4f46e5; --fam-indigo-ink: #3730a3;
   --fam-azul-bg:   #e8effd; --fam-azul-mid:   #2563eb; --fam-azul-ink:   #17398c;
-  --fam-verde-bg:  #e7f7ee; --fam-verde-mid:  #0f9d58; --fam-verde-ink:  #0a5e35;
-  --fam-ambar-bg:  #fdf3e0; --fam-ambar-mid:  #c47b0a; --fam-ambar-ink:  #7d4e06;
-  --fam-coral-bg:  #fdecec; --fam-coral-mid:  #e5484d; --fam-coral-ink:  #8f2327;
+  --fam-verde-bg:  #e4f7ef; --fam-verde-mid:  #0e9f6e; --fam-verde-ink:  #065f46;
+  --fam-ambar-bg:  #fcf0dc; --fam-ambar-mid:  #d97706; --fam-ambar-ink:  #7c4a03;
+  --fam-coral-bg:  #fdecea; --fam-coral-mid:  #e2544a; --fam-coral-ink:  #8c251e;
   --fam-teal-bg:   #e4f5f2; --fam-teal-mid:   #0d7c74; --fam-teal-ink:   #08504b;
   --fam-rosa-bg:   #fdeaf3; --fam-rosa-mid:   #c0397b; --fam-rosa-ink:   #7c2050;
   --fam-cinza-bg:  #f1f3f8; --fam-cinza-mid:  #94a0b8; --fam-cinza-ink:  #4b5162;
@@ -568,11 +774,11 @@
 
 .dark {
   /* ⭐ o 50 vira fundo ESCURO da família e o texto sobe pros tons claros — 50↔800 trocados */
-  --fam-indigo-bg: #1e1b4a; --fam-indigo-mid: #8a81f0; --fam-indigo-ink: #cdc8fb;
+  --fam-indigo-bg: #23264f; --fam-indigo-mid: #818cf8; --fam-indigo-ink: #c7cbff;
   --fam-azul-bg:   #14244f; --fam-azul-mid:   #6aa0fb; --fam-azul-ink:   #c2d8fe;
-  --fam-verde-bg:  #11291f; --fam-verde-mid:  #3ecf8e; --fam-verde-ink:  #b4ebd0;
-  --fam-ambar-bg:  #2b2114; --fam-ambar-mid:  #e8a33d; --fam-ambar-ink:  #f7dcae;
-  --fam-coral-bg:  #2d1618; --fam-coral-mid:  #ff6369; --fam-coral-ink:  #ffc4c6;
+  --fam-verde-bg:  #0c2e24; --fam-verde-mid:  #34d399; --fam-verde-ink:  #8ceac8;
+  --fam-ambar-bg:  #352508; --fam-ambar-mid:  #f59e0b; --fam-ambar-ink:  #fcd38d;
+  --fam-coral-bg:  #3a1917; --fam-coral-mid:  #f87168; --fam-coral-ink:  #ffb4ae;
   --fam-teal-bg:   #0c2622; --fam-teal-mid:   #3ec8bb; --fam-teal-ink:   #b6e9e4;
   --fam-rosa-bg:   #2b1322; --fam-rosa-mid:   #ef7fb4; --fam-rosa-ink:   #f9cfe2;
   --fam-cinza-bg:  #1d212c; --fam-cinza-mid:  #7b8194; --fam-cinza-ink:  #b2b8c8;
@@ -602,10 +808,15 @@
    descuido. Família nova ganha o par no dia em que ganhar um cartão.
    ───────────────────────────────────────────────────────────────────────────── */
 :root {
-  --fam-indigo-solid: #322c80; --fam-indigo-on: #ffffff; --fam-indigo-on-soft: #efedfb;
+  /* ⭐ a FUNDAÇÃO (14/10) trouxe os CHÃOS declarados: verde-chao #07654A e coral-chao #9F2D25
+     (a referência os escreve justamente pra carregar texto branco — a L7 dela). O índigo passou
+     a ser o `--acao-tinta` #3730A3. Azul segue como estava (identidade de produto).
+     ⚠️ MEDIDO antes de trocar: branco sobre os quatro dá 9,93 · 10,50 · 7,07 · 7,30 — e a
+     etiqueta (o tom 50) sobre eles, 8,77 · 9,10 · 6,35 · 6,38. */
+  --fam-indigo-solid: #3730a3; --fam-indigo-on: #ffffff; --fam-indigo-on-soft: #eef0fe;
   --fam-azul-solid:   #17398c; --fam-azul-on:   #ffffff; --fam-azul-on-soft:   #e8effd;
-  --fam-verde-solid:  #0a5e35; --fam-verde-on:  #ffffff; --fam-verde-on-soft:  #e7f7ee;
-  --fam-coral-solid:  #8f2327; --fam-coral-on:  #ffffff; --fam-coral-on-soft:  #fdecec;
+  --fam-verde-solid:  #07654a; --fam-verde-on:  #ffffff; --fam-verde-on-soft:  #e4f7ef;
+  --fam-coral-solid:  #9f2d25; --fam-coral-on:  #ffffff; --fam-coral-on-soft:  #fdecea;
   /* ⭐⭐ ÂMBAR ENTROU EM 10/10 — o 4º cartão de VENDAS v4 ("SEMANA ATUAL", pedido escrito
      do dono: *"âmbar-escuro"*). ⛔⛔ ELE NÃO EXISTIA, e isso era defeito LIVE: a tela pintava
      `var(--fam-ambar-solid)`, o token não resolvia, o chão saía TRANSPARENTE e o número
@@ -614,19 +825,27 @@
      ⚠️ CONTRASTE MEDIDO (WCAG 2.1, relative luminance): branco sobre `#92400e` = **7,09:1**
      (AA normal pede 4,5) e a etiqueta `#fdf0da` sobre ele = **6,30:1**. ⛔ O `--fam-ambar-mid`
      (`#c47b0a`) com branco dá **3,2:1** e REPROVA — é a mesma lição de 10/10 que tirou o
-     `-mid` do chão dos outros quatro. */
-  --fam-ambar-solid:  #92400e; --fam-ambar-on:  #ffffff; --fam-ambar-on-soft:  #fdf0da;
+     `-mid` do chão dos outros quatro.
+     ⛔⛔ E A REFERÊNCIA DE 14/10 **NÃO DECLARA UM `--ambar-chao`** — ela só tem o `--ambar`
+     (#D97706, que com branco dá **3,19:1** e REPROVA). Então este `#92400e`, medido aqui em
+     10/10, FICA: a fundação manda nos tokens que ela declara, e onde ela se cala quem vale é
+     o número que a casa já mediu. O buraco está reportado no relatório do sprint. */
+  --fam-ambar-solid:  #92400e; --fam-ambar-on:  #ffffff; --fam-ambar-on-soft:  #fcf0dc;
 }
 
 .dark {
-  /* ⭐ o CHÃO inverte (vira o fundo escuro da família); a TINTA segue branca */
-  --fam-indigo-solid: #1e1b4a; --fam-indigo-on: #ffffff; --fam-indigo-on-soft: #8a81f0;
+  /* ⭐ o CHÃO inverte (vira o fundo escuro da família); a TINTA segue branca.
+     ⚠️ Com a fundação, o chão escuro É o `-bg` escuro da família e a etiqueta É o `-mid` —
+     não há mais um 3º tom inventado só pra cá. Medido: branco 14,37 · 15,05 · 14,67 · 15,77
+     e a etiqueta sobre o chão 4,82 · 5,76 · 7,63 · 5,67. */
+  --fam-indigo-solid: #23264f; --fam-indigo-on: #ffffff; --fam-indigo-on-soft: #818cf8;
   --fam-azul-solid:   #14244f; --fam-azul-on:   #ffffff; --fam-azul-on-soft:   #6aa0fb;
-  --fam-verde-solid:  #11291f; --fam-verde-on:  #ffffff; --fam-verde-on-soft:  #3ecf8e;
-  --fam-coral-solid:  #2d1618; --fam-coral-on:  #ffffff; --fam-coral-on-soft:  #ff6369;
-  /* ⭐ ÂMBAR no escuro — branco sobre `#2e1c06` = **16,34:1**; o vivo `#e8a33d` da etiqueta
-     sobre ele = **7,57:1**. Mesmo desenho dos outros quatro: o CHÃO inverte, a TINTA fica. */
-  --fam-ambar-solid:  #2e1c06; --fam-ambar-on:  #ffffff; --fam-ambar-on-soft:  #e8a33d;
+  --fam-verde-solid:  #0c2e24; --fam-verde-on:  #ffffff; --fam-verde-on-soft:  #34d399;
+  --fam-coral-solid:  #3a1917; --fam-coral-on:  #ffffff; --fam-coral-on-soft:  #f87168;
+  /* ⭐ ÂMBAR no escuro — o chão passou a ser o `--ambar-50` da fundação (#352508) e a etiqueta
+     o `--ambar` (#F59E0B): branco **14,79:1**, etiqueta sobre o chão **6,89:1**. Mesmo desenho
+     dos outros quatro: o CHÃO inverte, a TINTA fica. */
+  --fam-ambar-solid:  #352508; --fam-ambar-on:  #ffffff; --fam-ambar-on-soft:  #f59e0b;
 }
 
 /* ⭐ A LINHA EDITORIAL do topo — itálico serifado, a "calma editorial" do Mercury.
@@ -634,4 +853,426 @@
 [data-tela='producao-home'] .editorial {
   font-family: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
   font-style: italic;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   ⭐⭐⭐ O TRILHO (L1) — ESCURO DE MARCA NOS DOIS TEMAS (14/10/2026)
+
+   Cópia 1:1 do `.trilho` de `docs/cara-do-sistema-referencia.html`, a referência aprovada pelo
+   dono. **Ordem dele:** *"nasce RECOLHIDO (64px, só símbolos); PAROU O MOUSE em cima → cresce e
+   mostra os nomes; tirou → recolhe; o botão «» FIXA aberto. No recolhido o badge vira mini
+   sobre o ícone."*
+
+   ⛔⛔ **POR QUE CSS DE VERDADE E NÃO CLASSE DO TAILWIND NO COMPONENTE:** o comportamento todo é
+   **seletor de DESCENDENTE sobre estado de HOVER DO PAI**
+   (`.trilho.rec:not(:hover) .rotulo{display:none}`). Escrito assim, *"parou o mouse em cima"* É
+   literalmente o `:hover` — **zero JavaScript, zero `useState`, zero listener de mouse**. A
+   versão com `onMouseEnter`/`onMouseLeave` pareceria igual e traria de volta três defeitos que
+   esta casa já pagou: o estado que não acompanha o dedo no toque, o re-render por movimento de
+   mouse, e **a regra morando num `useState`, que é regra que ninguém prova** (a cicatriz do
+   prefill do cardápio, que quebrou 2× antes de virar função).
+
+   ⛔ E **zero hex cravado aqui**: tudo sai de `--prod-trilho-*`, que o guard
+   `zero-hex-cravado` exige em zero nas superfícies da fundação — um tom cravado no trilho não é
+   uma tela fora do padrão, é o padrão quebrado em TODAS de uma vez, nos dois temas.
+
+   ⚠️ O trilho é IGUAL nos dois temas porque é a MARCA (os 7 tokens têm o mesmo valor no `:root`
+   e no `.dark`, e há teste exigindo isso). Um trilho que clareia no escuro viraria a parte mais
+   CLARA da tela e inverteria a hierarquia visual.
+   ═════════════════════════════════════════════════════════════════════════════ */
+.trilho {
+  width: 230px;
+  flex: none;
+  background: var(--prod-trilho);
+  border-right: 1px solid var(--prod-trilho-borda);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px 18px;
+  gap: 1px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.18s ease;
+}
+
+/* ---------- o estado RECOLHIDO (o PADRÃO): só os símbolos ---------- */
+.trilho.rec {
+  width: 64px;
+  padding: 16px 8px 18px;
+}
+/* ⭐ O CORAÇÃO: parou o mouse → cresce. É `:hover` no PAI, não evento no React. */
+.trilho.rec:hover {
+  width: 230px;
+  padding: 16px 12px 18px;
+}
+.trilho.rec:not(:hover) .rotulo,
+.trilho.rec:not(:hover) .logo .nome,
+.trilho.rec:not(:hover) .logo .casa {
+  display: none;
+}
+.trilho.rec:not(:hover) .logo {
+  justify-content: center;
+  padding: 2px 0 10px;
+}
+/**
+ * ⭐ O KICKER VIRA UMA RÉGUA DE 1px no recolhido — não some.
+ * ⚠️ Sumir faria os grupos colarem e o trilho virar uma lista de 20 ícones sem divisão; o fio
+ * mantém a estrutura legível com 64px de largura, que é o único jeito de o dono achar o ícone
+ * pelo LUGAR. O `font-size:0` é o que esconde o texto sem tirar o elemento do fluxo.
+ */
+.trilho.rec:not(:hover) .kicker {
+  height: 1px;
+  background: var(--prod-trilho-borda);
+  margin: 10px 10px;
+  padding: 0;
+  overflow: hidden;
+  font-size: 0;
+}
+.trilho.rec:not(:hover) .item {
+  justify-content: center;
+  padding: 10px 0;
+  position: relative;
+}
+/**
+ * ⛔⛔ O BADGE VIRA MINI SOBRE O ÍCONE — e este bloco é o vermelho nº 2 da lista do dono
+ * (*"badge do Contas a Pagar invisível no recolhido = vermelho"*). Sem ele, o badge é o último
+ * filho de um item de 64px com `justify-content:center` e **sai do campo visível**: o número que
+ * existe pra ser visto desapareceria justamente no estado em que o trilho nasce.
+ */
+.trilho.rec:not(:hover) .badge {
+  position: absolute;
+  top: 3px;
+  right: 7px;
+  margin: 0;
+  font-size: 9px;
+  padding: 1px 5px;
+}
+
+/* ---------- o «» que FIXA aberto ---------- */
+.trilho .recolhe {
+  border: 1px solid var(--prod-trilho-borda);
+  background: var(--prod-trilho-hover);
+  color: var(--prod-trilho-tx);
+  border-radius: 8px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin: 0 0 8px;
+  font: inherit;
+  width: 100%;
+  flex: none;
+}
+.trilho .recolhe:hover {
+  color: var(--prod-trilho-on);
+}
+.trilho .recolhe svg {
+  transition: transform 0.18s ease;
+}
+.trilho.rec .recolhe svg {
+  transform: rotate(180deg);
+}
+
+/* ---------- a logomarca em gradiente ---------- */
+.trilho .logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 10px 16px;
+  flex: none;
+}
+.trilho .logo .marca {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  /* ⭐ o gradiente da marca: a ação índigo → o roxo quente. Os dois são token. */
+  background: linear-gradient(135deg, var(--prod-trilho-pilula), var(--prod-acao-quente));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--prod-trilho-on);
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+  flex: none;
+}
+.trilho .logo .nome {
+  color: var(--prod-trilho-on);
+  font-weight: 700;
+  font-size: 15.5px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.trilho .logo .casa {
+  display: block;
+  color: var(--prod-trilho-kicker);
+  font-size: 10.5px;
+  font-weight: 600;
+  margin-top: 1px;
+  white-space: nowrap;
+}
+
+/* ---------- os grupos e os itens ---------- */
+.trilho .kicker {
+  color: var(--prod-trilho-kicker);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  padding: 14px 12px 5px;
+  white-space: nowrap;
+}
+.trilho .item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--prod-trilho-tx);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+.trilho .item:hover {
+  background: var(--prod-trilho-hover);
+  color: var(--prod-trilho-on);
+}
+/* ⭐ PÍLULA ÍNDIGO CHEIA no item ativo (L1) — o fio interno branco a separa do chão escuro */
+.trilho .item.on {
+  background: var(--prod-trilho-pilula);
+  color: var(--prod-trilho-on);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 14%);
+}
+/* ⭐ BADGE VERMELHO VIVO (o Contas a Pagar) — coral de token, nunca hex */
+.trilho .item .badge {
+  margin-left: auto;
+  background: var(--prod-coral);
+  color: var(--prod-trilho-on);
+  font-size: 10.5px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+/* ⚠️ sobre a pílula o coral brigaria com o índigo — ali o badge vira vidro */
+.trilho .item.on .badge {
+  background: rgb(255 255 255 / 22%);
+}
+/** ⚠️ "em breve" é item sem destino: fica apagado e sem cursor de clique */
+.trilho .item.breve {
+  color: var(--prod-trilho-kicker);
+  cursor: not-allowed;
+}
+.trilho .item.breve:hover {
+  background: none;
+  color: var(--prod-trilho-kicker);
+}
+
+/**
+ * ⛔⛔ NA GAVETA O TRILHO É SEMPRE ABERTO — e não é preferência ignorada, é o `:hover` NÃO
+ * EXISTIR no toque. Com `rec` ligado num celular, o trilho ficaria preso em 64px de ícones sem
+ * rótulo e **sem gesto nenhum que mostrasse os nomes** — a "porta sem maçaneta" em forma de
+ * menu. Quem decide isso é o COMPONENTE (prop `naGaveta`), e esta regra é o cinto: mesmo que
+ * alguém mande `rec` na gaveta, a largura não encolhe.
+ */
+.trilho.gaveta,
+.trilho.gaveta.rec {
+  width: 100%;
+  padding: 16px 12px 18px;
+  border-right: none;
+}
+.trilho.gaveta.rec:not(:hover) .rotulo,
+.trilho.gaveta.rec:not(:hover) .logo .nome,
+.trilho.gaveta.rec:not(:hover) .logo .casa {
+  display: revert;
+}
+.trilho.gaveta.rec:not(:hover) .kicker {
+  height: auto;
+  background: none;
+  margin: 0;
+  padding: 14px 12px 5px;
+  font-size: 10px;
+}
+.trilho.gaveta.rec:not(:hover) .item {
+  justify-content: flex-start;
+  padding: 8px 12px;
+  position: static;
+}
+.trilho.gaveta.rec:not(:hover) .badge {
+  position: static;
+  margin-left: auto;
+  font-size: 10.5px;
+  padding: 1px 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   ⭐⭐ O TOPO (FRENTE C de 14/10/2026) — cópia 1:1 do `.topo` de
+   `docs/cara-do-sistema-referencia.html`, a referência aprovada pelo dono em 14/10.
+
+   ⚠️ TOKEN 1:1 PELO PAPEL, NUNCA HEX: o que a referência chama `--linha-forte` aqui é
+   `--prod-line-strong`, `--acao-50` é `--prod-surface-2`, e assim por diante — o mapa inteiro
+   mora em `__tests__/regras-ui/dois-temas-na-raiz.test.ts`. Escrito por token, o topo ganha o
+   tema escuro de graça; escrito por hex, ele vira uma faixa branca no escuro (a cicatriz de
+   04/10, quando a barra global tinha `bg-card` cravado).
+
+   ⛔ A BUSCA ⌘K (`.busca`/`kbd` da referência) **NÃO ENTRA NESTA FASE** — não existe registro de
+   telas pra ligar nela, e campo morto é proibido (FRENTE C item 8). Ela fica pra fase 2, e o
+   relatório diz isso. Por isso não há `.busca` aqui: CSS de controle que não existe é o
+   convite pra alguém desenhar o campo achando que está pronto.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.topo {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--prod-line-strong);
+  background: var(--prod-surface);
+}
+
+/* ⭐ O SELETOR DA EMPRESA — pílula com borda forte, nunca um `<select>` cru: ele é o controle
+   que diz ONDE o dono está, e perder isso de vista é o começo de lançar na empresa errada. */
+.topo .empresa {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13.5px;
+  padding: 6px 12px;
+  border: 1px solid var(--prod-line-strong);
+  border-radius: 9px;
+  cursor: pointer;
+  background: var(--prod-surface);
+  color: var(--prod-primary);
+}
+.topo .empresa:hover {
+  border-color: var(--prod-accent);
+}
+
+/* ⚠️ O SELO **PJ/PF** É INFORMAÇÃO, NÃO ENFEITE: as duas casas (empresa e dinheiro pessoal)
+   têm telas de nome parecido, e o selo é o que separa "a Caçula" de "o meu bolso" num olhar. */
+.topo .empresa .pj {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--prod-accent);
+  background: var(--prod-surface-2);
+  border-radius: 5px;
+  padding: 1px 6px;
+  letter-spacing: 0.02em;
+}
+
+/**
+ * ⚠️ O SELO **PF** É EXTENSÃO DECLARADA: a referência só desenha o caso PJ (`.pj` índigo), e
+ * esta casa tem DUAS casas — a empresa e o dinheiro pessoal. O verde é o mesmo que o sistema já
+ * usa pro workspace pessoal desde a Fatia 1; pintar os dois de índigo apagaria a única coisa
+ * que separa *"a Caçula"* de *"o meu bolso"* num olhar, e lançar na casa errada é caro.
+ */
+.topo .empresa .pf {
+  color: var(--fam-verde-ink);
+  background: var(--fam-verde-bg);
+}
+
+.topo .acoes {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ⭐ BOTÃO DE ÍCONE 34×34 — o mesmo chassi pro sino, pro tema e pro ☰ do celular. Três tamanhos
+   diferentes no mesmo canto da tela é o que faz um topo parecer remendado. */
+.topo .icbt {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 1px solid var(--prod-line-strong);
+  background: var(--prod-surface);
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--prod-secondary);
+  cursor: pointer;
+}
+.topo .icbt:hover {
+  border-color: var(--prod-accent);
+  color: var(--prod-accent);
+}
+.topo .icbt:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/**
+ * ⛔⛔ O ANEL DA SUPERFÍCIE (`border: 2px solid var(--prod-surface)`) é a lição de 05/10, do
+ * pontinho do fiscal: coral encostado no ícone vira mancha, e o sinal que existe pra ser visto
+ * deixa de ser visto. O anel é o que o separa do que está embaixo.
+ *
+ * ⚠️⚠️ **DIVERGÊNCIA DECLARADA DA REFERÊNCIA, e ela é de INFORMAÇÃO, não de gosto:** o arquivo
+ * do dono desenha `.ponto` — um disco de 7px que diz *"tem aviso"*. O sininho desta casa já
+ * mostra **o NÚMERO** de avisos sem ler desde 04/10, e trocar o número por um disco seria
+ * *remoção sem realocação* (a régua de 10/09): o disco não distingue 1 aviso de 9. Então o que
+ * se copia da referência é o ANEL e a POSIÇÃO; o conteúdo continua sendo a contagem.
+ * ⚠️ E o `title` não substitui isso: tooltip não existe no celular (a cicatriz de 30/08).
+ */
+.topo .icbt .sinal {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--prod-coral);
+  color: var(--prod-trilho-on);
+  border: 2px solid var(--prod-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ⚠️ AVATAR COM INICIAIS, NUNCA FOTO INVENTADA: o sistema não tem foto de ninguém, e um
+   placeholder genérico diria menos que as duas letras do nome de quem está logado. */
+.topo .avatar {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--prod-surface-2);
+  color: var(--fam-indigo-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+/* ⚠️ O ☰ SÓ EXISTE NO CELULAR — no desktop o trilho está na tela, e um botão de gaveta ali
+   abriria uma segunda cópia do menu que já está visível.
+   ⭐⭐ E é ELE que faz o topo ser UMA COMPOSIÇÃO SÓ (REGRA 12): antes havia duas barras no DOM
+   (`hidden md:block` + `md:hidden`), que é o jeito de as duas divergirem no 1º ajuste. Agora é
+   a MESMA barra nos dois viewports, e o que muda é um botão aparecer. */
+@media (min-width: 768px) {
+  .topo .menu-m {
+    display: none;
+  }
+}
+
+/**
+ * ⚠️ PADDING MENOR NO CELULAR — divergência declarada: a referência não especifica o topo no
+ * toque (ela desenha o ☰ e para aí). Com os 24px dela, numa tela de 360px o nome da empresa
+ * come o espaço do sino e do avatar. 12px é o mesmo respiro que o resto do app usa no celular.
+ */
+@media (max-width: 480px) {
+  .topo {
+    padding: 0 12px;
+    gap: 8px;
+  }
 }

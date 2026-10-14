@@ -63,9 +63,15 @@ describe('⛔⛔ 1. nenhum aviso INLINE em tela nenhuma — só o sininho', () =
    * remoção aprovaria o dia em que os avisos sumissem de todo lugar, e aí não seria mudança de
    * casa, seria perda (a disciplina da conferência de saldo que mudou de casa em 10/09).
    */
-  it('⭐⭐ e o sininho CONTINUA mostrando os avisos nos 2 viewports', () => {
+  /**
+   * ⚠️ REAPONTADO EM 14/10: o topo virou UMA barra (`.topo` + `.menu-m`), então *"nas duas
+   * barras"* deixou de existir como pergunta — quem garante os dois viewports é o shell
+   * renderizar a barra única sem gate, e isso é travado em `central-de-avisos-na-tela`. Aqui o
+   * que importa segue igual: **a função não se perdeu quando o bloco inline morreu**.
+   */
+  it('⭐⭐ e o sininho CONTINUA mostrando os avisos (a barra é uma, e é global)', () => {
     expect(ler('components/layout/top-bar.tsx')).toMatch(/<Sininho\s*\/>/)
-    expect(ler('components/layout/dashboard-shell.tsx')).toMatch(/<Sininho\s*\/>/)
+    expect(ler('components/layout/dashboard-shell.tsx'), 'o shell renderiza a barra').toMatch(/<TopBar\b/)
     const sino = ler('components/avisos/sininho.tsx')
     expect(sino, 'agrupado por setor').toMatch(/ROTULO_DO_SETOR/)
     expect(sino, 'com contador').toMatch(/naoLidos > 0 &&/)

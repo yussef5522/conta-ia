@@ -1,3 +1,5 @@
+import { readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 /**
  * ⭐⭐ O DETECTOR DE "USO, NUNCA MENÇÃO" — UM lugar, não uma cópia por guard (07/10/2026).
  *
@@ -70,10 +72,55 @@ export function usosDe(src: string, nome: string): number {
   return (limpo.match(new RegExp(`\\b${nome}\\b`, 'g')) ?? []).length
 }
 
+/**
+ * ⭐⭐ OS HEX DE COR CRAVADOS NUMA TELA — um detector, um lugar (14/10/2026).
+ *
+ * ⚠️ Nasceu porque a cláusula *"zero hex cravado em tela"* da fundação vale pro SISTEMA TODO, e
+ * até aqui cada guard de tela escrevia o próprio regex de hex (`margem-v3`, `pagina-da-ordem-v4`,
+ * `custos-fixos-v4`, `home-producao-mock-v3`…). ***N cópias do mesmo detector divergem, e a que
+ * diverge é sempre a que ninguém reconsertou*** — foi exatamente assim que o `semComentarios`
+ * ficou cego em 08/10 e cegou TODO guard de uma vez.
+ *
+ * ⛔ Lê SEM COMENTÁRIO de propósito: metade dos hex que aparecem num `grep` cru desta casa vive
+ * em comentário DOCUMENTANDO o tom que saiu (o `dashboard-shell` é o caso puro — os 3 hex dele
+ * são a história do canvas, não CSS). Contar comentário faria o arquivo que explica o defeito
+ * ser reprovado por explicá-lo.
+ *
+ * ⚠️ O `[^0-9a-zA-Z_#]` antes do `#` evita casar dentro de um token maior; os 8 dígitos cobrem
+ * `#RRGGBBAA`, que o Tailwind aceita em valor arbitrário.
+ */
+export function hexCravados(src: string): string[] {
+  const limpo = semComentarios(src)
+  return [...limpo.matchAll(/(?:^|[^0-9a-zA-Z_#])(#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3}))\b/g)].map(
+    (m) => m[1].toLowerCase(),
+  )
+}
+
 /** ⭐ o corpo de um bloco entre dois marcos — pra asserção ESTRUTURAL, não por distância */
 export function blocoEntre(src: string, inicio: string, fim: string): string {
   const i = src.indexOf(inicio)
   if (i < 0) return ''
   const j = src.indexOf(fim, i + inicio.length)
   return j < 0 ? src.slice(i) : src.slice(i, j + fim.length)
+}
+
+/**
+ * ⭐⭐ A VARREDURA DAS TELAS — **um lugar** (14/10/2026). Todo `.tsx` de `app/` e `components/`,
+ * ordenado.
+ *
+ * ⚠️ Nasceu de `zero-hex-cravado`, onde ela era uma função local. Com a varredura WCAG da
+ * fundação precisando do MESMO universo, copiá-la seria a 2ª cópia do mesmo detector — e é
+ * exatamente assim que uma das duas fica cega (o cabeçalho deste arquivo conta a vez em que
+ * isso custou um guard verde com o defeito reposto).
+ */
+export function telasDoApp(raiz = process.cwd()): string[] {
+  const varrer = (dir: string, out: string[] = []): string[] => {
+    for (const e of readdirSync(join(raiz, dir))) {
+      const p = `${dir}/${e}`
+      if (statSync(join(raiz, p)).isDirectory()) varrer(p, out)
+      else if (e.endsWith('.tsx')) out.push(p)
+    }
+    return out
+  }
+  return [...varrer('app'), ...varrer('components')].sort()
 }

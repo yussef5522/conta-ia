@@ -509,8 +509,14 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
           <div className="mt-2.5 space-y-1.5">
             {parada.portas.map((porta) => (
               <div key={porta.acao} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                {/* ⛔⛔ L7 (14/10): o botão abaixo era `bg-[--fam-ambar-mid]` + `text-white` — branco
+                    sobre o âmbar MÉDIO, medido em 3,19:1 no claro e 2,15:1 no escuro, os DOIS abaixo
+                    do piso de 4,5. É a cicatriz que a lei nomeia. O par `solid`/`on` é o chão 700+
+                    que carrega tinta branca e INVERTE por tema: 7,09:1 e 14,79:1. */}
                 {porta.acao === 'CONCLUIR' && (
-                  <a href="#concluir" className="rounded-lg bg-[var(--fam-ambar-mid)] px-3 py-1.5 text-xs font-bold text-white">{porta.rotulo}</a>
+                  <a href="#concluir"
+                    className="rounded-lg px-3 py-1.5 text-xs font-bold"
+                    style={{ background: 'var(--fam-ambar-solid)', color: 'var(--fam-ambar-on)' }}>{porta.rotulo}</a>
                 )}
                 {porta.acao === 'CANCELAR_E_DEVOLVER' && (
                   <button type="button" disabled={busy}

@@ -96,19 +96,17 @@ export function Sininho() {
         title={naoLidos > 0 ? `${naoLidos} aviso(s) sem ler` : 'Avisos'}
         aria-label="Avisos"
         aria-expanded={aberto}
-        className="relative flex h-9 w-9 items-center justify-center rounded-lg border transition-colors"
-        style={{ borderColor: 'var(--prod-line)', background: 'var(--prod-surface)', color: 'var(--prod-secondary)' }}
+        /* ⭐ `icbt` = o chassi de 34×34 da referência (14/10). Três tamanhos diferentes no mesmo
+           canto da tela é o que faz um topo parecer remendado — sino, tema e ☰ usam o mesmo. */
+        className="icbt"
       >
         <Bell className="h-4 w-4" />
-        {/* ⚠️ o contador só aparece com número — badge zerado treina o dono a não olhar (10/09) */}
-        {naoLidos > 0 && (
-          <span
-            className="num absolute -right-1 -top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-full px-1 text-[10px] font-medium"
-            style={{ background: 'var(--fam-coral-mid)', color: '#fff' }}
-          >
-            {naoLidos > 9 ? '9+' : naoLidos}
-          </span>
-        )}
+        {/* ⚠️ o contador só aparece com número — badge zerado treina o dono a não olhar (10/09).
+            ⚠️⚠️ E ele é a DIVERGÊNCIA DECLARADA da referência: ela desenha um `.ponto` de 7px
+            (*"tem aviso"*); aqui o número já existe desde 04/10, e um disco não distingue 1 de 9.
+            O que se copiou do arquivo do dono foi o ANEL da superfície (`.sinal`), que é o que
+            separa o coral do ícone embaixo — a lição do pontinho do fiscal (05/10). */}
+        {naoLidos > 0 && <span className="sinal num">{naoLidos > 9 ? '9+' : naoLidos}</span>}
       </button>
 
       {aberto && (

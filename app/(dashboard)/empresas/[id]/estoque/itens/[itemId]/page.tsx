@@ -814,7 +814,12 @@ function ReunitizarBloco({ companyId, itemId, nome, unidade, saldo, custoMedio }
           ))}
           <button onClick={aplicar} disabled={busy}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold disabled:opacity-50"
-            style={{ background: 'var(--fam-ambar-mid)', color: 'var(--prod-acao-ink)' }}>
+            /* ⛔⛔ L7 (14/10): era âmbar MÉDIO com `--prod-acao-ink`. O `acao-ink` é BRANCO no
+               tema claro (ele pareia com `--prod-acao-bg`, o índigo), então sobre o âmbar médio
+               dava 3,19:1 — reprova. ⚠️ O defeito era mais sutil que o irmão dele: o token usado
+               É o da "tinta sobre fundo forte", só estava sobre o chão ERRADO. O par da própria
+               família (`solid`/`on`) é o que inverte junto e passa nos dois temas. */
+            style={{ background: 'var(--fam-ambar-solid)', color: 'var(--fam-ambar-on)' }}>
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} confirmar a troca
           </button>
         </div>

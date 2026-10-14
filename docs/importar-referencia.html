@@ -16,15 +16,32 @@
    ========================================================================== */
 
 :root{
-  --bg:#F8FAFC; --surface:#FFFFFF; --surface-2:#F1F5F9;
-  --border:#E2E8F0; --border-strong:#CBD5E1;
-  --text:#0F172A; --text-2:#475569; --text-3:#94A3B8;
-  --indigo:#534AB7; --indigo-50:#EEEDFE; --indigo-900:#26215C;
-  --verde:#1D9E75; --verde-esc:#0F6E56; --verde-50:#E1F5EE; --verde-900:#04342C;
-  --ambar:#E9A23B; --ambar-esc:#854F0B; --ambar-50:#FAEEDA; --ambar-900:#412402;
-  --coral:#E05B5B; --coral-esc:#A32D2D; --coral-50:#FCEBEB; --coral-900:#501313;
+  /* ═══════════════════════════════════════════════════════════════════════════
+     ⚠️⚠️ ESTE `:root` FOI REALINHADO COM A FUNDAÇÃO EM 14/10/2026.
+
+     `docs/cara-do-sistema-referencia.html` (aprovada pelo dono) é a LEI VISUAL da FUNDAÇÃO —
+     tinta, linha, papel, cartão, raio e sombra do sistema INTEIRO. **HIERARQUIA DAS LEIS:** a
+     fundação manda nos TOKENS; este arquivo manda na ESTRUTURA desta tela. Em conflito de
+     token, a fundação vence — então os tons aqui passaram a ser os dela, pra este arquivo
+     RENDERIZAR igual ao que prod serve. A estrutura, as frases e as medidas NÃO foram tocadas,
+     e o `bate-com-a-referencia` desta tela segue sendo lei sem brigar com a fundação.
+
+     ⚠️ `--text-3` é a ÚNICA divergência, e ela é medida: a tinta de dica da fundação (#8B94AD)
+     dá 2,78:1 sobre o papel — abaixo até do piso de 3:1 de texto grande. O tom da casa
+     (#7E89A4) dá 3,21:1 no pior chão. A medição vence a letra do pedido (precedente de 10/10).
+
+     ⛔ `--rosa` e `--azul` FICAM como estavam: são identidade de PRODUTO (a bolinha do
+     `caraDaReceita`), e a fundação não as declara — L5 fala da AÇÃO, não da paleta de família.
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --bg:#F3F5FA; --surface:#FFFFFF; --surface-2:#F6F7FC;
+  --border:#E3E7F2; --border-strong:#C9D0E3;
+  --text:#0A0F1E; --text-2:#46516B; --text-3:#7E89A4;
+  --indigo:#4F46E5; --indigo-50:#EEF0FE; --indigo-900:#3730A3;
+  --verde:#0E9F6E; --verde-esc:#065F46; --verde-50:#E4F7EF; --verde-900:#065F46;
+  --ambar:#D97706; --ambar-esc:#7C4A03; --ambar-50:#FCF0DC; --ambar-900:#7C4A03;
+  --coral:#E2544A; --coral-esc:#8C251E; --coral-50:#FDECEA; --coral-900:#8C251E;
   --radius:12px; --radius-lg:16px;
-  --shadow:0 1px 2px rgba(15,23,42,.05);
+  --shadow:0 1px 2px rgba(10,15,30,.06), 0 2px 6px rgba(10,15,30,.05);
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
 }
 :root:not([data-theme="light"]) { color-scheme: light dark; }

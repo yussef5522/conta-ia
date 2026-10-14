@@ -9,7 +9,7 @@ import { Toaster } from '@/components/ui/toaster'
 import { TrialBanner } from '@/components/layout/trial-banner'
 // Sprint post-3B: dev tools só em sandbox
 import { isDevToolsEnabled } from '@/lib/dev/guard'
-import { lerTema } from '@/lib/tema/servidor'
+import { lerPreferenciaDeTela } from '@/lib/tema/servidor'
 import { classeDoTema } from '@/lib/tema/preferencia'
 import { TemaDoDashboard } from '@/components/layout/tema-do-dashboard'
 
@@ -42,7 +42,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
    * wrapper interno, **todo menu e todo diálogo abriria CLARO dentro do tema escuro** — o pior
    * dos dois mundos, e invisível em teste de página.
    */
-  const tema = await lerTema(user.sub)
+  /**
+   * ⭐ UMA leitura, DUAS preferências (14/10) — o tema e o trilho vivem na MESMA linha, então
+   * `lerPreferenciaDeTela` é uma consulta só. Duas chamadas (`lerTema` + `lerTrilho`) seriam
+   * dois round-trips por carregamento de página no caminho mais quente do app, pra ler a mesma
+   * linha duas vezes.
+   */
+  const { tema, trilho } = await lerPreferenciaDeTela(user.sub)
 
   return (
     <DashboardShell
@@ -50,6 +56,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       userEmail={user.email}
       devToolsEnabled={devToolsEnabled}
       tema={tema}
+      trilho={trilho}
     >
       {/* ⚠️ Roda durante o parse, ANTES do conteúdo pintar — sem isto a tela abriria clara e
           escureceria no hydrate, que é o flash que todo app de tema erra primeiro. */}

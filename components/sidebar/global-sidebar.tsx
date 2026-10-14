@@ -56,15 +56,30 @@ import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
 import { usePermissoes } from '@/lib/hooks/use-permissoes'
 import { ProvedorPermissoesMenu } from './permissoes-menu'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
+import { classeDoTrilho, TRILHO_PADRAO, type Trilho } from '@/lib/trilho/preferencia'
+import { BotaoRecolher } from './botao-recolher'
 import { useWorkspace } from '@/lib/contexts/workspace-context'
 
 interface GlobalSidebarProps {
   userName?: string
   userEmail?: string
   onNavigate?: () => void
+  /**
+   * ⭐ O ESTADO PERSISTIDO DO TRILHO — vem do SERVIDOR (o layout lê a preferência do usuário).
+   * ⚠️ Não é `useState` com default: a classe tem que estar certa no PRIMEIRO PAINT, senão o
+   * menu pisca em 230px e encolhe pra 64px na frente do dono. É a mesma razão de a classe do
+   * tema ser decidida no servidor.
+   */
+  trilhoInicial?: Trilho
+  /**
+   * ⛔⛔ NA GAVETA O TRILHO É SEMPRE ABERTO — e não é a preferência sendo ignorada, é o `:hover`
+   * NÃO EXISTIR no toque. Recolhido num celular seriam 64px de ícones sem rótulo e **sem gesto
+   * nenhum que mostrasse os nomes** — a "porta sem maçaneta" em forma de menu.
+   */
+  naGaveta?: boolean
 }
 
-export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
+export function GlobalSidebar({ onNavigate, trilhoInicial = TRILHO_PADRAO, naGaveta }: GlobalSidebarProps) {
   const pathname = usePathname()
   const { currentEmpresaId } = useEmpresa()
   const { workspaceType, currentProfileId } = useWorkspace()
@@ -198,12 +213,40 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
 
   return (
     <ProvedorPermissoesMenu value={{ permissoes }}>
-    <aside className="w-60 border-r bg-card flex flex-col h-full overflow-y-auto">
-      {/* Hotfix sidebar-remove-logo (29/05/2026): bloco do logo do header
-          REMOVIDO. Logo já aparece no breadcrumb do TopBar — 2 logos
-          empilhados poluem. Mantém só o padding pra não colar Dashboard
-          na borda superior. */}
-      <nav className="flex-1 py-3 px-2 space-y-0.5" aria-label="Menu principal">
+    {/**
+      * ⭐⭐⭐ O TRILHO (L1) — escuro de marca NOS DOIS TEMAS, nasce RECOLHIDO (14/10/2026).
+      *
+      * ⚠️⚠️ **A LISTA DE ITENS ABAIXO NÃO MUDOU UMA LINHA, e isso é decisão, não preguiça.**
+      * 17 arquivos de teste leem este arquivo POR REGEX — permissão por papel, PF não ver menu
+      * de empresa, item de rota aposentada não voltar, badge só pra quem pode. Reescrever a
+      * estrutura pra trocar a cor seria pagar um risco de regressão de ACESSO por um ganho de
+      * pintura. O que mudou é o CHASSI: o container, a logomarca, o «» e os kickers.
+      *
+      * ⛔ O `rec` sai do SERVIDOR (`trilhoInicial`) e o CSS faz o resto — o hover que cresce é
+      * `:hover` no pai, zero JavaScript. Ver o bloco do `.trilho` em `app/globals.css`.
+      */}
+    <nav
+      className={`trilho${naGaveta ? ' gaveta' : ''}${naGaveta ? '' : ` ${classeDoTrilho(trilhoInicial)}`}`.trimEnd()}
+      aria-label="Menu principal"
+    >
+      {/**
+        * ⭐ A LOGOMARCA EM GRADIENTE (L1). O "C" fica visível no recolhido — é a âncora que diz
+        * ao dono que aquela coluna de 64px é o menu, e não um enfeite.
+        * ⚠️ O bloco do logo horizontal foi removido em 29/05 por duplicar o breadcrumb do topo;
+        * esta marca de 30px é outra coisa — ela É a identidade do trilho, e o topo não a tem.
+        */}
+      <div className="logo">
+        <div className="marca" aria-hidden="true">C</div>
+        <div className="min-w-0">
+          <span className="nome">CAIXAOS</span>
+          <span className="casa">{workspaceType === 'pf' ? 'meu dinheiro · PF' : 'empresa · PJ'}</span>
+        </div>
+      </div>
+
+      {/* ⛔ na gaveta não existe «»: ali o trilho é sempre aberto, então um botão de recolher
+          seria um controle que não faz nada — e botão morto é clique errado esperando (09/10) */}
+      {!naGaveta && <BotaoRecolher trilhoInicial={trilhoInicial} />}
+      <div className="flex min-h-0 flex-1 flex-col">
         <SidebarItem
           perm="transaction.view"
           icon={LayoutDashboard}
@@ -786,16 +829,20 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           perm="report.view" icon={MessageSquare} label="Chat IA" href="#" isActive={false} isComingSoon />
         <SidebarItem
           perm="company.update" icon={Settings} label="Configurações" href="#" isActive={false} isComingSoon />
-      </nav>
-    </aside>
+      </div>
+    </nav>
     </ProvedorPermissoesMenu>
   )
 }
 
+/**
+ * ⭐ O KICKER DE GRUPO (L1) — e no RECOLHIDO ele vira uma RÉGUA DE 1px, não desaparece.
+ *
+ * ⚠️ A classe é `.kicker` porque é ela que o CSS do trilho alcança
+ * (`.trilho.rec:not(:hover) .kicker{height:1px;background:…;font-size:0}`). Deixar o texto
+ * sumir sem o fio faria os grupos colarem e o trilho virar uma lista de 20 ícones sem divisão —
+ * e com 64px de largura o LUGAR do ícone é o único jeito de o dono achar o item.
+ */
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="px-3 pt-3 pb-1 text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
-      {children}
-    </p>
-  )
+  return <p className="kicker">{children}</p>
 }

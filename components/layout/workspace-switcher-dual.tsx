@@ -108,41 +108,31 @@ export function WorkspaceSwitcherDual() {
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex items-center gap-2 rounded-md px-2.5 py-1.5 hover:bg-accent text-sm font-medium text-foreground transition-colors min-w-0 max-w-[260px]"
-        >
-          {/* Pill colorida indicando contexto */}
-          <span
-            className={`flex h-6 w-6 items-center justify-center rounded text-[10px] font-bold shrink-0 text-white ${
-              isPF ? 'bg-emerald-600' : 'bg-blue-600'
-            }`}
-            title={isPF ? 'Pessoal' : 'Empresa'}
-          >
-            {currentInitials}
-          </span>
+        {/**
+         * ⭐⭐ O SELETOR É A PÍLULA `.empresa` DA REFERÊNCIA (14/10): nome em 700/13.5px + SELO
+         * do tipo + seta. ⛔ O quadradinho de iniciais coloridas SAIU — o nome já carrega a
+         * identidade e o selo carrega o tipo; o quadrado repetia a mesma informação num 3º
+         * elemento e a referência não o tem.
+         * ⚠️ E o SELO não é enfeite: ele é o que separa *"a Caçula"* de *"o meu bolso"* num
+         * olhar. Por isso ele **não é `hidden sm:inline`** como era antes — no celular, que é
+         * onde o dono mais opera, era justo ali que a distinção sumia.
+         */}
+        <button type="button" className="empresa min-w-0 max-w-[260px]">
           <span className="truncate">{currentLabel}</span>
-          {/* Mini-badge do tipo */}
-          <span
-            className={`hidden sm:inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
-              isPF
-                ? 'bg-emerald-50 text-emerald-700'
-                : 'bg-blue-50 text-blue-700'
-            }`}
-          >
+          <span className={isPF ? 'pf' : 'pj'}>
             {isPF ? (
               <>
-                <UserRound className="h-2.5 w-2.5" />
+                <UserRound className="mr-0.5 inline h-2.5 w-2.5" aria-hidden="true" />
                 PF
               </>
             ) : (
               <>
-                <Building2 className="h-2.5 w-2.5" />
+                <Building2 className="mr-0.5 inline h-2.5 w-2.5" aria-hidden="true" />
                 PJ
               </>
             )}
           </span>
-          <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <ChevronsUpDown className="h-[13px] w-[13px] shrink-0 opacity-60" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[320px] p-0">

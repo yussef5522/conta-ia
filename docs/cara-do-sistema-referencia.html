@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAIXAOS — A CARA DO SISTEMA · REFERÊNCIA OFICIAL v1.1 (trilho recolhível)</title>
+<style>
+/* ============================================================================
+   CAIXAOS · A CARA DO SISTEMA — REFERÊNCIA OFICIAL v1 (13/10/2026, madrugada)
+   ----------------------------------------------------------------------------
+   Este arquivo é a LEI VISUAL do sistema inteiro: trilho, topo, tinta, número,
+   linha, tabela, selo e sombra. A tela de amostra é "Quem paga a casa", mas a
+   lei vale pra TODAS as telas. Dois temas (botão no topo + automático).
+
+   DE ONDE VEIO (o dever de casa):
+   · Toast / Square (EUA, donos do restaurante): trilho escuro de marca,
+     número gigante tabular, conteúdo claro e denso.
+   · Stripe / Linear: hierarquia de tipo perfeita — 3 tintas, 3 pesos,
+     borda firme de 1px, sombra curta em 2 camadas, UMA cor de ação.
+   · EVO (academias, BR): identidade no trilho — o sistema se reconhece
+     de longe.
+   · Linx: o que ele tem de "forte" é TINTA e LINHA. Pegamos isso e
+     largamos a grade pesada de 2012.
+
+   AS 7 LEIS DA CARA:
+   L1. TRILHO DE MARCA, DOIS ESTADOS (pedido do dono 14/10, como Linx/EVO
+       e a maioria dos grandes): RECOLHIDO (64px, só os símbolos) é o
+       padrão; PAROU O MOUSE em cima, ele cresce e mostra os nomes;
+       tirou o mouse, volta pros símbolos; o botão «» FIXA aberto. No
+       recolhido o badge vira mini sobre o ícone. Escuro nos DOIS
+       temas, pílula cheia no item ativo, kicker
+       de grupo. Em prod a escolha fica LEMBRADA por usuário (mesma casa
+       da preferência de tema). No celular o trilho vira gaveta pelo ☰.
+   L2. TRÊS TINTAS, NUNCA MAIS: forte (títulos, números, nomes), média
+       (apoio), fraca (dica). Proibido texto de conteúdo em tinta fraca.
+   L3. NÚMERO É PROTAGONISTA: dinheiro em 800, tabular, grande. Centavos
+       menores quando o número é herói.
+   L4. LINHA FIRME: borda de cartão 1px sólida; divisor de linha 1px;
+       cabeçalho de tabela com régua forte; zebra sutil. Nada de 0.5px
+       fantasma em superfície de dados.
+   L5. UMA COR DE AÇÃO: o índigo elétrico. Verde = dinheiro bom, coral =
+       alarme, âmbar = atenção — e MAIS NADA colorido.
+   L6. PROFUNDIDADE CALMA: sombra curta de 2 camadas nos cartões do tema
+       claro; no escuro a elevação é por superfície, não por sombra.
+   L7. SÓLIDO SÓ COM CHÃO: texto branco só sobre degrau 700+ da família
+       (a cicatriz WCAG dos tons médios continua valendo).
+
+   MAPEAR 1:1 pros tokens da casa. Ícones aqui são SVG inline; em prod,
+   os ícones da casa. Fonte: Inter (fallback system-ui).
+   ========================================================================= */
+
+:root{
+  /* ---------- PAPEL E TINTA · TEMA CLARO ---------- */
+  --bg:#F3F5FA;            /* papel da página — frio, não bege */
+  --card:#FFFFFF;
+  --card-2:#F6F7FC;        /* bloco interno / zebra */
+  --linha:#E3E7F2;         /* divisor comum (1px SÓLIDO) */
+  --linha-forte:#C9D0E3;   /* borda de cartão e régua de cabeçalho */
+  --tinta:#0A0F1E;         /* L2: tinta forte — títulos, números, nomes */
+  --tinta-2:#46516B;       /* L2: tinta média — apoio */
+  --tinta-3:#8B94AD;       /* L2: tinta fraca — SÓ dica/metadado */
+
+  /* ---------- MARCA ---------- */
+  --acao:#4F46E5;          /* L5: a ÚNICA cor de ação (índigo elétrico) */
+  --acao-quente:#6D28D9;   /* fim do gradiente da logomarca */
+  --acao-50:#EEF0FE;
+  --acao-tinta:#3730A3;
+
+  /* ---------- TRILHO (igual nos 2 temas — é a marca) ---------- */
+  --trilho:#14173A;
+  --trilho-borda:#23264F;
+  --trilho-tx:#A7ACD9;
+  --trilho-kicker:#5E63A0;
+  --trilho-on:#FFFFFF;
+  --trilho-pilula:#4F46E5;
+  --trilho-hover:#1C2048;
+
+  /* ---------- DINHEIRO E ESTADO (chão 700+ pra texto branco — L7) ---------- */
+  --verde:#0E9F6E;  --verde-chao:#07654A; --verde-50:#E4F7EF; --verde-tinta:#065F46;
+  --coral:#E2544A;  --coral-chao:#9F2D25; --coral-50:#FDECEA; --coral-tinta:#8C251E;
+  --ambar:#D97706;  --ambar-50:#FCF0DC;  --ambar-tinta:#7C4A03;
+
+  /* ---------- MÉTRICAS ---------- */
+  --r-painel:16px; --r-cartao:12px; --r-pilula:999px;
+  --sombra:0 1px 2px rgba(10,15,30,.06), 0 2px 6px rgba(10,15,30,.05); /* L6 */
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+:root:not([data-theme="light"]){ color-scheme:light dark; }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0B0E1C; --card:#141829; --card-2:#1A1F33;
+  --linha:#242A41; --linha-forte:#333B58;
+  --tinta:#EDF0FB; --tinta-2:#9AA3C0; --tinta-3:#5E6683;
+  --acao:#818CF8; --acao-50:#23264F; --acao-tinta:#C7CBFF;
+  --verde:#34D399; --verde-50:#0C2E24; --verde-tinta:#8CEAC8;
+  --coral:#F87168; --coral-50:#3A1917; --coral-tinta:#FFB4AE;
+  --ambar:#F59E0B; --ambar-50:#352508; --ambar-tinta:#FCD38D;
+  --sombra:none; /* L6: no escuro a elevação é superfície */
+}}
+:root[data-theme="dark"]{
+  --bg:#0B0E1C; --card:#141829; --card-2:#1A1F33;
+  --linha:#242A41; --linha-forte:#333B58;
+  --tinta:#EDF0FB; --tinta-2:#9AA3C0; --tinta-3:#5E6683;
+  --acao:#818CF8; --acao-50:#23264F; --acao-tinta:#C7CBFF;
+  --verde:#34D399; --verde-50:#0C2E24; --verde-tinta:#8CEAC8;
+  --coral:#F87168; --coral-50:#3A1917; --coral-tinta:#FFB4AE;
+  --ambar:#F59E0B; --ambar-50:#352508; --ambar-tinta:#FCD38D;
+  --sombra:none;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg); color:var(--tinta); font-family:var(--font);
+  font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums}
+svg.ic{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;
+  stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+/* ================= L1 · O TRILHO (dois estados) ================= */
+.app{display:flex;min-height:100vh}
+.trilho{width:230px;flex:none;background:var(--trilho);
+  border-right:1px solid var(--trilho-borda);
+  display:flex;flex-direction:column;padding:16px 12px 18px;gap:1px;
+  transition:width .18s ease}
+/* --- estado RECOLHIDO (o padrão): só os símbolos.
+       Parou o MOUSE em cima → o trilho CRESCE e mostra os nomes;
+       tirou o mouse → volta pros símbolos. O «» fixa aberto de vez. --- */
+.trilho.rec{width:64px;padding:16px 8px 18px}
+.trilho.rec:hover{width:230px;padding:16px 12px 18px}
+.trilho.rec:not(:hover) .rotulo,
+.trilho.rec:not(:hover) .logo .nome,
+.trilho.rec:not(:hover) .logo .casa{display:none}
+.trilho.rec:not(:hover) .logo{justify-content:center;padding:2px 0 10px}
+.trilho.rec:not(:hover) .kicker{height:1px;background:var(--trilho-borda);
+  margin:10px 10px;padding:0;overflow:hidden;font-size:0}
+.trilho.rec:not(:hover) .item{justify-content:center;padding:10px 0;position:relative}
+.trilho.rec:not(:hover) .badge{position:absolute;top:3px;right:7px;margin:0;
+  font-size:9px;padding:1px 5px}
+.recolhe{border:1px solid var(--trilho-borda);background:var(--trilho-hover);
+  color:var(--trilho-tx);border-radius:8px;height:30px;display:flex;
+  align-items:center;justify-content:center;cursor:pointer;
+  margin:0 0 8px;font:inherit;width:100%}
+.recolhe:hover{color:#fff}
+.recolhe svg{transition:transform .18s ease}
+.trilho.rec .recolhe svg{transform:rotate(180deg)}
+.logo{display:flex;align-items:center;gap:10px;padding:2px 10px 16px}
+.logo .marca{width:30px;height:30px;border-radius:9px;
+  background:linear-gradient(135deg,var(--trilho-pilula),var(--acao-quente));
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:800;font-size:15px;letter-spacing:-.02em}
+.logo .nome{color:#fff;font-weight:700;font-size:15.5px;letter-spacing:-.01em}
+.logo .casa{display:block;color:var(--trilho-kicker);font-size:10.5px;font-weight:600;margin-top:1px}
+.kicker{color:var(--trilho-kicker);font-size:10px;font-weight:700;
+  letter-spacing:.09em;padding:14px 12px 5px}
+.item{display:flex;align-items:center;gap:10px;color:var(--trilho-tx);
+  font-size:13px;font-weight:600;padding:8px 12px;border-radius:9px;cursor:pointer}
+.item:hover{background:var(--trilho-hover);color:#DADDF6}
+.item.on{background:var(--trilho-pilula);color:var(--trilho-on);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+.item .badge{margin-left:auto;background:var(--coral);color:#fff;
+  font-size:10.5px;font-weight:800;border-radius:var(--r-pilula);padding:1px 8px}
+.item.on .badge{background:rgba(255,255,255,.22)}
+
+/* ================= O TOPO ================= */
+.corpo{flex:1;min-width:0;display:flex;flex-direction:column}
+.topo{height:56px;display:flex;align-items:center;gap:12px;
+  padding:0 24px;border-bottom:1px solid var(--linha-forte);background:var(--card)}
+.empresa{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;
+  padding:6px 12px;border:1px solid var(--linha-forte);border-radius:9px;cursor:pointer}
+.empresa .pj{font-size:10px;font-weight:800;color:var(--acao);
+  background:var(--acao-50);border-radius:5px;padding:1px 6px}
+.busca{flex:1;max-width:420px;display:flex;align-items:center;gap:9px;
+  color:var(--tinta-3);font-size:13px;border:1px solid var(--linha);
+  background:var(--card-2);border-radius:9px;padding:7px 12px}
+.busca kbd{margin-left:auto;font-family:inherit;font-size:10.5px;font-weight:700;
+  color:var(--tinta-2);border:1px solid var(--linha-forte);border-radius:5px;padding:1px 6px}
+.topo .acoes{margin-left:auto;display:flex;align-items:center;gap:10px}
+.icbt{position:relative;width:34px;height:34px;border:1px solid var(--linha-forte);
+  background:var(--card);border-radius:9px;display:flex;align-items:center;
+  justify-content:center;color:var(--tinta-2);cursor:pointer}
+.icbt:hover{border-color:var(--acao);color:var(--acao)}
+.icbt .ponto{position:absolute;top:7px;right:8px;width:7px;height:7px;
+  border-radius:50%;background:var(--coral);border:2px solid var(--card)}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--acao-50);
+  color:var(--acao-tinta);display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:12.5px}
+
+/* ================= CONTEÚDO ================= */
+.miolo{flex:1;padding:22px 24px 60px;max-width:1440px;width:100%;margin:0 auto}
+.cab{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
+  flex-wrap:wrap;margin-bottom:16px}
+.cab h1{margin:0;font-size:21px;font-weight:800;letter-spacing:-.015em}
+.cab .sub{margin:3px 0 0;font-size:13px;color:var(--tinta-2);font-weight:500}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12.5px;font-weight:600;padding:6px 13px;border-radius:var(--r-pilula);
+  border:1px solid var(--linha-forte);color:var(--tinta-2);background:var(--card);cursor:pointer}
+.chip.on{background:var(--acao);border-color:var(--acao);color:#fff;font-weight:700}
+
+/* ---- painel (cartão grande) ---- */
+.painel{background:var(--card);border:1px solid var(--linha-forte);
+  border-radius:var(--r-painel);box-shadow:var(--sombra);overflow:hidden;margin-bottom:14px}
+.painel-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:14px 18px 10px;flex-wrap:wrap}
+.painel-cab h2{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em}
+.dica{font-size:11.5px;color:var(--tinta-3);font-weight:500}
+
+/* ---- linha de chegada (faixa-herói) ---- */
+.chegada{display:flex;align-items:center;gap:22px;padding:16px 20px;flex-wrap:wrap}
+.chegada .kick{font-size:11px;font-weight:800;letter-spacing:.07em;color:var(--verde-tinta)}
+.chegada .frase{font-size:19px;font-weight:700;letter-spacing:-.01em;margin-top:3px}
+.chegada .frase b{color:var(--verde);font-weight:800}
+.chegada .lado{margin-left:auto;text-align:right}
+.chegada .lado .rot{font-size:11px;color:var(--tinta-3);font-weight:600}
+.chegada .lado .val{font-size:21px;font-weight:800;letter-spacing:-.01em}
+.trilha{height:12px;margin:0 20px 16px;border-radius:999px;background:var(--card-2);
+  border:1px solid var(--linha);position:relative;overflow:visible}
+.trilha .cheio{position:absolute;inset:0;border-radius:999px;
+  background:linear-gradient(90deg,var(--acao),var(--acao-quente));width:100%}
+.trilha .bandeira{position:absolute;right:-2px;top:-6px;width:3px;height:24px;
+  background:var(--verde);border-radius:2px}
+
+/* ---- o placar: UM painel, 3 colunas, selo sólido (L3+L7) ---- */
+.placar{display:grid;grid-template-columns:1fr 1fr 1.1fr}
+.placar>div{padding:16px 20px}
+.placar>div+div{border-left:1px solid var(--linha)}
+.placar .rot{font-size:12px;font-weight:700;color:var(--tinta-2)}
+.placar .val{font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:4px}
+.placar .val small{font-size:17px;font-weight:700;color:var(--tinta-2)}
+.placar .nota{font-size:11px;color:var(--tinta-3);margin-top:3px;font-weight:500}
+.selo-pago{background:var(--verde-chao);color:#fff;border-radius:var(--r-cartao);
+  margin:10px;padding:14px 18px}
+.selo-pago .rot{color:#B9F3DD}
+.selo-pago .val{color:#fff}
+.selo-pago .nota{color:#8FE9C9}
+.cobertura{border-top:1px solid var(--linha);background:var(--card-2);
+  padding:10px 20px;font-size:12px;font-weight:600;color:var(--tinta-2)}
+.cobertura b{color:var(--tinta);font-weight:700}
+
+/* ---- dupla ---- */
+.dupla{display:grid;gap:14px;margin-bottom:14px}
+@media(min-width:1024px){.dupla{grid-template-columns:1fr 1fr;align-items:start}}
+
+/* ---- tabela firme (L4) ---- */
+.tab{width:100%;border-collapse:collapse;font-size:13.5px}
+.tab th{font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--tinta-2);
+  text-align:left;padding:8px 18px;border-bottom:2px solid var(--linha-forte)}
+.tab th.dir,.tab td.dir{text-align:right}
+.tab td{padding:10px 18px;border-bottom:1px solid var(--linha);font-weight:600}
+.tab tr:nth-child(even) td{background:var(--card-2)}
+.tab tr:hover td{background:var(--acao-50)}
+.tab .nome{display:flex;align-items:center;gap:9px}
+.ponto{width:9px;height:9px;border-radius:50%;flex:none}
+.tab .dinheiro{color:var(--verde);font-weight:800}
+.tab .meta{font-size:11px;color:var(--tinta-3);font-weight:500}
+.selo{font-size:10.5px;font-weight:800;border-radius:var(--r-pilula);padding:2px 9px;white-space:nowrap}
+.selo.estrela{background:var(--verde-50);color:var(--verde-tinta)}
+.selo.burro{background:var(--ambar-50);color:var(--ambar-tinta)}
+.selo.repensar{background:var(--card-2);color:var(--tinta-3);border:1px solid var(--linha)}
+.ver-todos{display:block;width:100%;border:0;border-top:1px solid var(--linha-forte);
+  background:var(--card);color:var(--acao);font:inherit;font-size:12.5px;
+  font-weight:700;padding:11px;cursor:pointer}
+.ver-todos:hover{background:var(--acao-50)}
+
+/* ---- barras do "quem carregou" ---- */
+.carga{padding:4px 0 8px}
+.carga .linha-c{display:flex;align-items:center;gap:12px;padding:9px 18px;cursor:pointer}
+.carga .linha-c:hover{background:var(--acao-50)}
+.carga .nm{width:200px;min-width:130px;font-weight:700;display:flex;gap:9px;
+  align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.carga .barra{flex:1;height:10px;border-radius:999px;background:var(--card-2);
+  border:1px solid var(--linha);overflow:hidden}
+.carga .barra>span{display:block;height:100%}
+.carga .v{width:150px;text-align:right;font-weight:800}
+.carga .v small{color:var(--tinta-2);font-weight:600;font-size:12px}
+
+/* ---- rodapé-alarme âmbar ---- */
+.obra{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  padding:11px 18px;border-top:1px solid var(--linha-forte);
+  background:var(--ambar-50);font-size:12.5px;font-weight:600;color:var(--ambar-tinta)}
+.obra a{color:var(--acao);font-weight:800;text-decoration:none}
+
+/* ---- botões ---- */
+.bt{border:1px solid var(--linha-forte);background:var(--card);color:var(--tinta-2);
+  font:inherit;font-size:13px;font-weight:700;border-radius:9px;padding:8px 14px;cursor:pointer}
+.bt.p{background:var(--acao);border-color:var(--acao);color:#fff}
+.bt.p:hover{filter:brightness(1.07)}
+
+/* ---- responsivo (a lei do celular) ---- */
+@media(max-width:860px){
+  .trilho{display:none} /* em prod: vira gaveta pelo botão ☰ do topo */
+  .menu-m{display:flex!important}
+  .miolo{padding:16px 14px 56px}
+  .placar{grid-template-columns:1fr}
+  .placar>div+div{border-left:0;border-top:1px solid var(--linha)}
+}
+.menu-m{display:none}
+footer{padding:18px;text-align:center;font-size:11.5px;color:var(--tinta-3)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ L1 · O TRILHO DE MARCA — nasce RECOLHIDO; «» expande ============ -->
+  <nav class="trilho rec" id="trilho" aria-label="menu principal">
+    <div class="logo">
+      <div class="marca">C</div>
+      <div><span class="nome">CAIXAOS</span><span class="casa">caçula mix · PJ</span></div>
+    </div>
+    <button class="recolhe" onclick="document.getElementById('trilho').classList.toggle('rec')" aria-label="expandir ou recolher o menu">
+      <svg class="ic" style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg>
+    </button>
+    <div class="kicker">FINANCEIRO</div>
+    <div class="item" data-nome="Contas a Pagar · 22"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="rotulo">Contas a Pagar</span><span class="badge">22</span></div>
+    <div class="item" data-nome="Contas a Receber"><svg class="ic" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg><span class="rotulo">Contas a Receber</span></div>
+    <div class="item" data-nome="Vendas"><svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/><path d="M3 4h2l2.5 12h11L21 8H6.2"/></svg><span class="rotulo">Vendas</span></div>
+    <div class="item" data-nome="Fluxo de caixa"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M16 12h.01M3 10h18"/></svg><span class="rotulo">Fluxo de caixa</span></div>
+    <div class="item" data-nome="Custos fixos"><svg class="ic" viewBox="0 0 24 24"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-5h6v5"/></svg><span class="rotulo">Custos fixos</span></div>
+    <div class="item on" data-nome="Quem paga a casa"><svg class="ic" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/><path d="M10 19v-5h4v5"/></svg><span class="rotulo">Quem paga a casa</span></div>
+    <div class="item" data-nome="Relatórios"><svg class="ic" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span class="rotulo">Relatórios</span></div>
+    <div class="kicker">ESTOQUE</div>
+    <div class="item" data-nome="Cardápio"><svg class="ic" viewBox="0 0 24 24"><path d="M5 3v18M5 8h9a3 3 0 0 0 0-6H5M19 3v18M19 13c-2.2 0-4-1.8-4-4V3"/></svg><span class="rotulo">Cardápio</span></div>
+    <div class="item" data-nome="Posição"><svg class="ic" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5v8l-9 5-9-5V8"/></svg><span class="rotulo">Posição</span></div>
+    <div class="item" data-nome="Produção"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3c2 3 5 4.5 5 8a5 5 0 0 1-10 0c0-3.5 3-5 5-8z"/><path d="M12 13c.8 1 2 1.8 2 3.2a2 2 0 0 1-4 0c0-1.4 1.2-2.2 2-3.2z"/></svg><span class="rotulo">Produção</span></div>
+    <div class="item" data-nome="Contagem"><svg class="ic" viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg><span class="rotulo">Contagem</span></div>
+  </nav>
+
+  <div class="corpo">
+    <!-- ============ O TOPO ============ -->
+    <header class="topo">
+      <button class="icbt menu-m" aria-label="menu"><svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div class="empresa">caçula mix <span class="pj">PJ</span>
+        <svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div>
+      <div class="busca"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>buscar no sistema… <kbd>⌘K</kbd></div>
+      <div class="acoes">
+        <button class="icbt" aria-label="notificações"><svg class="ic" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="ponto"></span></button>
+        <button class="icbt" aria-label="tema" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'"><svg class="ic" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg></button>
+        <div class="avatar">YA</div>
+      </div>
+    </header>
+
+    <!-- ============ A TELA DE AMOSTRA (dados de amostra — binds reais em prod) ============ -->
+    <main class="miolo">
+      <div class="cab">
+        <div><h1>Quem paga a casa</h1><p class="sub num">outubro (até 13/10)</p></div>
+        <div class="chips">
+          <span class="chip">hoje</span><span class="chip">7 dias</span>
+          <span class="chip on">mês ✓</span><span class="chip">📅 datas</span>
+        </div>
+      </div>
+
+      <!-- linha de chegada: faixa-herói, não cartão-trio -->
+      <section class="painel" aria-label="linha de chegada">
+        <div class="chegada">
+          <div>
+            <div class="kick">🏁 A LINHA DE CHEGADA · 06/10</div>
+            <div class="frase num">06/10 pagou a casa do dia e sobrou <b>R$ 1.323,51</b></div>
+          </div>
+          <div class="lado"><div class="rot">casa do dia</div><div class="val num">R$ 6.228,48</div></div>
+        </div>
+        <div class="trilha"><div class="cheio"></div><div class="bandeira"></div></div>
+      </section>
+
+      <!-- o placar: um painel, três colunas, selo sólido -->
+      <section class="painel" aria-label="o placar do período">
+        <div class="painel-cab"><h2>O placar de outubro</h2><span class="dica">custo fixo: casa + banco + compromissos</span></div>
+        <div class="placar num">
+          <div><div class="rot">O que as vendas deixaram</div><div class="val">R$ 57.232</div><div class="nota">sobra medida em 60% das vendas</div></div>
+          <div><div class="rot">A casa custou até aqui</div><div class="val">R$ 43.599</div><div class="nota">casa + banco + compromissos</div></div>
+          <div class="selo-pago"><div class="rot">✓ CASA PAGA — e sobrou</div><div class="val">+R$ 13.632</div><div class="nota">daqui pra frente é lucro</div></div>
+        </div>
+        <div class="cobertura num">cobertura: <b>60% das unidades vendidas têm custo</b> · acima de <b>80%</b> eu digo o dia em que a casa se pagou</div>
+      </section>
+
+      <div class="dupla">
+        <!-- quem carregou -->
+        <section class="painel" aria-label="quem carregou a casa">
+          <div class="painel-cab"><h2>Quem carregou a casa</h2><span class="dica">% = quanto da casa cada um pagou</span></div>
+          <div class="carga num">
+            <div class="linha-c"><span class="nm"><span class="ponto" style="background:#D4518A"></span>👑 Combo Caçula</span><span class="barra"><span style="width:100%;background:#D4518A"></span></span><span class="v">45% <small>· R$ 19.409</small></span></div>
+            <div class="linha-c"><span class="nm"><span class="ponto" style="background:var(--acao)"></span>PIZZA FAMÍLIA 45</span><span class="barra"><span style="width:57%;background:var(--acao)"></span></span><span class="v">25% <small>· R$ 11.074</small></span></div>
+            <div class="linha-c"><span class="nm"><span class="ponto" style="background:var(--acao)"></span>PIZZA G PRECINHO</span><span class="barra"><span style="width:40%;background:var(--acao)"></span></span><span class="v">18% <small>· R$ 7.839</small></span></div>
+            <div class="linha-c"><span class="nm" style="color:var(--tinta-2)"><span class="ponto" style="background:var(--tinta-3)"></span>+ 44 produtos</span><span class="barra"><span style="width:63%;background:var(--tinta-3)"></span></span><span class="v" style="color:var(--tinta-2)">28% <small>· ver todos ▾</small></span></div>
+          </div>
+          <div class="obra"><span>🪑 <b>101 fora da obra</b> — vendem e o custo é desconhecido</span><a href="#">criar fichas → 60% vira 80%</a></div>
+        </section>
+
+        <!-- a liga: tabela firme, top 10 + ver todos -->
+        <section class="painel" aria-label="a liga do mês">
+          <div class="painel-cab"><h2>🏆 A liga do mês</h2><span class="dica">selo = veredito · top 10</span></div>
+          <table class="tab num">
+            <tr><th>produto</th><th class="dir">sobra no mês</th></tr>
+            <tr><td class="nome"><span class="ponto" style="background:#D4518A"></span>Combo Caçula <span class="selo estrela">⭐ estrela</span></td><td class="dir"><span class="dinheiro">R$ 12.500,88</span><div class="meta">R$ 63,78/un · 196 un · 81%</div></td></tr>
+            <tr><td class="nome"><span class="ponto" style="background:var(--acao)"></span>PIZZA G PRECINHO <span class="selo estrela">⭐ estrela</span></td><td class="dir"><span class="dinheiro">R$ 9.447,62</span><div class="meta">R$ 46,54/un · 203 un · 79%</div></td></tr>
+            <tr><td class="nome"><span class="ponto" style="background:var(--acao)"></span>PIZZA FAMILIA 45CM <span class="selo estrela">⭐ estrela</span></td><td class="dir"><span class="dinheiro">R$ 8.744,80</span><div class="meta">R$ 102,88/un · 85 un · 85%</div></td></tr>
+            <tr><td class="nome"><span class="ponto" style="background:#0FA5A8"></span>MINI FRITAS <span class="selo burro">🐴 vende muito, sobra pouco</span></td><td class="dir"><span class="dinheiro">R$ 1.210,88</span><div class="meta">R$ 6,88/un · 176 un · 69%</div></td></tr>
+            <tr><td class="nome"><span class="ponto" style="background:#2E86D9"></span>HEINEKEN <span class="selo repensar">pra repensar</span></td><td class="dir"><span class="dinheiro" style="color:var(--tinta-2)">R$ 124,80</span><div class="meta">R$ 12,48/un · 10 un · 54%</div></td></tr>
+          </table>
+          <button class="ver-todos">ver todos os 51 ▾</button>
+        </section>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="bt">exportar CSV</button>
+        <button class="bt p">Nova ordem</button>
+      </div>
+    </main>
+
+    <footer>A CARA DO SISTEMA · referência oficial v1.2 (trilho: símbolos por padrão · cresce no mouse · «» fixa aberto) · aprovação do dono pendente · depois de aprovada, TODA tela nova nasce com esta lei e as antigas migram por fase</footer>
+  </div>
+</div>
+<script>
+/* A referência é LEI de visual — o único comportamento aqui é o tema.
+   Contrastes conferidos (WCAG AA+): tinta/#FFF 17,9:1 · tinta-2/#FFF 7,6:1 ·
+   trilho-tx/trilho 7,2:1 · branco/pílula índigo 6,3:1 · branco/verde-chão 6,1:1 ·
+   escuro: tinta/#141829 15,2:1 · tinta-2/#141829 6,8:1. Tom médio NUNCA
+   carrega texto branco (L7 — a cicatriz continua valendo). */
+document.querySelectorAll('.item,.chip').forEach(function(el){
+  el.addEventListener('click',function(){ /* navegação é de prod — aqui é lei visual */ });
+});
+</script>
+</body>
+</html>
