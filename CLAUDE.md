@@ -4004,6 +4004,133 @@ As **4 bases de pizza** vieram `custo: a apurar`, e a causa foi medida component
 
 ⭐ **O v4 responde a isso do jeito certo:** farol **neutro "fecha a pizza"**, canais **"a apurar"**, **zero número inventado** — é o vermelho do dono sendo obedecido, não contornado. ⚠️ **Consequência de desenho que vale registrar:** o custo da base **oscila com o saldo**, então ele vira "a apurar" todo dia em que a massa zerar na prateleira. O caso filé+bacon foi provado com o **custo que o dono mediu (25,42)**; a conta canônica de 08/10 (`2×massa 0,54 + 2×queijo 4,20 + caixa 2,74 = 12,22` + sabores `9,00 + 4,29`) dá **25,51**, que é a confirmação independente de que é o mesmo caso.
 
+## 🎨⭐⭐⭐ A CARA NOVA DO SISTEMA — FUNDAÇÃO FASE 1 (14/10/2026)
+
+**`docs/cara-do-sistema-referencia.html` (v1.2, aprovada pelo dono) virou a LEI VISUAL do sistema inteiro**, e o guard **abre o arquivo**: os 28 tokens do `:root{}` são comparados **por VALOR**, não por presença de nome — *guard que só conta nomes aprova a paleta trocada* (foi assim que o do mock da Conciliação nasceu cego em 13/09).
+
+**⭐⭐ HIERARQUIA DAS LEIS, resolvida e escrita:** a referência da **fundação** manda nos TOKENS; as de **TELA** mandam na estrutura das telas delas; **em conflito de token, a fundação vence**. Isso substituiu **8 valores cravados** nos testes — eles afirmavam os tons que o dono pediu **em prosa** em 04/10 (`#f8fafc`/`#16151d`), e o arquivo versionado declara outros (`#F3F5FA`/`#0B0E1C`). Tom ajustado "no olho" agora fica vermelho **apontando o hex que o arquivo manda**.
+
+### ⛔⛔ L7 — DOIS DEFEITOS DE CONTRASTE VIVOS, nos botões que o dono clica
+
+```
+o "concluir agora" da ordem parada    branco sobre --fam-ambar-mid   3,19:1 claro · 2,15:1 escuro
+o "confirmar a troca" da ficha        --prod-acao-ink (branco!) idem  3,19:1 claro
+o par que ficou (solid/on)                                           7,09:1 claro · 14,79:1 escuro
+```
+
+⚠️ **O `--prod-acao-ink` é BRANCO no claro** (ele pareia com `--prod-acao-bg`), e foi por essa porta que o 2º defeito entrou — **com o token "certo" no chão errado**.
+
+**⭐⭐ E A VARREDURA É POR USO, NUNCA POR TOM** — a 1ª versão da minha asserção dizia *"só o índigo-mid pode receber branco"* e **ficou vermelha contra a tela certa**: azul (5,17), teal (5,06) e rosa (5,11) **passam no claro**. A lei proíbe **PINTAR** tinta clara num chão que reprova, e o perigo real é a **inversão** — os quatro reprovam no escuro, porque o `-mid` **clareia**.
+
+**⛔⛔ O DETECTOR GANHOU NOME E AUTO-TESTE, e a REGRA 11 cobrou isso:** com os dois defeitos **já corrigidos**, enfraquecer a varredura **não produzia vermelho nenhum** (medido: tirar a linha do `text-white` deixava tudo VERDE). *Sem o auto-teste, a próxima mão que mexesse ali deixava o defeito voltar INVISÍVEL.* ⚠️ E ele lê a tela **sem comentário**: o arquivo que documenta o defeito removido não pode ser o que o absolve (21/09).
+
+### ⛔⛔⛔ E A VARREDURA ACHOU UM TERCEIRO, PINTADO NO CSS — o flanco era maior que a instância
+
+**Medindo os contrastes pro relatório:** o **badge do Contas a Pagar** e o **contador do sininho** pintavam branco sobre o **coral vivo** — **3,75:1 no claro e 2,78:1 no escuro**, num número de **10,5px** (texto normal, piso 4,5). **Reprovava nos dois temas.**
+
+⭐ **A causa de a varredura não ver:** ela lê **TSX** (`telasDoApp()`) e o badge pinta por **CLASSE no `globals.css`**. *"Guard que lê a vitrine não enxerga a prateleira"* — agora em CSS. Nasceu `violacoesL7NoCss`, e ela achou **DOIS** pares, não um.
+
+**⚠️⚠️ E A CURA DE 10/10 (TROCAR O CHÃO PRO `-solid`) NÃO SERVE AQUI — medido:** no escuro o `--fam-coral-solid` é **`#3a1917`**, um marrom quase preto. Num disco de 17px dentro de um trilho escuro **o badge de alarme ficaria invisível** — o número passaria e **a função morreria**. Lá o chão era um cartão grande; aqui é um ponto de alerta.
+
+**⭐⭐ ENTÃO O QUE CEDE É A TINTA, NÃO O CHÃO.** O vermelho vivo que ele pediu fica **idêntico** (`#e2544a`/`#f87168`) e o dígito vira o quase-preto da casa (`--prod-coral-on: #0a0f1e`): **5,09:1 claro · 6,87:1 escuro**. As quatro opções foram **medidas antes de escolher** — tinta forte reprova no escuro (2,44), coral-ink reprova nos dois (2,34/1,64), inverter o chão reprova no escuro (1,69).
+
+**⛔⛔ E O DETECTOR SAIU PRA LIB porque a REGRA 11 mostrou o limite dele:** repor o defeito e **arrancar a varredura com `it.skip` não produz vermelho nenhum** — *nenhum teste pega o próprio desligamento* (a classe do `void X` que contava como uso, 13/10). Com o detector em `lib/ui/varredura-l7.ts` ele roda em **DOIS lugares**: o guard da suíte **e a prova em prod, contra o CSS que o servidor SERVE**. Desligar um não esconde o outro.
+
+⚠️ **E o regex dele tinha um furo que só a medição pegou:** consumindo o delimitador, ele **pula de dois em dois** — **62 blocos de ~600**, e o badge ficava de fora. O auto-teste agora **exige que ele veja o badge**.
+
+### ⭐ FRENTE A — a tinta, a linha e a sombra
+
+Os tokens viram a única fonte de cor nos 2 temas. **`--radius` 0.5 → 0.75rem** (o `--r-cartao` da referência) alcança **161 Cards** com uma edição; a sombra sai do `ui/card` **por token**; `.dinheiro` (800 tabular) com **dois consumidores**.
+
+**⛔⛔ A ZEBRA FICOU OPT-IN POR MEDIÇÃO, não por gosto:** **13 de 22** tabelas de densidade pintam fundo de linha **por ESTADO**, e a zebra global **apagaria o sinal de estado**. ⚠️ E a especificidade é a armadilha: `.density-normal tbody tr:nth-child(even) td` vale (0,2,1) e vence um `bg-amber-50` no `tr` (0,1,0) — a zebra ganharia da cor que significa alguma coisa.
+
+**⛔⛔ A SOMBRA DO ESCURO VIROU `none` PORQUE A MEDIÇÃO REFUTOU A JUSTIFICATIVA ESCRITA NO ARQUIVO.** Ela dizia *"os painéis fundem"*; medido, canvas→cartão dá **1,09:1** e linha-sobre-cartão **1,24:1** — **idênticos ao tema claro**. Era precaução sem lastro.
+
+⚠️ **E o `.density-*` foi CONSUMIDO, nunca editado:** `lib/contas-pagar/virtualization.ts` **duplica** as alturas 36/48/60 pra virtualizar, com testes travando — mexer no CSS quebraria o cálculo da Contas a Pagar.
+
+### ⭐⭐ FRENTE B — o trilho, e a preferência na MESMA casa do tema
+
+Nasce **recolhido (64px)**, cresce no **`:hover` do PAI** (CSS, **zero listener**), o «» **fixa aberto**, badge **mini sobre o ícone** no recolhido, **gaveta** no celular. **A classe vem do SERVIDOR** (`class="trilho rec"` medido no HTML) — nunca de um `useState` com default, senão o trilho piscaria aberto antes de recolher.
+
+**⛔⛔ A PREFERÊNCIA É COLUNA, NÃO TABELA NOVA:** o dono disse *"a MESMA casa"*, e a casa é aquela linha. Uma tabela ao lado seria a **2ª porta de escrita** pro mesmo fato. Com a coluna, o upsert na PK `userId` segue sendo **UM** e gravar tema e trilho é o mesmo gesto. ⚠️ `ALTER` é permitido ali: a regra CREATE-only é do módulo de **ESTOQUE** (o guard só olha migrations `stock_`).
+
+**⭐ TRÊS CAMINHOS, UMA RESPOSTA:** a coluna nasce `NOT NULL DEFAULT 'recolhido'`, então **linha antiga, linha nova e a AUSÊNCIA de linha dizem a mesma coisa** — nada de backfill.
+
+### ⛔⛔⛔ REGRA 13 — O CHECK DEIXAVA PASSAR SÓ-ESPAÇO, E A PRÓPRIA PROVA ACHOU
+
+```
+⭐ recusou "trilho VAZIO"            pela chk_user_trilho_forma
+⛔⛔ ACEITOU "trilho só ESPAÇO"      — o CHECK não morde!
+⭐ recusou "trilho em CAIXA ALTA"    pela chk_user_trilho_forma
+                                      → 5 de 6
+```
+
+**A causa, medida:** `"trilho" <> ''` é **true** pra `'   '`, e `'   ' = lower('   ')` também. **A forma fraca só pega a string vazia.**
+
+⚠️⚠️ **E o estrago é exatamente o que a migration diz que o CHECK existe pra impedir:** só-espaço **cai no default CALADO** (`normalizarTrilho` apara e devolve `'recolhido'`). O dono fixaria o trilho aberto, o banco guardaria `'   '`, e ele nasceria recolhido **pra sempre, sem erro em lugar nenhum**.
+
+⭐ **O IRMÃO FOI JUNTO (REGRA 4):** `chk_user_tema_forma` (05/10) tem a **mesma forma, o mesmo furo e a mesma tabela**. *Corrigir N−1 é pior que não corrigir nenhum — metade fica certa e nada avisa.* **Migration NOVA**, porque aplicada não se reescreve (o checksum reprova o deploy). **Depois: 7 de 7 recusados · 3 de 3 aceitos · zero escrita líquida.**
+
+⚠️ O `IS NOT NULL` entra **mesmo com a coluna `NOT NULL`**, de propósito: hoje é redundante (a prova mede `is_nullable=NO`), e fica como **cinto pro dia em que alguém a tornar nullable** — a migration que fizer isso não vai lembrar de revisar o CHECK.
+
+📋 **REGISTRADO E NÃO CORRIGIDO, com a restrição nomeada:** dois CHECKs do **estoque** têm a mesma forma fraca (`chk_stock_radar_item_lista` 21/09 e `chk_venda_ignorado_nome` 23/09) e **NÃO têm como ser corrigidos por ALTER** — o guard de CI reprova `ALTER TABLE` em migration `stock_`. O estrago medido é **inerte** nos dois (só-espaço não casa lista nenhuma; o nome entra num índice único e nunca casa com nome do PDV), e a porta de escrita normaliza antes de gravar. **Decisão do dono se vale um sprint.**
+
+### ⭐⭐ FRENTE C — UMA BARRA, DOIS VIEWPORTS
+
+**A segunda composição MORREU.** O `dashboard-shell` tinha um header `md:hidden` com **os quatro controles escritos de novo**, e havia um guard policiando a igualdade das duas (*"o sininho tem que estar nas DUAS"*). **Com uma barra só, "o sininho é global" deixa de ser combinado e passa a ser construção** (REGRA 5). O que muda entre os viewports é o ☰ aparecer, **e isso é CSS** (`.menu-m`).
+
+**⚠️ TRÊS DIVERGÊNCIAS DECLARADAS da referência, cada uma com motivo:** `.pf` é extensão (ela só desenha PJ) · o `.sinal` mantém a **CONTAGEM** em vez do `.ponto` de 7px (o número existe desde 04/10 e **um disco não distingue 1 de 9**) · **nenhum `.busca`**, porque *CSS de controle que não existe é o convite pra alguém desenhar o campo achando que está pronto*.
+
+**⛔ A BUSCA ⌘K FICA PRA FASE 2, com o motivo escrito no arquivo:** **não há registro de telas pra ligar nela**, e campo morto é proibido (o `registry.parse` decorativo que esta casa já pagou). ⚠️ E o guard checa a ausência em `semComentarios(BAR)` e o **motivo** no arquivo cru — a 1ª versão se contradizia (afirmava que a frase não existe E que existe).
+
+### ⛔⛔ A REGRESSÃO É "ROUPA", E ISSO VIROU GUARD
+
+`a-fundacao-e-roupa.test.ts` é o **dono único** da pergunta *"o sprint é roupa?"* — o describe que vivia no `tinta-e-linha-da-fundacao` **mudou de casa** e ficou **mais forte**. Três redes: quem é roupa **não fala com o banco**; a **escrita é UMA** (varredura do app inteiro: 1 arquivo escreve a preferência, a rota é casca, a régua é pura); as **migrations** mexem numa tabela só e **não encostam em nenhuma tabela de dinheiro ou de estoque**.
+
+**⭐ E "QUEM BUSCA TEM A LISTA FECHADA" é mais forte que "zero fetch":** três arquivos de roupa já falavam com rota **antes** do sprint (o tema, a sessão, o badge de retiradas) — proibir `fetch` neles obrigaria a afrouxar pra zero. Com a lista por arquivo, **rota nova aparece como vermelho**, inclusive uma rota de dinheiro no botão do tema.
+
+⚠️ **E um guard foi REAPONTADO com o motivo escrito:** ele dizia *"o sprint trouxe UMA migration"*, e a correção do CHECK exigiu uma segunda. *A pergunta é sobre a TABELA, não sobre a contagem — contagem cresce junto com o sprint e cobra por cada arquivo novo; ela media o tamanho, não a doença.*
+
+### ⚠️⚠️ REGRA 11 — 20 DEFEITOS REPOSTOS, e DOIS verdes com lição
+
+Mordem: o fóssil do `text-white` (**1**) · ler COMENTÁRIO (**2**) · primitivo buscando dado (**1**) · botão do tema falando com rota de dinheiro (**1**) · 2ª porta de escrita (**2**) · rota tocando Prisma (**1**) · régua gravando (**2**) · migration encostando em dinheiro (**2**) · migration com DROP (**1**) · o badge voltando ao branco (**1**) · o regex pulando blocos (**1**) · o token nascendo claro no escuro (**1**).
+
+**⛔⛔ Os dois verdes:** (a) **cegar o detector com o defeito JÁ corrigido** não dá vermelho — *com nada na tela pra detectar, o detector não tem o que achar*; o caso que **isola** é o **PAR** (repor o defeito **e** cegar o detector no mesmo gesto). (b) **`it.skip` na varredura** — nenhum teste alcança o próprio desligamento, e **foi isso que levou o detector pra lib**.
+
+**⚠️ E A SONDA DEIXOU O REPO SUJO UMA VEZ:** o backup usava `d.name.replace('__','/')` e `__tests__/…` **começa com `__`** → ela tentou escrever em `/tests/…` e deixou o guard **mutado**. Restaurado do backup (`cp`, **nunca** `git checkout` — a cicatriz de 14/09). As sondas passaram a usar sentinela `%%` e a **ASSERTAR que a substituição aplicou**.
+
+### A PROVA EM PROD — 7 TELAS × 2 VIEWPORTS × 2 TEMAS
+
+```
+Quem paga a casa   CELULAR 200/375ms · DESKTOP 200/75ms     Custos fixos      200 · 200
+Produção (hoje)    200 · 200                                 Vendas            200 · 200
+Receitas           200 · 200                                 página da ordem   200 · 200
+CSS servido: 2 arquivos · 2.671 regras
+  ⭐ os 23 tokens da fundação nos DOIS mapas: 23
+  ⭐ L6 sombra: claro "0 1px 2px … , 0 2px 6px …" · escuro "none"
+  ⭐ L4: cabeçalho 2px · divisória 1px · zebra OPT-IN · hover gateado · .dinheiro 800 tabular
+  ⭐ L1: 64px/230px · :hover no pai · transição · badge absoluto · marca em gradiente · .menu-m
+⭐⭐ L7 no CSS SERVIDO (o mesmo detector do guard): 0 pares reprovando
+O TRILHO E O TOPO (nos dois): class="trilho rec" do servidor · UMA barra · ☰ no DOM ·
+  logomarca · selo PJ/PF · sino · botão de tema · avatar
+A PREFERÊNCIA: PUT aberto → 200 e a TELA nasce aberta · PUT recolhido → 200
+  "ABERTO" TOLERADO e normalizado (o banco nunca vê caixa alta) · "gaveta" → 400, nada gravou
+  o TEMA sobreviveu aos PUTs do trilho
+⭐ DEVOLVIDO: tema=claro trilho=recolhido · linhas 2 → 2 — como encontrou
+```
+
+**⚠️⚠️ E A PROVA ERROU 4 VEZES ANTES DE MEDIR CERTO — as quatro MINHAS:** chutei o nome do token (`--prod-trilho-bg` **não existe**) · chutei o campo do relatório (`createdAt`, é **`runAt`**) · afirmei *"nenhuma rota de negócio"* no **bundle**, onde o chunk junta o trilho inteiro com o badge que lê `/api/empresas` (***achado não atribuível não é achado***) · e chamei `'ABERTO'` de torto levando **200**: a rota **tolera caixa e espaço** e normaliza antes de gravar; o que ela recusa é **`'gaveta'`**. ***Caixa alta é torto pro CHECK do BANCO; valor desconhecido é torto pra ROTA*** — duas perguntas, e eu as misturei.
+
+**981 arquivos · 13.095 verdes · 2 todo · TS 0 · `pg_dump pre-fundacao-fase1-20261014-151931.dump` (9.280.851 bytes, tamanho conferido) · 2 migrations (ADD COLUMN + CHECK; e a correção do CHECK) · deploys 4/4 (`4Mf4I_eDMwLb17P7NM5pf`, `21fRIHm52wM2930U4Cv3Y`, `RRrLvoZg-mt-yVftaC2T5`) · Δ chunks +4 KB.**
+
+⚠️ **O JUIZ NÃO SE MOVEU POR CAUSA DA FUNDAÇÃO, e a prova é melhor que um antes/depois:** o sprint **não gravou uma linha** de conta (a prova mede zero escrita líquida além da preferência, devolvida), e **invariante é função do estado do banco**. Quadro de hoje: `V1 125 · E7 118 · P6 90 · P8 62 · P3 58 · M1 53 · F2 26 · E15 10 · P5 4 · P1 2 · M2 1 · M3 1 · **E17 1**`, com `venda 2 · cartão 7 · balance 0 · dup 0 · 10/10 contratos`. **`venda` e `cartão` idênticos ao registrado em 06/10**; os deltas do estoque são operação entre 13/10 e hoje. 📋 **O `E17 1` é NOVO** (o invariante do custo vigente, que estava em 0 em 13/10) — **não é deste sprint** (nada da fundação toca custo) e fica registrado.
+
+⚠️ **E O D4 DO JUIZ ACUSOU POR MINHA CAUSA, com o diagnóstico INVERTIDO:** eu rodo `git checkout -- prisma/schema.prisma` antes de cada pull (o swap é passo do deploy), então o schema do disco voltou pra `sqlite` enquanto o client gerado é `postgresql`. **O D4 diz *"TODA query ao banco falha"* e o app estava respondendo 200 nas 7 telas** — ele foi desenhado pra a direção oposta (client sqlite com schema postgres). Alinhado com o swap; login **401**, não 500. 📋 Fica registrado: **depois de `git pull` sem deploy, rodar o swap** — ou o D4 acusa sozinho.
+
+📋 **FICA PRO DONO (REGRA 2, o olho é dele):** abrir as telas-chave **no celular e no notebook, nos dois temas**, passar o mouse no trilho recolhido, fixar com o «» e recarregar (a preferência tem que sobreviver), e **conferir a gaveta pelo ☰ no celular**. ⚠️ **Screenshot indisponível** (a extensão do Chrome não está ligada nesta sessão): a prova mede o que prod serve — os 23 tokens nos dois mapas, as regras do CSS, a classe que vem do servidor, zero par reprovando —, **mas quem vê a cara é ele**.
+
+📋 **FASE 2 (o próprio brief defere):** densidade tela a tela · as telas antigas fora do padrão · a **busca ⌘K**, que só entra quando houver registro de telas pra ligar nela.
+
 ## 🧺⭐⭐⭐ O CARTÃO DE PRODUTO VIROU CESTA + O CAMPO DE PREÇO CONSERTADO (14/10/2026)
 
 **A dor, nas palavras do dono:** *"quando vou troca numero eu excluir ele volta na hora mesmo numero"*. E o pedido grande: o cartão *"Escolha um produto"* passa a aceitar **2+ produtos** e virar **MODO COMBO**.
