@@ -154,18 +154,39 @@ describe('⛔⛔⛔ REDE 2 — a ESCRITA do sprint é UMA SÓ', () => {
   })
 })
 
-describe('⛔⛔ REDE 3 — a MIGRATION do sprint só acrescenta a coluna da preferência', () => {
-  const DIR = 'prisma/migrations/20261014140000_user_trilho_preferencia'
-  const sql = () => ler(`${DIR}/migration.sql`)
+describe('⛔⛔ REDE 3 — as MIGRATIONS do sprint só mexem na tabela da preferência', () => {
+  /**
+   * ⚠️⚠️ **ESTE DESCRIBE FOI REAPONTADO, E O MOTIVO É UM ACHADO.** Ele dizia *"o sprint trouxe
+   * UMA migration"*, com o argumento de que *"duas migrations numa fundação de UI seria o sinal
+   * de que algo além da preferência foi gravado"*. **A prova em prod achou o `'   '` passando
+   * pelo CHECK** (`<> ''` é true pra só-espaço) e a correção exigiu uma **segunda** migration —
+   * aplicada não se reescreve. O argumento continua valendo; o que mudou é que **a pergunta é
+   * sobre a TABELA, não sobre a contagem**: duas migrations da MESMA tabela de preferência são
+   * roupa; uma que encoste em `transactions` não é. *Contagem cresce junto com o sprint e cobra
+   * por cada arquivo novo — ela media o tamanho, não a doença.*
+   */
+  const DIR_BASE = 'prisma/migrations'
 
-  /** ⚠️ Lê só os comandos — o cabeçalho do arquivo explica a decisão e cita outras tabelas. */
+  /** as migrations do dia — descobertas, nunca digitadas (lista à mão envelhece no próximo fix) */
+  const doSprint = () =>
+    readdirSync(join(RAIZ, DIR_BASE))
+      .filter((d) => d.startsWith('20261014'))
+      .sort()
+
+  /** ⚠️ Lê só os comandos — o cabeçalho de cada arquivo explica a decisão e cita outras tabelas. */
   const comandos = () =>
-    sql()
+    doSprint()
+      .map((d) => ler(`${DIR_BASE}/${d}/migration.sql`))
+      .join('\n')
       .split('\n')
       .filter((l) => !l.trim().startsWith('--'))
       .join('\n')
 
-  it('⭐ ela mexe numa tabela só, e é a da preferência', () => {
+  it('⭐ o sprint trouxe migration (e são todas da preferência)', () => {
+    expect(doSprint().length, 'a fundação gravou alguma coisa').toBeGreaterThan(0)
+  })
+
+  it('⭐ elas mexem numa tabela só, e é a da preferência', () => {
     const tabelas = [...comandos().matchAll(/ALTER TABLE\s+"([^"]+)"/gi)].map((m) => m[1])
     expect([...new Set(tabelas)], 'uma tabela, a do tema').toEqual(['user_tema_preferencia'])
   })
@@ -206,16 +227,14 @@ describe('⛔⛔ REDE 3 — a MIGRATION do sprint só acrescenta a coluna da pre
   })
 
   /**
-   * ⭐⭐ **E ELA É A ÚNICA MIGRATION DO SPRINT.** Duas migrations numa fundação de UI seria o
-   * sinal de que alguma coisa além da preferência foi gravada.
+   * ⭐⭐ **E A COLUNA DA PREFERÊNCIA CONTINUA LÁ** — a correção do CHECK (`20261014160000`) faz
+   * `DROP CONSTRAINT` + `ADD CONSTRAINT` na mesma transação, o que é troca de régua; o que a
+   * REDE 3 proíbe é `DROP COLUMN`/`DROP TABLE`, que seria perda de dado.
    */
-  it('⭐ o sprint trouxe UMA migration', () => {
-    const dias = readdirSync(join(RAIZ, 'prisma/migrations')).filter((d) =>
-      d.startsWith('20261014'),
-    )
-    expect(dias, 'uma migration no dia da fundação').toEqual([
-      '20261014140000_user_trilho_preferencia',
-    ])
+  it('⭐ a coluna da preferência sobrevive às duas migrations', () => {
+    const cmd = comandos()
+    expect(cmd, 'a coluna nasce').toMatch(/ADD COLUMN\s+"trilho"/)
+    expect(/DROP\s+COLUMN\s+"trilho"/.test(cmd), 'e nunca é apagada').toBe(false)
   })
 })
 

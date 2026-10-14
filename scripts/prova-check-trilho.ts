@@ -71,6 +71,14 @@ async function main() {
     /** ⚠️ o CHECK do TEMA tem que continuar mordendo — o ALTER de hoje não pode tê-lo afrouxado */
     { nome: 'tema VAZIO (o CHECK de 05/10 segue de pé)', constraint: CONSTRAINT_TEMA, run: () => insere('t5', '', 'aberto') },
     { nome: 'tema em CAIXA ALTA (idem)', constraint: CONSTRAINT_TEMA, run: () => insere('t6', 'ESCURO', 'aberto') },
+    /**
+     * ⭐⭐ O CASO QUE ESTA PROVA ACHOU EM PROD, dos DOIS lados (14/10). A 1ª rodada devolveu
+     * **5 de 6** porque `"trilho" <> ''` é **true** pra `'   '` — a forma fraca só pega a string
+     * vazia. O irmão do tema tem a mesma forma e o mesmo furo; os dois foram corrigidos na
+     * migration `20261014160000` com `length(trim(...)) > 0`. **Os dois casos ficam aqui pra
+     * sempre: foi o que a régua deixou passar.**
+     */
+    { nome: 'tema só ESPAÇO (o furo achado em prod)', constraint: CONSTRAINT_TEMA, run: () => insere('t7', '   ', 'aberto') },
   ]
 
   let recusados = 0
