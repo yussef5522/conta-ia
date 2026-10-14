@@ -166,8 +166,14 @@ async function main() {
     '--prod-acao-bg',
     '--prod-acao-ink',
     '--prod-sombra',
-    '--prod-trilho-bg',
+    // ⚠️ os nomes são os do CSS, LIDOS dele — a 1ª rodada chutou `--prod-trilho-bg`,
+    // que não existe, e deu 1 falso vermelho de 20. *Chutar nome de token produz
+    // achado falso tão convincente quanto um real.*
+    '--prod-trilho',
+    '--prod-trilho-tx',
     '--prod-trilho-on',
+    '--prod-trilho-pilula',
+    '--prod-trilho-borda',
     '--fam-coral-mid',
     '--fam-ambar-solid',
     '--fam-ambar-on',
@@ -267,9 +273,16 @@ async function main() {
     return achado
   })()
   console.log('\n── A GAVETA E O «», no bundle servido ──')
+  /**
+   * ⚠️⚠️ **"E NENHUMA ROTA DE NEGÓCIO" SAIU DAQUI — não é atribuível no bundle.** A 1ª rodada
+   * deu vermelho: o chunk que carrega o «» **junta vários componentes** (o trilho inteiro, e
+   * com ele o badge que lê `/api/empresas/.../retiradas-pendentes`), então achar
+   * `/api/empresas` ali **não diz de quem é a chamada**. *Achado não atribuível não é achado*
+   * (a cicatriz de 06/10). Quem garante a procedência é o guard, que lê a FONTE arquivo por
+   * arquivo com a lista fechada de rotas por arquivo.
+   */
   for (const [q, v] of [
     ['o «» grava a preferência (/api/trilho)', chunkDoBotao.includes('/api/trilho')],
-    ['e NENHUMA rota de negócio', !/\/api\/empresas/.test(chunkDoBotao)],
     ['o PUT que falha DIZ o motivo', temFrase(chunkDoBotao, 'não consegui')],
   ] as const) {
     console.log(`  ${ok(v)} ${q}`)
@@ -323,10 +336,27 @@ async function main() {
   const dep2 = await lerPreferenciaDeTela(u.id)
   console.log(`  ${ok(a2.status === 200 && dep2.trilho === 'recolhido')} PUT recolhido → ${a2.status} · o banco diz "${dep2.trilho}"`)
 
-  const torto = await put('ABERTO')
-  console.log(`  ${ok(torto.status !== 200)} PUT "ABERTO" (torto) → ${torto.status} ${torto.corpo.slice(0, 80)}`)
+  /**
+   * ⚠️⚠️ **O TORTO DA ROTA É O DESCONHECIDO, NÃO A CAIXA ALTA — e a 1ª rodada me corrigiu.**
+   * Eu mandei `'ABERTO'` chamando de torto e levei 200: a rota **tolera caixa e espaço** e
+   * normaliza ANTES de gravar (é a régua de leitura, e é o que mantém o banco só com o
+   * normalizado). O que ela recusa — e está escrito no arquivo dela — é o valor que ela não
+   * conhece: *"aceitar 'gaveta' e gravar 'recolhido' faria o «» responder ok e fazer outra
+   * coisa — a família do salvo que mentia"*. **Caixa alta é torto pro CHECK do BANCO; valor
+   * desconhecido é torto pra ROTA.** Duas perguntas, e eu as misturei.
+   */
+  const tolerado = await put('ABERTO')
+  const depTolerado = await lerPreferenciaDeTela(u.id)
+  console.log(
+    `  ${ok(tolerado.status === 200 && depTolerado.trilho === 'aberto')} PUT "ABERTO" é TOLERADO e normalizado → ${tolerado.status} · o banco diz "${depTolerado.trilho}" (nunca 'ABERTO')`,
+  )
+
+  const torto = await put('gaveta')
+  console.log(`  ${ok(torto.status === 400)} PUT "gaveta" (desconhecido) → ${torto.status} ${torto.corpo.slice(0, 70)}`)
   const depTorto = await lerPreferenciaDeTela(u.id)
-  console.log(`  ${ok(depTorto.trilho === 'recolhido')} e NADA gravou: "${depTorto.trilho}"`)
+  console.log(
+    `  ${ok(depTorto.trilho === 'aberto')} e NADA gravou — segue no último válido: "${depTorto.trilho}"`,
+  )
 
   // ⭐ o TEMA não foi sobrescrito por nenhum dos PUTs do trilho
   console.log(
