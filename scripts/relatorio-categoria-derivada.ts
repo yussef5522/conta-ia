@@ -85,12 +85,35 @@ async function main() {
   console.log(`  ⚠️ seções no mapa SEM TETO DECLARADO pelo dono: ${semTetoDeclarado.length}`)
   for (const [s, g] of semTetoDeclarado) console.log(`       ${s} · ${g.un} un — decisão DELE, não minha`)
 
-  /** ⚠️ e os TOP derivados por volume, pro dono ver o que mais pesa */
-  console.log(`\n═══ OS 15 DERIVADOS DE MAIOR VOLUME ═══`)
-  for (const p of [...derivados].sort((a, b) => b.unidades - a.unidades).slice(0, 15)) {
-    console.log(
-      `  ${String(p.unidades).padStart(5)} un · teto ${p.regua.tetoPct}% · ${p.secao.padEnd(12)} · ${p.nome}`,
-    )
+  /**
+   * ⭐⭐ A LISTA QUE O DONO VAI CONFERIR — e ela separa **duas saídas diferentes**:
+   *
+   * ⛔ **CLASSIFICAR** (seção `OUTROS`): a régua de palavra não soube o que é o produto, e
+   * `OUTROS` é derivado **por desenho**. O gesto existe desde 08/09 (*"a régua sugere, o dono
+   * confirma em UM gesto"*) — e eu **não alargo a régua por conta própria**: *nome desconhecido
+   * em Outros é 1 clique; nome na seção ERRADA é um número errado no relatório de cobertura, e
+   * ninguém desconfia de número.*
+   *
+   * ⚠️ **DECLARAR O TETO** (seção certa, teto nunca declarado): aqui a classificação está
+   * pronta e falta o número DELE. Chutar um teto de bebida seria eu decidindo a política de
+   * preço da casa.
+   */
+  const paraClassificar = derivados.filter((p) => p.secao === 'OUTROS')
+  const paraDeclararTeto = derivados.filter((p) => p.secao !== 'OUTROS')
+
+  console.log(`\n═══ 1 · CLASSIFICAR (a régua não soube) — ${paraClassificar.length} produtos ═══`)
+  console.log(`  o gesto: /empresas/${EMPRESA}/estoque/cardapio/secoes (confirma em lote)`)
+  for (const p of [...paraClassificar].sort((a, b) => b.unidades - a.unidades)) {
+    console.log(`  ${String(p.unidades).padStart(5)} un · ${p.nome}`)
+  }
+
+  console.log(`\n═══ 2 · DECLARAR O TETO (a seção já está certa) — ${paraDeclararTeto.length} produtos ═══`)
+  const porSecao2 = new Map<string, number>()
+  for (const p of paraDeclararTeto) porSecao2.set(p.secao, (porSecao2.get(p.secao) ?? 0) + p.unidades)
+  for (const [sec, un] of [...porSecao2.entries()].sort((a, b) => b[1] - a[1])) {
+    const nomeReal = secoes.find((s) => s.chave === sec)?.nome ?? sec
+    console.log(`  ⚠️ ${sec} «${nomeReal}» · ${un} un · teto hoje ${REGUA_POR_SECAO[sec]?.tetoPct ?? '?'}% DERIVADO`)
+    console.log(`     o número é DELE: qual o CMV máximo que ${nomeReal.toLowerCase()} pode consumir?`)
   }
 }
 
