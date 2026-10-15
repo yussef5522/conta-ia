@@ -18,6 +18,13 @@ import { semComentarios, usosDe } from '../../../__tests__/regras-ui/_leitura-de
 
 const RAIZ = process.cwd()
 const PORTA = 'lib/stock/custo-vigente.ts'
+/**
+ * ⚠️ A LEI saiu de `custo-vigente.ts` pra cá em 15/10, por CICLO DE IMPORT (`residuo-de-
+ * centavos` → porta → `contagem-ancora` → `entrada-cruza-o-zero` → de volta; 177 testes
+ * vermelhos com um `undefined` no meio da gravação de movimento). ⛔ **A PORTA não mudou** —
+ * `custo-vigente.ts` RE-EXPORTA a lei, e todo leitor de sempre segue importando dela.
+ */
+const LEI = 'lib/stock/lei-do-custo-medio.ts'
 const SALDO = 'lib/stock/saldo.ts'
 
 const fonte = (rel: string) => readFileSync(join(RAIZ, rel), 'utf8')
@@ -42,10 +49,11 @@ const PREVIAS_DE_ESTADO_HIPOTETICO = new Set([
    * usá-lo pra mover dinheiro é a classe do `2,3125` do pão (27/08) — é o que faz o resíduo de
    * centavos NASCER.
    *
-   * ⚠️⚠️ **E ela devolve ZERO com saldo ≤ 0 — a baixa de item negativo sai de graça.** Agora
-   * que o item TEM memória, dava pra baixar pelo último custo conhecido; isso MOVERIA dinheiro
-   * no ledger, então é **decisão do dono** (item 4 do sprint de 13/10: *"investigar e só
-   * relatar"*). Está medido no relatório, não mexido.
+   * ⭐⭐ **E O DÉBITO QUE ESTE COMENTÁRIO REGISTRAVA FOI FECHADO EM 15/10:** ela devolvia ZERO
+   * com saldo ≤ 0 (293 movimentos a custo zero no ledger, medidos) e **o dono decidiu** que
+   * saída de item negativado sai pelo CUSTO VIGENTE. ⛔ O ramo negativo agora **DELEGA** a
+   * `custoMedioComMemoria` — não é uma 2ª régua: é a MESMA lei, chamada de outro leitor. O que
+   * continua morando aqui é só a precisão cheia do ramo positivo.
    */
   'lib/stock/residuo-de-centavos.ts',
 ])
@@ -115,7 +123,7 @@ describe('⛔ NINGUÉM DIVIDE valor/saldo FORA DA PORTA', () => {
     const arquivos = [...varrer('lib/stock'), ...varrer('lib/margem')]
     const fora: string[] = []
     for (const f of arquivos) {
-      if (f === PORTA || f === SALDO || PREVIAS_DE_ESTADO_HIPOTETICO.has(f)) continue
+      if (f === PORTA || f === LEI || f === SALDO || PREVIAS_DE_ESTADO_HIPOTETICO.has(f)) continue
       const achadas = divisoesDeCustoMedio(limpa(f))
       if (achadas.length) fora.push(`${f}: ${achadas.join(' | ')}`)
     }

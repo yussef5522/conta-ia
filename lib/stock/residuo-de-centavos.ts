@@ -24,6 +24,18 @@
 // e a conclusão de produção): ***o ledger guarda precisão cheia; quem arredonda é a
 // leitura***. Com o custo em precisão cheia o resíduo **não nasce** — o teto abaixo é só
 // pra o que JÁ está gravado.
+//
+// ⚠️⚠️ **EM 15/10 ESTE ARQUIVO PASSOU A IMPORTAR A LEI DO CUSTO** (`custoMedioComMemoria`),
+// pra o ramo de saldo ≤ 0 — a alternativa era reescrever a lei aqui, e aí seriam duas réguas
+// pra mesma pergunta.
+//
+// ⛔⛔ **E O IMPORT TEM QUE SER O MÓDULO PURO (`lei-do-custo-medio`), NUNCA `custo-vigente`:**
+// importar o `custo-vigente` fecha um CICLO (ele → `contagem-ancora` → `entrada-cruza-o-zero`
+// → de volta pra cá, pelo `ERRO_POR_UNIDADE`) e o sintoma não é erro de módulo — é
+// `TIPOS_COM_CUSTO_CONHECIDO` chegando **undefined** no meio da gravação de um movimento.
+// Foram **177 testes vermelhos** até a suíte apontar isso.
+
+import { custoMedioComMemoria } from './lei-do-custo-medio'
 
 /** meio centavo por unidade é o pior caso de um custo arredondado na 2ª casa */
 export const ERRO_POR_UNIDADE = 0.005
@@ -81,8 +93,40 @@ export function avaliarResiduo(e: EstadoDoItem): VeredictoDoResiduo {
  * ⛔ É isto que impede o resíduo de NASCER. `round2(valor/saldo)` é número de TELA; usá-lo
  * pra mover dinheiro no ledger é a mesma classe do `2,3125` do pão (27/08) e do custo por
  * unidade da conclusão de produção (21/08), que já morderam.
+ *
+ * ═══ ⛔⛔⛔ SALDO ≤ 0 SAI PELO CUSTO VIGENTE (15/10/2026) ═══
+ *
+ * **O furo, achado na conferência de 14/10:** este ramo devolvia **0**, e com isso a venda
+ * de um item negativado entrava no ledger com **quantidade e R$ 0,00 de custo**. Medido em
+ * prod: **293 movimentos a custo zero** (2.589,817 un · BAIXA_VENDA 249 + SEPARACAO_SAIDA
+ * 44), crescendo ~16/dia. **Efeito: CMV menor que a verdade e lucro parecendo maior que é**
+ * — e ninguém desconfia, porque o número sai plausível.
+ *
+ * ⭐⭐ **A LEI DO saldo ≤ 0 TEM UM DONO SÓ, E ELE JÁ EXISTIA:** `custoMedioComMemoria`
+ * (13/10). Este leitor **DELEGA** o ramo negativo a ela em vez de reimplementar *"quanto
+ * vale a memória"* — se reimplementasse, seriam **duas réguas pra mesma pergunta**, e elas
+ * divergiriam no primeiro caso de borda (memória ≤ 0, memória ausente). É a doença que esta
+ * casa mais paga. O que continua morando AQUI é a **precisão cheia** do ramo positivo.
+ *
+ * ⚠️ **O `vigente` é parâmetro OBRIGATÓRIO, nunca opcional com default `null`:** um default
+ * faria o chamador que esquecesse de passá-lo receber **0 em silêncio** — exatamente o furo
+ * que este sprint fecha, voltando invisível. Obrigatório, o `tsc` acha todos os chamadores
+ * (REGRA 4 de graça) e esquecer **não compila**.
+ *
+ * ⛔ **Item sem vigente continua 0, honesto como hoje.** São os 15 "a definir" medidos em
+ * prod: nunca tiveram entrada com valor, então não existe preço conhecido nem pra estimar.
+ * **Número inventado NUNCA** — num item assim, um custo chutado entra no CMV *saindo
+ * plausível*, que é o pior tipo de erro (a lição da FANTA UVA).
+ *
+ * ⚠️ **E a SEPARAÇÃO já obedece a MESMA lei, por outro leitor — medido, não suposto:**
+ * `confirmarSeparacao` usa `custoMedioPorItem`, que desce pra `saldosDaEmpresa → montar →
+ * custoMedioComMemoria`. Os dois tipos passam pela mesma lei; o que difere é a PRECISÃO, de
+ * propósito — o quarteto da produção (separação · consumo · devolução · geração) usa todo
+ * ele o MESMO custo arredondado, e é isso que faz o valor do armazém virtual **zerar**
+ * quando a ordem fecha. Trocar só a separação pra precisão cheia deixaria centavos presos no
+ * em-produção, e os invariantes P1/P4 são de QUANTIDADE — não acusariam.
  */
-export function custoParaBaixar(valorAtual: number, saldoAtual: number): number {
-  if (!(saldoAtual > 0)) return 0
-  return valorAtual / saldoAtual
+export function custoParaBaixar(valorAtual: number, saldoAtual: number, vigente: number | null): number {
+  if (saldoAtual > 0) return valorAtual / saldoAtual
+  return custoMedioComMemoria(saldoAtual, valorAtual, vigente) ?? 0
 }

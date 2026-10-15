@@ -41,22 +41,14 @@ const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 // ────────────────────────────────────────────────────────────────
 
 /**
- * ⭐⭐⭐ A LEI DO CUSTO MÉDIO — e ela é a ÚNICA porta: `saldo.ts` chama ESTA função.
+ * ⭐⭐ A LEI mora em `lei-do-custo-medio.ts` (módulo PURO) e é **RE-EXPORTADA aqui**.
  *
- * - `saldo > 0` → `valor ÷ saldo`, **igual a hoje, ao centavo** (zero regressão: ficha fechada
- *   com estoque em pé não muda um centavo);
- * - `saldo ≤ 0` → **o último custo médio conhecido** (a memória);
- * - **nunca teve entrada com valor** → `null` = *"a definir"*. ⛔ Número inventado NUNCA: num
- *   item sem compra nenhuma, um custo chutado entra na ficha, no cardápio e no CMV **saindo
- *   plausível** — que é o pior tipo de erro (a lição da FANTA UVA).
- *
- * ⚠️ Memória `≤ 0` é tratada como ausência: custo zero ou negativo não é "o que a coisa
- * custa", é resquício de um estado impossível — e propagá-lo seria propagar a ficção.
+ * ⚠️ Ela saiu em 15/10 por CICLO DE IMPORT (`residuo-de-centavos` → aqui → `contagem-ancora`
+ * → `entrada-cruza-o-zero` → de volta), que derrubou 177 testes com um `undefined` no meio da
+ * gravação de movimento. ⛔ **A porta continua sendo ESTA** — quem já importava daqui não
+ * mudou de lugar, e não existe uma 2ª régua pra "quanto vale a memória".
  */
-export function custoMedioComMemoria(saldo: number, valor: number, vigente: number | null): number | null {
-  if (saldo > 0) return round2(valor / saldo)
-  return vigente != null && vigente > 0 ? round2(vigente) : null
-}
+export { custoMedioComMemoria } from './lei-do-custo-medio'
 
 export interface EntradaQueEnsinaCusto {
   tipo: string

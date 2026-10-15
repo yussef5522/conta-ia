@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import { montarPlanoReprocesso } from '../lib/stock/vendas/baixa-venda'
 import { saldosDaEmpresa } from '../lib/stock/saldo'
 import { avaliarResiduo, custoParaBaixar } from '../lib/stock/residuo-de-centavos'
+import { custoVigentePorItem } from '../lib/stock/custo-vigente'
 import { exigirEmpresaNesteBanco } from '../lib/scripts/prova-banco'
 
 const EMPRESA = 'cmq17yapb00gnrndlh33sctbo'
@@ -17,6 +18,8 @@ async function main() {
 
   const saldos = await saldosDaEmpresa(db, EMPRESA)
   const estado = new Map(saldos.map((s) => [s.itemId, s]))
+  // ⭐ a memória do custo (15/10) — é ela que dá custo à saída de item negativado
+  const vigentes = await custoVigentePorItem(db, EMPRESA)
   const round2 = (n: number) => Math.round(n * 100) / 100
 
   console.log(`\n=== BAIXA DE ${DIA} ===`)
@@ -26,7 +29,7 @@ async function main() {
   const ajusta: string[] = []
   for (const a of r.plano.agregada) {
     const at = estado.get(a.itemId)
-    const cheio = custoParaBaixar(at?.valor ?? 0, at?.saldo ?? 0)
+    const cheio = custoParaBaixar(at?.valor ?? 0, at?.saldo ?? 0, vigentes.get(a.itemId) ?? null)
     const custoTotal = round2(-a.qtd * cheio)
     const v = avaliarResiduo({
       saldoAntes: at?.saldo ?? 0, valorAntes: at?.valor ?? 0,

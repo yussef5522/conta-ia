@@ -14,6 +14,7 @@ import type { ResultadoDaSanidade } from './sanidade-do-import'
 import { criarMovimento, estornarMovimento } from '../movement'
 import { custoMedioPorItem, recomputeSaldoCache, saldosDaEmpresa } from '../saldo'
 import { avaliarResiduo, custoParaBaixar } from '../residuo-de-centavos'
+import { custoVigentePorItem } from '../custo-vigente'
 import { BaixaComItemBarradoError, semOsPendentes, type ItemBarrado } from './itens-pendentes-da-baixa'
 import { MovementInvalidError } from '../movement'
 
@@ -271,12 +272,23 @@ async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[]
      */
     const saldosAgora = await saldosDaEmpresa(tx, companyId)
     const estado = new Map(saldosAgora.map((s) => [s.itemId, s]))
+    /**
+     * ⭐⭐ A MEMÓRIA DO CUSTO, lida UMA VEZ pro lote inteiro (15/10/2026).
+     *
+     * Ela é o que faz a saída de item **negativado** sair pelo **custo vigente** em vez de
+     * R$ 0,00 — o furo que pôs 293 movimentos a custo zero no ledger. Quem decide é a porta
+     * única (`custoParaBaixar`), que delega o ramo negativo à lei de 13/10.
+     *
+     * ⚠️ **FORA do laço, de propósito:** uma consulta por item num plano de 58 itens é a
+     * doença dos 4.909 ms / 1.786 consultas de 28/09. Aqui é 1 consulta pro lote.
+     */
+    const vigentes = await custoVigentePorItem(tx, companyId)
     const barrados: ItemBarrado[] = []
     const aBaixar = semOsPendentes(plano.agregada, itensPendentes)
     for (const a of aBaixar) {
       if (a.qtd <= 0) continue
       const at = estado.get(a.itemId)
-      const custo = custoParaBaixar(at?.valor ?? 0, at?.saldo ?? 0)
+      const custo = custoParaBaixar(at?.valor ?? 0, at?.saldo ?? 0, vigentes.get(a.itemId) ?? null)
       let custoTotal = round2(-a.qtd * custo)
       const v = avaliarResiduo({
         saldoAntes: at?.saldo ?? 0, valorAntes: at?.valor ?? 0,

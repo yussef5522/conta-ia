@@ -31,7 +31,8 @@ const fonte = (arq: string) =>
 
 describe('⭐⭐ o custo em PRECISÃO CHEIA faz o resíduo não nascer', () => {
   it('⭐ o caso real dos ovos: 1.019 un · R$ 555,64', () => {
-    const cheio = custoParaBaixar(555.64, 1019)
+    // ⚠️ o 3º param é a memória do custo (15/10): com saldo EM PÉ ela é ignorada de propósito
+    const cheio = custoParaBaixar(555.64, 1019, null)
     // com o custo cheio, zerar deixa exatamente zero
     const v = avaliarResiduo({ saldoAntes: 1019, valorAntes: 555.64, qtdDaBaixa: 1019, valorDaBaixa: Math.round(1019 * cheio * 100) / 100 })
     expect(v.saldoDepois).toBe(0)
@@ -46,8 +47,10 @@ describe('⭐⭐ o custo em PRECISÃO CHEIA faz o resíduo não nascer', () => {
   })
 
   it('⭐ item sem saldo não divide por zero', () => {
-    expect(custoParaBaixar(0, 0)).toBe(0)
-    expect(custoParaBaixar(10, 0)).toBe(0)
+    // ⚠️ SEM memória do custo continua 0 — honesto. Com memória, a régua é a de 15/10
+    // (`saida-no-negativo-sai-pelo-vigente`): o custo vigente manda.
+    expect(custoParaBaixar(0, 0, null)).toBe(0)
+    expect(custoParaBaixar(10, 0, null)).toBe(0)
   })
 })
 
@@ -121,9 +124,25 @@ describe('⭐⭐ o lote não fica refém de um item', () => {
       .toMatch(/if \(barrados\.length\) throw new BaixaComItemBarradoError/)
   })
 
-  it('⭐ a baixa usa o custo CHEIO, não o arredondado', () => {
+  /**
+   * ⚠️ REAPONTADO EM 15/10, e ficou MAIS FORTE. A asserção antiga casava o texto LITERAL dos
+   * argumentos (`custoParaBaixar(at?.valor ?? 0, at?.saldo ?? 0)`) e **quebrou com o código
+   * CERTO** quando a chamada ganhou o 3º argumento (o custo vigente) — *grep não distingue
+   * "refatorei" de "quebrei"*, que é a razão de existir da REGRA 3.
+   *
+   * ⭐ A pergunta NÃO mudou (*"a baixa move dinheiro com o custo CHEIO?"*); o que mudou é que
+   * ela passou a cobrar as DUAS metades: o custo vem da porta única **e** a porta recebe a
+   * MEMÓRIA do item — sem o 3º argumento, saída de item negativado volta a sair a R$ 0,00.
+   */
+  it('⭐ a baixa usa o custo CHEIO da porta única, e PASSA a memória do item', () => {
     const b = fonte('lib/stock/vendas/baixa-venda.ts')
-    expect(b).toMatch(/custoParaBaixar\(at\?\.valor \?\? 0, at\?\.saldo \?\? 0\)/)
+    const chamada = b.match(/custoParaBaixar\(([^)]*)\)/)
+    expect(chamada, 'a baixa deixou de usar a porta única do custo').not.toBeNull()
+    const args = chamada![1].split(',')
+    expect(args.length, 'a chamada perdeu o 3º argumento — o vigente').toBe(3)
+    expect(args[2], 'o 3º argumento tem que ser a memória daquele item').toMatch(/vigentes?\./)
+    expect(b, 'o vigente passou a ser lido DENTRO do laço (1 consulta por item)')
+      .toMatch(/const vigentes = await custoVigentePorItem\(tx, companyId\)/)
     expect(b, 'voltou a mover dinheiro com o custo de TELA')
       .not.toMatch(/const custo = custoMap\.get\(a\.itemId\) \?\? 0/)
   })
