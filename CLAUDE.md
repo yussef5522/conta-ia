@@ -3911,6 +3911,131 @@ saídas lançadas com o saldo JÁ ≤ 0:
 
 📋 **FICA PRO DONO (o clique é dele, REGRA 2):** abrir o montador no celular e no notebook e ver as 4 bases fechando, a página da `metade de bolinha` (R$ 0,47) e um item negativo. ⚠️ E decidir o item 4 — e, se achar que o custo da massa devia ser 0,54 e não 0,47, **o caminho é a produção de 12/10**, não a lei: foi ela que entrou a R$ 0,4709/un com o saldo no chão.
 
+## ⛔⛔⛔ SAÍDA COM ESTOQUE NEGATIVO SAI PELO CUSTO VIGENTE (15/10/2026)
+
+**O furo, achado na conferência de 14/10:** `custoParaBaixar(valor, saldo)` devolvia **0** quando
+`saldo ≤ 0` → venda/separação de item negativado entrava com **quantidade e R$ 0,00 de custo**.
+Medido em prod: **293 movimentos a custo zero** (2.589,817 un · BAIXA_VENDA 249 +
+SEPARACAO_SAIDA 44), crescendo ~16/dia. **Efeito: CMV menor que a verdade e lucro parecendo
+maior que é** — e ninguém desconfia, porque o número sai plausível.
+
+**⭐⭐ A LEI DO `saldo ≤ 0` TEM UM DONO SÓ, E ELE JÁ EXISTIA:** `custoMedioComMemoria` (13/10).
+O ramo negativo **DELEGA** a ela em vez de reimplementar *"quanto vale a memória"* — duas réguas
+divergiriam no primeiro caso de borda (memória ≤ 0, memória ausente). **O que continua morando
+na porta é a PRECISÃO CHEIA do ramo positivo**, que é o que impede o resíduo de centavos de
+nascer (a cicatriz do pão, 2,3125).
+
+- ⚠️ **O `vigente` é parâmetro OBRIGATÓRIO, nunca default `null`:** um default faria o chamador
+  que esquecesse de passá-lo receber **0 em silêncio** — o furo voltando invisível. Obrigatório,
+  o **`tsc` achou os 4 chamadores** (REGRA 4 de graça) e esquecer **não compila**.
+- ⛔ **Item SEM vigente continua 0, honesto como hoje** — são os **15 "a definir"** medidos em
+  prod: nunca tiveram entrada com valor, então não há preço nem pra estimar. **Número inventado
+  NUNCA** (a lição da FANTA UVA).
+- ⚠️ **A SEPARAÇÃO já obedecia a MESMA lei — medido, não suposto:** `confirmarSeparacao` lê
+  `custoMedioPorItem`, que desce pra `saldosDaEmpresa → montar → custoMedioComMemoria` desde
+  13/10. **Precisão diferente de propósito:** o quarteto da produção (separação · consumo ·
+  devolução · geração) usa todo ele o MESMO custo arredondado, e é isso que faz o valor do
+  armazém virtual **ZERAR** quando a ordem fecha. Mover só a separação pra precisão cheia
+  deixaria centavos presos no em-produção — e **P1/P4 são de QUANTIDADE, não acusariam**.
+- ⭐ **O LIVRO ACEITA O VALOR NEGATIVO COERENTE POR CONSTRUÇÃO, sem afrouxar nada:**
+  `assertSaldoNaoFicaImpossivel` só morde com `saldoDepois >= 0 && valorDepois < -0.01` — *dinheiro
+  negativo com saldo POSITIVO*. O estado `saldo < 0 && valor < 0` (contabilidade correta de estoque
+  negativo) passa; **o incoerente CONTINUA barrado**, e há teste nos dois sentidos. **Nenhum
+  invariante foi ajustado** — não precisou.
+- ⛔ **O PASSADO NÃO SE REESCREVE** (lei do livro): as 293 ficam. O relatório só **INFORMA** o
+  tamanho.
+
+### ⛔⛔⛔ E A DELEGAÇÃO ABRIU UM CICLO DE IMPORT QUE DERRUBOU 177 TESTES
+
+```
+residuo-de-centavos → custo-vigente → contagem-ancora → entrada-cruza-o-zero
+       ↑──────────────────────────────────────────────────────────┘
+```
+(`entrada-cruza-o-zero` importa `ERRO_POR_UNIDADE`/`PISO` do `residuo-de-centavos` desde 05/09.)
+⚠️ **O sintoma não é erro de módulo:** é `TIPOS_COM_CUSTO_CONHECIDO` chegando **`undefined` no
+meio da gravação de um movimento** (`undefined.includes`).
+
+⭐ **A cura é a MESMA de 13/10, quando `prateleira.ts` nasceu pelo mesmo motivo:** a decisão
+compartilhada sai pra **`lei-do-custo-medio.ts`, módulo PURO que não importa NINGUÉM**. ⛔ E
+**continua existindo um dono só**: `custo-vigente.ts` **RE-EXPORTA** a lei, então os leitores de
+sempre (`saldo.ts`, o backfill, o juiz E17) não mudaram de porta. **Guard proíbe a lei de ganhar
+import** — o ciclo virou **impossível, não combinado** (REGRA 5), e repondo um import ali dá
+**18 vermelhos**.
+
+**⚠️⚠️ E A LIÇÃO É SOBRE MIM:** eu *conferi* o ciclo antes de importar — e o comando foi
+`grep -rln ... --include=*.ts` no **zsh**, que **abortou com `no matches found`** e devolveu saída
+vazia. **Eu li o vazio como "ninguém importa".** É a cicatriz do **zero silencioso** (REGRA 8b)
+na minha própria verificação de ciclo: *comando que falha e saída vazia são indistinguíveis*.
+Quem pegou foi a SUÍTE, não a minha leitura.
+
+### ⚠️ 3 GUARDS REAPONTADOS, nenhum afrouxado, e UM MAIS FORTE
+
+O do call-site da baixa casava o **texto LITERAL dos argumentos**
+(`custoParaBaixar(at?.valor ?? 0, at?.saldo ?? 0)`) e **quebrou com o código CERTO** quando a
+chamada ganhou o 3º argumento — ***grep não distingue "refatorei" de "quebrei"***, a razão de
+existir da REGRA 3. A pergunta não mudou (*"a baixa move dinheiro com o custo CHEIO?"*); agora
+ela é **estrutural** e cobra as **DUAS metades**: o custo vem da porta **E** a porta recebe a
+memória. Os outros dois (o guard da casa de 13/10 e o meu) só aprenderam o endereço novo da lei
+— ⭐ e o comentário do guard de 13/10 **registrava este débito por escrito** (*"ela devolve ZERO
+com saldo ≤ 0 … é decisão do dono"*), atualizado agora que ele decidiu.
+
+**2 EXCEÇÕES NOMEADAS no guard estrutural, com o motivo escrito:** `mesclar.ts` (prévia da fusão
+— outra pergunta; ⚠️ divergência registrada: com saldo somado negativo ele mostra `valor/saldo`
+em vez da memória) e **`cascata-de-custo.ts` — que É custo de saída e tem o MESMO `: 0`**. ⛔
+Ficou de fora de propósito: é a ferramenta de **CIRURGIA** (19/09) que **reconstitui a história**,
+e fazê-la usar a memória de HOJE mudaria o preview de uma cirurgia retroativa. **Débito
+reportado, não corrigido.**
+
+### PROVADO EM PROD (read-only · ZERO escrita)
+
+```
+AS 293 ANTIGAS (intocadas)  293 mov · 2.589,817 un · 28 itens · BAIXA_VENDA 249 + SEPARACAO 44
+   ⭐ Σ INFORMATIVO (qtd × vigente ATUAL): R$ 6.741,61
+   ⛔ 11 itens SEM vigente ficam FORA do Σ (545,685 un) — sem preço nem pra estimar
+   os maiores: aneis de cebola 513 un × 2,73 = 1.400,49 · fermento 26,444 × 38,09 = 1.007,25
+               PAO DE XIS 422 × 1,75 = 738,50 · molho de tomate 78,5 × 7,50 = 588,75
+
+DAQUI PRA FRENTE   saldo ≤ 0: 34  ·  ⭐ COM vigente 19  ·  ⛔ SEM vigente 15 (seguem a 0)
+
+A PORTA, no dado REAL (o que a baixa de hoje gravaria)
+   Porçao aneis de cebola  saldo -164   → R$  2,73   ⛔ régua velha R$ 0,00 ← o furo
+   FEIJAO PRETO 1K         saldo -39,4  → R$  8,90   ⛔ R$ 0,00
+   fermento                saldo -4,26  → R$ 38,09   ⛔ R$ 0,00
+   FANTA LARANJA 2L        SEM vigente  → R$  0,00   ⭐ honesto
+
+O LIVRO   12 negativados com valor ≈ saldo × vigente (coerente) · 7 que ainda não fecham
+E17       0 achados — a memória bate com o que o ledger diz
+⭐ movimentos 8077 → 8077 · memórias 89 → 89 — ZERO ESCRITA
+```
+
+⚠️ **O Σ subiu de R$ 4.851,85 (conferência de 13/10) pra R$ 6.741,61, e não é contradição:** são
+**+16 movimentos** e, principalmente, a tabela de memória foi de **22 → 89 linhas** (o
+choke-point do ledger aprende em toda entrada), então **mais itens passaram a ter vigente com que
+calcular**. ⚠️ E o Σ é **ordem de grandeza, nunca lançamento** — o custo real daquelas saídas
+**não existe em lugar nenhum**: elas saíram a zero.
+
+**REGRA 11 — 5 defeitos repostos, 5 mordem** (o ramo voltando a 0: **5** · a baixa sem passar a
+memória: **1** · o default no 3º param: **1** · a lei ganhando import: **18** · o vigente lido
+dentro do laço: **1**), **baseline 0 · restaurado 0**. ⚠️ A sonda guarda backup pela **chave do
+caminho inteiro**, **ASSERTA que a substituição aplicou** e **conta suíte que não coletou como
+vermelho** — as três cicatrizes de sonda desta casa.
+
+**978 arquivos · 13.134 verdes · 2 todo · TS 0 · migration NENHUMA ·
+`pg_dump pre-saida-no-negativo-20261015032205.dump` (9.331.102 bytes, tamanho conferido) ·
+deploy 4/4 (`NRSDnF3C0j5QlokrE7wX2`) · Δ chunks +0 KB.**
+
+📋 **FICA PRO DONO:**
+1. ⛔⛔ **`cascata-de-custo.ts` tem o MESMO `: 0`** — é custo de saída, na ferramenta de cirurgia.
+   Débito medido e **não corrigido** (muda o preview de cirurgia retroativa): decisão dele.
+2. ⚠️ **7 itens negativados cujo valor não fecha com a memória** — legado das saídas a zero. A lei
+   de 13/10 **normaliza sozinha** quando a compra chegar (*entrada com saldo ≤ 0 reinicia o custo
+   no custo da entrada*); não há o que corrigir à mão.
+3. ⚠️ **`ERVILHA` e `MILHO VERDE` aparecem 2× na lista** — dois `itemId` com o mesmo nome. É a
+   família da **duplicata de cadastro** (o gesto de mesclar existe desde 29/08); mesclar é decisão
+   dele.
+4. ⚠️ **Os 15 "a definir" seguem saindo a R$ 0,00** — e isso é o estado honesto. O que os resolve é
+   a **1ª entrada com valor** de cada um (o `PAO DE XIS`, a `ERVILHA`, o `porcao file para xis`).
+
 ## ⭐⭐⭐ QUEM PAGA A CASA v4 — A LEI DAS COLUNAS + CMV + O CARTÃO DE PRODUTO (13/10/2026)
 
 **A referência `docs/margem-referencia.html` virou v4** (aprovada pelo dono) e com ela três frentes num sprint só, com **MOTOR ÚNICO**: a lei das colunas, o CMV no montador e o cartão "escolha um produto".
