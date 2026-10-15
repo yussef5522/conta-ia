@@ -1,51 +1,42 @@
-// Sprint 7 — Dashboard Mercury (24/06/2026).
-//
-// Reescrito do zero — fonte única (motor Sprint 4), layout calmo, seletor
-// compacto de período. Componentes antigos (HeroKPIs, AIInsights, MiniDRE,
-// HealthCheck, CashflowWaterfall, OrphanWithdrawalsBanner, PrevistoSection,
-// RecentActivity, PendingClassification) preservados no projeto pra rota
-// /dashboard-old caso seja necessário.
-
+/**
+ * ⭐⭐⭐ A MESA DE OPERAÇÕES ① É A HOME (15/10/2026) — o dashboard Mercury morreu aqui.
+ *
+ * **`docs/dashboard-referencia.html` é a LEI** do visual e do comportamento desta tela. Os
+ * módulos, a ordem e os spans saem do arquivo; o guard
+ * (`__tests__/regras-ui/dashboard-bate-com-a-referencia.test.ts`) **abre a referência** e
+ * compara — *divergência da referência = defeito*.
+ *
+ * ⛔⛔ **A HOME VELHA MORREU, não ficou ao lado.** O `MercuryDashboard`, o `PeriodSelector` e os
+ * empty states de período saíram do render. ⚠️ *Quando a tela nova assume, a velha MORRE NO
+ * MESMO DEPLOY* (a régua de 14/09) — conviver *"por enquanto"* é como nasce a página com duas
+ * verdades sobre o mesmo mês.
+ *
+ * ⭐ **O QUE FOI PRESERVADO, e por quê:** a resolução de empresa pelas DUAS portas de vínculo
+ * (`UserCompany` legado **e** `UserCompanyRole` do RBAC — checar UMA era o bug que deixava a
+ * convidada no empty state, 30/08) · o redirect do workspace PF · o **gate de quem não tem
+ * chave de dinheiro** (o incidente do tablet da cozinha, 06/09: *esconder o link não é negar o
+ * dado*) · o empty state de empresa sem conta · e o **selo do juiz**, que continua no topo
+ * porque *remoção sem realocação é perda* (10/09) e o radar fala de outra coisa.
+ *
+ * ⚠️ O gate de permissão roda **ANTES** de qualquer leitura de dinheiro: negar tarde ainda
+ * deixa o número passar pelo servidor.
+ */
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { Suspense } from 'react'
+import Link from 'next/link'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { getCurrentEmpresaIdFromCookie } from '@/lib/auth/current-empresa-cookie'
 import { telaInicialDe } from '@/lib/auth/pode-ver-financeiro'
 import { prisma } from '@/lib/db'
-import { Skeleton } from '@/components/ui/skeleton'
 import type { Metadata } from 'next'
-import type { CustomPeriod, Regime } from '@/lib/dashboard/engine'
-import {
-  getCurrentMTD,
-  getFullMonth,
-  isCurrentMonth,
-  labelMesAno,
-  parsePeriodoYM,
-} from '@/lib/dashboard/period-sp'
-import { PeriodSelector } from './_components/PeriodSelector'
 import { JuizSelo } from './_components/JuizSelo'
-import { MercuryDashboard } from './_components/MercuryDashboard'
-import {
-  NoCompaniesEmpty,
-  NoAccountsEmpty,
-  NoTransactionsBanner,
-} from './_components/EmptyDashboard'
-import { ImportedBanner } from './_components/ImportedBanner'
+import { MesaDeOperacoes } from './_components/MesaDeOperacoes'
+import { NoCompaniesEmpty, NoAccountsEmpty } from './_components/EmptyDashboard'
 
 export const metadata: Metadata = { title: 'Dashboard' }
 
 interface PageProps {
-  searchParams: Promise<{
-    empresa?: string
-    regime?: string
-    periodo?: string
-    de?: string
-    ate?: string
-    imported?: string
-    totalAmount?: string
-    empresaNome?: string
-  }>
+  searchParams: Promise<{ empresa?: string }>
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
@@ -53,7 +44,6 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const token = cookieStore.get(COOKIE_NAME)?.value
   if (!token) redirect('/login')
 
-  // PF redirect (preservado da versão anterior)
   const workspaceType = cookieStore.get('caixaos_workspace_type')?.value
   if (workspaceType === 'pf') {
     const profileId = cookieStore.get('caixaos_perfil_atual')?.value
@@ -63,15 +53,23 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const user = await verifyToken(token)
   const sp = await searchParams
 
-  // ⭐⭐ AS DUAS PORTAS DE VÍNCULO (30/08/2026) — mesma correção de `/api/empresas`.
-  // Esta página lia só `UserCompany` (o modelo ANTIGO), e o convite grava
-  // `UserCompanyRole` (RBAC): a convidada caía no empty state "você não está em nenhuma
-  // empresa" mesmo sendo membro de verdade.
+  /**
+   * ⭐⭐ AS DUAS PORTAS DE VÍNCULO (30/08/2026). Esta página lia só `UserCompany` (o modelo
+   * ANTIGO) e o convite grava `UserCompanyRole` (RBAC): a convidada caía no empty state *"você
+   * não está em nenhuma empresa"* **sendo membro de verdade**.
+   */
   const [porLegado, porPapel] = await Promise.all([
-    prisma.userCompany.findMany({ where: { userId: user.sub }, include: { company: true }, orderBy: { createdAt: 'asc' } }),
+    prisma.userCompany.findMany({
+      where: { userId: user.sub },
+      include: { company: true },
+      orderBy: { createdAt: 'asc' },
+    }),
     prisma.userCompanyRole.findMany({
       where: { userId: user.sub },
-      include: { company: true, role: { include: { permissions: { include: { permission: true } } } } },
+      include: {
+        company: true,
+        role: { include: { permissions: { include: { permission: true } } } },
+      },
       orderBy: { createdAt: 'asc' },
     }),
   ])
@@ -80,26 +78,17 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   for (const ucr of porPapel) porId.set(ucr.company.id, ucr.company)
   const empresas = [...porId.values()]
 
-  // ⛔⛔⛔ QUEM NÃO TEM CHAVE DE DINHEIRO NÃO VÊ ESTA TELA (06/09/2026).
-  //
-  // **INCIDENTE:** a conta do TABLET DA COZINHA (`EXECUTOR_PRODUCAO`, só `stock.executar`)
-  // abriu aqui e o dono viu o dashboard INTEIRO — saldo total, saldo por banco, receita,
-  // despesa, fluxo de 6 meses. Medido navegando: **31 valores em reais no HTML**, os mesmos
-  // que ele vê. A sidebar escondia os itens e as APIs devolviam 403 — mas esta página monta
-  // os dados por caminho PRÓPRIO. *Esconder o link não é negar o dado.*
-  //
-  // ⛔ O GUARD DE 30/08 EXISTIA E ERA MAL FORMADO: exigia `chaves.has('stock.view')` pra
-  // desviar. O papel novo não tem `stock.view` → não desviava. Era uma denylist com
-  // exigência positiva no fim; a régua agora é **positiva e pelo DADO** (`podeVerFinanceiro`),
-  // então papel novo nasce SEM ver e quem precisar ganha a chave.
-  //
-  // ⚠️ O `redirect` acontece ANTES de qualquer consulta de dinheiro — nada é calculado pra
-  // ser jogado fora depois. Negar tarde ainda deixa o número passar pelo servidor.
-  const chaves = new Set(porPapel.flatMap((p) => p.role.permissions.map((rp) => rp.permission.key)))
+  /**
+   * ⛔⛔⛔ QUEM NÃO TEM CHAVE DE DINHEIRO NÃO VÊ ESTA TELA (06/09/2026). A conta do TABLET
+   * abriu aqui e o dono viu o dashboard inteiro — a sidebar escondia os itens e as APIs
+   * devolviam 403, mas **esta página monta os dados por caminho PRÓPRIO**.
+   */
+  const chaves = new Set(
+    porPapel.flatMap((p) => p.role.permissions.map((rp) => rp.permission.key)),
+  )
   const destino = telaInicialDe(chaves, porPapel[0]?.companyId ?? empresas[0]?.id ?? null)
   if (destino) redirect(destino)
 
-  // ====== Empty state — sem empresas ======
   if (empresas.length === 0) {
     return (
       <div className="space-y-6">
@@ -109,134 +98,66 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     )
   }
 
-  // Resolução de empresa: URL → cookie → first
   const cookieEmpresaId = await getCurrentEmpresaIdFromCookie()
   const fromQuery = sp.empresa ? empresas.find((e) => e.id === sp.empresa) : undefined
   const fromCookie = cookieEmpresaId ? empresas.find((e) => e.id === cookieEmpresaId) : undefined
   const empresaAtual = fromQuery ?? fromCookie ?? empresas[0]
 
-  // ====== Regime e Período ======
-  const regime: Regime = sp.regime === 'competencia' ? 'competencia' : 'caixa'
+  const contasCount = await prisma.bankAccount.count({
+    where: { companyId: empresaAtual.id, isActive: true },
+  })
 
-  const now = new Date()
-  let currentYear: number
-  let currentMonth: number // 0-11
-  let customPeriod!: CustomPeriod // definite assignment via if/else abaixo
-
-  // Prioridade: ?de=&ate= (raro, custom range) → ?periodo=YYYY-MM → MTD default
-  if (sp.de && sp.ate) {
-    const start = new Date(`${sp.de}T00:00:00.000Z`)
-    const end = new Date(`${sp.ate}T23:59:59.999Z`)
-    customPeriod = { start, end }
-    currentYear = start.getUTCFullYear()
-    currentMonth = start.getUTCMonth()
-  } else {
-    const parsed = parsePeriodoYM(sp.periodo)
-    if (parsed && !isCurrentMonth(parsed.year, parsed.month, now)) {
-      // Mês passado completo
-      customPeriod = getFullMonth(parsed.year, parsed.month)
-      currentYear = parsed.year
-      currentMonth = parsed.month
-    } else {
-      // Default: MTD em SP
-      const mtd = getCurrentMTD(now)
-      customPeriod = { start: mtd.start, end: mtd.end }
-      currentYear = mtd.year
-      currentMonth = mtd.month
-    }
-  }
-
-  const isMTD = isCurrentMonth(currentYear, currentMonth, now)
-  const periodLabel = isMTD
-    ? `${labelMesAno(currentYear, currentMonth).toLowerCase()} até hoje`
-    : labelMesAno(currentYear, currentMonth).toLowerCase()
-
-  // ====== Empty checks ======
-  const [contasCount, primeiraConta, transacoesCount] = await Promise.all([
-    prisma.bankAccount.count({
-      where: { companyId: empresaAtual.id, isActive: true },
-    }),
-    prisma.bankAccount.findFirst({
-      where: { companyId: empresaAtual.id, isActive: true },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    }),
-    prisma.transaction.count({
-      where: { bankAccount: { companyId: empresaAtual.id } },
-    }),
-  ])
-
-  // Banner pós-import (preservado)
-  const importedCount = sp.imported ? parseInt(sp.imported, 10) : NaN
-  const importedTotalAmount = sp.totalAmount ? parseFloat(sp.totalAmount) : NaN
-
-  // ====== Render ======
   return (
-    <div className="space-y-6">
-      {/* Header sutil */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="space-y-0.5">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-            Dashboard
-          </div>
-          <h1 className="text-xl font-medium">
-            {empresaAtual.tradeName ?? empresaAtual.name}
-          </h1>
-          {/* Fase 3 CAMADA 3: selo do juiz — verde/vermelho/amarelo(>24h) */}
-          <div className="pt-1">
-            <JuizSelo />
-          </div>
+    <div className="-mx-4 lg:-mx-6">
+      {/*
+       * ───────────── O TOPO ─────────────
+       * ⭐ Os chips ① / ② são a navegação entre as duas mesas. ⚠️ O ② é um `Link` de verdade,
+       * não um `onClick` fingindo navegação: a mesa ② é OUTRA rota (`estoque/producao/hoje`), e
+       * link é o que dá teclado, botão do meio e "abrir em nova aba" de graça.
+       */}
+      <div
+        className="flex flex-wrap items-center gap-[14px] border-b px-[26px] py-[14px] max-[1023px]:px-[14px]"
+        style={{ borderColor: 'var(--prod-line-strong)' }}
+      >
+        <div className="text-[13px] font-extrabold" style={{ color: 'var(--prod-primary)' }}>
+          {empresaAtual.tradeName ?? empresaAtual.name}
         </div>
-        <PeriodSelector
-          empresaId={empresaAtual.id}
-          currentYear={currentYear}
-          currentMonth={currentMonth}
-          regime={regime}
-          isMTD={isMTD}
-        />
+        <div className="flex gap-[8px]">
+          <span
+            className="rounded-full border px-[15px] py-[7px] text-[12.5px] font-extrabold"
+            style={{
+              borderColor: 'var(--prod-accent)',
+              background: 'var(--fam-indigo-bg)',
+              color: 'var(--prod-accent)',
+            }}
+            aria-current="page"
+          >
+            ① Dashboard
+          </span>
+          <Link
+            href={`/empresas/${empresaAtual.id}/estoque/producao/hoje`}
+            className="rounded-full border px-[15px] py-[7px] text-[12.5px] font-extrabold"
+            style={{
+              borderColor: 'var(--prod-line-strong)',
+              background: 'var(--prod-surface)',
+              color: 'var(--prod-secondary)',
+            }}
+          >
+            ② Produção
+          </Link>
+        </div>
+        <div className="ml-auto">
+          <JuizSelo />
+        </div>
       </div>
 
-      <ImportedBanner
-        imported={Number.isFinite(importedCount) ? importedCount : undefined}
-        totalAmount={Number.isFinite(importedTotalAmount) ? importedTotalAmount : undefined}
-        fileName={sp.empresaNome}
-      />
-
-      {/* Empty states */}
-      {contasCount === 0 && <NoAccountsEmpty empresaId={empresaAtual.id} />}
-      {contasCount > 0 && transacoesCount === 0 && primeiraConta && (
-        <NoTransactionsBanner
-          empresaId={empresaAtual.id}
-          contaId={primeiraConta.id}
-        />
+      {contasCount === 0 ? (
+        <div className="px-[26px] py-[18px] max-[1023px]:px-[14px]">
+          <NoAccountsEmpty empresaId={empresaAtual.id} />
+        </div>
+      ) : (
+        <MesaDeOperacoes empresaId={empresaAtual.id} />
       )}
-
-      {/* Mercury layout */}
-      {contasCount > 0 && (
-        <Suspense fallback={<DashboardSkeleton />}>
-          <MercuryDashboard
-            empresaId={empresaAtual.id}
-            regime={regime}
-            customPeriod={customPeriod}
-            periodLabel={periodLabel}
-          />
-        </Suspense>
-      )}
-    </div>
-  )
-}
-
-function DashboardSkeleton() {
-  return (
-    <div className="space-y-10">
-      <Skeleton className="h-20 w-72" />
-      <Skeleton className="h-16 w-full" />
-      <div className="grid grid-cols-3 gap-3">
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
-      </div>
-      <Skeleton className="h-64 w-full" />
     </div>
   )
 }

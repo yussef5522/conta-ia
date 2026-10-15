@@ -76,7 +76,16 @@ const DIVIDA_DE_HEX = new Set<string>([
   'app/(dashboard)/empresas/[id]/estoque/cardapio/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/cardapio/secoes/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/certificado/page.tsx',
-  'app/(dashboard)/empresas/[id]/estoque/contagem/page.tsx',
+  /**
+   * ⭐⭐ **TRÊS SAÍRAM DA LISTA EM 15/10** (o UPGRADE DE TINTA do módulo de produção):
+   * `producao/hoje` (31 hex), `producao/receitas` (9) e `estoque/contagem` (7) passaram a
+   * pintar **por token da fundação** e **a dívida encolheu de verdade**.
+   *
+   * ⚠️ Quem cobrou a baixa foi o teste logo abaixo (*"a dívida não tem linha morta"*) — ele
+   * ficou **VERMELHO com o código CERTO**, nomeando os três. ⭐ É o melhor que um guard de
+   * dívida pode fazer: *lista de exceção que não encolhe quando o trabalho é feito vira
+   * paisagem*, e paisagem é como a dívida sobrevive a quem a pagou.
+   */
   'app/(dashboard)/empresas/[id]/estoque/contagens/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/contas-a-pagar/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/entrada-manual/page.tsx',
@@ -91,10 +100,8 @@ const DIVIDA_DE_HEX = new Set<string>([
   'app/(dashboard)/empresas/[id]/estoque/perdas/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/posicao/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/producao/conclusoes/[conclusaoId]/etiqueta/page.tsx',
-  'app/(dashboard)/empresas/[id]/estoque/producao/hoje/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/producao/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/producao/pessoas/page.tsx',
-  'app/(dashboard)/empresas/[id]/estoque/producao/receitas/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/producao/relatorios/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/radar/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/real-vs-teorico/page.tsx',
@@ -230,10 +237,15 @@ describe('⭐⭐⭐ a catraca do hex cravado', () => {
   /**
    * ⭐ O NÚMERO SÓ DESCE, NUNCA SOBE — é essa assimetria que faz a catraca ser catraca. Cada
    * baixa fica DATADA aqui: 113 na medição de 14/10 → **112** quando o sininho virou token no
-   * mesmo dia (o chassi `.icbt` da referência levou o `#fff` do contador embora).
+   * mesmo dia (o chassi `.icbt` da referência levou o `#fff` do contador embora) → **109** em
+   * 15/10, com o UPGRADE DE TINTA do módulo de produção (`producao/hoje` 31 hex,
+   * `producao/receitas` 9 e `estoque/contagem` 7, todos pra token da fundação).
+   *
+   * ⚠️ Mexer neste número **pra cima** é o sinal de que alguém cravou cor nova: aí o certo é
+   * trocar o hex por token, nunca ajustar a catraca.
    */
   it('⭐ a dívida de 14/10 tem o tamanho que foi medido', () => {
-    expect(DIVIDA_DE_HEX.size, 'medida em 113, desceu pra 112 com o sininho em token').toBe(112)
+    expect(DIVIDA_DE_HEX.size, 'medida em 113 (14/10) → 112 (sininho) → 109 (produção, 15/10)').toBe(109)
     expect(TELAS.length, 'o universo varrido').toBeGreaterThan(400)
   })
 })

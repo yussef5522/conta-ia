@@ -18,6 +18,19 @@
 // ⚠️ O MOTOR NÃO MUDOU: `contarLinha`, o freio, o AJUSTE_CONTAGEM na hora e o invariante
 // E8 são os mesmos. O que entrou é o RASTRO (append-only) ao lado, sem tocar na cabeça.
 
+/**
+ * ⭐⭐ **O UPGRADE DE TINTA (15/10)** — a modal do motivo (05/10) já pintava por token; o resto
+ * da tela não: **7 hex cravados** (`#185FA5`) e **43 classes de paleta**.
+ *
+ * ⛔ Nenhum dos dois inverte no tema escuro, e numa tela de CÂMARA FRIA isso não é estética:
+ * quem conta está com o celular na mão, no escuro, e tinta preta sobre chão preto é uma linha
+ * que não se lê. A troca é por **PAPEL** (`--prod-primary` · `--prod-muted` · `--prod-line`
+ * · `--prod-acao-bg/ink` · as famílias pros selos), nunca por tom; ⛔ e a **ESTRUTURA não
+ * mudou**: os dois modos, o freio, a modal do motivo e os gestos são os mesmos.
+ *
+ * ⚠️ `text-[color:var(--x)]` precisa do **hint de tipo**; ⛔ e **nunca `bg-[var(--x)]/10`** —
+ * opacidade sobre valor arbitrário sai **TRANSPARENTE** no Tailwind 3 (medido em 06/10).
+ */
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ClipboardList, Loader2, Play, AlertTriangle, ListChecks, Pencil, Check, X } from 'lucide-react'
@@ -219,8 +232,8 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
     } catch { setErro({ msg: 'A rede falhou ao encerrar — a contagem segue aberta; tente de novo.' }) } finally { setFinalizando(false) }
   }
 
-  if (q === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
-  if (!q) return <div className="p-6 text-sm text-slate-500">Não consegui carregar a contagem.</div>
+  if (q === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--prod-muted)' }} /></div>
+  if (!q) return <div className="p-6 text-sm" style={{ color: 'var(--prod-muted)' }}>Não consegui carregar a contagem.</div>
 
   // ── sem sessão aberta ──
   if (!q.contagem) {
@@ -229,15 +242,15 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
       <div className="space-y-3">
         <Cabecalho id={id} />
         <Card><CardContent className="flex flex-col items-center gap-3 p-10 text-center">
-          <ClipboardList className="h-10 w-10 text-slate-300" />
-          <p className="text-sm font-medium text-slate-700">{primeira ? 'Nenhuma contagem ainda — essa é a INICIAL, o ponto-zero do estoque.' : 'Nenhuma contagem aberta.'}</p>
-          <p className="max-w-lg text-xs text-slate-500">
+          <ClipboardList className="h-10 w-10" style={{ color: 'var(--prod-line-strong)' }} />
+          <p className="text-sm font-medium" style={{ color: 'var(--prod-primary)' }}>{primeira ? 'Nenhuma contagem ainda — essa é a INICIAL, o ponto-zero do estoque.' : 'Nenhuma contagem aberta.'}</p>
+          <p className="max-w-lg text-xs" style={{ color: 'var(--prod-muted)' }}>
             Você conta <b>sem ver</b> o que o sistema acha que tem — é o que faz a contagem
             valer. Cada linha confirmada ajusta o saldo na hora, e dá pra parar e voltar:
             a sessão fica aberta até você finalizar.
           </p>
           {erro && (
-        <div className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+        <div className="rounded-md px-3 py-2 text-xs" style={{ background: 'var(--fam-coral-bg)', color: 'var(--fam-coral-ink)' }}>
           <p>{erro.msg}</p>
           {/* ⭐ o gesto que RESOLVE — recusa sem saída é beco */}
           {erro.saida && (
@@ -247,7 +260,8 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
           )}
         </div>
       )}
-          <button onClick={() => iniciar()} disabled={iniciando} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#185FA5] px-5 text-sm font-semibold text-white hover:bg-[#0F4A8C] disabled:opacity-50">
+          <button onClick={() => iniciar()} disabled={iniciando} className="inline-flex h-10 items-center gap-2 rounded-xl px-5 text-sm font-semibold disabled:opacity-50"
+            style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
             {iniciando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} {primeira ? 'Começar contagem inicial' : 'Começar contagem'}
           </button>
         </CardContent></Card>
@@ -264,11 +278,13 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
       {/* ⚠️ SESSÃO VELHA — AVISA, NUNCA FECHA SOZINHA: fechar jogaria fora o trabalho de
           quem está no meio do estoque, que é justamente quem mais precisa que não atrapalhe */}
       {q.avisoSessao && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-          <p className="flex-1 text-[12px] leading-snug text-amber-900">{q.avisoSessao}</p>
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2"
+          style={{ borderColor: 'var(--fam-ambar-mid)', background: 'var(--fam-ambar-bg)' }}>
+          <AlertTriangle className="h-4 w-4 shrink-0" style={{ color: 'var(--fam-ambar-mid)' }} />
+          <p className="flex-1 text-[12px] leading-snug" style={{ color: 'var(--fam-ambar-ink)' }}>{q.avisoSessao}</p>
           <button onClick={() => { setModo('contar'); setAtualId(q.linhas.find((l) => l.estado)?.itemId ?? null) }}
-            className="shrink-0 rounded-md border border-amber-400 bg-white px-2 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100">
+            className="shrink-0 rounded-md border px-2 py-1 text-[11px] font-medium"
+            style={{ borderColor: 'var(--fam-ambar-mid)', background: 'var(--prod-surface)', color: 'var(--fam-ambar-ink)' }}>
             recontar os mais antigos
           </button>
         </div>
@@ -276,30 +292,37 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
 
       {/* os dois modos */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <div className="inline-flex rounded-lg border border-slate-300 p-0.5">
+        <div className="inline-flex rounded-lg border p-0.5" style={{ borderColor: 'var(--prod-line-strong)' }}>
           <button onClick={() => setModo('contar')}
-            className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium ${modo === 'contar' ? 'bg-[#185FA5] text-white' : 'text-slate-600'}`}>
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium"
+            style={modo === 'contar'
+              ? { background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }
+              : { color: 'var(--prod-muted)' }}>
             <Pencil className="h-3.5 w-3.5" /> Contar
           </button>
           <button onClick={() => setModo('revisar')}
-            className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium ${modo === 'revisar' ? 'bg-[#185FA5] text-white' : 'text-slate-600'}`}>
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium"
+            style={modo === 'revisar'
+              ? { background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }
+              : { color: 'var(--prod-muted)' }}>
             <ListChecks className="h-3.5 w-3.5" /> Revisar
-            {q.totalAApurar > 0 && <span className="ml-1 rounded-full bg-amber-400 px-1.5 text-[10px] text-white">{q.totalAApurar}</span>}
+            {q.totalAApurar > 0 && <span className="ml-1 rounded-full px-1.5 text-[10px]" style={{ background: 'var(--fam-ambar-solid)', color: 'var(--fam-ambar-on)' }}>{q.totalAApurar}</span>}
           </button>
         </div>
-        <span className="ml-auto text-xs tabular-nums text-slate-500">
-          <b className="text-slate-800">{feitos}</b> de {q.totalItens}
+        <span className="ml-auto text-xs tabular-nums" style={{ color: 'var(--prod-muted)' }}>
+          <b style={{ color: 'var(--prod-primary)' }}>{feitos}</b> de {q.totalItens}
         </span>
         {modo === 'revisar' && pode('stock.manage') && (
           <button onClick={() => finalizar('finalizar')} disabled={finalizando}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold disabled:opacity-50"
+            style={{ background: 'var(--fam-verde-solid)', color: 'var(--fam-verde-on)' }}>
             {finalizando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} finalizar contagem
           </button>
         )}
       </div>
 
       {erro && (
-        <div className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+        <div className="rounded-md px-3 py-2 text-xs" style={{ background: 'var(--fam-coral-bg)', color: 'var(--fam-coral-ink)' }}>
           <p>{erro.msg}</p>
           {/* ⭐ o gesto que RESOLVE — recusa sem saída é beco */}
           {erro.saida && (
@@ -337,10 +360,11 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
           </div>
         ) : (
           <Card><CardContent className="p-10 text-center">
-            <Check className="mx-auto h-10 w-10 text-emerald-500" />
-            <p className="mt-2 text-sm font-medium text-slate-700">Tudo passou — {feitos} de {q.totalItens}.</p>
-            <p className="mt-1 text-xs text-slate-500">Agora é a revisão: lá o sistema aparece e dá pra comparar.</p>
-            <button onClick={() => setModo('revisar')} className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 text-xs font-semibold text-white">
+            <Check className="mx-auto h-10 w-10" style={{ color: 'var(--fam-verde-mid)' }} />
+            <p className="mt-2 text-sm font-medium" style={{ color: 'var(--prod-primary)' }}>Tudo passou — {feitos} de {q.totalItens}.</p>
+            <p className="mt-1 text-xs" style={{ color: 'var(--prod-muted)' }}>Agora é a revisão: lá o sistema aparece e dá pra comparar.</p>
+            <button onClick={() => setModo('revisar')} className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-xs font-semibold"
+              style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
               <ListChecks className="h-4 w-4" /> ir pra revisão
             </button>
           </CardContent></Card>
@@ -402,9 +426,10 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
       {/* ⛔ O FREIO — a 2ª confirmação que o SERVIDOR exigiu */}
       {freio && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={() => setFreio(null)}>
-          <div className="w-full rounded-t-2xl bg-white p-4 sm:max-w-md sm:rounded-xl" onClick={(e) => e.stopPropagation()}>
-            <p className="flex items-start gap-2 text-sm text-slate-800">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" /> {freio.msg}
+          <div className="w-full rounded-t-2xl p-4 sm:max-w-md sm:rounded-xl"
+            style={{ background: 'var(--prod-surface)' }} onClick={(e) => e.stopPropagation()}>
+            <p className="flex items-start gap-2 text-sm" style={{ color: 'var(--prod-primary)' }}>
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--fam-ambar-mid)' }} /> {freio.msg}
             </p>
             {/*
               ⭐⭐ O NÚMERO CERTO EM 1 TOQUE (20/09) — a cura do creme de leite.
@@ -416,19 +441,21 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
             {freio.sugestao?.qtdProvavel != null && (
               <button
                 onClick={() => contar(freio.itemId, freio.sugestao!.qtdProvavel!, freio.opts, false)}
-                className="mt-3 h-11 w-full rounded-lg bg-emerald-600 text-sm font-bold text-white">
+                className="mt-3 h-11 w-full rounded-lg text-sm font-bold"
+                style={{ background: 'var(--fam-verde-solid)', color: 'var(--fam-verde-on)' }}>
                 usar {String(freio.sugestao.qtdProvavel).replace('.', ',')}
               </button>
             )}
             <div className="mt-2 flex gap-2">
-              <button onClick={() => setFreio(null)} className="h-10 flex-1 rounded-lg border border-slate-300 text-sm text-slate-600">
+              <button onClick={() => setFreio(null)} className="h-10 flex-1 rounded-lg border text-sm"
+                style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}>
                 <X className="mr-1 inline h-4 w-4" /> voltar e conferir
               </button>
               <button onClick={() => contar(freio.itemId, freio.qtd, freio.opts, true)}
-                className={`h-10 flex-1 rounded-lg text-sm font-semibold ${
-                  freio.sugestao?.qtdProvavel != null
-                    ? 'border border-slate-300 text-slate-600'
-                    : 'bg-[#185FA5] text-white'}`}>
+                className="h-10 flex-1 rounded-lg border text-sm font-semibold"
+                style={freio.sugestao?.qtdProvavel != null
+                  ? { borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }
+                  : { borderColor: 'transparent', background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
                 confirmar mesmo assim
               </button>
             </div>
@@ -442,15 +469,19 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
 function Cabecalho({ id, sessao }: { id: string; sessao?: { tipo: string; iniciadaEm: string; criadoPorNome: string | null } }) {
   return (
     <div className="flex items-center gap-2.5">
-      <ClipboardList className="h-5 w-5 shrink-0 text-[#185FA5]" />
-      <h1 className="text-base font-semibold text-slate-900">Contagem</h1>
+      <ClipboardList className="h-5 w-5 shrink-0" style={{ color: 'var(--prod-accent)' }} />
+      <h1 className="text-base font-semibold" style={{ color: 'var(--prod-primary)' }}>Contagem</h1>
       {sessao && (
-        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${sessao.tipo === 'INICIAL' ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500'}`}>
+        <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
+          style={sessao.tipo === 'INICIAL'
+            ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)' }
+            : { background: 'var(--prod-surface-1)', color: 'var(--prod-muted)' }}>
           {sessao.tipo === 'INICIAL' ? 'inicial' : 'rotina'}
         </span>
       )}
-      {sessao && <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">aberta em {fmtQuando(sessao.iniciadaEm)}{sessao.criadoPorNome ? ` por ${sessao.criadoPorNome}` : ''} · confirmar a linha ajusta o saldo na hora</p>}
-      <a href={`/empresas/${id}/estoque/contagens`} className="ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">Sessões</a>
+      {sessao && <p className="hidden flex-1 truncate text-xs lg:block" style={{ color: 'var(--prod-muted)' }}>aberta em {fmtQuando(sessao.iniciadaEm)}{sessao.criadoPorNome ? ` por ${sessao.criadoPorNome}` : ''} · confirmar a linha ajusta o saldo na hora</p>}
+      <a href={`/empresas/${id}/estoque/contagens`} className="ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs hover:bg-[var(--prod-surface-1)]"
+        style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}>Sessões</a>
     </div>
   )
 }

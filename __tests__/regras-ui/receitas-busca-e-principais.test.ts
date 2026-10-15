@@ -203,9 +203,23 @@ describe('⭐ ROUPA v4 — logo do dono único, sublinha num fôlego, LEI DE LAY
     expect(src, 'coluna única é a "coluna estreita centrada" que o dono recusou').toMatch(/grid-cols-1[^"]*min-\[1100px\]:grid-cols-2/)
   })
 
-  it('⛔ zero hex de cor cravado na tela (os 2 do azul legado são os botões que já existiam)', () => {
+  it('⛔⛔ ZERO hex de cor cravado na tela — nem o azul legado sobrou', () => {
+    /**
+     * ⚠️⚠️ **ESTE GUARD FICOU VERMELHO COM O CÓDIGO CERTO (15/10)** — ele afirmava
+     * `['#0F4A8C', '#185FA5']`, *"os 2 do azul legado são os botões que já existiam"*, e o
+     * UPGRADE DE TINTA do módulo de produção **pagou essa dívida**: o primário passou pro par
+     * `--prod-acao-bg`/`--prod-acao-ink`, que é o único do módulo.
+     *
+     * ⭐ **REAPONTADO, e MAIS FORTE:** a pergunta nunca foi *"são exatamente estes dois hex?"*
+     * — era *"cor nova entra por token, pra inverter no tema escuro"*. Com `[]` no lugar da
+     * lista, o azul legado **não pode voltar** nem como exceção herdada.
+     *
+     * ⚠️ `tela()` lê **sem comentário** de propósito: o cabeçalho do arquivo cita o `#185FA5`
+     * pra documentar a migração, e *o arquivo que documenta o defeito removido não pode ser o
+     * que reprova a remoção dele*.
+     */
     const hex = [...tela().matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0])
     expect([...new Set(hex)].sort(), 'cor nova tem que entrar por token, pra inverter no tema escuro')
-      .toEqual(['#0F4A8C', '#185FA5'])
+      .toEqual([])
   })
 })

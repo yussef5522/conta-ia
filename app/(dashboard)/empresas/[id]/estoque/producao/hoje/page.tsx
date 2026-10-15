@@ -17,6 +17,7 @@
 // ⛔ Tela de GESTÃO (`stock.manage`), nunca telão de cozinha.
 
 import { useEffect, useState, use, useCallback } from 'react'
+import Link from 'next/link'
 import { ArrowLeft, Loader2, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw, Clock } from 'lucide-react'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
 import { formatarDuracao } from '@/lib/format/duracao'
@@ -25,16 +26,34 @@ import { formatBRL } from '@/lib/format/money'
 // mentindo zero porque a conta morava dentro do componente.
 import { PlacarDaEquipe, type LinhaDoPlacar } from '@/components/estoque/placar-da-equipe'
 import { textoDoCronometro as cronometro } from '@/lib/stock/producao/cronometro'
+/**
+ * ⭐⭐⭐ A MESA DA COZINHA ② É O NOVO TOPO DESTA TELA (15/10) — `docs/dashboard-referencia.html`
+ * é a LEI. ⛔ **Nenhum fluxo mudou:** a lista completa do dia continua ABAIXO dela, com os
+ * mesmos gestos do gerente, o mesmo cronômetro e o mesmo auto-refresh. Só as roupas mudaram.
+ */
+import { MesaDaCozinhaUI, type MesaParaTela } from '@/components/estoque/mesa-da-cozinha'
 
 /**
- * ⭐ AS CORES DO SELO DE RENDIMENTO — do mock `hoje-aovivo-mock.html` (`--verde-fraco`
- * `#e6f4ec`/`--verde` `#177245`, `--ambar-fraco` `#fdf3e3`/`--ambar` `#b45309`).
+ * ⭐ AS CORES DO SELO DE RENDIMENTO — hoje por **TOKEN DA FUNDAÇÃO**, não mais pelo hex do mock
+ * antigo (`hoje-aovivo-mock.html`).
+ *
+ * ⭐⭐ **O UPGRADE DE TINTA (15/10)** trocou os **31 hex cravados** desta tela pelos pares da
+ * fundação (`--fam-verde-bg/ink`, `--fam-ambar-bg/ink`, `--fam-coral-ink`, `--fam-indigo-bg`,
+ * `--prod-accent`). ⚠️ A troca é por **PAPEL, nunca por tom**: o hex fixo não inverte no tema
+ * escuro, então a tela ficava com tinta clara sobre chão claro — *color cuja única definição é
+ * um literal nunca acompanha o tema*. ⛔ E a ESTRUTURA não mudou: mesmas classes, mesmos
+ * estados, mesmo comportamento.
+ *
+ * ⚠️ `text-[color:var(--x)]` com o **hint de tipo** é obrigatório no Tailwind pra valor
+ * arbitrário que é cor; e ⛔ **nunca `bg-[var(--x)]/70`** — opacidade sobre valor arbitrário
+ * **não gera cor no Tailwind 3 e sai TRANSPARENTE** (a armadilha medida em 06/10).
+ *
  * ⛔ **Âmbar dos DOIS lados**: *"produzir demais é custo parado"* — 300% não é boa notícia.
  */
 const SELO_RENDIMENTO: Record<'OK' | 'BAIXO' | 'ALTO' | 'SEM_META', string> = {
-  OK: 'bg-[#e6f4ec] text-[#177245]',
-  BAIXO: 'bg-[#fdf3e3] text-[#b45309]',
-  ALTO: 'bg-[#fdf3e3] text-[#b45309]',
+  OK: 'bg-[var(--fam-verde-bg)] text-[color:var(--fam-verde-ink)]',
+  BAIXO: 'bg-[var(--fam-ambar-bg)] text-[color:var(--fam-ambar-ink)]',
+  ALTO: 'bg-[var(--fam-ambar-bg)] text-[color:var(--fam-ambar-ink)]',
   SEM_META: 'bg-transparent text-slate-400',
 }
 
@@ -90,7 +109,14 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
   const { id } = use(params)
   const hoje = diaEmSaoPaulo()
   const [dia, setDia] = useState(hoje)
-  const [d, setD] = useState<Dia | null | undefined>(undefined)
+  /**
+   * ⭐⭐ UMA LEITURA, UM INSTANTE. A rota da mesa devolve **a mesa E o dia** — se a tela
+   * buscasse as duas coisas em duas requisições, os números viriam de instantes diferentes e a
+   * mesa poderia dizer *"18 concluídas"* com a lista mostrando 19. Duas verdades na mesma tela
+   * é a doença que esta casa mais paga.
+   */
+  const [mesa, setMesa] = useState<(MesaParaTela & { diaAoVivo: Dia }) | null | undefined>(undefined)
+  const d: Dia | null | undefined = mesa === undefined ? undefined : mesa === null ? null : mesa.diaAoVivo
   // ⚠️ o "agora" do cronômetro é estado, e anda de segundo em segundo SEM pedir nada ao
   // servidor. Buscar o servidor por segundo custaria uma requisição por pessoa por segundo.
   const [agoraMs, setAgoraMs] = useState(() => Date.now())
@@ -107,14 +133,14 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
 
   const carregar = useCallback(() => {
     setRecarregando(true)
-    fetch(`/api/empresas/${id}/estoque/producao/dia-ao-vivo?dia=${dia}`)
+    fetch(`/api/empresas/${id}/estoque/producao/mesa?dia=${dia}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then(setD)
-      .catch(() => setD(null))
+      .then(setMesa)
+      .catch(() => setMesa(null))
       .finally(() => setRecarregando(false))
   }, [id, dia])
 
-  useEffect(() => { setD(undefined); carregar() }, [carregar])
+  useEffect(() => { setMesa(undefined); carregar() }, [carregar])
   useEffect(() => {
     const t = setInterval(() => setAgoraMs(Date.now()), 1000)
     return () => clearInterval(t)
@@ -135,6 +161,30 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
         <a href={`/empresas/${id}/estoque/producao`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800">
           <ArrowLeft className="h-3.5 w-3.5" /> Produção
         </a>
+        {/*
+         * ⭐⭐ OS CHIPS ① / ② — `docs/dashboard-referencia.html` desenha as DUAS mesas como
+         * duas abas da MESMA mesa, e o dono alterna com um toque. ⛔ O ② é o estado ATUAL
+         * (não é link pra si mesmo); o ① leva pra a home, que é a mesa ①.
+         */}
+        <div
+          className="flex items-center gap-[4px] rounded-full p-[3px]"
+          style={{ background: 'var(--prod-surface-1)', border: '1px solid var(--prod-line)' }}
+        >
+          <Link
+            href="/dashboard"
+            className="rounded-full px-[11px] py-[4px] text-[11.5px] font-extrabold hover:underline"
+            style={{ color: 'var(--prod-muted)' }}
+          >
+            ① Dashboard
+          </Link>
+          <span
+            aria-current="page"
+            className="rounded-full px-[11px] py-[4px] text-[11.5px] font-extrabold"
+            style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}
+          >
+            ② Produção
+          </span>
+        </div>
         <div className="flex items-center gap-1 rounded-[10px] border border-slate-200 bg-white p-1">
           <button onClick={() => setDia(somarDias(dia, -1))} aria-label="dia anterior" className="rounded-[7px] p-1 text-slate-500 hover:bg-slate-50"><ChevronLeft className="h-4 w-4" /></button>
           <span className="px-2 text-sm text-slate-800">
@@ -156,6 +206,20 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
         : d === null ? <p className="p-6 text-sm text-slate-500">Não consegui carregar o dia.</p>
         : (
           <>
+            {/*
+             * ⭐⭐⭐ A MESA DA COZINHA ② — O NOVO TOPO.
+             *
+             * ⛔ Ela NÃO substitui nada do que vem abaixo: o AGORA, a lista do dia e a linha
+             * do tempo continuam exatamente como estavam, com os mesmos gestos do gerente.
+             * A mesa responde *"como está o dia num olhar"*; a lista responde *"quem está com
+             * a mão em quê"* — duas perguntas, dois blocos.
+             *
+             * ⚠️ `mesa` é não-nulo aqui por construção (`d` deriva dele, e este ramo só roda
+             * quando `d` não é `undefined` nem `null`) — o `!` é o compilador pedindo a prova
+             * que o fluxo já deu.
+             */}
+            <MesaDaCozinhaUI mesa={mesa!} />
+
             {/* ── AGORA ─────────────────────────────────────────────────────────────── */}
             {/* ⛔ dia passado não tem "agora" — o bloco some em vez de aparecer vazio */}
             {d.ehHoje && (
@@ -191,11 +255,11 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                       return (
                         <article key={tarefa.etapaId}
                           className={`flex flex-col gap-3 rounded-2xl border px-[18px] py-4 ${
-                            alarme ? 'border-rose-300 bg-rose-50' : 'border-amber-200 bg-[#fdf4e3]'
+                            alarme ? 'border-rose-300 bg-rose-50' : 'border-amber-200 bg-[var(--fam-ambar-bg)]'
                           }`}>
                           <div className="flex items-center gap-3">
                             <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 bg-white text-[17px] font-bold ${
-                              alarme ? 'border-rose-300 text-rose-700' : 'border-amber-200 text-[#c2760a]'
+                              alarme ? 'border-rose-300 text-rose-700' : 'border-amber-200 text-[color:var(--fam-ambar-ink)]'
                             }`}>{inicial(nome)}</span>
                             <span className="min-w-0">
                               {/* ⭐ o NOME grande: de 2 metros, é quem está trabalhando */}
@@ -208,7 +272,7 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                             {/* ⭐⭐ DECISÃO 1: o CRONÔMETRO é o protagonista — 34px, cor própria */}
                             <span className="ml-auto shrink-0 text-right">
                               <span className={`block text-[34px] font-semibold leading-none tracking-[-0.02em] tabular-nums ${
-                                alarme ? 'text-rose-700' : 'text-[#c2760a]'
+                                alarme ? 'text-rose-700' : 'text-[color:var(--fam-ambar-ink)]'
                               }`}>{tarefa.iniciadoEm && cronometro(tarefa.iniciadoEm, agoraMs)}</span>
                               {/* ⚠️ a hora ABSOLUTA ao lado: relógio de aparelho torto se confere aqui */}
                               <span className="mt-1 block text-[11px] tabular-nums text-slate-400">
@@ -225,14 +289,14 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                           {(tarefa.pedido != null || tarefa.mediaDaTarefaMin != null) && (
                             <div className="mt-1.5 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[13px] text-slate-500">
                               {tarefa.pedido != null && (
-                                <span className="rounded-[8px] bg-[#e6f4ec] px-2 py-0.5 font-bold text-[#177245]">
+                                <span className="rounded-[8px] bg-[var(--fam-verde-bg)] px-2 py-0.5 font-bold text-[color:var(--fam-verde-ink)]">
                                   pedido: {num(tarefa.pedido)} UN
                                 </span>
                               )}
                               {tarefa.mediaDaTarefaMin != null && (
                                 <span>
                                   média dessa tarefa: <b className="text-slate-800">{duracaoCurta(tarefa.mediaDaTarefaMin)}</b>
-                                  {tarefa.passouDaMedia && <span className="text-[#b3382c]"> — {tarefa.passouDaMedia}</span>}
+                                  {tarefa.passouDaMedia && <span className="text-[color:var(--fam-coral-ink)]"> — {tarefa.passouDaMedia}</span>}
                                 </span>
                               )}
                             </div>
@@ -240,9 +304,9 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
 
                           <div className="flex flex-wrap gap-1.5">
                             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold ${
-                              alarme ? 'bg-white text-rose-700' : 'border border-amber-200 bg-white text-[#c2760a]'
+                              alarme ? 'bg-white text-rose-700' : 'border border-amber-200 bg-white text-[color:var(--fam-ambar-ink)]'
                             }`}>
-                              <span className={`h-[7px] w-[7px] rounded-full motion-safe:animate-pulse ${alarme ? 'bg-rose-600' : 'bg-[#c2760a]'}`} />
+                              <span className={`h-[7px] w-[7px] rounded-full motion-safe:animate-pulse ${alarme ? 'bg-rose-600' : 'bg-[var(--fam-ambar-ink)]'}`} />
                               fazendo
                             </span>
                             {alarme && (
@@ -257,7 +321,7 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                               </span>
                             )}
                             {tarefa.pedidoEmAberto && (
-                              <span className="inline-flex items-center rounded-full bg-[#f1edff] px-2.5 py-1 text-[11.5px] font-semibold text-[#4A4390]">
+                              <span className="inline-flex items-center rounded-full bg-[var(--fam-indigo-bg)] px-2.5 py-1 text-[11.5px] font-semibold text-[color:var(--prod-accent)]">
                                 recado no tablet
                               </span>
                             )}
@@ -291,7 +355,7 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
               {d.pessoas.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-white px-[18px] py-5 text-center text-sm text-slate-500">
                   Nenhuma pessoa ativa cadastrada.
-                  <a href={`/empresas/${id}/equipe`} className="ml-1 text-[#534AB7] underline underline-offset-2">cadastrar equipe →</a>
+                  <a href={`/empresas/${id}/equipe`} className="ml-1 text-[color:var(--prod-accent)] underline underline-offset-2">cadastrar equipe →</a>
                 </div>
               ) : (
                 /* ⭐ grade de cards, o molde do "Por Pessoa": no notebook cabem dois por
@@ -323,9 +387,9 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                             texto quando a lista cresce. */}
                         <span className="w-11 shrink-0 text-[13.5px] font-semibold tabular-nums text-slate-800">{hora(e.quando)}</span>
                         <span aria-hidden className={`flex h-[26px] w-[26px] shrink-0 items-center justify-center self-start rounded-full text-[12px] ${
-                          e.tipo === 'INICIOU' ? 'bg-[#fdf4e3] text-[#c2760a]'
-                            : e.tipo === 'FINALIZOU' ? 'bg-emerald-50 text-[#15803d]'
-                            : 'bg-[#f1edff] text-[#4A4390]'}`}>
+                          e.tipo === 'INICIOU' ? 'bg-[var(--fam-ambar-bg)] text-[color:var(--fam-ambar-ink)]'
+                            : e.tipo === 'FINALIZOU' ? 'bg-emerald-50 text-[color:var(--fam-verde-ink)]'
+                            : 'bg-[var(--fam-indigo-bg)] text-[color:var(--prod-accent)]'}`}>
                           {e.tipo === 'INICIOU' ? '▶' : e.tipo === 'FINALIZOU' ? '✓' : '◆'}
                         </span>
                         <span className="text-slate-700">
@@ -372,7 +436,7 @@ function CardDaPessoa({ p, empresaId, agoraMs, colaboradores, onMudou }: {
         {/* ⭐ DECISÃO 6: quem não tem nada APARECE, apagado — sumir com quem está livre
             esconderia justamente a decisão que o gerente precisa tomar. */}
         <div className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full text-[13px] font-semibold ${
-          vazio ? 'bg-slate-100 text-slate-400' : 'bg-[#f1edff] text-[#4A4390]'}`}>{inicial(p.nome)}</div>
+          vazio ? 'bg-slate-100 text-slate-400' : 'bg-[var(--fam-indigo-bg)] text-[color:var(--prod-accent)]'}`}>{inicial(p.nome)}</div>
         <span className={`text-[15.5px] font-semibold ${vazio ? 'text-slate-500' : 'text-slate-900'}`}>{p.nome}</span>
         <span className="ml-auto text-[11.5px] tabular-nums text-slate-400">
           {vazio ? 'nada designado hoje'
@@ -384,7 +448,7 @@ function CardDaPessoa({ p, empresaId, agoraMs, colaboradores, onMudou }: {
       {vazio ? (
         <p className="text-[12.5px] text-slate-400">
           é o momento de designar —{' '}
-          <a href={`/empresas/${empresaId}/estoque/producao`} className="font-medium text-[#534AB7] hover:underline">abrir produção →</a>
+          <a href={`/empresas/${empresaId}/estoque/producao`} className="font-medium text-[color:var(--prod-accent)] hover:underline">abrir produção →</a>
         </p>
       ) : (
         <ul className="flex flex-col gap-2.5 border-t border-slate-100 pt-2.5">
@@ -393,12 +457,12 @@ function CardDaPessoa({ p, empresaId, agoraMs, colaboradores, onMudou }: {
               {/* ⭐⭐ CADA ESTADO COM UMA CARA SÓ, agora em CHIP — o caractere solto sumia
                   no meio do texto quando a lista crescia. */}
               <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                t.estado === 'EM_ANDAMENTO' ? 'bg-[#fdf4e3] text-[#c2760a]'
-                  : t.estado === 'FEITA' ? 'bg-emerald-50 text-[#15803d]'
+                t.estado === 'EM_ANDAMENTO' ? 'bg-[var(--fam-ambar-bg)] text-[color:var(--fam-ambar-ink)]'
+                  : t.estado === 'FEITA' ? 'bg-emerald-50 text-[color:var(--fam-verde-ink)]'
                   : t.estado === 'FINALIZADA_PELO_GERENTE' ? 'bg-slate-100 text-slate-500'
                   : t.estado === 'ENCERRADA_SEM_FINALIZAR' ? 'bg-slate-100 text-slate-500'
                   : 'bg-slate-100 text-slate-500'}`}>
-                {t.estado === 'EM_ANDAMENTO' ? <><span className="h-[6px] w-[6px] rounded-full bg-[#c2760a] motion-safe:animate-pulse" /> fazendo</>
+                {t.estado === 'EM_ANDAMENTO' ? <><span className="h-[6px] w-[6px] rounded-full bg-[var(--fam-ambar-ink)] motion-safe:animate-pulse" /> fazendo</>
                   : t.estado === 'FEITA' ? '✓ feita'
                   : t.estado === 'FINALIZADA_PELO_GERENTE' ? 'pelo gerente'
                   : t.estado === 'ENCERRADA_SEM_FINALIZAR' ? '⊘ sem finalizar'
@@ -413,8 +477,8 @@ function CardDaPessoa({ p, empresaId, agoraMs, colaboradores, onMudou }: {
               {/* ⭐ o cronômetro VIVO também aqui — 16px: menor que o do AGORA, mas é a
                   mesma pergunta, e ela não pode virar texto cinza. */}
               <span className={`ml-auto shrink-0 tabular-nums ${
-                t.estado === 'EM_ANDAMENTO' ? 'text-[16px] font-semibold text-[#c2760a]'
-                  : t.estado === 'FEITA' ? 'text-[12.5px] text-[#15803d]'
+                t.estado === 'EM_ANDAMENTO' ? 'text-[16px] font-semibold text-[color:var(--fam-ambar-ink)]'
+                  : t.estado === 'FEITA' ? 'text-[12.5px] text-[color:var(--fam-verde-ink)]'
                   : 'text-[12.5px] text-slate-400'}`}>
                 {t.estado === 'EM_ANDAMENTO' && t.iniciadoEm ? cronometro(t.iniciadoEm, agoraMs)
                   : t.estado === 'FEITA' && t.iniciadoEm && t.finalizadoEm ? `${hora(t.iniciadoEm)}–${hora(t.finalizadoEm)} · ${duracaoCurta(t.minutos ?? 0)}`

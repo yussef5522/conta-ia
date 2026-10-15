@@ -14,12 +14,12 @@ import { parseOFX } from '@/lib/ofx/parser'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
-/** Sinal com que a transação entra no saldo — a MESMA regra do `recalcularSaldoConta`. */
-function sinal(t: { type: string; transferDirection: string | null }): 1 | -1 {
-  if (t.type === 'CREDIT') return 1
-  if (t.type === 'TRANSFER') return t.transferDirection === 'IN' ? 1 : -1
-  return -1
-}
+/**
+ * ⚠️ O SINAL MUDOU DE CASA EM 15/10 (`regua-do-caixa.ts`), não de conteúdo — a mesa de
+ * operações precisa da MESMA régua pra desenhar os 30 dias de saldo, e uma 2ª cópia faria a
+ * mesa e a conferência discordarem sobre o mesmo dinheiro. É a pergunta que já teve 4 leitores.
+ */
+import { sinalDoCaixa as sinal, WHERE_CAIXA } from './regua-do-caixa'
 
 export async function lerConta(bankAccountId: string, db: PrismaClient = defaultPrisma): Promise<LeituraConta | null> {
   const conta = await db.bankAccount.findUnique({
@@ -64,7 +64,7 @@ export async function lerConta(bankAccountId: string, db: PrismaClient = default
   // ⚠️ Era o TERCEIRO leitor da mesma pergunta ("o que conta como caixa?") com régua própria.
   // Alarme vermelho em conta que bate ao centavo é como um alarme morre.
   const txs = await db.transaction.findMany({
-    where: { bankAccountId, lifecycle: 'EFFECTED', reconciledWithId: null },
+    where: { bankAccountId, ...WHERE_CAIXA },
     select: { date: true, amount: true, type: true, transferDirection: true },
   })
 

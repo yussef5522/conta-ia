@@ -92,3 +92,21 @@ export function somarDias(dia: string, n: number): string {
   d.setUTCDate(d.getUTCDate() + n)
   return d.toISOString().slice(0, 10)
 }
+
+/**
+ * ⭐⭐ A HORA NO FUSO DO BRASIL — **o dono único** (15/10/2026).
+ *
+ * ⛔⛔ Ela nasceu em TRÊS cópias (a tela do HOJE, o orquestrador da mesa ① e a fita da mesa ②) e
+ * virou uma só pelo motivo de sempre: três formatações divergiriam no primeiro ajuste, e o
+ * dono veria **18:34** num bloco e **21:34** no bloco ao lado, na mesma tela, pro mesmo evento.
+ *
+ * ⚠️ `timeZone` EXPLÍCITO: o servidor roda em UTC, e sem ele a fita mostraria a hora do
+ * datacenter — 3 horas à frente do balcão.
+ */
+export function horaEmSaoPaulo(d: Date): string {
+  return d.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Sao_Paulo',
+  })
+}

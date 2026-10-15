@@ -1341,3 +1341,21 @@
     gap: 8px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   A FITA DA MESA DE OPERAÇÕES (15/10/2026)
+
+   ⭐ `@keyframes rolar` é o que a referência (`docs/dashboard-referencia.html`) declara, ao
+   caractere: `@keyframes rolar{to{transform:translateX(-50%)}}`. O `-50%` é metade porque a
+   fita desenha a lista DUAS vezes — ao chegar na metade, o quadro é idêntico ao início e a
+   rolagem não tem buraco no fim.
+
+   ⚠️ A PAUSA NO HOVER e o `prefers-reduced-motion` moram na TELA (`group-hover:` e
+   `motion-reduce:` do Tailwind), não aqui: é lá que o guard os confere, e uma regra CSS global
+   governando a animação de um componente seria a 2ª régua do mesmo gesto.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes rolar {
+  to {
+    transform: translateX(-50%);
+  }
+}

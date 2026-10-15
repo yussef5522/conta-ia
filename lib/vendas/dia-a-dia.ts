@@ -239,6 +239,49 @@ const ddmm = (s: string) => `${s.slice(8, 10)}/${s.slice(5, 7)}`
  * dia-da-semana que ainda falta no mês, projetá-lo exigiria inventar — e número inventado
  * numa projeção sai plausível, que é o pior tipo de erro.
  */
+export interface MediaDoDiaDaSemana {
+  /** 0 = domingo … 6 = sábado */
+  dow: number
+  /** `null` = sem amostra nenhuma deste dia-da-semana */
+  media: number | null
+  amostras: number
+}
+
+/**
+ * ⭐⭐⭐ A MÉDIA POR DIA-DA-SEMANA — extraída de dentro do `projetarOMes` em 15/10, **sem mudar
+ * o comportamento dele**, porque a mesa de operações faz a MESMA pergunta em dois módulos (o
+ * PAGA × ENTRA de 7 dias e o TUA SEMANA).
+ *
+ * ⛔ Reimplementá-la lá seria a 2ª derivação de *"quanto este dia-da-semana vende"* — e as duas
+ * divergiriam no primeiro caso de borda (o dia de hoje pela metade, o dia sem amostra),
+ * fazendo a projeção do mês e a mesa discordarem na mesma sessão.
+ *
+ * ⚠️ **ELA DEVOLVE A CONTAGEM DE AMOSTRAS E NÃO JULGA.** Quem decide o mínimo é o CONSUMIDOR:
+ * `projetarOMes` aceita ≥1 (comportamento que já estava em prod, zero regressão) e a mesa exige
+ * `MIN_AMOSTRAS_DO_DIA` — porque *"média de uma amostra"* é o que o dono já recusou em 10/10.
+ *
+ * ⛔⛔ **O DIA DE HOJE FICA FORA**, qualquer que seja a fonte: ele está pela metade por
+ * construção. É a mesma régua do `diaTipico`, pelo mesmo motivo medido em prod (a terça de hoje
+ * puxando a média da terça pra baixo).
+ */
+export function mediaPorDiaDaSemana(dias: DiaDeVenda[], hoje: string): MediaDoDiaDaSemana[] {
+  const medidos = dias.filter((d) => d.total != null && d.dia < hoje)
+  const porDow = new Map<number, number[]>()
+  for (const d of medidos) {
+    const a = porDow.get(d.diaDaSemana) ?? []
+    a.push(d.total!)
+    porDow.set(d.diaDaSemana, a)
+  }
+  return [0, 1, 2, 3, 4, 5, 6].map((dow) => {
+    const a = porDow.get(dow) ?? []
+    return {
+      dow,
+      media: a.length > 0 ? round2(a.reduce((x, y) => x + y, 0) / a.length) : null,
+      amostras: a.length,
+    }
+  })
+}
+
 export function projetarOMes(
   dias: DiaDeVenda[],
   hoje: string,
@@ -246,6 +289,13 @@ export function projetarOMes(
   const medidos = dias.filter((d) => d.total != null && d.dia <= hoje)
   if (medidos.length === 0) return { valor: null, porque: 'nenhum dia medido neste mês ainda' }
 
+  /**
+   * ⚠️ A média aqui inclui o dia de HOJE (`<= hoje`) — comportamento que já estava em prod
+   * desde 10/10 e **não se muda neste sprint**: a projeção do mês soma o realizado (que inclui
+   * hoje) e projeta o que falta; tirar hoje da média mudaria o número da tela de Vendas sem
+   * ninguém pedir. ⛔ Por isso a média **local** fica, e `mediaPorDiaDaSemana` (que exclui hoje)
+   * serve a mesa — são duas perguntas sobre horizontes diferentes, com a diferença escrita.
+   */
   const porDow = new Map<number, number[]>()
   for (const d of medidos) {
     const a = porDow.get(d.diaDaSemana) ?? []

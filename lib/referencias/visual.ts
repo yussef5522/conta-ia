@@ -28,6 +28,14 @@ export const CAMINHO_DA_REFERENCIA_IMPORTAR = 'docs/importar-referencia.html'
  * de TELA mandam na estrutura das telas delas. Em conflito de token, a fundação vence.
  */
 export const CAMINHO_DA_FUNDACAO = 'docs/cara-do-sistema-referencia.html'
+/**
+ * ⭐⭐ A referência da MESA DE OPERAÇÕES (15/10) — a lei do VISUAL e do COMPORTAMENTO do
+ * dashboard novo (① Dashboard · ② Produção), aprovada pelo dono em 15/10.
+ *
+ * ⚠️ Ela manda na ESTRUTURA das duas mesas (quais módulos, em que ordem, com que span); os
+ * TOKENS continuam sob a fundação (`CAMINHO_DA_FUNDACAO`) — em conflito, a fundação vence.
+ */
+export const CAMINHO_DO_DASHBOARD = 'docs/dashboard-referencia.html'
 
 export interface ReferenciaVisual {
   /** o arquivo inteiro */
@@ -109,4 +117,32 @@ export function lerReferenciaVisual(
   )
 
   return { html, css, script, tokens, valores, valoresEscuros, letras, medidas, cortes }
+}
+
+/**
+ * ⭐⭐ A PALETA DE UM SELETOR — e ela nasceu de uma armadilha REAL (15/10).
+ *
+ * ⛔⛔ A referência da mesa é **DARK-FIRST**: o `:root` cru carrega o tema ESCURO e o
+ * `:root[data-theme="light"]` carrega o CLARO. Os campos `valores`/`valoresEscuros` acima
+ * recortam *"tudo antes do primeiro `@media`"*, então **os dois blocos caem no mesmo recorte e
+ * o último sobrescreve o primeiro** — medido: o `valores` daquele arquivo devolve a paleta
+ * CLARA com o nome de clara e a ESCURA desaparece.
+ *
+ * ⚠️ Em vez de mudar a semântica dos campos antigos (que os guards da fundação e da margem já
+ * consomem, e ali o `:root` É o claro), a leitura por SELETOR entra como função própria.
+ * **Quem sabe se o arquivo é claro-first ou dark-first é o guard daquele arquivo**, não o leitor.
+ *
+ * @param seletor `':root'` pega o bloco CRU (sem `[data-theme]`); `':root[data-theme="light"]'`
+ *                pega o do interruptor.
+ */
+export function paletaDoSeletor(css: string, seletor: string): Record<string, string> {
+  const marca = `${seletor}{`
+  const i = css.indexOf(marca)
+  if (i === -1) return {}
+  const bloco = css.slice(i + marca.length, css.indexOf('}', i))
+  const out: Record<string, string> = {}
+  for (const m of bloco.matchAll(/(--[a-z0-9-]+):\s*(#[0-9A-Fa-f]{3,8})/g)) {
+    out[m[1]] = m[2].toLowerCase()
+  }
+  return out
 }

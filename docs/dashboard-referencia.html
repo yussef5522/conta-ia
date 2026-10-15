@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAIXAOS — PROPOSTA B2 · A MESA DE OPERAÇÕES (Dashboard + Produção)</title>
+<style>
+/* ============================================================================
+   CAIXAOS · PROPOSTA B2 — "A MESA DE OPERAÇÕES" (15/10/2026)
+   A escolhida pelo dono (B) + os pedidos dele:
+   · o gráfico "o que tem pra pagar cada dia × a venda que se espera entrar"
+   · o seletor ① Dashboard ② Produção (vindo da prévia A)
+   · a PRODUÇÃO ganhou a própria mesa: placar, radar da cozinha, fita da
+     cozinha, top de pessoas do dia e a semana em barras
+   ESCURO-PRIMEIRO; o claro obedece (☀/🌙). NÚMEROS DE AMOSTRA.
+   Aprovada → vira docs/dashboard-referencia.html e o sprint bate com ela.
+   ========================================================================= */
+:root{
+  --bg:#070A14; --mod:#0E1326; --mod-2:#131A33;
+  --linha:#1E2747; --linha-forte:#2C3764;
+  --tinta:#EBF0FF; --tinta-2:#93A0C8; --tinta-3:#596690;
+  --acao:#7C84FF; --acao-fundo:#1A2048; --acao-vivo:#4F46E5;
+  --verde:#2EE6A8; --verde-chao:#064E38; --verde-fundo:#0A2E22;
+  --coral:#FF6B61; --coral-fundo:#38150F;
+  --ambar:#FFB224; --ambar-fundo:#33230A;
+  --r:14px; --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+:root[data-theme="light"]{
+  --bg:#EEF1F8; --mod:#FFFFFF; --mod-2:#F4F6FC;
+  --linha:#DDE3F2; --linha-forte:#BCC7E4;
+  --tinta:#0A0F1E; --tinta-2:#46516B; --tinta-3:#8B94AD;
+  --acao:#4F46E5; --acao-fundo:#EEF0FE; --acao-vivo:#4F46E5;
+  --verde:#0E9F6E; --verde-chao:#07654A; --verde-fundo:#E4F7EF;
+  --coral:#D93B30; --coral-fundo:#FDECEA;
+  --ambar:#B45309; --ambar-fundo:#FCF0DC;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tinta);font-family:var(--font);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important;animation:none!important} }
+
+/* ---------- topo de mesa ---------- */
+.topo{display:flex;align-items:center;gap:14px;padding:14px 26px;border-bottom:1px solid var(--linha-forte);flex-wrap:wrap}
+.marca{display:flex;align-items:center;gap:10px}
+.marca .m{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#4F46E5,#6D28D9);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px}
+.marca b{font-size:15px;font-weight:800;letter-spacing:-.01em}
+.marca .casa{font-size:11px;color:var(--tinta-3);font-weight:700;margin-left:2px}
+.ver-chips{display:flex;gap:7px}
+.vchip{border:1px solid var(--linha-forte);background:var(--mod);color:var(--tinta-2);font:inherit;font-size:12.5px;font-weight:800;border-radius:999px;padding:7px 15px;cursor:pointer}
+.vchip.on{background:var(--acao-vivo);border-color:var(--acao-vivo);color:#fff}
+.relogio{font-size:12.5px;color:var(--tinta-2);font-weight:700}
+.topo .dir{margin-left:auto;display:flex;gap:8px;align-items:center}
+.tbt{border:1px solid var(--linha-forte);background:var(--mod);color:var(--tinta-2);font:inherit;font-size:12.5px;font-weight:700;border-radius:9px;padding:7px 13px;cursor:pointer}
+.tbt:hover{border-color:var(--acao);color:var(--acao)}
+
+/* ---------- bento ---------- */
+.mesa{max-width:1440px;margin:0 auto;padding:18px 26px 70px;display:grid;gap:12px;grid-template-columns:repeat(12,1fr)}
+.mod{background:var(--mod);border:1px solid var(--linha);border-radius:var(--r);overflow:hidden;position:relative}
+.mod:hover{border-color:var(--linha-forte)}
+.mod-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 16px 8px}
+.mod-cab h2{margin:0;font-size:11px;font-weight:800;letter-spacing:.09em;color:var(--tinta-3)}
+.mod-cab .link{font-size:11.5px;font-weight:700;color:var(--acao);text-decoration:none}
+.c8{grid-column:span 8}.c7{grid-column:span 7}.c5{grid-column:span 5}.c12{grid-column:span 12}.c4{grid-column:span 4}.c6{grid-column:span 6}
+@media(max-width:1023px){.c8,.c7,.c6,.c5,.c4{grid-column:span 12}}
+
+/* ---------- caixa agora ---------- */
+.caixa-corpo{padding:4px 16px 14px;position:relative}
+.caixa-val{font-size:44px;font-weight:800;letter-spacing:-.03em}
+.caixa-val small{font-size:22px;color:var(--tinta-2);font-weight:700}
+.caixa-sub{font-size:12.5px;color:var(--tinta-2);font-weight:600;margin-top:2px}
+.caixa-sub b.in{color:var(--verde)} .caixa-sub b.out{color:var(--coral)}
+.spark{display:block;width:100%;height:64px;margin-top:10px;cursor:crosshair}
+.tip{position:absolute;transform:translate(-50%,-135%);background:var(--tinta);color:var(--bg);font-size:11.5px;font-weight:800;border-radius:7px;padding:4px 9px;white-space:nowrap;pointer-events:none;display:none;z-index:5}
+
+/* ---------- radar ---------- */
+.radar{padding:4px 10px 12px;display:flex;flex-direction:column;gap:6px}
+.al{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer}
+.al:hover{background:var(--mod-2)}
+.al .led{width:9px;height:9px;border-radius:50%;flex:none}
+.al.g .led{background:var(--coral);animation:pulso 2s infinite}
+.al.m .led{background:var(--ambar)}
+.al.ok .led{background:var(--verde)}
+.al .det{margin-left:auto;font-size:11.5px;color:var(--tinta-3);font-weight:600;white-space:nowrap}
+@keyframes pulso{0%{box-shadow:0 0 0 0 rgba(255,107,97,.45)}70%{box-shadow:0 0 0 9px rgba(255,107,97,0)}100%{box-shadow:0 0 0 0 rgba(255,107,97,0)}}
+
+/* ---------- pregão ---------- */
+.pregao{padding:4px 16px 16px}
+.pregao-linha1{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.pregao-frase{font-size:19px;font-weight:800;letter-spacing:-.015em}
+.pregao-frase b{color:var(--verde)}
+.pregao-resto{margin-left:auto;font-size:12.5px;color:var(--tinta-2);font-weight:700}
+.mega{position:relative;height:30px;background:var(--mod-2);border:1px solid var(--linha);border-radius:999px;margin-top:12px;overflow:visible}
+.mega .enchendo{position:absolute;inset:0 auto 0 0;width:0%;border-radius:999px;background:linear-gradient(90deg,var(--acao-vivo),#6D28D9);transition:width 1.1s cubic-bezier(.2,.7,.2,1)}
+.mega .verde-t{position:absolute;top:0;bottom:0;border-radius:0 999px 999px 0;background:var(--verde);opacity:0;transition:opacity .4s .9s}
+.mega .bandeira{position:absolute;top:-8px;bottom:-8px;width:3px;background:var(--verde);border-radius:2px}
+.mega .bandeira::after{content:"🏁 casa paga";position:absolute;top:-22px;left:-30px;font-size:10.5px;font-weight:800;color:var(--verde);white-space:nowrap}
+.pregao-leg{display:flex;justify-content:space-between;gap:10px;margin-top:14px;font-size:11.5px;color:var(--tinta-2);font-weight:700;flex-wrap:wrap}
+.pregao-leg b{color:var(--tinta)}
+
+/* ---------- O PAGA × ENTRA (o gráfico pedido pelo dono) ---------- */
+.ps-grafico{padding:6px 16px 10px}
+.ps-barras{display:flex;gap:12px;align-items:flex-end;height:170px}
+.ps-dia{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;height:100%;justify-content:flex-end;border-radius:10px;padding:6px 4px 4px;cursor:pointer}
+.ps-dia:hover{background:var(--mod-2)}
+.ps-duo{display:flex;gap:4px;align-items:flex-end;flex:1;width:100%;justify-content:center}
+.ps-in{width:34%;max-width:26px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,var(--verde),#15966B)}
+.ps-out{width:34%;max-width:26px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,var(--coral),#C2453C)}
+.ps-rot{font-size:10.5px;color:var(--tinta-3);font-weight:800}
+.ps-dia.hoje .ps-rot{color:var(--acao)}
+.ps-saldo{font-size:10.5px;font-weight:800}
+.ps-saldo.ok{color:var(--verde)} .ps-saldo.ruim{color:var(--coral)}
+.ps-leg{display:flex;gap:16px;padding:0 16px 10px;font-size:11.5px;color:var(--tinta-2);font-weight:700}
+.ps-leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.ps-aviso{margin:0 16px 14px;border:1px solid var(--ambar);background:var(--ambar-fundo);color:var(--ambar);border-radius:10px;padding:9px 12px;font-size:12.5px;font-weight:700}
+
+/* ---------- fita ---------- */
+.fita{white-space:nowrap;overflow:hidden;border-top:1px solid var(--linha);border-bottom:1px solid var(--linha);background:var(--mod)}
+.fita-track{display:inline-flex;animation:rolar 46s linear infinite;padding:9px 0}
+.fita:hover .fita-track{animation-play-state:paused}
+@keyframes rolar{to{transform:translateX(-50%)}}
+.ev{display:inline-flex;align-items:center;gap:8px;padding:0 26px;font-size:12.5px;font-weight:700;color:var(--tinta-2)}
+.ev b{color:var(--tinta)} .ev .h{color:var(--tinta-3);font-weight:800;font-size:11px}
+.ev .ok{color:var(--verde)} .ev .at{color:var(--ambar)}
+
+/* ---------- listas / pills ---------- */
+.lista{padding:2px 6px 8px}
+.li{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer}
+.li:hover{background:var(--mod-2)}
+.li .v{margin-left:auto;font-weight:800}
+.li .meta{font-size:11px;color:var(--tinta-3);font-weight:600}
+.pill{font-size:10px;font-weight:800;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.pill.hoje{background:var(--coral-fundo);color:var(--coral)}
+.pill.seg{background:var(--ambar-fundo);color:var(--ambar)}
+.pill.ok{background:var(--verde-fundo);color:var(--verde)}
+.pill.corr{background:var(--acao-fundo);color:var(--acao)}
+.ini{width:26px;height:26px;border-radius:50%;background:var(--acao-fundo);color:var(--acao);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;flex:none}
+
+/* ---------- produção: placar da cozinha ---------- */
+.pl-coz{display:grid;grid-template-columns:1fr 1fr 1.15fr 1fr}
+@media(max-width:860px){.pl-coz{grid-template-columns:1fr 1fr}}
+.pl-coz>div{padding:14px 18px}
+.pl-coz>div+div{border-left:1px solid var(--linha)}
+@media(max-width:860px){.pl-coz>div:nth-child(3){border-left:0}}
+.pl-coz .rot{font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--tinta-3)}
+.pl-coz .val{font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:3px}
+.pl-coz .nota{font-size:11px;color:var(--tinta-3);margin-top:2px;font-weight:600}
+.selo-coz{background:var(--verde-chao);color:#fff;border-radius:12px;margin:8px;padding:12px 16px}
+.selo-coz .rot{color:#9FF2D6}.selo-coz .val{color:#fff}.selo-coz .nota{color:#7BE8C4}
+.faixa-coz{border-top:1px solid var(--linha);background:var(--mod-2);padding:10px 18px;font-size:12.5px;font-weight:700;color:var(--tinta-2)}
+.faixa-coz b{color:var(--tinta)}
+.aovivo{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;color:var(--verde);background:var(--verde-fundo);border-radius:999px;padding:3px 10px;margin-left:10px}
+.aovivo i{width:7px;height:7px;border-radius:50%;background:var(--verde);animation:pulso 2s infinite}
+
+/* ---------- semana em barras ---------- */
+.heat{display:flex;gap:6px;padding:8px 16px 14px;align-items:flex-end;height:120px}
+.hcol{flex:1;display:flex;flex-direction:column;gap:5px;align-items:center;height:100%;justify-content:flex-end}
+.hbar{width:100%;max-width:34px;border-radius:6px 6px 0 0;background:var(--acao);opacity:.9}
+.hcol span{font-size:10.5px;color:var(--tinta-3);font-weight:800}
+.hcol.top .hbar{background:var(--verde)}
+.hcol.top span{color:var(--verde)}
+footer{max-width:1440px;margin:0 auto;padding:0 26px 26px;font-size:11.5px;color:var(--tinta-3);text-align:center}
+</style>
+</head>
+<body>
+  <header class="topo">
+    <div class="marca"><div class="m">C</div><b>CAIXAOS</b><span class="casa">· caçula mix · PJ</span></div>
+    <div class="ver-chips">
+      <button class="vchip on" id="bt-dash" onclick="ver('dash')">① Dashboard</button>
+      <button class="vchip" id="bt-prod" onclick="ver('prod')">② Produção</button>
+    </div>
+    <span class="relogio num" id="relogio"></span>
+    <div class="dir">
+      <button class="tbt" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='light'?'':'light'">☀ / 🌙</button>
+    </div>
+  </header>
+
+  <!-- ════════════════ ① DASHBOARD — a mesa do dono ════════════════ -->
+  <main class="mesa" id="tela-dash">
+
+    <section class="mod c7" aria-label="caixa agora">
+      <div class="mod-cab"><h2>NO CAIXA AGORA · COFRE + BANCOS</h2><a class="link" href="#">movimentações →</a></div>
+      <div class="caixa-corpo num">
+        <div class="caixa-val"><span id="heroNum">R$ 23.481</span><small>,52</small></div>
+        <div class="caixa-sub">hoje: <b class="in">+R$ 4.230</b> entraram · <b class="out">−R$ 1.918</b> saíram · <span style="color:var(--tinta-3)">passa o mouse na linha</span></div>
+        <svg class="spark" id="sparkSvg" viewBox="0 0 600 64" preserveAspectRatio="none" role="img" aria-label="saldo dos últimos 30 dias">
+          <path id="sparkFill" fill="var(--acao)" opacity="0.10"></path>
+          <path id="sparkLine" fill="none" stroke="var(--acao)" stroke-width="2.5"></path>
+          <line id="sparkGuia" x1="0" x2="0" y1="0" y2="64" stroke="var(--tinta-3)" stroke-width="1" stroke-dasharray="3 3" visibility="hidden"></line>
+          <circle id="sparkDot" r="4.5" fill="var(--acao)" stroke="var(--mod)" stroke-width="2" visibility="hidden"></circle>
+        </svg>
+        <div class="tip" id="sparkTip"></div>
+      </div>
+    </section>
+
+    <section class="mod c5" aria-label="radar">
+      <div class="mod-cab"><h2>RADAR · O QUE PEDE TUA MÃO</h2><a class="link" href="#">ver tudo →</a></div>
+      <div class="radar num">
+        <div class="al g"><span class="led"></span>5 contas vencem hoje<span class="det">R$ 3.912</span></div>
+        <div class="al g"><span class="led"></span>6 itens com estoque negativo<span class="det">contar</span></div>
+        <div class="al m"><span class="led"></span>3 conclusões aguardam conferência<span class="det">cozinha</span></div>
+        <div class="al m"><span class="led"></span>86 sabores sem ficha<span class="det">cobertura 60%</span></div>
+        <div class="al ok"><span class="led"></span>PDV de ontem importado<span class="det">completo ✓</span></div>
+      </div>
+    </section>
+
+    <section class="mod c12" aria-label="pregão do mês">
+      <div class="mod-cab"><h2>O PREGÃO DE OUTUBRO · A CASA SE ENCHENDO</h2><a class="link" href="#">quem paga a casa →</a></div>
+      <div class="pregao num">
+        <div class="pregao-linha1">
+          <div class="pregao-frase">A casa do mês já foi paga — <b>e sobraram R$ 13.632</b></div>
+          <div class="pregao-resto">vendas deixaram R$ 57.232 · casa custou R$ 43.599 · cobertura 60%</div>
+        </div>
+        <div class="mega">
+          <div class="enchendo" id="megaFill"></div>
+          <div class="verde-t" id="megaVerde" style="left:76%;right:0"></div>
+          <div class="bandeira" style="left:76%"></div>
+        </div>
+        <div class="pregao-leg">
+          <span>ontem: pagou a casa do dia e sobrou <b>R$ 1.323</b></span>
+          <span>pra pagar a casa de HOJE faltam <b>R$ 6.228</b> · média de quarta vende <b>R$ 7.430</b></span>
+          <span>empréstimos do mês: <b>R$ 44 mil</b> (próxima parcela seg)</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- O GRÁFICO PEDIDO PELO DONO: o que tem pra PAGAR cada dia × a VENDA que se espera entrar -->
+    <section class="mod c12" aria-label="paga e entra por dia">
+      <div class="mod-cab"><h2>OS PRÓXIMOS 7 DIAS · O QUE PAGA × O QUE ENTRA</h2><a class="link" href="#">contas a pagar →</a></div>
+      <div class="ps-grafico num">
+        <div class="ps-barras">
+          <div class="ps-dia hoje"><span class="ps-saldo ok">+R$ 3,5 mil</span><div class="ps-duo"><span class="ps-in" style="height:62%"></span><span class="ps-out" style="height:33%"></span></div><span class="ps-rot">HOJE</span></div>
+          <div class="ps-dia"><span class="ps-saldo ok">+R$ 5,5 mil</span><div class="ps-duo"><span class="ps-in" style="height:70%"></span><span class="ps-out" style="height:24%"></span></div><span class="ps-rot">qui</span></div>
+          <div class="ps-dia"><span class="ps-saldo ok">+R$ 1,2 mil</span><div class="ps-duo"><span class="ps-in" style="height:88%"></span><span class="ps-out" style="height:78%"></span></div><span class="ps-rot">sex</span></div>
+          <div class="ps-dia"><span class="ps-saldo ok">+R$ 9,6 mil</span><div class="ps-duo"><span class="ps-in" style="height:100%"></span><span class="ps-out" style="height:20%"></span></div><span class="ps-rot">sáb</span></div>
+          <div class="ps-dia"><span class="ps-saldo ok">+R$ 8,2 mil</span><div class="ps-duo"><span class="ps-in" style="height:84%"></span><span class="ps-out" style="height:16%"></span></div><span class="ps-rot">dom</span></div>
+          <div class="ps-dia"><span class="ps-saldo ruim">−R$ 5,3 mil</span><div class="ps-duo"><span class="ps-in" style="height:46%"></span><span class="ps-out" style="height:90%"></span></div><span class="ps-rot">seg</span></div>
+          <div class="ps-dia"><span class="ps-saldo ok">+R$ 3,1 mil</span><div class="ps-duo"><span class="ps-in" style="height:52%"></span><span class="ps-out" style="height:26%"></span></div><span class="ps-rot">ter</span></div>
+        </div>
+      </div>
+      <div class="ps-leg"><span><i style="background:var(--verde)"></i>entra (projeção pela tua média do dia)</span><span><i style="background:var(--coral)"></i>paga (contas agendadas)</span></div>
+      <div class="ps-aviso num">⚠ segunda aperta: saem R$ 18.400 dos empréstimos e a média de segunda entra R$ 13.100 — o sábado e o domingo cobrem com folga de R$ 12,5 mil</div>
+    </section>
+
+    <section class="c12 fita" aria-label="a fita de eventos">
+      <div class="fita-track num" id="fitaDash">
+        <span class="ev"><span class="h">18:34</span><b>porção calabresa</b> <span class="ok">✓✓ corrigida e conferida</span> (era 107 → 127)</span>
+        <span class="ev"><span class="h">18:25</span><b>MAIONESE</b> <span class="ok">✓✓ conferida</span> · 34,296 KG · 100%</span>
+        <span class="ev"><span class="h">16:05</span>conta paga: <b>fornecedor de carnes</b> · R$ 2.148</span>
+        <span class="ev"><span class="h">15:13</span><b>370 metades de bolinha</b> saíram da cozinha · 139%</span>
+        <span class="ev"><span class="h">11:20</span>PDV de ontem <span class="ok">importado completo</span> · produtos + sabores</span>
+        <span class="ev"><span class="h">09:02</span><span class="at">⚠ fermento</span> segue negativo · contar hoje</span>
+      </div>
+    </section>
+
+    <section class="mod c4" aria-label="contas da semana">
+      <div class="mod-cab"><h2>CONTAS · 7 DIAS</h2><a class="link" href="#">as 22 →</a></div>
+      <div class="lista num">
+        <div class="li">Fornecedor de carnes <span class="pill hoje">hoje</span><span class="v">R$ 2.148</span></div>
+        <div class="li">Energia elétrica <span class="pill hoje">hoje</span><span class="v">R$ 1.102</span></div>
+        <div class="li">Empréstimo Banrisul <span class="pill seg">seg</span><span class="v">R$ 9.870</span></div>
+        <div class="li">Consignado <span class="pill seg">seg</span><span class="v">R$ 8.530</span></div>
+        <div class="li">Aluguel <span class="pill seg">ter</span><span class="v">R$ 6.500</span></div>
+      </div>
+    </section>
+
+    <section class="mod c4" aria-label="a semana que vende">
+      <div class="mod-cab"><h2>TUA SEMANA · MÉDIA POR DIA</h2><a class="link" href="#">vendas →</a></div>
+      <div class="heat num">
+        <div class="hcol"><div class="hbar" style="height:38%"></div><span>seg</span></div>
+        <div class="hcol"><div class="hbar" style="height:44%"></div><span>ter</span></div>
+        <div class="hcol"><div class="hbar" style="height:52%"></div><span>qua</span></div>
+        <div class="hcol"><div class="hbar" style="height:58%"></div><span>qui</span></div>
+        <div class="hcol"><div class="hbar" style="height:86%"></div><span>sex</span></div>
+        <div class="hcol top"><div class="hbar" style="height:100%"></div><span>sáb</span></div>
+        <div class="hcol"><div class="hbar" style="height:74%"></div><span>dom</span></div>
+      </div>
+    </section>
+
+    <section class="mod c4" aria-label="cozinha agora">
+      <div class="mod-cab"><h2>COZINHA AGORA</h2><a class="link" href="#" onclick="ver('prod');return false">mesa da produção →</a></div>
+      <div class="caixa-corpo num" style="padding-top:2px">
+        <div style="font-size:30px;font-weight:800">18 <small style="font-size:13px;color:var(--tinta-2);font-weight:700">concluídas hoje</small></div>
+        <div style="font-size:12px;color:var(--tinta-2);font-weight:600;margin-top:3px">1.616 UN · 34,30 KG · rendimento 105%</div>
+        <span class="aovivo" style="margin-left:0;margin-top:9px"><i></i> AO VIVO · conferência em dia</span>
+      </div>
+    </section>
+  </main>
+
+  <!-- ════════════════ ② PRODUÇÃO — a mesa da cozinha ════════════════ -->
+  <main class="mesa" id="tela-prod" style="display:none">
+
+    <section class="mod c12" aria-label="placar da cozinha">
+      <div class="mod-cab"><h2>A COZINHA HOJE <span class="aovivo"><i></i> AO VIVO</span></h2><a class="link" href="#">todas as ordens →</a></div>
+      <div class="pl-coz num">
+        <div><div class="rot">EM ABERTO</div><div class="val">0</div><div class="nota">ordens andando</div></div>
+        <div><div class="rot">NA BANCADA</div><div class="val">R$ 0,00</div><div class="nota">nada parado agora</div></div>
+        <div class="selo-coz"><div class="rot">✓ CONCLUÍDAS HOJE</div><div class="val">18</div><div class="nota">R$ 5.140 produzidos</div></div>
+        <div><div class="rot">RENDIMENTO</div><div class="val" style="color:var(--verde)">105%</div><div class="nota">de 18 lotes</div></div>
+      </div>
+      <div class="faixa-coz num">a cozinha já produziu <b>1.616 UN · 34,30 KG</b> hoje · 0 etapas paradas · conferência em dia</div>
+    </section>
+
+    <section class="mod c5" aria-label="radar da cozinha">
+      <div class="mod-cab"><h2>RADAR DA COZINHA</h2><a class="link" href="#">fila →</a></div>
+      <div class="radar num">
+        <div class="al m"><span class="led"></span>3 conclusões aguardam conferência<span class="det">Marcyelle</span></div>
+        <div class="al m"><span class="led"></span>rendimento 185% na calabresa ralada<span class="det">suspeita · conferir</span></div>
+        <div class="al g"><span class="led"></span>fermento negativo (−4,26 KG)<span class="det">contar</span></div>
+        <div class="al ok"><span class="led"></span>retalho de ontem declarado · 10 KG<span class="det">massa de pizza</span></div>
+        <div class="al ok"><span class="led"></span>nenhuma etapa com 0 min<span class="det">hoje</span></div>
+      </div>
+    </section>
+
+    <section class="mod c7" aria-label="quem fez o dia">
+      <div class="mod-cab"><h2>QUEM FEZ O DIA · UNIDADES CONFERIDAS</h2><a class="link" href="#">por pessoa →</a></div>
+      <div class="lista num">
+        <div class="li"><span class="ini">LU</span>lucas<span class="meta">5 ordens</span><span class="v">406 UN</span></div>
+        <div class="li"><span class="ini">CA</span>Carlisle<span class="meta">1 ordem · massa</span><span class="v">370 UN</span></div>
+        <div class="li"><span class="ini">JE</span>Jessica frente<span class="meta">1 ordem</span><span class="v">300 UN</span></div>
+        <div class="li"><span class="ini">MA</span>MAELE<span class="meta">1 ordem</span><span class="v">251 UN</span></div>
+        <div class="li"><span class="ini">DE</span>debora<span class="meta">1 ordem · KG</span><span class="v">34,3 KG</span></div>
+      </div>
+    </section>
+
+    <section class="c12 fita" aria-label="a fita da cozinha">
+      <div class="fita-track num" id="fitaProd">
+        <span class="ev"><span class="h">18:34</span><b>porção calabresa</b> <span class="ok">✓✓ corrigida</span> · 107 → 127 UN · lucas</span>
+        <span class="ev"><span class="h">18:25</span><b>MAIONESE</b> <span class="ok">✓✓</span> · 34,296 KG · debora</span>
+        <span class="ev"><span class="h">18:23</span><b>porção queijo 135g</b> <span class="ok">✓✓</span> · 251 UN · MAELE</span>
+        <span class="ev"><span class="h">17:42</span><b>beef de xis</b> <span class="ok">✓✓</span> · 106 UN (106%) · nadine</span>
+        <span class="ev"><span class="h">15:13</span><b>metade de bolinha</b> <span class="ok">✓✓</span> · 370 UN (139%) · Carlisle · retalho 10 KG</span>
+        <span class="ev"><span class="h">09:40</span>separação da massa <span class="at">conferida com a câmara</span> · ficha × 10</span>
+      </div>
+    </section>
+
+    <section class="mod c6" aria-label="últimas conclusões">
+      <div class="mod-cab"><h2>ÚLTIMAS CONCLUSÕES</h2><a class="link" href="#">as 18 de hoje →</a></div>
+      <div class="lista num">
+        <div class="li">metade de bolinha massa de pizza <span class="pill ok">✓✓</span><span class="v">370 UN <span class="meta">139%</span></span></div>
+        <div class="li">MAIONESE <span class="pill corr">✓✓ corrigida</span><span class="v">34,296 KG <span class="meta">100%</span></span></div>
+        <div class="li">porção queijo 135g <span class="pill ok">✓✓</span><span class="v">251 UN <span class="meta">100%</span></span></div>
+        <div class="li">beef de xis <span class="pill ok">✓✓</span><span class="v">106 UN <span class="meta">106%</span></span></div>
+        <div class="li">porção calabresa 100g <span class="pill corr">✓✓ corrigida</span><span class="v">127 UN <span class="meta">93%</span></span></div>
+      </div>
+    </section>
+
+    <section class="mod c6" aria-label="a semana da cozinha">
+      <div class="mod-cab"><h2>A SEMANA DA COZINHA · UN POR DIA</h2><a class="link" href="#">por dia →</a></div>
+      <div class="heat num">
+        <div class="hcol"><div class="hbar" style="height:52%"></div><span>qui</span></div>
+        <div class="hcol"><div class="hbar" style="height:78%"></div><span>sex</span></div>
+        <div class="hcol top"><div class="hbar" style="height:100%"></div><span>sáb</span></div>
+        <div class="hcol"><div class="hbar" style="height:84%"></div><span>dom</span></div>
+        <div class="hcol"><div class="hbar" style="height:46%"></div><span>seg</span></div>
+        <div class="hcol"><div class="hbar" style="height:58%"></div><span>ter</span></div>
+        <div class="hcol"><div class="hbar" style="height:64%"></div><span>HOJE</span></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>PROPOSTA B2 · "a mesa de operações" · ① dashboard + ② produção · números de amostra · aprovada → vira docs/dashboard-referencia.html e o sprint da fase 2 bate com ela</footer>
+
+<script>
+function ver(q){
+  document.getElementById('tela-dash').style.display=q==='dash'?'':'none';
+  document.getElementById('tela-prod').style.display=q==='prod'?'':'none';
+  document.getElementById('bt-dash').className='vchip'+(q==='dash'?' on':'');
+  document.getElementById('bt-prod').className='vchip'+(q==='prod'?' on':'');
+}
+(function(){
+  var el=document.getElementById('relogio');
+  function tic(){var d=new Date();
+    var dias=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+    var mes=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    el.textContent=dias[d.getDay()]+', '+d.getDate()+' '+mes[d.getMonth()]+' · '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+  tic(); setInterval(tic,30000);
+})();
+['fitaDash','fitaProd'].forEach(function(id){var t=document.getElementById(id);t.innerHTML+=t.innerHTML;});
+requestAnimationFrame(function(){requestAnimationFrame(function(){
+  document.getElementById('megaFill').style.width='76%';
+  document.getElementById('megaVerde').style.opacity='.9';
+});});
+var SALDOS=[15210,15830,14920,16480,15990,17210,16740,18030,17520,16890,
+            18420,17980,19240,18660,19810,19120,20350,19780,18940,20610,
+            19950,21180,20540,21730,21050,22290,21480,22740,22030,23481.52];
+var svgS=document.getElementById('sparkSvg');
+(function(){
+  var min=Math.min.apply(null,SALDOS),max=Math.max.apply(null,SALDOS);
+  var pts=SALDOS.map(function(v,i){return [i*(600/(SALDOS.length-1)),56-((v-min)/(max-min))*46]});
+  var d=pts.map(function(p,i){return (i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)}).join(' ');
+  document.getElementById('sparkLine').setAttribute('d',d);
+  document.getElementById('sparkFill').setAttribute('d',d+' L600,64 L0,64 Z');
+  svgS._pts=pts;
+})();
+function brl(v){return 'R$ '+Math.round(v).toLocaleString('pt-BR')}
+function diaDe(i){var d=new Date(2026,9,15);d.setDate(d.getDate()-(SALDOS.length-1-i));
+  return ['dom','seg','ter','qua','qui','sex','sáb'][d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')}
+svgS.addEventListener('mousemove',function(ev){
+  var r=svgS.getBoundingClientRect(), fx=(ev.clientX-r.left)/r.width*600;
+  var i=Math.max(0,Math.min(SALDOS.length-1,Math.round(fx/(600/(SALDOS.length-1)))));
+  var p=svgS._pts[i], pr=svgS.parentElement.getBoundingClientRect();
+  document.getElementById('sparkGuia').setAttribute('x1',p[0]);
+  document.getElementById('sparkGuia').setAttribute('x2',p[0]);
+  document.getElementById('sparkGuia').setAttribute('visibility','visible');
+  document.getElementById('sparkDot').setAttribute('cx',p[0]);
+  document.getElementById('sparkDot').setAttribute('cy',p[1]);
+  document.getElementById('sparkDot').setAttribute('visibility','visible');
+  var tip=document.getElementById('sparkTip');
+  tip.style.display='block';
+  tip.style.left=(r.left-pr.left+p[0]/600*r.width)+'px';
+  tip.style.top=(r.top-pr.top+p[1]/64*r.height)+'px';
+  tip.textContent=diaDe(i)+' · '+brl(SALDOS[i]);
+});
+svgS.addEventListener('mouseleave',function(){
+  document.getElementById('sparkGuia').setAttribute('visibility','hidden');
+  document.getElementById('sparkDot').setAttribute('visibility','hidden');
+  document.getElementById('sparkTip').style.display='none';
+});
+(function(){
+  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  var el=document.getElementById('heroNum'), alvo=23481, t0=null;
+  function passo(t){if(!t0)t0=t;var k=Math.min(1,(t-t0)/850);k=1-Math.pow(1-k,3);
+    el.textContent='R$ '+Math.round(alvo*k).toLocaleString('pt-BR');
+    if(k<1)requestAnimationFrame(passo)}
+  requestAnimationFrame(passo);
+})();
+</script>
+</body>
+</html>

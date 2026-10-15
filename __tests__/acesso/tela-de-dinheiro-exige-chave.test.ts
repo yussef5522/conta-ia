@@ -158,10 +158,33 @@ describe('⛔ nenhuma página server nova monta dinheiro sem exigir a chave', ()
   })
 
   it('⛔⛔ o DASHBOARD especificamente chama o gate — foi ele que vazou', () => {
+    /**
+     * ⚠️⚠️ **ESTE GUARD QUEBROU COM A PÁGINA CERTA (15/10)** — ele ancorava no literal
+     * `customPeriod`, do motor ANTIGO do dashboard, e a home virou a **MESA DE OPERAÇÕES ①**:
+     * a âncora **deixou de existir** e `indexOf` devolveu `-1`, então *"o gate vem antes"*
+     * passou a comparar com um ponto que não existe. ***Grep não distingue "refatorei" de
+     * "quebrei"*** — é a razão de existir da REGRA 3.
+     *
+     * ⭐ **REAPONTADO pra ESTRUTURA, não pra literal:** a pergunta é a mesma de sempre — *o
+     * desvio acontece ANTES de qualquer leitura de dinheiro* (negar depois de calcular já
+     * passou o número pelo servidor). O que muda é que agora ela é feita contra **as duas
+     * portas que existem hoje**: a consulta ao banco e a montagem da mesa.
+     *
+     * ⚠️ A mesa é conferida pela **TAG** (`<MesaDeOperacoes`), nunca pelo nome solto: o
+     * `import` dela vive no topo do arquivo, antes do gate por construção — casar o
+     * identificador faria o guard reprovar a página correta pra sempre.
+     */
     const src = readFileSync(join(RAIZ, 'dashboard', 'page.tsx'), 'utf-8')
     expect(src).toMatch(/telaInicialDe\(/)
-    // ⚠️ e o desvio vem ANTES do motor do dashboard: negar depois de calcular ainda passa
-    // o número pelo servidor.
-    expect(src.indexOf('telaInicialDe(')).toBeLessThan(src.indexOf('customPeriod'))
+    const iGate = src.indexOf('telaInicialDe(')
+    expect(iGate, 'o gate tem que ser chamado').toBeGreaterThan(-1)
+    expect(src.indexOf('redirect(destino)'), 'chamar o gate sem desviar não nega nada')
+      .toBeGreaterThan(iGate)
+    for (const depois of ['prisma.bankAccount', '<MesaDeOperacoes']) {
+      const i = src.indexOf(depois)
+      expect(i, `âncora "${depois}" não existe mais — reaponte o guard, não afrouxe`)
+        .toBeGreaterThan(-1)
+      expect(iGate, `o gate tem que vir ANTES de "${depois}"`).toBeLessThan(i)
+    }
   })
 })

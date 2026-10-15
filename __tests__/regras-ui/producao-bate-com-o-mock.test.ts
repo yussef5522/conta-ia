@@ -150,11 +150,45 @@ describe('⭐ PLACAR — a tela usa as cores do arquivo', () => {
 describe('⭐ HOJE — o formato pedido→entregue e o selo de rendimento', () => {
   const render = semComentarios(telaHoje)
 
-  it('a paleta do selo de rendimento veio do mock', () => {
+  it('o selo de rendimento pinta pelo PAR da família — e o TOM é da fundação, não do mock', () => {
+    /**
+     * ⚠️⚠️ **ESTE GUARD FICOU VERMELHO COM A TELA CERTA (15/10)**, e é uma divergência de
+     * RÉGUA que fica declarada em vez de resolvida no escuro.
+     *
+     * Ele exigia os 4 hex do mock **LITERAIS na tela** (`#e6f4ec`/`#177245` verdes,
+     * `#fdf3e3`/`#b45309` âmbares). O UPGRADE DE TINTA trocou os 31 hex desta tela pelos pares
+     * da fundação — e os tons **não são idênticos** (`--fam-verde-bg` é `#e4f7ef`, não
+     * `#e6f4ec`; `--fam-verde-ink` é `#065f46`, não `#177245`).
+     *
+     * ⭐ **A HIERARQUIA DAS LEIS resolve, e ela já está escrita desde 14/10:** a referência da
+     * **FUNDAÇÃO manda nos TOKENS**; as de **TELA mandam na ESTRUTURA** das telas delas; **em
+     * conflito de token, a fundação vence**. Foi exatamente por isso que 8 valores cravados
+     * saíram dos testes naquele dia. Cravar o hex do mock aqui seria pôr na tela uma cor que
+     * **não inverte no tema escuro** — e numa cozinha às 23h isso é um selo ilegível.
+     *
+     * ⭐ **E a metade que CONTINUA mordendo é a que importa:** o mock **DECLARA** que o selo
+     * tem um par verde e um par âmbar (os papéis existem, lidos do arquivo), e a tela tem que
+     * pintar **com o PAR da família** — `bg` + `ink` juntos. Selo com fundo de uma família e
+     * tinta de outra (ou tinta sem fundo) é o descasamento que o par existe pra impedir.
+     */
     for (const cor of ['#e6f4ec', '#177245', '#fdf3e3', '#b45309']) {
-      expect(tokensDo(mockHoje).concat(tokensDo(mockRelatorios))).toContain(cor)
-      expect(render.toLowerCase()).toContain(cor)
+      expect(
+        tokensDo(mockHoje).concat(tokensDo(mockRelatorios)),
+        `o mock precisa DECLARAR ${cor} — é dele que sai o papel que a fundação pinta`,
+      ).toContain(cor)
     }
+    for (const familia of ['verde', 'ambar']) {
+      expect(render, `o selo precisa do FUNDO da família ${familia}`).toContain(
+        `var(--fam-${familia}-bg)`,
+      )
+      expect(render, `o selo precisa da TINTA da família ${familia}`).toContain(
+        `var(--fam-${familia}-ink)`,
+      )
+    }
+    expect(
+      [...render.matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0]),
+      'cor cravada não inverte no tema escuro — o selo entra por token',
+    ).toEqual([])
   })
 
   it('⭐ os NÚMEROS antes do % — "pedido N → entregue M", com o % como selo', () => {

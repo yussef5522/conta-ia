@@ -16,6 +16,25 @@
 // Sem jsdom no projeto, regra dentro de componente é regra que ninguém prova (a cicatriz do
 // prefill do cardápio). A tela ECOA: filtra nada, ordena nada, conta nada.
 
+/**
+ * ⭐⭐ **O UPGRADE DE TINTA (15/10)** — esta tela pintava com **9 hex cravados** (`#185FA5`, o
+ * azul legado) e **49 classes de paleta** do Tailwind (`text-slate-900`, `bg-amber-50`…).
+ *
+ * ⛔ **Nenhum dos dois inverte no tema escuro**: *color cuja única definição é um literal nunca
+ * acompanha o tema*, e `slate-900` é escuro nos DOIS mapas — a tela ficava com tinta preta
+ * sobre chão preto. A troca é por **PAPEL** (`--prod-primary` o texto forte, `--prod-muted` a
+ * dica, `--prod-line` a borda, `--prod-acao-bg/ink` a ação, as famílias os selos), nunca por
+ * tom; ⛔ e a **ESTRUTURA não mudou**: mesmas tags, mesmos estados, mesmo comportamento.
+ *
+ * ⚠️ `text-[color:var(--x)]` e `border-[color:var(--x)]` exigem o **hint de tipo** no Tailwind
+ * pra valor arbitrário que é cor; e ⛔ **nunca `bg-[var(--x)]/10`** — opacidade sobre valor
+ * arbitrário **não gera cor no Tailwind 3 e sai TRANSPARENTE** (a armadilha medida em 06/10).
+ * No lugar do azul a 10% entra o par `--fam-indigo-bg/ink`, que é o degrau soft da família.
+ *
+ * ⚠️ O botão primário segue a convenção do módulo (`--prod-acao-bg` + `--prod-acao-ink`, **sem
+ * hover**): duas convenções pro mesmo botão divergiriam no primeiro ajuste de tom, e hover não
+ * existe no celular, que é onde a cozinha opera.
+ */
 import { useEffect, useState, useCallback, useMemo, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ChefHat, Loader2, Plus, Factory, ChevronRight, ArrowLeft, Copy, Scale, Search, X, Star } from 'lucide-react'
@@ -147,8 +166,8 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
     }
   }
 
-  if (fichas === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
-  if (fichas === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar as receitas.</div>
+  if (fichas === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--prod-muted)' }} /></div>
+  if (fichas === null) return <div className="p-6 text-sm" style={{ color: 'var(--prod-muted)' }}>Não consegui carregar as receitas.</div>
 
   const temRecorte = busca.trim() !== '' || chip !== 'TODAS'
 
@@ -165,7 +184,7 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
           onClick={() => alternarPrincipal(f)}
           aria-pressed={f.principal}
           title={f.principal ? 'tirar das principais' : 'fixar nas principais'}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-slate-100"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-[var(--prod-surface-1)]"
         >
           <Star
             className="h-[18px] w-[18px]"
@@ -179,7 +198,7 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
         <LogoDaReceita nome={f.nomeProduzido} tamanho={38} />
 
         <a href={`/empresas/${id}/estoque/producao/receitas/${f.id}`} className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] font-semibold text-slate-900">
+          <p className="truncate text-[13.5px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
             <NomeComDestaque nome={f.nomeProduzido} busca={busca} />
           </p>
           {/**
@@ -188,11 +207,11 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
             * se lê como "não importa" e a ausência como "zero" — e é justamente a receita sem
             * custo fechado que precisa de um gesto do dono.
             */}
-          <p className="truncate text-[11px] text-slate-400">
+          <p className="truncate text-[11px]" style={{ color: 'var(--prod-muted)' }}>
             v{f.versaoAtual} · lote {f.loteBase} {f.unidadeLoteBase} ·{' '}
             {f.custoADefinir
               ? <span className="font-medium" style={{ color: 'var(--fam-ambar-mid)' }}>custo a definir</span>
-              : <span className="tabular-nums text-slate-600">{brl(f.custoLote)}</span>}
+              : <span className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{brl(f.custoLote)}</span>}
             {` · ${f.componentes.length} componente(s)`}
             {f.validadeDias != null && ` · validade ${f.validadeDias}d`}
           </p>
@@ -201,14 +220,16 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
         {/* ⭐ A FILA VIROU A LINHA: o chip leva à ficha com o campo do rendimento aceso */}
         {esperam[f.id] && (
           <a href={`/empresas/${id}/estoque/fichas/${f.id}?foco=rendimento&voltar=${encodeURIComponent(`/empresas/${id}/estoque/producao/receitas`)}`}
-            className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 text-[11.5px] font-medium text-amber-900 hover:bg-amber-100"
+            className="inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11.5px] font-medium"
+            style={{ borderColor: 'var(--fam-ambar-mid)', background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}
             title={esperam[f.id]}>
             <Scale className="h-3 w-3" /> rendimento a declarar
           </a>
         )}
 
         <button onClick={() => produzir(f.id)} disabled={busy}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs hover:bg-[var(--prod-surface-1)] disabled:opacity-50"
+          style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}>
           <Factory className="h-3.5 w-3.5" /> produzir
         </button>
         {/* ⭐ DUPLICAR — o gesto das FAMÍLIAS de sabor (14 variações de FILE, 8 de FRANGO).
@@ -216,13 +237,14 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
             mapeamento faria a ficha nova roubar as baixas da original, em silêncio. */}
         <a href={`/empresas/${id}/estoque/producao/receitas/nova?duplicarDe=${f.id}`}
           title="criar uma nova receita com o conteúdo desta"
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs hover:bg-[var(--prod-surface-1)]"
+          style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}>
           <Copy className="h-3.5 w-3.5" /> duplicar
         </a>
         {/* ⭐ EXCLUIR à vista no card (16/09) — o servidor decide se apaga ou desativa */}
         <ExcluirReceita empresaId={id} fichaId={f.id} compacto
           aoConcluir={(r) => { setAviso(r.efeito); carregar() }} />
-        <a href={`/empresas/${id}/estoque/producao/receitas/${f.id}`} className="text-slate-300 hover:text-slate-500"><ChevronRight className="h-4 w-4" /></a>
+        <a href={`/empresas/${id}/estoque/producao/receitas/${f.id}`} style={{ color: 'var(--prod-muted)' }}><ChevronRight className="h-4 w-4" /></a>
       </CardContent>
     </Card>
   )
@@ -240,12 +262,12 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
       * celular. ⛔ Nunca coluna estreita centrada no meio da tela.
       */
     <div className="mx-auto max-w-[1440px] space-y-3 px-[28px] max-[700px]:px-[14px]">
-      <a href={`/empresas/${id}/estoque/producao`} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> Produção</a>
+      <a href={`/empresas/${id}/estoque/producao`} className="inline-flex items-center gap-1 text-xs hover:underline" style={{ color: 'var(--prod-muted)' }}><ArrowLeft className="h-3.5 w-3.5" /> Produção</a>
 
       <div className="flex flex-wrap items-center gap-2.5">
-        <ChefHat className="h-5 w-5 shrink-0 text-[#185FA5]" />
-        <h1 className="text-base font-semibold text-slate-900">Receitas de produção</h1>
-        <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">O que a cozinha produz em lote (gessado, beef, porções) — rendimento medido a cada produção</p>
+        <ChefHat className="h-5 w-5 shrink-0" style={{ color: 'var(--prod-accent)' }} />
+        <h1 className="text-base font-semibold" style={{ color: 'var(--prod-primary)' }}>Receitas de produção</h1>
+        <p className="hidden flex-1 truncate text-xs lg:block" style={{ color: 'var(--prod-muted)' }}>O que a cozinha produz em lote (gessado, beef, porções) — rendimento medido a cada produção</p>
         {/**
           * ⛔⛔ O BOTÃO DA TELA-FILA MORREU (11/10, item 4) — ver o comentário do estado
           * `esperam`. A pendência agora é um chip NA LINHA de cada receita, e o gesto abre a
@@ -253,13 +275,15 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
           * número sem porta era o que a fila fazia; porta sem número não diz o tamanho.
           */}
         {Object.keys(esperam).length > 0 && (
-          <span className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 text-xs font-medium text-amber-900">
+          <span className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium"
+            style={{ borderColor: 'var(--fam-ambar-mid)', background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
             <Scale className="h-3.5 w-3.5" />
             {Object.keys(esperam).length} esperando o rendimento
           </span>
         )}
         <a href={`/empresas/${id}/estoque/producao/receitas/nova`}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C]">
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold"
+          style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
           <Plus className="h-3.5 w-3.5" /> Nova receita
         </a>
       </div>
@@ -270,18 +294,20 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
         * a mais pra uma resposta que já dava pra ter.
         */}
       <div className="relative max-w-[420px]">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: 'var(--prod-muted)' }} />
         <input
           type="text"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           placeholder="buscar receita…"
           aria-label="buscar receita pelo nome"
-          className="h-10 w-full rounded-xl border border-slate-300 pl-9 pr-9 text-[13.5px] text-slate-900 placeholder:text-slate-400 focus:border-[#185FA5] focus:outline-none"
+          className="h-10 w-full rounded-xl border pl-9 pr-9 text-[13.5px] focus:border-[color:var(--prod-accent)] focus:outline-none"
+          style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
         />
         {busca !== '' && (
           <button type="button" onClick={() => setBusca('')} aria-label="limpar a busca"
-            className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+            className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md hover:bg-[var(--prod-surface-1)]"
+            style={{ color: 'var(--prod-muted)' }}>
             <X className="h-4 w-4" />
           </button>
         )}
@@ -291,17 +317,18 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
       <div className="flex flex-wrap items-center gap-1.5">
         {CHIPS.map((c) => (
           <button key={c.chave} type="button" onClick={() => setChip(c.chave)} aria-pressed={chip === c.chave}
-            className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium"
+            style={
               chip === c.chave
-                ? 'border-[#185FA5] bg-[#185FA5]/10 text-[#185FA5]'
-                : 'border-slate-300 text-slate-600 hover:bg-slate-50'
-            }`}>
+                ? { borderColor: 'var(--fam-indigo-mid)', background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)' }
+                : { borderColor: 'var(--prod-line-strong)', color: 'var(--prod-muted)' }
+            }>
             {c.rotulo} <span className="tabular-nums opacity-70">· {c.n}</span>
           </button>
         ))}
         {temRecorte && (
           <button type="button" onClick={() => { setBusca(''); setChip('TODAS') }}
-            className="ml-1 text-[11.5px] text-slate-500 underline hover:text-slate-700">ver tudo</button>
+            className="ml-1 text-[11.5px] underline" style={{ color: 'var(--prod-muted)' }}>ver tudo</button>
         )}
       </div>
 
@@ -311,7 +338,8 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
         diferente do que o confirm prometeu (a cozinha produziu no meio).
       */}
       {aviso && (
-        <div className="flex items-start gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-[13px] text-emerald-900">
+        <div className="flex items-start gap-2 rounded-xl border px-3 py-2 text-[13px]"
+          style={{ borderColor: 'var(--fam-verde-mid)', background: 'var(--fam-verde-bg)', color: 'var(--fam-verde-ink)' }}>
           <span>{aviso}</span>
           <button type="button" onClick={() => setAviso(null)} className="ml-auto shrink-0 text-[11px] underline">ok</button>
         </div>
@@ -319,33 +347,33 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
 
       {fichas.length === 0 ? (
         <Card><CardContent className="flex flex-col items-center gap-2 p-10 text-center">
-          <ChefHat className="h-10 w-10 text-slate-300" />
-          <p className="text-sm font-medium text-slate-700">Nenhuma receita de produção ainda.</p>
-          <p className="max-w-md text-xs text-slate-500">
+          <ChefHat className="h-10 w-10" style={{ color: 'var(--prod-line-strong)' }} />
+          <p className="text-sm font-medium" style={{ color: 'var(--prod-primary)' }}>Nenhuma receita de produção ainda.</p>
+          <p className="max-w-md text-xs" style={{ color: 'var(--prod-muted)' }}>
             Receita de produção é o que se faz em LOTE e vira estoque (gessado, beef, porção de carne).
-            O produto que você VENDE se monta no <a href={`/empresas/${id}/estoque/cardapio`} className="text-[#185FA5] underline">Cardápio</a>.
+            O produto que você VENDE se monta no <a href={`/empresas/${id}/estoque/cardapio`} className="underline" style={{ color: 'var(--prod-accent)' }}>Cardápio</a>.
           </p>
         </CardContent></Card>
       ) : lista.vazio ? (
         <Card><CardContent className="flex flex-col items-center gap-2 p-8 text-center">
-          <Search className="h-8 w-8 text-slate-300" />
-          <p className="text-sm text-slate-600">{lista.vazio}</p>
+          <Search className="h-8 w-8" style={{ color: 'var(--prod-line-strong)' }} />
+          <p className="text-sm" style={{ color: 'var(--prod-primary)' }}>{lista.vazio}</p>
           <button type="button" onClick={() => { setBusca(''); setChip('TODAS') }}
-            className="text-xs text-[#185FA5] underline">limpar</button>
+            className="text-xs underline" style={{ color: 'var(--prod-accent)' }}>limpar</button>
         </CardContent></Card>
       ) : (
         <div className="space-y-4">
           {lista.blocos.map((b) => (
             <section key={b.chave} className="space-y-2">
               {b.titulo && (
-                <h2 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <h2 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
                   {b.chave === 'PRINCIPAIS' && <Star className="h-3 w-3" style={{ color: 'var(--fam-ambar-mid)', fill: 'var(--fam-ambar-mid)' }} />}
                   {b.titulo}
-                  <span className="font-normal normal-case tabular-nums text-slate-400">· {b.receitas.length}</span>
+                  <span className="font-normal normal-case tabular-nums" style={{ color: 'var(--prod-muted)' }}>· {b.receitas.length}</span>
                 </h2>
               )}
               {b.convite ? (
-                <p className="rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-[12.5px] text-slate-500">{b.convite}</p>
+                <p className="rounded-xl border border-dashed px-3 py-2.5 text-[12.5px]" style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-muted)' }}>{b.convite}</p>
               ) : (
                 /** ⭐ GRADE de cartões, nunca coluna estreita: 1 no celular, 2 a partir de 1100px */
                 <div className="grid grid-cols-1 gap-2 min-[1100px]:grid-cols-2">

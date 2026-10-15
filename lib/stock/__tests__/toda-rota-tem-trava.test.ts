@@ -90,6 +90,14 @@ describe('toda rota de estoque tem trava', () => {
       + 'Em `stock.view` esse veredito viajaria no JSON até o tablet da cozinha, e a cola estaria a um DevTools de '
       + 'distância — exatamente o canal lateral que a lei fechou quando o campo de motivo deixou de aparecer '
       + 'condicional. O guard `conclusao-nao-da-cola` prova o outro lado: a tela de declarar segue cega',
+    'producao/mesa/route.ts':
+      '⛔⛔ A MESA DA COZINHA ② (15/10) — o orquestrador que a tela do HOJE carrega. Ela devolve '
+      + 'TRÊS coisas que já são `stock.manage` por si: o RADAR (que carrega a fila de conferência '
+      + 'COM o veredito do fiscal), o QUEM FEZ O DIA (o ritmo de cada pessoa lado a lado) e o dia '
+      + 'ao vivo inteiro. Em `stock.view` a cola de prova da lei de 05/10 viajaria no JSON até o '
+      + 'tablet — o mesmo canal lateral de `producao/conferencia` e `producao/dia-ao-vivo`, agora '
+      + 'num payload só. ⚠️ A trava é a MESMA das três portas que ela orquestra: afrouxar aqui '
+      + 'abriria uma lateral pra todas de uma vez',
   }
 
   it('GET nunca exige operar/gerenciar (ler é ler), fora as leituras sensíveis nomeadas', () => {
