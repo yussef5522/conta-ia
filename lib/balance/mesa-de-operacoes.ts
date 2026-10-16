@@ -383,9 +383,23 @@ export async function lerMesaDeOperacoes(
           quem: e.quem,
         })),
       /**
-       * ⚠️ O CARIMBO DE QUATRO OLHOS e as CONTAS PAGAS do dia ficaram FORA desta volta, e isso
-       * está DITO em `naoAlcancado` — ⛔ fita que não diz o que não alcançou é fita que o dono
-       * lê como "não houve", que é a família do *"erro disfarçado de vazio"*.
+       * ⛔⛔ **ESTES TRÊS BALDES AINDA NÃO TÊM PORTA LIGADA — e o comentário anterior MENTIA
+       * sobre isso** (ele afirmava que a ausência estava "DITA em `naoAlcancado`"; a prova em
+       * prod mostrou `naoAlcancado: []`). *Comentário que promete ser a trava sem ser a trava
+       * é pior que comentário nenhum* — a cicatriz de 08/10.
+       *
+       * ⚠️⚠️ **E ELES NÃO PODEM ENTRAR EM `naoAlcancado`:** aquele campo significa *"a porta
+       * CAIU"*, e três entradas permanentes apareceriam **todo dia, pra sempre** — o jeito
+       * mais rápido de treinar o dono a não ler a lista (a lição dos 111 alarmes falsos de
+       * 26/08). *"Não construí ainda"* e *"a porta caiu"* são estados diferentes, e colapsar
+       * os dois é a doença que esta casa mais paga.
+       *
+       * ⭐ Então a ausência fica **registrada no relatório como pendência da 2.1**, com nome:
+       *   · `lotesConferidos` — o carimbo de QUATRO OLHOS (`stock_conclusao_conferida`);
+       *   · `contasPagas` — o que o dono pagou hoje;
+       *   · `avisos` — os do sininho que nasceram hoje.
+       * ⚠️ Enquanto estiverem vazios, a fita mostra **menos** do que o dia teve. Ela não
+       * INVENTA evento (que é o vermelho do brief), mas também não é a fita completa.
        */
       lotesConferidos: [],
       contasPagas: [],
