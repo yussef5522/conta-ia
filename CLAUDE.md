@@ -3911,6 +3911,214 @@ saídas lançadas com o saldo JÁ ≤ 0:
 
 📋 **FICA PRO DONO (o clique é dele, REGRA 2):** abrir o montador no celular e no notebook e ver as 4 bases fechando, a página da `metade de bolinha` (R$ 0,47) e um item negativo. ⚠️ E decidir o item 4 — e, se achar que o custo da massa devia ser 0,54 e não 0,47, **o caminho é a produção de 12/10**, não a lei: foi ela que entrou a R$ 0,4709/un com o saldo no chão.
 
+## ⭐⭐⭐ A MESA DE OPERAÇÕES — A HOME NOVA + A PRODUÇÃO VESTIDA (15-16/10/2026)
+
+**`docs/dashboard-referencia.html` ("PROPOSTA B2 · A MESA DE OPERAÇÕES") virou a LEI do visual
+E do comportamento**, versionada, com o guard `dashboard-bate-com-a-referencia` (19 asserções)
+lendo o arquivo. ⛔ **ZERO ESCRITA EM TUDO — a mesa só LÊ**, provado por contabilidade de linhas
+antes/depois em cada rodada.
+
+**FRENTE A — a mesa ① É A HOME** (a antiga morreu), e **número morto é proibido: tudo clicável
+leva pra tela da coisa.** 6 módulos: NO CAIXA AGORA (+ scrub de 30 dias) · RADAR dos juízes que
+já existiam · O PREGÃO DO MÊS (**regra de ouro: pregão == placar AO CENTAVO**) · PAGA × ENTRA ·
+A FITA · CONTAS 7 DIAS + TUA SEMANA + COZINHA AGORA.
+
+**FRENTE B — a mesa ② virou o TOPO do "Hoje ao vivo"**, com a lista do dia inteira **embaixo,
+intacta**. ⭐⭐ **UMA LEITURA, UM INSTANTE:** a rota devolve **a mesa E o dia** no mesmo payload
+— duas requisições viriam de instantes diferentes e a mesa poderia dizer *"18 concluídas"* com a
+lista mostrando 19. **Duas verdades na mesma tela é a doença que esta casa mais paga.**
+
+### ⛔⛔⛔ O INVARIANTE DA MESA × A LISTA NASCEU **FORTE DEMAIS** — e falhava no caso LEGÍTIMO
+
+A prova em prod travou em `conclusoesNoDia 9 × eventos com lote na fita 8`. Eu tinha escrito
+`==`, e a perícia (chamando as **MESMAS PORTAS** que a mesa e a lista chamam, em vez de
+reimplementar a janela — régua própria daria um 3º número e eu concluiria sobre o meu erro)
+mostrou que a 9ª é `PORÇAO CHOCOLATE BRANCO 50G`, 56 UN, **`colaboradorId: null`**, com
+**0 etapas finalizadas antes**.
+
+⭐ **É o desenho de 07/09:** o lote fechado **pendura na etapa finalizada mais recente ANTES da
+conclusão** (sem isso, produção PARCIAL empilharia N conclusões na mesma linha da fita).
+Conclusão fechada pela **tela de Produção** — o caminho do gerente, sem tablet e sem finalizar
+etapa — **não tem onde pendurar**.
+
+**⭐⭐ E O TAMANHO DA CLASSE FOI MEDIDO ANTES DE DECIDIR: 11 de 424 conclusões vivas em 30 dias
+(2,6%), espalhadas em 9 DIAS DIFERENTES.** É **rotina**, não acidente — 8 das 11 com
+`colaborador NENHUM`. *Invariante que falha no caso legítimo é pior que invariante nenhum*
+(REGRA 7): alguém "conserta" o DADO pra bater com a régua errada.
+
+**A forma HONESTA, que continua mordendo se houver divergência de verdade:** (1) a mesa **nunca
+conta MENOS** que a fita; (2) o gap é **EXPLICADO AO ITEM** — tem que ser exatamente o nº de
+conclusões do dia sem nenhuma etapa finalizada antes. **Em prod: `gap 1 == 1`.**
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU O NÚMERO MORTO: `CONTAS 7 DIAS R$ 0` COM R$ 58.653,84 VENCENDO
+
+Pior que o R$ 0: o radar dizia **`[VERDE] Vencem hoje · nada`** com **R$ 17.701,34 vencendo
+HOJE** em 7 boletos. ***Radar que mente verde é pior que radar vermelho errado*** — o dono lê
+"nada" e não paga.
+
+**A CAUSA:** as duas consultas filtravam por `bankAccount: { companyId }`, e **conta a pagar
+NASCE SEM `bankAccountId`** (a ponte do estoque, desde 24/08). Quem a prende à empresa é
+fornecedor/funcionário/cliente/categoria. **Medido: 110 PAYABLE da empresa, ZERO com conta
+bancária.** O filtro não erra — devolve **ZERO, em SILÊNCIO**, e lista vazia é resposta
+plausível.
+
+**⚠️⚠️ TERCEIRA VEZ DESTA CLASSE, e as três estão registradas aqui:** o **F1** da ponte (24/08,
+corrigido pra resolver pelo fornecedor) · o **selo dos custos fixos** (06/10, *"115 PAYABLE em
+aberto, ZERO com conta bancária"*) · a **mesa ①** agora, pela minha mão. ⭐ **O que explica a
+reincidência:** as duas primeiras foram consertadas **no call-site**, e a régua boa seguiu sendo
+um **`const` LOCAL** dentro do `buildPayableListWhere` — **invisível pra quem escreve a consulta
+nova, e a consulta nova é sempre a que esquece.**
+
+⭐ Agora a decisão tem **dono exportado**: `ramosDaEmpresaEmContaAPagar` (`lib/contas-pagar/
+list-filters.ts`), com os 3 episódios escritos nele. O `buildPayableListWhere` **consome** (não
+é cópia: é o mesmo array que ele já montava) e `grep` acha.
+
+**⚠️ E O TESTE CORRIGIU A MINHA ARITMÉTICA:** eu esperava as 3 contas em `contas7Dias`. São 2 —
+ele usa `whereDoStatus('A_PAGAR')`, que **começa AMANHÃ**, porque `VENCE_HOJE` é **PARTIÇÃO
+própria desde 26/09**. ⛔ Somar as duas contaria a mesma conta 2× (o defeito do *"a vencer 3d"*).
+O boleto de hoje mora na linha do radar.
+
+**⭐ REGRA 4 — A VARREDURA DA CLASSE, com o tamanho de cada sobrevivente:** os `EFFECTED`
+(dashboard ×6, cashflow, fluxo-caixa) **NÃO são o defeito** — linha de extrato sempre tem conta.
+Sobraram três, **medidos e NÃO corrigidos** (fora do brief da mesa):
+```
+⛔ lib/relatorios/preview-queries.ts (projeção 30d)  régua de hoje R$ 0,00 × certa 82 contas
+                                                     R$ 135.777,81  →  ESCONDE R$ 135.777,81
+⚠️ import/detect (dedup de contas a pagar)           0 × 0 — risco ESTRUTURAL, universo vazio hoje
+⚠️ stock-invariants (snapshot de isolamento)          8.350 × 8.950 → 600 invisíveis
+```
+⭐ **E o snapshot NÃO invalida a afirmação de isolamento de 24/08** — conferido: o teste da ponte
+conta por **`supplier`**, não pelo snapshot (o próprio arquivo tem o comentário *"PAYABLE nascem
+sem bankAccount → conta por supplier também"*, um contorno LOCAL da mesma classe). A cegueira é
+risco pra um teste FUTURO que confie só no snapshot.
+
+**⭐ O GUARD RODA `lerMesaDeOperacoes` DE VERDADE, contra o banco**, criando a conta exatamente
+como a ponte cria (sem `bankAccountId`). ⛔ Um teste do `where` isolado seria o *"guard que testa
+a lib e aprova a tela que a ignora"* — **a lib estava certa o tempo todo; quem a ignorava era a
+mesa**. 4 casos: vê a conta sem banco · o radar não diz "nada" · **o escopo de empresa e a janela
+continuam valendo** (não é afrouxamento) · **zero HONESTO continua zero**.
+
+### ⛔⛔ A CONTAGEM ESTAVA MIGRADA PELA **METADE** — e na metade pior
+
+O item 9 (upgrade de tinta) levou a `contagem/page.tsx` pra token, e **a medição do CHUNK em prod
+ainda acusava 5 hex do azul legado**. Atribuído antes de virar achado (*"achado não atribuível
+não é achado"*): vinham de **`cartao-contar.tsx` (4)** e **`revisao-contagem.tsx` (1)** — os
+COMPONENTES que a página desenha.
+
+⛔ **A moldura invertendo no tema escuro e o cartão que a pessoa TOCA preso no azul claro.** Quem
+conta está de celular na mão dentro da **CÂMARA FRIA** — o controle é justamente o que não pode
+deslavar. Os três componentes foram pra token por PAPEL, na **convenção do módulo ao pé da
+letra** (cor por `style` inline; primário `--prod-acao-bg/ink` **sem hover**; desabilitado por
+`disabled:opacity-50`).
+
+⚠️ **Classe (e não `style`) só onde há variante de estado**, e o motivo é de CSS: **estilo inline
+GANHA de classe**, então um `style={{ borderColor }}` apagaria o **anel de `focus-within`** do
+teclado em silêncio. *Acessibilidade não se perde por consistência de forma.* ⚠️ E **nenhuma
+opacidade sobre token** — a linha do histórico (`bg-slate-50/60`) virou superfície sólida, porque
+`bg-[var(--x)]/60` sai **TRANSPARENTE** no Tailwind 3.
+
+⭐ **A catraca do hex desceu 109 → 107, com a baixa datada — e foi o próprio guard da dívida que
+NOMEOU os dois arquivos** (*"já está em token — tire da lista"*).
+
+### ⚠️⚠️ REGRA 11 — E DOIS ERROS DE MÉTODO MEUS, OS DOIS DA MESMA FAMÍLIA
+
+**16 defeitos repostos no sprint, 16 vermelhos depois do aperto**, mais os desta volta (azul de
+volta na barra do cartão **1** · no anel do filtro **1** · `CONTAS 7 DIAS` por bankAccount **2** ·
+`VENCE HOJE` por bankAccount **1**), **baseline 0 · restaurado 0**.
+
+⚠️ **Dois vieram VERDES e ensinam:** o selo `aoVivo` (o `MESA_2` inclui o CHASSI, que **DECLARA**
+a prop — ***"menção, não uso"*** pela 18ª vez; apertado pro cabeçalho do 1º bloco) e o contador
+próprio do radar (o guard proibia `coral: <digit>` e **a forma real do defeito é um `filter`
+sobre `gravidade`** — ***guard que proíbe uma forma aprova a próxima***).
+
+⚠️ **E dois *"verdes de graça"*:** um `sed` com **SyntaxError** que nunca aplicou (e a sonda
+imprimiu *"87 passed"* — refeita com **md5 antes/depois**) e uma reposição que **não reproduzia o
+defeito** (movi o gate do dashboard pra imediatamente ANTES da leitura de dinheiro em vez de
+DEPOIS). ***Reposição que não reproduz o defeito é um verde de graça.***
+
+**⚠️ 3 SONDAS MINHAS ERRARAM, cada uma com cara de defeito de prod:** chutei 5 nomes de campo do
+payload (`caixa.total`, `placar.naBancada`, `radar.linhas`, `pessoas`, `conclusoes`) — corrigido
+**lendo os TIPOS**; a âncora do chunk da contagem era `"Contagem"`, genérica demais (casou o
+chunk do MENU); e **inverti a assinatura do `casaBusca`** (é `(texto, termo)`), o que imprimiu
+`casa 0` pra `"porcao"` e quase virou um achado falso. ***Chutar a assinatura produz achado falso
+tão convincente quanto um real.***
+
+### A PROVA EM PROD — 2 VIEWPORTS, ZERO ESCRITA
+
+```
+A MESA ① (home)   NO CAIXA AGORA −R$ 74.194,90 · 5 contas · 30 pontos de scrub · janela ✓
+   RADAR  [CORAL] Vencem hoje · R$ 9.581,08   ← era [VERDE] "nada"
+          [AMBAR] Itens negativos 35 · [AMBAR] Cardápio sem ficha 108
+   ⛔ o placar do radar é DERIVADO das linhas ✓
+   PREGÃO "O pregão de outubro" R$ 172.744,40 [VERDE] Lucro
+   ⭐⭐ CONTAS 7 DIAS: 5 no topo · resto 37 · total R$ 66.094,98   ← era R$ 0,00
+   COZINHA AGORA fazendo 0 · naFila 2 · concluídas 1   ⚠️ naoAlcancado: []
+
+A MESA ② (topo do HOJE)  em aberto 1 · R$ 266,40 na bancada · concluídas 9 (R$ 1.403,05)
+   rendimento 109% de 9 lotes · "632 UN · 17,15 KG hoje"  (mista: NUNCA um total cruzado)
+   RADAR DA COZINHA 5 linhas · placar DERIVADO ✓ · QUEM FEZ O DIA 8 pessoas
+   ⛔ INVARIANTE mesa × HOJE: 9 × 8 · gap 1 · sem etapa finalizada antes 1
+   ✓ a fita nunca mostra mais lote do que a mesa conta
+   ✓ o gap é EXPLICADO AO ITEM: 1 == 1
+
+AS 5 TELAS  200 nos DOIS viewports (celular 41-252ms · desktop 32-51ms)
+   ⛔ hex do azul legado: mesa ② 0 · receitas 0 · contagem 0   (era 5 na contagem)
+   ✓ os 26 tokens existem nos DOIS mapas do CSS servido
+ZERO ESCRITA  movimentos 8240→8240 · conclusões 584→584 · ordens 665→665 · avisos 79→79
+```
+
+**981 arquivos · 13.171 verdes · 2 todo · TS 0 · migration NENHUMA nesta volta ·
+`pg_dump pre-mesa-de-operacoes-20261015-022844.dump` (9.348.566 bytes, tamanho conferido) ·
+deploys 4/4 (`NRSDnF3C0j5QlokrE7wX2`, `n6Cv2H_nJGVAg8z0Rgrae`, `jNqi_JABcjoCaSRqPk0fR`,
+`Blbro94slrCoSEwKCIPFo`) · Δ chunks +4 KB.**
+
+**⚠️ 5 GUARDS REAPONTADOS, nenhum afrouxado, com o motivo escrito:** `zero-hex-cravado` (3 linhas
+mortas + a catraca) · `receitas-busca-e-principais` · `producao-bate-com-o-mock` (resolvido pela
+**hierarquia das leis**: a referência da FUNDAÇÃO manda nos TOKENS, as de TELA na estrutura delas,
+e **em conflito de token a fundação vence** — `--fam-verde-bg #e4f7ef` × o mock `#e6f4ec`) ·
+`toda-rota-tem-trava` (o GET da mesa pede `stock.manage`: **nomeado em `LEITURA_SENSIVEL` com o
+motivo**, não afrouxado) · `tela-de-dinheiro-exige-chave` (a âncora `customPeriod` era do motor
+da home VELHA — virou estrutural: `iGate` antes de `prisma.bankAccount` **e** de `<MesaDeOperacoes`).
+
+### 📋 O QUE FICA PRA 2.1 (nomeado, não disfarçado)
+
+1. ⛔⛔ **A FITA TEM 3 BALDES SEM PORTA LIGADA** — `lotesConferidos` (o carimbo de QUATRO OLHOS),
+   `contasPagas` e `avisos`, os três `[]`. ⚠️⚠️ **E o comentário deles MENTIA:** afirmava que a
+   ausência estava *"DITA em `naoAlcancado`"*, e a prova mostrou **`naoAlcancado: []`**
+   (*comentário que promete ser a trava sem ser a trava é pior que comentário nenhum*). ⛔ **Eles
+   NÃO podem entrar em `naoAlcancado`** — aquele campo é *"a porta CAIU"*, e 3 entradas
+   permanentes apareceriam **todo dia, pra sempre**, treinando o dono a não ler a lista. *"Não
+   construí ainda"* e *"a porta caiu"* são estados diferentes. Corrigido o comentário; a
+   pendência é esta linha. **Enquanto estiverem vazios a fita mostra MENOS do que o dia teve —
+   ela não INVENTA evento, mas não é a fita completa.**
+2. ⛔ **`preview-queries` esconde R$ 135.777,81** na projeção de 30 dias (medido acima). É a mesma
+   troca de uma linha; **fora do brief da mesa**, decisão do dono.
+3. ⚠️ **A busca do modo REVISAR da contagem é `toLowerCase().includes()` CRU**, não a `casaBusca`
+   da casa — o bug de 08/09 sobrevivendo naquele componente. **Não corrigido** porque o item 9 é
+   *"sem mudar comportamento"*. **Medido em prod (380 itens ativos, 19 com acento):**
+   ```
+   o dono digita "porcao" → a régua de hoje acha 15, a casa acharia 22   (7 invisíveis)
+   o dono digita "porçao" → acha  7, a casa acharia 22                   (15 invisíveis)
+   o dono digita "acem"   → acha  0, a casa acharia  1   ⛔ "Acém" NUNCA aparece
+   ```
+   ***Qualquer coisa que ele digite, ele nunca vê todos.***
+4. ⚠️ **A conclusão sem etapa finalizada não aparece na fita** (11 em 30 dias, 2,6%). **Não é
+   defeito deste sprint** — é o desenho de 07/09, e a mesa apenas o tornou VISÍVEL (ela conta 9,
+   a fita mostra 8). Dar à conclusão um evento próprio na timeline é mudança no `dia-ao-vivo`,
+   que o brief da FRENTE B proíbe (*"nenhum fluxo muda — só as roupas"*). Decisão do dono.
+5. ⚠️ **O rótulo do pregão diz *"13 parcela(s)"*** e são **9 parcelas + 4 faturas de cartão** (os
+   compromissos de 07/10). *Nenhum rótulo promete mais do que entrega* — é um nome, não um número
+   errado.
+6. 📋 **SCREENSHOT INDISPONÍVEL** (extensão do Chrome desligada nesta sessão): a prova mede o que
+   prod SERVE — zero hex nos 3 chunks, os 26 tokens nos DOIS mapas do CSS, as 5 telas 200 nos dois
+   viewports. **O olho nos 2 temas é do dono (REGRA 2).**
+
+**📋 DÉBITOS CARREGADOS (não deste sprint):** `cascata-de-custo.ts` tem o mesmo `: 0` de custo de
+saída · 7 negativados cujo valor não fecha · `ERVILHA`/`MILHO VERDE` em cadastro duplicado · os 15
+"a definir" saindo a R$ 0,00 · a devolução Arafat de R$ 40.000 · a de 01/09 sem categoria ·
+`lib/vendas/resumo-periodo.ts` sem chamador · o M2 da MAIONESE/sal · o arredondamento de 2 casas em
+`lotesDaJanela` · o `for (…) await` interno de `lotesDoPeriodo`.
+
 ## ⛔⛔⛔ SAÍDA COM ESTOQUE NEGATIVO SAI PELO CUSTO VIGENTE (15/10/2026)
 
 **O furo, achado na conferência de 14/10:** `custoParaBaixar(valor, saldo)` devolvia **0** quando
