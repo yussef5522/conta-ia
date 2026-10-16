@@ -31,6 +31,7 @@
  */
 import { useState } from 'react'
 import { Check, RotateCcw, Search, ChevronRight, ChevronDown, Eye, HelpCircle, MessageSquare } from 'lucide-react'
+import { casaBusca } from '@/lib/busca-texto'
 
 export interface LinhaRevisao {
   itemId: string
@@ -77,9 +78,23 @@ export function RevisaoContagem({
   const bateram = linhas.filter((l) => l.contado && Math.abs(l.contado.divergencia) <= 1e-9)
   const valorDiverg = comDiverg.reduce((s, l) => s + (l.contado?.valorDivergencia ?? 0), 0)
 
-  const q = busca.trim().toLowerCase()
+  /**
+   * ⛔⛔ **A BUSCA É A `casaBusca` DA CASA — o `includes` cru aqui era o bug de 08/09 vivo.**
+   *
+   * **Medido com os nomes reais de prod:** `"porçao"` achava **7 de 22** (só as grafias com
+   * cedilha+til exatos) e `"acem"` **nunca** achava `"Acém"`. ⚠️ Pior que achar pouco: *qualquer
+   * coisa que o dono digitasse, ele nunca via TODOS* — e um item que não aparece na busca é um
+   * item que fica sem contar, que é exatamente o que esta tela existe pra impedir.
+   *
+   * ⭐ A porta resolve caixa, acento e **palavra em qualquer ordem** (`"queijo porcao"` acha
+   * `"porçao queijo 135 grama"`) — o nome vem da nota, não da cabeça de quem conta.
+   *
+   * ⛔ E a CONTAGEM não é tocada: isto filtra **o que a tela mostra**, nada mais. Contar,
+   * salvar e revisar seguem idênticos (há regressão em teste).
+   */
+  const q = busca.trim()
   const base = filtro === 'diverg' ? comDiverg : filtro === 'apurar' ? aApurar : filtro === 'bateu' ? bateram : linhas
-  const visiveis = q ? base.filter((l) => `${l.titulo} ${l.especificacao}`.toLowerCase().includes(q)) : base
+  const visiveis = q ? base.filter((l) => casaBusca(`${l.titulo} ${l.especificacao}`, q)) : base
 
   const Card = ({ label, valor, sub, tom, ativo, onClick }: {
     label: string; valor: string; sub?: string; tom: string; ativo: boolean; onClick: () => void

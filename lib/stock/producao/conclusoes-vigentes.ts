@@ -85,8 +85,12 @@ export interface FiltroDeConclusoes {
  * empresa; a variante global existe só pro juiz, que varre o banco inteiro.
  *
  * ⛔ Reescrever o `findMany` aqui seria a 2ª resposta pra *"quais foram desfeitas?"*.
+ *
+ * ⚠️ **EXPORTADA em 16/10** pra o leitor que já tem os ids na mão (os carimbos da fita do dia)
+ * poder filtrar **sem laço `for … await`** e **sem** escrever a 2ª régua. ⛔ `conclusaoEstaEstornada`
+ * continua sendo a porta pra UMA conclusão; esta é pra o CONJUNTO.
  */
-async function idsEstornados(companyId: string | null, db: Db): Promise<Set<string>> {
+export async function idsEstornados(companyId: string | null, db: Db = defaultPrisma): Promise<Set<string>> {
   const rows = await db.stockConclusaoEstornada.findMany({
     where: companyId ? { companyId } : {},
     select: { conclusaoId: true },

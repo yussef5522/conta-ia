@@ -8,6 +8,12 @@ import { calculateDRE } from '@/lib/dre/calculator'
 import { calculateConsolidatedCashflow } from '@/lib/cashflow/consolidated'
 import type { CashflowTransaction } from '@/lib/cashflow/consolidated'
 import type { CategoryForDRE, TransactionForDRE } from '@/lib/dre/types'
+/**
+ * ⭐ O DONO ÚNICO de *"quais vínculos prendem uma conta a pagar à empresa"*. Repetir a
+ * lista aqui seria a 5ª cópia da mesma decisão — e a 4ª já custou R$ 135.777,81 de
+ * projeção invisível.
+ */
+import { ramosDaEmpresaEmContaAPagar } from '@/lib/contas-pagar/list-filters'
 
 const CACHE_TTL_SECONDS = 60
 
@@ -513,7 +519,14 @@ async function loadComparativoPreview(
 // FLUXO CAIXA PREVIEW — Saldo mês + projeção 30d
 // ============================================================
 
-async function loadFluxoCaixaPreview(
+/**
+ * ⭐ EXPORTADA de propósito (16/10): o guard `projecao-ve-conta-sem-banco` roda **esta**
+ * função contra banco, nunca o `where` isolado — *"guard que testa a lib aprova a tela que a
+ * ignora"*, e o defeito dos R$ 135.777,81 vivia justamente no `where` que ela monta.
+ * ⚠️ Pelo `getRelatoriosPreview` não dá: ele embrulha tudo em `unstable_cache`, e cache em
+ * teste é a receita do verde que não prova nada.
+ */
+export async function loadFluxoCaixaPreview(
   empresaId: string,
   refDate: Date,
 ): Promise<FluxoCaixaPreview> {
@@ -545,10 +558,30 @@ async function loadFluxoCaixaPreview(
         },
         _sum: { amount: true },
       }),
+      /**
+       * ⭐⭐⭐ A PROJEÇÃO RESOLVE A EMPRESA PELOS **5 RAMOS**, nunca por `bankAccount` —
+       * **conta a pagar NASCE SEM conta bancária** (a ponte do estoque, desde 24/08).
+       *
+       * ⛔⛔ MEDIDO EM PROD (16/10): com o filtro por `bankAccount` esta projeção devolvia
+       * **R$ 0,00** enquanto a empresa tinha **82 contas vencendo em 30 dias, R$ 135.777,81**
+       * — e `110 PAYABLE em aberto, ZERO com conta bancária`. O filtro não erra: devolve
+       * **ZERO, em silêncio**, e lista vazia é resposta plausível.
+       *
+       * ⚠️⚠️ **É A 4ª OCORRÊNCIA DESTA MESMA CLASSE**, e as três anteriores estão registradas:
+       * o **F1** da ponte (24/08) · o **selo dos custos fixos** (06/10, *"115 PAYABLE em
+       * aberto, ZERO com conta bancária"*) · a **mesa de operações** (15/10, `CONTAS 7 DIAS
+       * R$ 0` com R$ 58.653,84 vencendo). ⭐ O que fecha a reincidência é a decisão ter **dono
+       * exportado** (`ramosDaEmpresaEmContaAPagar`) em vez de um `const` local — era a
+       * invisibilidade dele que fazia a consulta NOVA ser sempre a que esquece.
+       *
+       * ⚠️ E as duas somas de cima (o REALIZADO do mês) **continuam por `bankAccount`, de
+       * propósito**: linha `EFFECTED` sempre tem conta bancária, e trocar lá não acrescenta
+       * nada — o que acrescentaria é risco de mudar um número que está certo.
+       */
       // Projeção 30d entradas: RECEIVABLE não pagas vencendo
       prisma.transaction.aggregate({
         where: {
-          bankAccount: { companyId: empresaId },
+          OR: ramosDaEmpresaEmContaAPagar(empresaId),
           lifecycle: 'RECEIVABLE',
           paymentDate: null,
           dueDate: { gte: next30Start, lte: next30End },
@@ -557,7 +590,7 @@ async function loadFluxoCaixaPreview(
       }),
       prisma.transaction.aggregate({
         where: {
-          bankAccount: { companyId: empresaId },
+          OR: ramosDaEmpresaEmContaAPagar(empresaId),
           lifecycle: 'PAYABLE',
           paymentDate: null,
           dueDate: { gte: next30Start, lte: next30End },

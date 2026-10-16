@@ -121,6 +121,35 @@ export function fraseDoDiaTorto(
       oQueFazer: `Importe os dois relatórios de ${data} (Produtos e Sabores) na central de import.`,
     }
   }
+  /**
+   * ⭐⭐ O DIA RACHADO É A PRIMEIRA PERGUNTA — antes de pedir o arquivo que falta.
+   *
+   * ⛔ Sem este ramo o dia 15/10 levaria a frase genérica *"importe os dois relatórios"*, e o
+   * dono importaria o de produtos de 15/10 **de novo** sem nunca saber que ele já está no
+   * sistema, datado em 16/10. ***Mensagem que acusa o campo errado faz o dono caçar um erro que
+   * não existe*** (a lição de 16/09).
+   *
+   * ⚠️ O aviso vive no dia dos PRODUTOS (é lá que o `rachado` é preenchido — um caso, um
+   * alarme), então aqui ele cai no dia que o dono acabou de importar.
+   */
+  if (d.rachado) {
+    return {
+      titulo: `Confira a data do relatório de ${data}`,
+      corpo: d.rachado.frase,
+      oQueFazer:
+        `Se o relatório de produtos de ${data} é do dia ${ddmm(d.rachado.vizinho)}, reimporte-o ` +
+        `nessa data na central de import — os dois relatórios do mesmo dia têm que ficar no mesmo dia.`,
+    }
+  }
+  if (d.selo === 'PRODUTOS_NAO_IMPORTADOS') {
+    return {
+      titulo: `Importe os produtos de ${data}`,
+      corpo:
+        `Em ${data} entrou só o relatório de SABORES — o de produtos não. Sem ele não existe ` +
+        `venda nesse dia: o estoque não baixou nada e o "Quem paga a casa" está cego pra ${data}.`,
+      oQueFazer: `Importe o relatório de Produtos de ${data} na central de import.`,
+    }
+  }
   if (d.selo === 'SABORES_NAO_IMPORTADOS') {
     return {
       titulo: `Importe os sabores de ${data}`,

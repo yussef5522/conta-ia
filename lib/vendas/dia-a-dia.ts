@@ -92,16 +92,16 @@ export interface MontarDiasInput {
   ate: string
   /** o que o PDV registrou, por dia */
   /**
-   * ⚠️ A COMPOSIÇÃO VIAJA JUNTO (10/10) — e ela nasceu de uma divergência medida em prod:
-   * a TELA DE VENDAS soma **produtos + complementos** e a CENTRAL DE IMPORTAÇÃO mostra **só
-   * produtos** (R$ 17.102,63 × R$ 15.873,77 no dia 06/10). ⛔ As duas estão certas sobre a
-   * pergunta DELAS; errado era nenhuma das duas DIZER qual soma — *"número sem régua em tela
-   * de dinheiro é pior que ausência"*, e duas telas com números diferentes pro mesmo dia é a
-   * doença que esta casa mais paga.
+   * ⭐⭐ `vendeu` É O QUE A PORTA ÚNICA ASSINA — Σ do relatório de PRODUTOS, e só (lei do
+   * dono, 16/10). ⛔ Este arquivo **não decide** o que é vender: ele recebe decidido. Somar
+   * `produtos + complementos` aqui seria a 2ª definição de "vendeu", e foi exatamente a
+   * divergência medida em prod no dia 06/10 (tela R$ 17.102,63 × central R$ 15.873,77).
    *
-   * ⭐ `totaisDoPdvPorDia` já separa os dois; era este mapa que jogava a separação fora.
+   * ⚠️ A COMPOSIÇÃO VIAJA JUNTO, mas pra a tela **DIZER** o que ela soma e o que ela não
+   * soma — *"número sem régua em tela de dinheiro é pior que ausência"*. O `complementos`
+   * é conferência de import, nunca parcela da venda.
    */
-  pdv: Map<string, { total: number; unidades: number; produtos?: number; complementos?: number }>
+  pdv: Map<string, { vendeu: number; unidades: number; produtos?: number; complementos?: number }>
   /** o que o extrato atribuiu (dia único ou bloco) */
   extrato: EntradaDoExtrato[]
   /** `YYYY-MM-DD` de hoje no fuso de quem olha */
@@ -155,8 +155,9 @@ export function montarDias(i: MontarDiasInput): DiaDeVenda[] {
     let noBloco: string | null = null
 
     if (p) {
-      // ⭐ O PDV MANDA. É o que foi vendido naquele dia, liso.
-      total = p.total
+      // ⭐ O PDV MANDA. É o que foi vendido naquele dia, liso — e "vendido" é a Σ do
+      //    relatório de PRODUTOS, pela porta única (a lei de 16/10).
+      total = p.vendeu
       fonte = 'PDV'
     } else if (ex != null) {
       total = ex

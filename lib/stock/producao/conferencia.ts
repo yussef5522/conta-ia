@@ -42,7 +42,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { OrdemError } from './ordens'
 import { estornarERelancar, preverRelancamento, type PreviewDoRelancamento } from './estorna-e-relanca'
-import { conclusaoEstaEstornada } from './conclusoes-vigentes'
+import { conclusaoEstaEstornada, idsEstornados } from './conclusoes-vigentes'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -123,6 +123,96 @@ export async function carimbosDasConclusoes(
   /** ⚠️ quem não tem linha é AGUARDANDO — a ausência É o estado, e não um buraco */
   for (const id of ids) if (!out.has(id)) out.set(id, AGUARDANDO)
   return out
+}
+
+/** ⭐ um carimbo de quatro olhos, na forma mínima que a fita do dia precisa */
+export interface CarimboDoDia {
+  id: string
+  ordemId: string
+  produto: string
+  quando: Date
+  quem: string
+}
+
+/**
+ * ⭐⭐ OS CARIMBOS DE UMA JANELA — a porta que a FITA DO DIA consome (16/10).
+ *
+ * ⛔⛔ **POR QUE ELA MORA AQUI, e não na mesa:** quem conhece `stock_conclusao_carimbo` é este
+ * arquivo. É o mesmo desenho do `nota-de-origem.ts` (30/08) e do `total-do-pdv.ts`: a mesa
+ * recebe o fato pronto e **não aprende o esquema do estoque**. Um `findMany` na mesa viraria
+ * a 2ª leitura do carimbo, e ela divergiria no 1º campo novo.
+ *
+ * ⚠️ **O nome do produto sai do item PRODUZIDO pela ordem** (carimbo → conclusão → ordem →
+ * item), e em **3 consultas pras N linhas** — nunca uma por carimbo (a lição dos 4.909 ms de
+ * 28/09; a fita roda na home, em todo carregamento).
+ *
+ * ⚠️ Produto que não resolve vem **`'(produto)'`**, o MESMO fallback da fila de conferência —
+ * ⛔ e nunca um nome inventado: a fita mostra o que o dado diz.
+ *
+ * ⛔⛔⛔ **CARIMBO DE CONCLUSÃO ESTORNADA NÃO ENTRA — e isto é SUBSTÂNCIA, não forma.** A
+ * correção do gerente é estorna-e-relança (12/10): a conclusão antiga fica com o carimbo dela e
+ * a nova ganha o `CORRIGIDA_E_CONFERIDA`. Sem este filtro **o mesmo lote apareceria carimbado
+ * DUAS VEZES na fita do dia** — ***o cartão duplo de 12/10 renascendo na fita***, que é
+ * exatamente a classe que a porta `conclusoesVigentes` existe pra fechar.
+ *
+ * ⚠️ **E quem responde "esta conclusão foi desfeita?" é a PORTA** (`conclusaoEstaEstornada`),
+ * nunca um `findFirst` em `stock_conclusao_estornada` aqui — foi o guard
+ * `uma-ordem-um-cartao` que cobrou isso, e ele estava certo: ***a régua existia e cada leitor
+ * novo nascia sem ela***.
+ */
+export async function carimbosDoDia(
+  companyId: string,
+  janela: { de: Date; ate: Date },
+  db: Db = defaultPrisma,
+): Promise<CarimboDoDia[]> {
+  const carimbos = await db.stockConclusaoCarimbo.findMany({
+    where: { companyId, conferidoEm: { gte: janela.de, lt: janela.ate } },
+    orderBy: { conferidoEm: 'asc' },
+    select: { id: true, conclusaoId: true, conferidoPorNome: true, conferidoEm: true },
+  })
+  if (!carimbos.length) return []
+
+  /**
+   * ⚠️ `findMany` POR ID (não listagem de período): os ids vêm dos carimbos que a janela já
+   * selecionou — esta consulta não decide quais conclusões existem. A exceção está NOMEADA no
+   * guard, com este motivo escrito.
+   */
+  const conclusoes = await db.stockProducaoConclusao.findMany({
+    where: { companyId, id: { in: carimbos.map((c) => c.conclusaoId) } },
+    select: { id: true, ordemId: true },
+  })
+  const ordemDe = new Map(conclusoes.map((c) => [c.id, c.ordemId]))
+
+  /**
+   * ⛔ a desfeita sai: carimbo de conclusão estornada é o mesmo lote contado 2× na fita.
+   * ⚠️ UMA consulta pro conjunto, nunca `for … await` por carimbo (a lição dos 4.909 ms).
+   */
+  const estornada = await idsEstornados(companyId, db)
+  const vivos = carimbos.filter((c) => !estornada.has(c.conclusaoId))
+  if (!vivos.length) return []
+
+  const ordens = await db.stockProductionOrder.findMany({
+    where: { companyId, id: { in: [...new Set(conclusoes.map((c) => c.ordemId))] } },
+    select: { id: true, itemProduzidoId: true },
+  })
+  const itens = await db.stockItem.findMany({
+    where: { companyId, id: { in: [...new Set(ordens.map((o) => o.itemProduzidoId))] } },
+    select: { id: true, nome: true },
+  })
+  const nomeDoItem = new Map(itens.map((i) => [i.id, i.nome]))
+  const itemDaOrdem = new Map(ordens.map((o) => [o.id, o.itemProduzidoId]))
+
+  return vivos.map((c) => {
+    const ordemId = ordemDe.get(c.conclusaoId) ?? ''
+    const itemId = itemDaOrdem.get(ordemId)
+    return {
+      id: c.id,
+      ordemId,
+      produto: (itemId ? nomeDoItem.get(itemId) : null) ?? '(produto)',
+      quando: c.conferidoEm,
+      quem: c.conferidoPorNome,
+    }
+  })
 }
 
 /**

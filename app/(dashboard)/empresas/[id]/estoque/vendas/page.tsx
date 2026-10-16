@@ -18,6 +18,7 @@ import { RevisaoDoImport, type RevisaoDTO, type ConfirmarDelegado } from '@/comp
 import { SeletorDeDestino } from '@/components/estoque/seletor-de-destino'
 import { hrefDoEditor } from '@/lib/stock/vendas/volta-da-revisao'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
+import { PerguntaDoDia, type VeredictoDoDia } from '@/components/estoque/pergunta-do-dia'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
@@ -93,6 +94,8 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   const [erro, setErro] = useState<string | null>(null)
   const [editando, setEditando] = useState<Set<string>>(new Set())
   const [data, setData] = useState('')
+  /** ⭐ a pergunta do dia que o servidor devolveu (409) — a tela só desenha */
+  const [perguntaDia, setPerguntaDia] = useState<VeredictoDoDia | null>(null)
   const [erroProc, setErroProc] = useState<string | null>(null)
   const [plano, setPlano] = useState<Plano | null>(null)
   const [modoReprocesso, setModoReprocesso] = useState<string | null>(null) // data sendo reprocessada
@@ -152,14 +155,24 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
 
   const abrirModal = (p: Plano, reprocessoDia: string | null, estorna: number) => { setPlano(p); setModoReprocesso(reprocessoDia); setEstornaItens(estorna); setVerLista(false); setErroModal(null) }
 
-  const abrirPreview = async () => {
+  /**
+   * ⭐⭐ O PREVIEW JÁ PASSA PELA LEI DA DATA (16/10) — e perguntar AQUI, não só na gravação, é
+   * o ponto: deixar o dono ver o plano do dia ERRADO e só então perguntar seria dar a ele um
+   * motivo pra confiar no número antes de a dúvida aparecer.
+   */
+  const abrirPreview = async (confirmouDia?: string) => {
     setErroProc(null)
     if (!data) { setErroProc('Escolha a data das vendas antes de processar.'); return }
     setProcessando(true)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html, data, confirmar: false, incluir: null }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html, data, confirmar: false, incluir: null, confirmouDia }) })
       const j = await r.json().catch(() => null)
+      if (r.status === 409 && j?.code === 'CONFIRME_O_DIA') { setPerguntaDia(j.dia as VeredictoDoDia); return }
       if (!r.ok) { setErroProc(j?.erro ?? 'Não consegui montar o preview.'); return }
+      setPerguntaDia(null)
+      // ⭐ o dia que a LEI decidiu passa a ser o da tela — perder a resposta aqui faria o
+      // confirmar perguntar de novo a mesma coisa
+      if (confirmouDia) setData(confirmouDia)
       abrirModal(j.plano, null, 0)
     } catch { setErroProc('Falha de conexão ao processar.') } finally { setProcessando(false) }
   }
@@ -203,8 +216,14 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
          * réus NOMEADOS e a tela vira um botão: *"baixar os outros 57"*.
          * ⛔ A atomicidade não afrouxa — o reenvio grava tudo-ou-nada sem os pendentes.
          */
-        const c = rr.corpo as { code?: string; barrados?: { itemId: string; nome: string; motivo: string }[]; quantosSeguem?: number } | null
+        const c = rr.corpo as { code?: string; barrados?: { itemId: string; nome: string; motivo: string }[]; quantosSeguem?: number; dia?: VeredictoDoDia } | null
         if (c?.code === 'ITEM_BARRADO' && c.barrados?.length) setBarrados({ itens: c.barrados, seguem: c.quantosSeguem ?? 0 })
+        /**
+         * ⭐⭐ A LEI DA DATA vale no CONFIRMAR também — e aqui ela fecha o modal e devolve a
+         * pergunta pro card. ⚠️ Perguntar só no preview deixaria o caminho da gravação aberto
+         * pra quem chamasse a rota por outro lado (a régua do FREIO da contagem, 23/08).
+         */
+        if (c?.code === 'CONFIRME_O_DIA' && c.dia) { setPlano(null); setPerguntaDia(c.dia); return }
         setErroModal(rr.erro ?? 'Não consegui processar.')
       }
     } catch { setErroModal('Falha de conexão.') } finally { setProcessando(false) }
@@ -290,7 +309,12 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         />
       ) : aba === 'complementos' ? (
         <>
-          <ImportComplementos id={id} onImportado={(dia) => setRevisao({ data: dia, relatorio: 'COMPLEMENTOS', origem: 'IMPORT' })} />
+          <ImportComplementos
+            id={id}
+            data={data}
+            setData={setData}
+            onImportado={(dia) => setRevisao({ data: dia, relatorio: 'COMPLEMENTOS', origem: 'IMPORT' })}
+          />
           {revisao?.origem === 'IMPORT' && revisao.relatorio === 'COMPLEMENTOS' && (
             <BlocoRevisao id={id} data={revisao.data} relatorio="COMPLEMENTOS" onMudou={() => setRecargaComp((n) => n + 1)} onFechar={() => setRevisao(null)} />
           )}
@@ -349,6 +373,18 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
                   </p>
                 </div>
                 {erroProc && <p className="flex items-center gap-1 text-sm text-rose-600"><AlertTriangle className="h-3.5 w-3.5" /> {erroProc}</p>}
+                {/**
+                  * ⭐ A PERGUNTA DO DIA mora AQUI, colada no gesto que a levantou (a lição do
+                  * card que nascia no rodapé em 10/09). Responder reenvia o MESMO preview.
+                  */}
+                {perguntaDia && (
+                  <PerguntaDoDia
+                    veredicto={perguntaDia}
+                    ocupado={processando}
+                    onEscolher={(dia) => { setData(dia); void abrirPreview(dia) }}
+                    onCancelar={() => setPerguntaDia(null)}
+                  />
+                )}
               </CardContent></Card>
 
               {prevRevisao && (
@@ -530,10 +566,28 @@ function LancamentoManual({ id, onProcessado }: { id: string; onProcessado: () =
  * ⛔ E NÃO BAIXA NADA: importar é trazer o que o PDV vendeu; a baixa é gesto separado.
  * A tela diz isso, pra ninguém achar que o estoque já mexeu.
  */
-function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia: string) => void }) {
+function ImportComplementos({ id, onImportado, data, setData }: {
+  id: string
+  onImportado: (dia: string) => void
+  /**
+   * ⛔⛔⛔ **A DATA VEM DA PÁGINA — e isto É o conserto do defeito de 16/10.**
+   *
+   * Até aqui este componente tinha `useState('')` PRÓPRIO, enquanto o gesto da central
+   * (`onImportar('COMPLEMENTOS', dia)`) escrevia no `setData` da **PÁGINA** — o estado que
+   * serve a aba de PRODUTOS. ⭐ Resultado: **o dia que a central mostrou era jogado fora no
+   * caminho pro complemento**, e o dono redigitava (ou não redigitava) às 3h da manhã.
+   *
+   * ⛔ Dois campos de data pra um par de relatórios é a doença que esta casa mais paga, em
+   * forma de `useState`. Com um estado só, o gesto da central alimenta as DUAS abas e
+   * "esquecer de repassar" deixa de ser possível (REGRA 5).
+   */
+  data: string
+  setData: (d: string) => void
+}) {
   const fileRef = useRef<HTMLInputElement>(null)
-  const [data, setData] = useState('')
   const [html, setHtml] = useState('')
+  /** ⭐ a pergunta do dia que o servidor devolveu (409) — a MESMA do lado dos produtos */
+  const [perguntaDia, setPerguntaDia] = useState<VeredictoDoDia | null>(null)
   const [prev, setPrev] = useState<{
     totalLinhas: number; totalOcorrencias: number; comDestino: number; pendentes: number
     nosDoisRelatorios: number; jaImportado: boolean
@@ -558,7 +612,7 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
   const [modal, setModal] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  const chamar = async (confirmar: boolean, conteudo?: string): Promise<{ revisao?: RevisaoDTO } | null> => {
+  const chamar = async (confirmar: boolean, conteudo?: string, confirmouDia?: string): Promise<{ revisao?: RevisaoDTO } | null> => {
     const corpo = conteudo ?? html
     if (!data) { setErro('Escolha a data do relatório — o arquivo do Suitable não traz o período.'); return null }
     if (!corpo) { setErro('Escolha o arquivo do relatório de complementos.'); return null }
@@ -566,10 +620,18 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/vendas/complementos`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data, html: corpo, confirmar, modo, nomeArquivo: nomeArquivo || undefined }),
+        body: JSON.stringify({ data, html: corpo, confirmar, modo, nomeArquivo: nomeArquivo || undefined, confirmouDia }),
       })
       const j = await r.json().catch(() => null)
+      /**
+       * ⭐⭐ A LEI DA DATA (16/10) — a MESMA porta do lado dos produtos, e ela roda no preview
+       * E no confirm. ⚠️ O `html` fica guardado: responder reenvia o MESMO gesto, sem o dono
+       * ter que escolher o arquivo de novo.
+       */
+      if (r.status === 409 && j?.code === 'CONFIRME_O_DIA') { setPerguntaDia(j.dia as VeredictoDoDia); return null }
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui ler o arquivo.'); return null }
+      setPerguntaDia(null)
+      if (confirmouDia) setData(confirmouDia)
       if (confirmar) {
         setOk(j); setPrev(null)
         // ⭐⭐ O RESULTADO DO UPLOAD ABRE A REVISÃO (14/09) — o mesmo gesto do lado dos
@@ -617,6 +679,15 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
           {busy ? 'Lendo…' : prev ? 'Trocar arquivo' : 'Escolher o Relatório de Complementos (.xls)'}
         </button>
         {erro && <p className="text-sm text-rose-600">{erro}</p>}
+        {/** ⭐ a pergunta do dia, colada no gesto — o MESMO componente do lado dos produtos */}
+        {perguntaDia && (
+          <PerguntaDoDia
+            veredicto={perguntaDia}
+            ocupado={busy}
+            onEscolher={(dia) => { setData(dia); void chamar(false, undefined, dia) }}
+            onCancelar={() => setPerguntaDia(null)}
+          />
+        )}
       </CardContent></Card>
 
       {/* ⭐⭐⭐ UMA VITRINE (14/09) — o "relatório velho pós-upload" MORREU.

@@ -61,12 +61,33 @@ export type SeloDoDia =
   | 'COMPLEMENTOS_INCOMPLETOS'
   /** vendeu pizza E ZERO ocorrência de sabor entrou */
   | 'SABORES_NAO_IMPORTADOS'
-  /** dia de venda sem arquivo nenhum */
+  /**
+   * ⭐⭐ o relatório de COMPLEMENTOS entrou e o de PRODUTOS não (16/10/2026).
+   *
+   * ⛔⛔ **ESTE SELO NASCEU DE UMA FRASE FALSA.** Até 16/10 este dia caía em `SEM_IMPORTACAO`
+   * dizendo *"dia de venda sem arquivo nenhum"* — e o dia 15/10 tinha **1 arquivo**, com R$ 769
+   * de sabores dentro. O dono lia que nada entrou, ia importar de novo, e o sistema aceitaria
+   * (o reimport substitui) sem ninguém nunca saber que a metade que faltava era a OUTRA.
+   *
+   * ⚠️ `SEM_IMPORTACAO` continua existindo e significando **uma coisa só**: zero arquivo. Era a
+   * ambiguidade dele que escondia este caso.
+   */
+  | 'PRODUTOS_NAO_IMPORTADOS'
+  /** dia de venda sem arquivo NENHUM */
   | 'SEM_IMPORTACAO'
 
 export interface DadosDoDia {
   /** o dia tem import de PRODUTOS? */
   temProdutos: boolean
+  /**
+   * ⭐ o dia tem import de COMPLEMENTOS? — é o que separa *"nada entrou"* de *"entrou a metade"*.
+   *
+   * ⚠️ OPCIONAL de propósito: o leitor da margem (`lib/margem/leitura.ts`) chama com
+   * `temProdutos: true`, onde a pergunta nem se aplica. Obrigar o campo ali faria um leitor
+   * declarar um dado que ele não tem — e o default (`false`) só é alcançado quando
+   * `temProdutos` é false, onde ele significa exatamente *"não sei de nenhum arquivo"*.
+   */
+  temComplementos?: boolean
   /** unidades de PIZZA vendidas (pela régua `ehPizza`) */
   pizzas: number
   /** ocorrências de SABOR de verdade (pela régua `ehSaborDeVerdade`) */
@@ -94,6 +115,19 @@ const n1 = (x: number) => x.toLocaleString('pt-BR', { minimumFractionDigits: 1, 
  */
 export function vereditoDoDia(d: DadosDoDia): VereditoDoDia {
   if (!d.temProdutos) {
+    /**
+     * ⛔ A ORDEM AQUI NÃO É ESTÉTICA: o caso MENOS grave (`PRODUTOS_NAO_IMPORTADOS`) vem antes
+     * porque ele é mais ESPECÍFICO — ele sabe de um arquivo que o `SEM_IMPORTACAO` ignora. A
+     * régua genérica primeiro é o que produziu a frase falsa de 15/10.
+     */
+    if (d.temComplementos) {
+      return {
+        selo: 'PRODUTOS_NAO_IMPORTADOS',
+        razao: null,
+        razaoFracaPorVolume: false,
+        frase: 'o relatório de sabores entrou, o de PRODUTOS não — sem ele não existe venda neste dia',
+      }
+    }
     return {
       selo: 'SEM_IMPORTACAO',
       razao: null,
@@ -147,12 +181,21 @@ export const ROTULO_DO_SELO: Record<SeloDoDia, string> = {
   COMPLETO: 'completo ✓',
   COMPLEMENTOS_INCOMPLETOS: 'complementos incompletos ⚠',
   SABORES_NAO_IMPORTADOS: 'sabores não importados ✗',
+  PRODUTOS_NAO_IMPORTADOS: 'produtos não importados ✗',
   SEM_IMPORTACAO: 'sem importação ✗',
 }
 
-/** ⭐ só estes 3 pedem ação — é o que o alerta do topo e o sininho contam */
+/**
+ * ⭐ os selos que pedem ação — é o que o alerta do topo, a mesa ① e o sininho contam.
+ *
+ * ⚠️ `PRODUTOS_NAO_IMPORTADOS` entrou junto do selo (16/10): sem ele o dia 15/10 sairia da
+ * contagem e o sininho **calaria** sobre um dia sem venda lançada — exatamente o oposto do que
+ * o selo novo existe pra fazer. ⛔ E todo selo desta lista **tem que ter frase** em
+ * `fraseDoDiaTorto` (há teste do PAR) — selo aqui sem frase é um dia contado que nunca avisa.
+ */
 export const SELOS_QUE_PEDEM_ACAO: readonly SeloDoDia[] = [
   'SEM_IMPORTACAO',
+  'PRODUTOS_NAO_IMPORTADOS',
   'SABORES_NAO_IMPORTADOS',
   'COMPLEMENTOS_INCOMPLETOS',
 ]

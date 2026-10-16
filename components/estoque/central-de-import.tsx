@@ -35,11 +35,12 @@ const mesVizinho = (mes: string, passo: number) => {
   return d.toISOString().slice(0, 7)
 }
 
-/** ⚠️ o tom do selo é do SELO, num lugar só — 4 selos, 4 pares de token */
+/** ⚠️ o tom do selo é do SELO, num lugar só — o `Record` obriga: selo novo não compila sem tom */
 const TOM_DO_SELO: Record<DiaDaCentral['selo'], { bg: string; ink: string; borda?: string }> = {
   COMPLETO: { bg: 'var(--fam-verde-bg)', ink: 'var(--fam-verde-ink)' },
   COMPLEMENTOS_INCOMPLETOS: { bg: 'var(--fam-ambar-bg)', ink: 'var(--fam-ambar-ink)' },
   SABORES_NAO_IMPORTADOS: { bg: 'var(--fam-coral-bg)', ink: 'var(--fam-coral-ink)' },
+  PRODUTOS_NAO_IMPORTADOS: { bg: 'var(--fam-coral-bg)', ink: 'var(--fam-coral-ink)' },
   SEM_IMPORTACAO: { bg: 'var(--prod-surface)', ink: 'var(--fam-coral-ink)', borda: 'var(--fam-coral-mid)' },
 }
 
@@ -282,6 +283,30 @@ export function CentralDeImportView({
         </div>
       ))}
 
+      {/* ===== 2b · ⚠ DIA RACHADO — o par de relatórios que caiu em dois dias (16/10) ===== */}
+      {central.diasRachados.map((r) => (
+        <div
+          key={`racho-${r.dia}`}
+          role="button"
+          /**
+           * ⭐ o gesto é REIMPORTAR OS PRODUTOS NA DATA DO VIZINHO — a correção que o caso real
+           * pede. ⛔ Nada é movido sozinho: a lei da data vai PERGUNTAR no caminho, e quem
+           * decide a data é o dono.
+           */
+          onClick={() => onImportar('PRODUTOS', r.vizinho)}
+          className="mb-[12px] flex items-center gap-[10px] rounded-[12px] px-[15px] py-[12px]"
+          style={{ background: 'var(--fam-ambar-bg)' }}
+        >
+          <span className="text-[18px]">🪓</span>
+          <p className="m-0 flex-1 text-[13px]" style={{ color: 'var(--fam-ambar-ink)' }}>
+            {r.frase}
+          </p>
+          <span className="whitespace-nowrap text-[12.5px] font-bold" style={{ color: 'var(--fam-ambar-ink)' }}>
+            reimportar em {ddmm(r.vizinho)} →
+          </span>
+        </div>
+      ))}
+
       {/* ===================== 3 · DIAS IMPORTADOS ===================== */}
       <Cartao rotulo="Dias importados">
         <div className="flex flex-wrap items-center justify-between gap-[10px] px-[16px] pb-[8px] pt-[13px]">
@@ -313,6 +338,19 @@ export function CentralDeImportView({
                 {ddmm(d.dia)}
               </span>
               <Selo dia={d} />
+              {/**
+                * ⭐ o chip do racho é LOCALIZADOR, não um 2º alarme: quem avisa é a faixa do topo;
+                * este só diz QUAL linha é, pra o dono não caçar numa lista de 31 dias.
+                */}
+              {d.rachado && (
+                <span
+                  title={d.rachado.frase}
+                  className="whitespace-nowrap rounded-full px-[9px] py-[2px] text-[11px] font-bold"
+                  style={{ background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}
+                >
+                  🪓 dia rachado
+                </span>
+              )}
               <span
                 className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap tabular-nums"
                 style={{ color: d.buraco ? 'var(--fam-coral-ink)' : 'var(--prod-secondary)' }}
@@ -320,21 +358,24 @@ export function CentralDeImportView({
                 {d.buraco
                   ? d.frase
                   /**
-                   * ⭐⭐ OS DOIS Σ NO CABEÇALHO (ordem do dono, 10/10) — *"mesma definição nas
-                   * duas telas, divergência de aparência morta"*.
+                   * ⭐⭐⭐ **VENDEU + A CONFERÊNCIA DO COMPLEMENTO, COM O RÓTULO DIZENDO QUE
+                   * ELE NÃO SOMA** (lei do dono, 16/10).
                    *
-                   * ⛔ O que havia aqui era um `valor` só, e ele era **só produtos** — então o
-                   * dono lia R$ 15.873,77 nesta tela e R$ 17.102,63 na de Vendas, pro MESMO
-                   * dia, sem nada explicando. Agora os três números estão à vista e a conta
-                   * se fecha no olho: produtos + complementos = total.
+                   * ⚠️⚠️ Até 11/10 esta linha escrevia *"produtos X · complementos Y · total
+                   * Z"*, com `Z = X + Y`. Era a dupla contagem **impressa na tela**: o
+                   * adicional/borda já está dentro do `valorTotal` da linha de produtos.
                    *
-                   * ⚠️ O complemento só aparece quando EXISTE: `· complementos R$ 0,00` em
-                   * todo dia sem adicional seria ruído, e ruído é como um número para de ser
-                   * lido. **Dia sem complemento mostra só o total**, que ali é o mesmo número.
+                   * ⭐ A frase nova separa as duas perguntas por escrito — *"vendeu R$ X · o
+                   * arquivo de sabores entrou (Y em sabores, não soma)"*. ⛔ Mostrar o número
+                   * do complemento **sem** dizer que ele não soma seria pedir pro dono somar
+                   * de cabeça e chegar no número errado, que é exatamente o que aconteceu.
+                   *
+                   * ⚠️ E ele só aparece quando EXISTE: `· complementos R$ 0,00` em todo dia
+                   * sem adicional seria ruído, e ruído é como um número para de ser lido.
                    */
-                  : `${num(d.unidades)} un · ${d.valorComplementos > 0
-                      ? `produtos ${brl(d.valorProdutos)} · complementos ${brl(d.valorComplementos)} · total ${brl(d.valor)}`
-                      : brl(d.valor)} · ${d.arquivos} arquivo${d.arquivos === 1 ? '' : 's'} · ${d.frase}`}
+                  : `${num(d.unidades)} un · vendeu ${brl(d.valor)}${d.valorComplementos > 0
+                      ? ` · sabores/adicionais ${brl(d.valorComplementos)} (conferência do arquivo — não soma na venda)`
+                      : ''} · ${d.arquivos} arquivo${d.arquivos === 1 ? '' : 's'} · ${d.frase}`}
               </span>
               {d.buraco ? (
                 <span className="whitespace-nowrap text-[12px] font-bold" style={{ color: 'var(--fam-coral-ink)' }}>importar este dia →</span>

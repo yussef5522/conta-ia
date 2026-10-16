@@ -16,6 +16,7 @@
 
 import { useState } from 'react'
 import { GripVertical, Check, HelpCircle, SkipForward, Search } from 'lucide-react'
+import { casaBusca } from '@/lib/busca-texto'
 
 export interface ItemTrilho {
   itemId: string
@@ -41,9 +42,15 @@ export function TrilhoFila({
   const [busca, setBusca] = useState('')
   const [arrastando, setArrastando] = useState<number | null>(null)
 
-  const q = busca.trim().toLowerCase()
+  /**
+   * ⛔⛔ **A MESMA `casaBusca` do REVISAR (REGRA 4).** O dono relatou o defeito na revisão, mas a
+   * pergunta *"qual item é este?"* é a MESMA nas duas telas — e o `includes` cru estava nas
+   * DUAS. **Consertar só a que ele viu deixaria a fila do CONTAR mentindo**, e é nela que o
+   * item é procurado na câmara fria, com o celular na mão.
+   */
+  const q = busca.trim()
   const visiveis = q
-    ? itens.map((i, k) => ({ i, k })).filter(({ i }) => `${i.titulo} ${i.especificacao}`.toLowerCase().includes(q))
+    ? itens.map((i, k) => ({ i, k })).filter(({ i }) => casaBusca(`${i.titulo} ${i.especificacao}`, q))
     : itens.map((i, k) => ({ i, k }))
 
   const pendentes = visiveis.filter(({ i }) => !i.estado)

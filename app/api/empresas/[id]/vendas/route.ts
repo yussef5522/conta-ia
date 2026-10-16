@@ -160,7 +160,7 @@ export async function GET(request: NextRequest, { params }: Params) {
      * divergência medida contra a central: R$ 17.102,63 × R$ 15.873,77 no dia 06/10).
      */
     const mapaPdv = new Map([...pdv].map(([k, v]) =>
-      [k, { total: v.total, unidades: v.unidades, produtos: v.produtos, complementos: v.complementos }]))
+      [k, { vendeu: v.vendeu, unidades: v.unidades, produtos: v.produtos, complementos: v.complementos }]))
 
     const dias = montarDias({
       de: r.de, ate: r.ate, pdv: mapaPdv, extrato: paraExtrato(vs), hoje, moduleInicio,
@@ -174,7 +174,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       de: segPassada,
       ate: dia(new Date(dt(segAtual).getTime() - DIA_MS)),
       pdv: new Map([...pdvPassada].map(([k, v]) =>
-        [k, { total: v.total, unidades: v.unidades, produtos: v.produtos, complementos: v.complementos }])),
+        [k, { vendeu: v.vendeu, unidades: v.unidades, produtos: v.produtos, complementos: v.complementos }])),
       extrato: paraExtrato(vsPassada),
       hoje,
       moduleInicio,

@@ -23,7 +23,7 @@ const PDV_OUT: Record<string, number> = {
   '2026-10-07': 16_225.45, '2026-10-08': 16_328.55, '2026-10-09': 18_936.61,
 }
 const pdvDe = (dias: string[]) =>
-  new Map(dias.filter((d) => PDV_OUT[d] != null).map((d) => [d, { total: PDV_OUT[d], unidades: 500 }]))
+  new Map(dias.filter((d) => PDV_OUT[d] != null).map((d) => [d, { vendeu: PDV_OUT[d], unidades: 500 }]))
 
 /** ⭐ o extrato real: dias únicos + o BLOCO 02→04 do cartão (sex+sáb+dom juntos) */
 const EXTRATO_OUT: EntradaDoExtrato[] = [
@@ -247,9 +247,9 @@ describe('⛔⛔ OS 4 CARTÕES — e o relógio é PARÂMETRO, nunca `new Date()
     const passada = montarDias({
       de: '2026-09-28', ate: '2026-10-04',
       pdv: new Map([
-        ['2026-09-28', { total: 10_000, unidades: 100 }],
-        ['2026-09-29', { total: 10_000, unidades: 100 }],
-        ['2026-09-30', { total: 10_000, unidades: 100 }],
+        ['2026-09-28', { vendeu: 10_000, unidades: 100 }],
+        ['2026-09-29', { vendeu: 10_000, unidades: 100 }],
+        ['2026-09-30', { vendeu: 10_000, unidades: 100 }],
       ]),
       extrato: [], hoje, moduleInicio: '2026-08-01',
     })
@@ -412,38 +412,55 @@ describe('⛔⛔ hoje aberto ≠ sem dado', () => {
  * juiz** nesta janela: ele é recebimento com defasagem (D+1 e bloco), por isso existe o V6
  * com as bordas nomeadas. **Decidir por ele seria inventar a intenção do dono.**
  */
-describe('⛔⛔ a composição do total — o que a tela soma, dito', () => {
-  it('⭐ o dia carrega produtos e complementos separados, e eles SOMAM o total', () => {
-    const pdv = new Map([['2026-10-06', { total: 17_102.63, unidades: 515, produtos: 15_873.77, complementos: 1_228.86 }]])
+describe('⛔⛔ a composição — o que a tela soma e o que ela NÃO soma, dito', () => {
+  /**
+   * ⚠️⚠️ **ESTE BLOCO FOI INVERTIDO EM 16/10, COM O MOTIVO ESCRITO.** Até 11/10 ele afirmava
+   * *"produtos + complementos SOMAM o total"* e travava `a definição da TELA = 33.328,08` —
+   * ou seja, ele **guardava a lei que o dono acabou de reverter**:
+   *
+   * > *"valor de venda mesmo so vem de 1 relatorio: produtos."*
+   *
+   * ⛔ O estudo de 16/10 mostrou que adicional/borda **já entra no `valorTotal` da linha de
+   * PRODUTOS**, então somar o complemento por cima contava o mesmo dinheiro 2×.
+   *
+   * ⭐ **A METADE CERTA DELE CONTINUA MORDENDO, e ficou mais forte:** a composição segue
+   * viajando (a tela DIZ o que soma) — só que agora `Σ(produtos)` é **a definição das DUAS
+   * telas**, e é exatamente isso que o item 1 deste sprint existe pra provar.
+   */
+  it('⭐ o dia carrega produtos e complementos separados — e VENDEU é só produtos', () => {
+    const pdv = new Map([['2026-10-06', { vendeu: 15_873.77, unidades: 515, produtos: 15_873.77, complementos: 1_228.86 }]])
     const d = diaDe(montarDias({
       de: '2026-10-06', ate: '2026-10-06', pdv, extrato: [],
       hoje: '2026-10-10', moduleInicio: '2026-08-01',
     }), '2026-10-06')
     expect(d.produtos).toBeCloseTo(15_873.77, 2)
-    expect(d.complementos).toBeCloseTo(1_228.86, 2)
-    expect((d.produtos ?? 0) + (d.complementos ?? 0)).toBeCloseTo(d.total!, 2)
+    expect(d.complementos, 'continua visível — é conferência de import').toBeCloseTo(1_228.86, 2)
+    expect(d.total, 'VENDEU == produtos').toBeCloseTo(15_873.77, 2)
+    expect(d.total, '⛔ o complemento NÃO entra').not.toBeCloseTo(17_102.63, 2)
   })
 
   /**
-   * ⛔ O NÚMERO DA CENTRAL É DERIVÁVEL DO PAYLOAD — é isso que permite a tela EXPLICAR a
-   * divergência em vez de o dono descobrir sozinho comparando duas telas.
+   * ⭐⭐ O INVARIANTE QUE O DONO PEDIU: **as duas telas, UM número**. Antes de 16/10 este
+   * mesmo recorte dava 31.081,13 na central e 33.328,08 na tela de Vendas.
    */
-  it('⛔ Σ(produtos) == o que a central mostra · Σ(total) == o que a tela mostra', () => {
+  it('⭐⭐ Σ(produtos) == o que a central mostra == o que a tela mostra', () => {
     const pdv = new Map([
-      ['2026-10-06', { total: 17_102.63, unidades: 515, produtos: 15_873.77, complementos: 1_228.86 }],
-      ['2026-10-07', { total: 16_225.45, unidades: 431, produtos: 15_207.36, complementos: 1_018.09 }],
+      ['2026-10-06', { vendeu: 15_873.77, unidades: 515, produtos: 15_873.77, complementos: 1_228.86 }],
+      ['2026-10-07', { vendeu: 15_207.36, unidades: 431, produtos: 15_207.36, complementos: 1_018.09 }],
     ])
     const dias = montarDias({
       de: '2026-10-06', ate: '2026-10-07', pdv, extrato: [],
       hoje: '2026-10-10', moduleInicio: '2026-08-01',
     })
     const somaProd = dias.reduce((a, x) => a + (x.produtos ?? 0), 0)
-    const somaTudo = dias.reduce((a, x) => a + (x.total ?? 0), 0)
+    const somaTela = dias.reduce((a, x) => a + (x.total ?? 0), 0)
     expect(somaProd, 'a definição da CENTRAL').toBeCloseTo(31_081.13, 2)
-    expect(somaTudo, 'a definição da TELA').toBeCloseTo(33_328.08, 2)
+    expect(somaTela, 'a definição da TELA — a MESMA').toBeCloseTo(31_081.13, 2)
+    // ⛔ o contrafactual: a definição velha somaria os complementos por cima
+    expect(somaTela).not.toBeCloseTo(33_328.08, 2)
     const c = montarCartoes({ dias, hoje: '2026-10-10', ehMesInteiro: false, diasSemanaPassada: [] })
       .find((x) => x.qual === 'periodo')!
-    expect(c.valor, 'o cartão fecha com a definição da TELA').toBeCloseTo(somaTudo, 2)
+    expect(c.valor, 'o cartão fecha com a MESMA definição').toBeCloseTo(somaProd, 2)
   })
 
   it('⚠️ dia que veio do EXTRATO não tem composição (o extrato não separa)', () => {

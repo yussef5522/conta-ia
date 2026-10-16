@@ -41,6 +41,14 @@ const EXCECOES: Record<string, string> = {
    */
   'lib/avisos/produtores/producao.ts':
     'findMany por ID (nome de quem fez); os LOTES vêm da porta',
+  /**
+   * ⭐ LOOKUP POR ID: `carimbosDoDia` já tem os `conclusaoId` que a JANELA DE CARIMBOS
+   * selecionou e busca `ordemId` pra nomear o produto na fita. Ele **não decide quais
+   * conclusões existem** — e a régua *"estornada não conta"* é aplicada pela porta
+   * (`idsEstornados`), senão o mesmo lote apareceria carimbado 2× na fita (16/10).
+   */
+  'lib/stock/producao/conferencia.ts':
+    'findMany por ID (ordem do carimbo); a régua da estornada vem da porta',
 }
 
 /** ⚠️ varre LIB e APP (não scripts: diagnóstico read-only pode ler o cru pra medir) */

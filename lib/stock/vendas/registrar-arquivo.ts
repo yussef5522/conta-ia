@@ -102,3 +102,36 @@ export async function registrarArquivoDoImport(
     })
   }
 }
+
+/**
+ * ⭐⭐ O IRMÃO DO PAR — o último import do relatório OPOSTO (16/10/2026).
+ *
+ * **Pra que serve:** é o 3º degrau (c) da lei da data. No caso de 16/10 os dois relatórios da
+ * quinta entraram com **16 segundos** de diferença e foram pra DIAS DIFERENTES — e o estado
+ * "produtos num dia, complementos noutro" é **detectável no instante do 2º import**, que é a
+ * única hora em que ainda dá pra perguntar antes do estrago.
+ *
+ * ⛔⛔ **A régua do "mesmo lote" NÃO mora aqui.** Esta função só traz o fato (qual dia, em que
+ * instante); quem decide se aquilo é dia rachado é a `avaliarDiaDoRelatorio`, num lugar só.
+ * Pôr a janela de tempo nos dois seria a 2ª régua da mesma pergunta — e elas divergiriam no
+ * primeiro ajuste.
+ *
+ * ⚠️ `modo: 'DIA'` de propósito: um import de PERÍODO **semeia a prateleira** e nunca é dia de
+ * venda (a trava de 02/09) — tratá-lo como irmão faria a lei perguntar sobre um par que não
+ * existe.
+ */
+export async function irmaoDoPar(
+  companyId: string,
+  relatorio: RelatorioDeVenda,
+  db: PrismaClient = defaultPrisma,
+): Promise<{ dia: string; importadoEm: Date } | null> {
+  const oposto: RelatorioDeVenda = relatorio === 'PRODUTOS' ? 'COMPLEMENTOS' : 'PRODUTOS'
+  const x = await db.stockVendaArquivo.findFirst({
+    where: { companyId, relatorio: oposto, modo: 'DIA' },
+    orderBy: { importadoEm: 'desc' },
+    select: { data: true, importadoEm: true },
+  })
+  if (!x) return null
+  // ⚠️ o dia sai do texto ISO (a coluna é 00:00:00Z) — `toLocaleDateString` deslocaria o fuso
+  return { dia: x.data.toISOString().slice(0, 10), importadoEm: x.importadoEm }
+}

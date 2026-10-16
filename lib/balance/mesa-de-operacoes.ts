@@ -44,6 +44,8 @@ import { lerCentralDeImport } from '@/lib/stock/vendas/central-de-import'
 import { SELOS_QUE_PEDEM_ACAO } from '@/lib/stock/vendas/razao-sabor-pizza'
 import { diaAoVivo } from '@/lib/stock/producao/dia-ao-vivo'
 import { conclusoesVigentes } from '@/lib/stock/producao/conclusoes-vigentes'
+import { carimbosDoDia } from '@/lib/stock/producao/conferencia'
+import { avisosAbertos } from '@/lib/avisos/central'
 
 import { serieDeSaldo, type SerieDeSaldo } from './serie-de-saldo'
 import { montarPagaXEntra, type PagaXEntra, type ContaAgendada } from './paga-x-entra'
@@ -131,6 +133,8 @@ export async function lerMesaDeOperacoes(
   const [
     caixa, margem, agendadas, negativos, fila, compromissos,
     venceHoje, central, cozinha, lotesDeHoje, diasDeVenda,
+    /** ⭐ os três baldes da fita que faltavam até 15/10 — cada um da porta do assunto */
+    carimbos, pagasHoje, avisos,
   ] = await Promise.all([
       porta('o caixa', () => serieDeSaldo(empresaId, { dias: 30 }, agora, db), falhas),
       porta('o pregão do mês', () => lerMargem(empresaId, 'MES', agora, {}, db), falhas),
@@ -235,7 +239,7 @@ export async function lerMesaDeOperacoes(
               [...pdv].map(([k, v]) => [
                 k,
                 {
-                  total: v.total,
+                  vendeu: v.vendeu,
                   unidades: v.unidades,
                   produtos: v.produtos,
                   complementos: v.complementos,
@@ -249,6 +253,51 @@ export async function lerMesaDeOperacoes(
         },
         falhas,
       ),
+      /**
+       * ⭐⭐ OS CARIMBOS DE QUATRO OLHOS DE HOJE — a porta mora no módulo que conhece
+       * `stock_conclusao_carimbo` (`lib/stock/producao/conferencia.ts`), nunca aqui.
+       */
+      porta(
+        'os lotes conferidos',
+        () =>
+          carimbosDoDia(
+            empresaId,
+            { de: dt(hoje), ate: new Date(dt(hoje).getTime() + DIA_MS) },
+            db,
+          ),
+        falhas,
+      ),
+      /**
+       * ⭐⭐ AS CONTAS PAGAS HOJE — pelo `whereDoStatus('PAGA')`, o dono único do status
+       * desde 13/09, com o recorte do DIA por cima.
+       *
+       * ⚠️ O `mes` do `whereDoStatus` é de propósito **não** usado aqui: aquele recorte é de
+       * FLUXO (o mês que a tela de Contas a Pagar navega) e este é do DIA de hoje. O que
+       * **não** pode é inventar uma 2ª definição de *"conta paga"* — e essa continua vindo
+       * da porta (`paymentDate != null`).
+       *
+       * ⛔ E a empresa é resolvida pelo `ramosDaEmpresaEmContaAPagar`: conta a pagar NASCE
+       * SEM `bankAccountId` (a ponte do estoque, 24/08), então `bankAccount.companyId`
+       * devolveria ZERO em silêncio — a 4ª ocorrência dessa classe.
+       */
+      porta(
+        'as contas pagas hoje',
+        () =>
+          db.transaction.findMany({
+            where: {
+              AND: [
+                { OR: ramosDaEmpresaEmContaAPagar(empresaId) },
+                whereDoStatus('PAGA', agora),
+                { paymentDate: { gte: dt(hoje), lt: new Date(dt(hoje).getTime() + DIA_MS) } },
+              ],
+            },
+            orderBy: { paymentDate: 'asc' },
+            select: { id: true, description: true, amount: true, paymentDate: true },
+          }),
+        falhas,
+      ),
+      /** ⭐ os avisos do sininho — a MESMA `avisosAbertos` que o painel dele lê */
+      porta('os avisos do dia', () => avisosAbertos(empresaId, db), falhas),
     ])
 
   const medias = diasDeVenda ? mediaPorDiaDaSemana(diasDeVenda, hoje) : []
@@ -270,9 +319,16 @@ export async function lerMesaDeOperacoes(
         medias,
         hoje,
         dowDeHoje: dt(hoje).getUTCDay(),
+        /**
+         * ⛔ Os dois tipos vão SEPARADOS — somá-los aqui era o que fazia o pregão dizer
+         * *"13 parcela(s)"* com 9 parcelas e 4 faturas de cartão dentro. O Σ do dinheiro
+         * continua sendo o do dono único (`lerCompromissos`); o que muda é o rótulo saber
+         * de que ele é feito.
+         */
         emprestimosDoMes: {
           total: compromissos?.total ?? 0,
-          quantos: (compromissos?.parcelas?.length ?? 0) + (compromissos?.faturas?.length ?? 0),
+          parcelas: compromissos?.parcelas?.length ?? 0,
+          faturas: compromissos?.faturas?.length ?? 0,
         },
       })
     : null
@@ -383,31 +439,63 @@ export async function lerMesaDeOperacoes(
           quem: e.quem,
         })),
       /**
-       * ⛔⛔ **ESTES TRÊS BALDES AINDA NÃO TÊM PORTA LIGADA — e o comentário anterior MENTIA
-       * sobre isso** (ele afirmava que a ausência estava "DITA em `naoAlcancado`"; a prova em
-       * prod mostrou `naoAlcancado: []`). *Comentário que promete ser a trava sem ser a trava
-       * é pior que comentário nenhum* — a cicatriz de 08/10.
+       * ⭐⭐⭐ OS TRÊS BALDES QUE FALTAVAM, LIGADOS NAS PORTAS REAIS (16/10) — a pendência da
+       * 2.1 que este arquivo registrava por nome em 15/10 (*"enquanto estiverem vazios, a
+       * fita mostra MENOS do que o dia teve"*).
        *
-       * ⚠️⚠️ **E ELES NÃO PODEM ENTRAR EM `naoAlcancado`:** aquele campo significa *"a porta
-       * CAIU"*, e três entradas permanentes apareceriam **todo dia, pra sempre** — o jeito
-       * mais rápido de treinar o dono a não ler a lista (a lição dos 111 alarmes falsos de
-       * 26/08). *"Não construí ainda"* e *"a porta caiu"* são estados diferentes, e colapsar
-       * os dois é a doença que esta casa mais paga.
+       * ⛔⛔ **CADA UM VEM DA PORTA DO ASSUNTO, nunca de uma consulta própria daqui:**
+       *   · `lotesConferidos` ← `carimbosDoDia` (o dono de `stock_conclusao_carimbo`);
+       *   · `contasPagas`     ← `whereDoStatus('PAGA')`, o MESMO do card de Contas a Pagar;
+       *   · `avisos`          ← `avisosAbertos`, a MESMA leitura do sininho.
+       * ⚠️ Uma leitura própria faria a fita contar uma história que a tela do assunto não
+       * confirma — e *"duas telas com números diferentes pro mesmo dia"* é a doença de sempre.
        *
-       * ⭐ Então a ausência fica **registrada no relatório como pendência da 2.1**, com nome:
-       *   · `lotesConferidos` — o carimbo de QUATRO OLHOS (`stock_conclusao_conferida`);
-       *   · `contasPagas` — o que o dono pagou hoje;
-       *   · `avisos` — os do sininho que nasceram hoje.
-       * ⚠️ Enquanto estiverem vazios, a fita mostra **menos** do que o dia teve. Ela não
-       * INVENTA evento (que é o vermelho do brief), mas também não é a fita completa.
+       * ⚠️⚠️ **E O NOME DA TABELA DO CARIMBO ESTAVA ERRADO NO COMENTÁRIO ANTIGO** (ele dizia
+       * `stock_conclusao_conferida`; a tabela é **`stock_conclusao_carimbo`**). Achado ao
+       * ligar a porta — *comentário que nomeia a tabela errada manda o próximo procurar no
+       * lugar errado*.
        */
-      lotesConferidos: [],
-      contasPagas: [],
+      lotesConferidos: (carimbos ?? []).map((c) => ({
+        id: c.id,
+        ordemId: c.ordemId,
+        produto: c.produto,
+        quando: c.quando,
+        quem: c.quem,
+      })),
+      /**
+       * ⚠️ O INSTANTE DO FATO É O `paymentDate` — nunca o `criadoEm` da linha. A conta pode
+       * ser marcada paga hoje com data de pagamento de ontem; datar pelo registro poria no
+       * dia de hoje um fato de outro dia, que é exatamente o erro que a fita existe pra não
+       * cometer (*"o instante do FATO, nunca o da leitura"*, no cabeçalho de `fita-do-dia`).
+       */
+      contasPagas: (pagasHoje ?? [])
+        .filter((p) => p.paymentDate != null)
+        .map((p) => ({
+          id: p.id,
+          descricao: p.description ?? 'conta paga',
+          valor: p.amount,
+          quando: p.paymentDate!,
+        })),
       /** ⭐ a venda importada do dia, pelo selo que a central já decidiu */
       vendasImportadas: (central?.dias ?? [])
         .filter((d) => d.dia === hoje && d.unidades > 0)
         .map((d) => ({ dia: d.dia, unidades: d.unidades, valor: d.valor, quando: agora })),
-      avisos: [],
+      /**
+       * ⭐ OS AVISOS QUE NASCERAM HOJE — da MESMA `avisosAbertos` do sininho.
+       *
+       * ⚠️⚠️ O recorte é por **`criadoEm`**, e isso tem um limite que fica DITO em vez de
+       * escondido: um aviso **REABERTO** hoje (o `origem+alvo` que volta) mantém o `criadoEm`
+       * antigo e **não aparece na fita**. ⛔ Não inventei um campo pra isso: `AvisoNaTela` só
+       * expõe `criadoEm`, e derivar "reabriu hoje" de `atualizadoEm` seria ler por fora da
+       * porta — além de confundir *"o problema voltou"* com *"o dono marcou lido"*, que
+       * também toca aquele campo.
+       *
+       * ⛔ E o filtro de dia roda **sobre a saída da porta**, nunca como um `where` próprio:
+       * *"está em aberto"* continua tendo uma régua só (`resolvidoEm: null`, no sininho).
+       */
+      avisos: (avisos ?? [])
+        .filter((a) => a.criadoEm.slice(0, 10) === hoje)
+        .map((a) => ({ id: a.id, titulo: a.titulo, setor: a.setor, quando: new Date(a.criadoEm) })),
       hora: (d) => horaBrasil(d),
     }),
     contas7Dias,

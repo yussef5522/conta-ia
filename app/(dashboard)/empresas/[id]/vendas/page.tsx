@@ -555,12 +555,16 @@ function LinhaDaFonte({ d }: { d: Payload }) {
   if (c.pedemImport > 0) partes.push(`${c.pedemImport} sem import`)
 
   /**
-   * ⭐⭐ A COMPOSIÇÃO — e ela nasceu de uma DIVERGÊNCIA MEDIDA em prod (10/10), não de gosto:
-   * esta tela soma **produtos + complementos** e a CENTRAL DE IMPORTAÇÃO mostra **só produtos**
-   * (dia 06/10: R$ 17.102,63 × R$ 15.873,77). ⛔ As duas estão certas sobre a pergunta DELAS;
-   * errado era nenhuma DIZER qual soma — *"número sem régua em tela de dinheiro é pior que
-   * ausência"*, e duas telas com números diferentes pro mesmo dia é a doença que esta casa
-   * mais paga (os 111 alarmes falsos, os três agostos).
+   * ⭐⭐ A COMPOSIÇÃO — e desde 16/10 ela serve pra dizer o que o total **NÃO** soma.
+   *
+   * ⚠️⚠️ Até 11/10 esta tela somava **produtos + complementos** e a central mostrava **só
+   * produtos** (06/10: R$ 17.102,63 × R$ 15.873,77), e o ⓘ explicava a divergência. A lei do
+   * dono de 16/10 acabou com ela na RAIZ: *"valor de venda mesmo so vem de 1 relatorio:
+   * produtos"* — o adicional já está dentro da linha de produto, então somar era contar 2×.
+   *
+   * ⛔ Estes dois `reduce` **não definem nada**: eles só leem a composição que a porta única
+   * mandou. Quem decide "vendeu" é `totaisDoPdvPorDia` — somar aqui seria ressuscitar a
+   * segunda definição.
    */
   const prod = d.dias.reduce((a, x) => a + (x.produtos ?? 0), 0)
   const comp = d.dias.reduce((a, x) => a + (x.complementos ?? 0), 0)
@@ -589,13 +593,16 @@ function LinhaDaFonte({ d }: { d: Payload }) {
         </p>
         {comp > 0 && (
           <p className="text-[11.5px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>
-            <b style={{ color: 'var(--prod-primary)' }}>o que este total soma:</b>{' '}
-            produtos {formatBRL(prod)} + complementos {formatBRL(comp)} ={' '}
-            <b style={{ color: 'var(--prod-primary)' }}>{formatBRL(prod + comp)}</b>. Os complementos
-            são os adicionais cobrados à parte (borda, bebida escolhida, upgrade de tamanho) — os
-            que já vêm no preço do produto entram no relatório a R$ 0,00 e não somam.{' '}
-            <b style={{ color: 'var(--prod-primary)' }}>A central de importação mostra só os
-            produtos</b>, então o número dela é menor — é a mesma venda, outra pergunta.
+            <b style={{ color: 'var(--prod-primary)' }}>o que este total soma:</b> só o{' '}
+            <b style={{ color: 'var(--prod-primary)' }}>relatório de produtos</b> ({formatBRL(prod)}) —
+            é dele que vem o valor da venda. O relatório de sabores/adicionais deste recorte soma{' '}
+            {formatBRL(comp)} e <b style={{ color: 'var(--prod-primary)' }}>não entra na conta</b>:
+            borda e adicional cobrados já estão dentro do preço da linha do produto, então somar os
+            dois contaria o mesmo dinheiro duas vezes. Ele é importado pelas{' '}
+            <b style={{ color: 'var(--prod-primary)' }}>quantidades</b> — que sabor e que bebida
+            saíram — pra baixar estoque e medir o mix.{' '}
+            <b style={{ color: 'var(--prod-primary)' }}>A central de importação mostra o mesmo
+            número desta tela.</b>
           </p>
         )}
         {d.moduleInicio && (

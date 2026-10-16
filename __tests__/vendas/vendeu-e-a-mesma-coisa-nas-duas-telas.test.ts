@@ -1,22 +1,29 @@
 /**
  * ⛔⛔⛔ "VENDEU" É A MESMA COISA NAS DUAS TELAS — AO CENTAVO (10/10/2026).
  *
- * **Definição do dono:** *"VENDEU = produtos + complementos cobrados — o dinheiro que o
- * cliente pagou."*
+ * ⚠️⚠️ **A DEFINIÇÃO MUDOU EM 16/10, E ESTE ARQUIVO FOI ATUALIZADO COM O MOTIVO ESCRITO.**
  *
- * ⛔⛔ O DEFEITO QUE ISTO MATA, medido em prod no dia 06/10:
- * ```
- *   a TELA DE VENDAS        R$ 17.102,63   ← produtos + complementos
- *   a CENTRAL DE IMPORT     R$ 15.873,77   ← só produtos
- *   a diferença              R$ 1.228,86   = os COMPLEMENTOS
- * ```
- * As duas estavam certas sobre a pergunta DELAS; o que não existia era **uma definição só**.
- * ***Duas telas com números diferentes pro mesmo dia é a doença que esta casa mais paga*** —
- * os três agostos (26/08), os 111 alarmes falsos, o badge que contava sem os lotes (10/09).
+ * **Até 11/10 (a lei velha, do dono):** *"VENDEU = produtos + complementos cobrados — o
+ * dinheiro que o cliente pagou."*
  *
- * ⭐⭐ E A GARANTIA É DE CONSTRUÇÃO, não de promessa: as duas leem o MESMO
- * `totaisDoPdvPorDia`. Este arquivo prova que elas continuam lendo — se alguém puser uma
- * soma local em qualquer das duas, fica vermelho.
+ * **Desde 16/10 (a lei nova, do dono):**
+ * > *"relatorio de produtos ja vem total que foi vendido. a gente baixa relatorio
+ * > complementos SO pra pegar os sabores de pizza e cocas que sairam. valor de venda mesmo
+ * > so vem de 1 relatorio: produtos."*
+ *
+ * ⛔⛔ **POR QUE ELA VIROU:** o estudo de 16/10 mediu que adicional/borda **já entra no
+ * `valorTotal` da linha de PRODUTOS** (é o que faz o preço praticado de uma pizza grande sair
+ * ~17% acima da tabela). Somar o complemento por cima era contar o mesmo dinheiro **2×**:
+ * ```
+ *   06/10   produtos 15.873,77 + complementos 1.228,86 = 17.102,63   ⛔ dupla contagem
+ *   06/10   VENDEU = 15.873,77                                        ⭐ a lei nova
+ *   outubro 292.099,08 (produtos) × 312.902,47 (a soma velha) → 20.803,39 contados 2×
+ * ```
+ *
+ * ⭐⭐ **A PERGUNTA DO GUARD NÃO MUDOU** — *"as duas telas dizem o MESMO número pro MESMO
+ * dia?"*. ***Duas telas com números diferentes pro mesmo dia é a doença que esta casa mais
+ * paga*** (os três agostos, os 111 alarmes falsos, o badge sem os lotes). O que mudou é **qual**
+ * é o número, e ele agora mora num lugar só: `totaisDoPdvPorDia.vendeu`.
  *
  * ⚠️ É teste de INTEGRAÇÃO contra banco porque é exatamente o encaixe que importa: um teste
  * puro sobre `totaisDoPdvPorDia` passaria verde com uma das telas ignorando o dono (a lição
@@ -108,39 +115,54 @@ describe('⛔⛔⛔ as duas telas, a mesma definição', () => {
     for (const d of DIAS) {
       const naVendas = dias.find((x) => x.dia === d.dia)!
       const naCentral = central.dias.find((x) => x.dia === d.dia)!
-      expect(naVendas.total, `${d.dia} na tela de Vendas`).toBeCloseTo(d.produtos + d.complementos, 2)
-      expect(naCentral.valor, `${d.dia} na central`).toBeCloseTo(d.produtos + d.complementos, 2)
+      expect(naVendas.total, `${d.dia} na tela de Vendas`).toBeCloseTo(d.produtos, 2)
+      expect(naCentral.valor, `${d.dia} na central`).toBeCloseTo(d.produtos, 2)
       expect(naCentral.valor, `${d.dia}: as duas telas`).toBeCloseTo(naVendas.total!, 2)
+      /**
+       * ⛔⛔ O CONTRAFACTUAL DA LEI VELHA — sem ele os dois `expect` de cima passariam num
+       * mundo em que `complementos` é sempre 0, e o guard viraria enfeite no dia em que
+       * alguém somasse de novo num dia sem adicional.
+       */
+      if (d.complementos > 0) {
+        const somaVelha = d.produtos + d.complementos
+        expect(naVendas.total, `${d.dia}: a dupla contagem NÃO voltou na tela`).not.toBeCloseTo(somaVelha, 2)
+        expect(naCentral.valor, `${d.dia}: nem na central`).not.toBeCloseTo(somaVelha, 2)
+      }
     }
   })
 
-  it('⭐ e a CENTRAL diz a composição — produtos + complementos = total', async () => {
+  it('⭐ a CENTRAL diz a composição — e `valor` == produtos, com o complemento ao lado', async () => {
     const central = await lerCentralDeImport(companyId, '2026-10', prisma, '2026-10-20')
     for (const d of DIAS) {
       const x = central.dias.find((y) => y.dia === d.dia)!
       expect(x.valorProdutos).toBeCloseTo(d.produtos, 2)
-      expect(x.valorComplementos).toBeCloseTo(d.complementos, 2)
-      expect(x.valorProdutos + x.valorComplementos, 'a conta fecha no olho').toBeCloseTo(x.valor, 2)
+      expect(x.valorComplementos, 'continua visível — é conferência do import').toBeCloseTo(d.complementos, 2)
+      expect(x.valor, 'VENDEU == produtos').toBeCloseTo(x.valorProdutos, 2)
     }
   })
 
   /**
-   * ⛔⛔⛔ A CONFERÊNCIA DO ARQUIVO CONTINUA SENDO **SÓ DE PRODUTOS** — e isto é a metade que
+   * ⛔⛔⛔ A CONFERÊNCIA DO ARQUIVO É **SÓ DE PRODUTOS** — e isto continua sendo a metade que
    * impede o conserto de virar alarme falso diário. `conferencia.somaGravada` é comparada com
-   * o `somaValor` que **o arquivo de PRODUTOS declarou**; pôr o total ali faria a central
-   * acusar divergência em TODO dia com complemento. ⚠️ O relatório de complementos **não
-   * declara total** (34% das linhas valem R$ 0,00), então não existe lado do arquivo pra
-   * conferir contra. **Duas perguntas, dois nomes.**
+   * o `somaValor` que **o arquivo de PRODUTOS declarou**; somar o complemento ali faria a
+   * central acusar divergência em TODO dia com adicional.
+   *
+   * ⚠️ Desde 16/10 `somaGravada` e `valor` são o MESMO número (os dois são produtos), então
+   * o `not.toBeCloseTo` de antes deixou de distinguir qualquer coisa. **O que morde agora é o
+   * contrafactual:** a conferência nunca pode virar `produtos + complementos`. ⛔ O relatório
+   * de complementos **não declara total** (34% das linhas valem R$ 0,00), então não existe
+   * lado do arquivo pra conferir contra.
    */
-  it('⛔⛔ `conferencia.somaGravada` é SÓ PRODUTOS, nunca o total', async () => {
+  it('⛔⛔ `conferencia.somaGravada` é SÓ PRODUTOS — nunca produtos + complementos', async () => {
     const central = await lerCentralDeImport(companyId, '2026-10', prisma, '2026-10-20')
     const x = central.dias.find((y) => y.dia === '2026-10-06')!
     expect(x.conferencia.somaGravada, 'a conferência compara com o arquivo de PRODUTOS')
       .toBeCloseTo(15_873.77, 2)
-    expect(x.conferencia.somaGravada).not.toBeCloseTo(x.valor, 2)
+    expect(x.conferencia.somaGravada, 'o complemento não entra na conferência')
+      .not.toBeCloseTo(15_873.77 + 1_228.86, 2)
   })
 
-  it('⭐ dia SEM complemento: os dois números coincidem (a borda)', async () => {
+  it('⭐ dia SEM complemento: nada muda (a borda que prova que a régua é uma só)', async () => {
     const central = await lerCentralDeImport(companyId, '2026-10', prisma, '2026-10-20')
     const x = central.dias.find((y) => y.dia === '2026-10-08')!
     expect(x.valorComplementos).toBe(0)
@@ -148,20 +170,27 @@ describe('⛔⛔⛔ as duas telas, a mesma definição', () => {
   })
 
   /**
-   * ⛔⛔ O VERMELHO DO DONO: *"central sem os dois Σ = vermelho"*. ⚠️ E a asserção é
-   * ESTRUTURAL (sem jsdom não dá pra renderizar), lendo a fonte do componente — o que ela
-   * trava é a tela DESENHAR a composição, não só o payload carregá-la.
+   * ⛔⛔ O VERMELHO DO DONO: *"a central mostra o Σ dos complementos como conferência de
+   * import, COM RÓTULO CLARO de que ele NÃO SOMA"*.
+   *
+   * ⚠️ E a asserção é ESTRUTURAL (sem jsdom não dá pra renderizar), lendo a fonte do
+   * componente — o que ela trava é a tela DESENHAR, não só o payload carregar. ⭐ Ela tem
+   * DUAS metades, e a segunda é a que importa: o rótulo mentiroso (*"total"* sobre a soma dos
+   * dois) **não pode voltar**. Guard que só afirma a presença aprovaria o dia em que a frase
+   * velha renascer ao lado da nova.
    */
-  it('⛔⛔ a tela da central DESENHA os dois Σ no cabeçalho do dia', async () => {
+  it('⛔⛔ a tela da central DIZ "vendeu" e DIZ que o complemento não soma', async () => {
     const { readFileSync } = await import('node:fs')
     const { join } = await import('node:path')
     const { semComentarios } = await import('../regras-ui/_leitura-de-fonte')
     const tela = semComentarios(
       readFileSync(join(process.cwd(), 'components/estoque/central-de-import.tsx'), 'utf8'),
     )
-    expect(tela, 'o rótulo dos produtos').toContain('produtos ${brl(d.valorProdutos)}')
-    expect(tela, 'o rótulo dos complementos').toContain('complementos ${brl(d.valorComplementos)}')
-    expect(tela, 'o total nomeado').toContain('total ${brl(d.valor)}')
+    expect(tela, 'o rótulo de VENDEU').toContain('vendeu ${brl(d.valor)}')
+    expect(tela, 'o Σ do complemento, como conferência').toContain('${brl(d.valorComplementos)}')
+    expect(tela, 'e dizendo por escrito que ele não soma').toContain('não soma na venda')
+    // ⛔ o rótulo da lei velha não volta
+    expect(tela, 'o "total" da soma dos dois MORREU').not.toContain('total ${brl(d.valor)}')
   })
 
   /**
@@ -181,12 +210,79 @@ describe('⛔⛔⛔ as duas telas, a mesma definição', () => {
       .toBeGreaterThan(0)
     expect(central, 'a central voltou a somar valor no laço').not.toMatch(/\+=\s*l\.valorTotal/)
     expect(central, 'a central voltou a somar complemento no laço').not.toMatch(/\+=\s*c\.valorTotal/)
+    /**
+     * ⛔⛔ E A 2ª DEFINIÇÃO DE "VENDEU" TAMBÉM NÃO VOLTA. Até 16/10 esta linha era
+     * `valor: round2(vProd + vComp)` — a central somando por conta própria. **Era ela que
+     * permitiu as duas telas divergirem em primeiro lugar**: a definição existia em dois
+     * lugares, e cada um respondeu uma coisa.
+     */
+    expect(central, 'a central voltou a definir "vendeu" na mão').not.toMatch(/vProd\s*\+\s*vComp/)
+    expect(central, 'e consome o `vendeu` da porta').toMatch(/t\?\.vendeu/)
 
     const rota = semComentarios(
       readFileSync(join(process.cwd(), 'app/api/empresas/[id]/vendas/route.ts'), 'utf8'),
     )
     expect(usosDe(rota, 'totaisDoPdvPorDia'), 'a tela de Vendas consome o MESMO dono')
       .toBeGreaterThan(0)
+  })
+
+  /**
+   * ⛔⛔⛔ A VARREDURA DOS CONSUMIDORES (REGRA 4) — *"VENDEU somando complementos em QUALQUER
+   * consumidor = vermelho"*, ordem do dono.
+   *
+   * ⭐ Os dois `expect` acima olham a central e a rota de Vendas; **este olha a lista fechada
+   * de TODO leitor da porta**. É o que impede o conserto de valer em 2 de 6 lugares — e
+   * *"corrigir N−1 é pior que não corrigir nenhum: o sistema fica com metade das telas certas
+   * e nenhum alarme"* (a lição dos três agostos, 26/08).
+   *
+   * ⚠️ A régua é a FORMA de somar os dois campos (`produtos` com `complementos`), não a
+   * menção deles: a composição **tem** que continuar viajando — é ela que faz a tela DIZER o
+   * que soma. O proibido é o `+`.
+   */
+  it('⛔⛔⛔ nenhum consumidor da porta soma produtos + complementos', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const { semComentarios } = await import('../regras-ui/_leitura-de-fonte')
+
+    /** os 6 leitores de `totaisDoPdvPorDia`/da composição, por caminho inteiro */
+    const CONSUMIDORES = [
+      'lib/stock/vendas/central-de-import.ts',
+      'lib/vendas/dia-a-dia.ts',
+      'lib/balance/mesa-de-operacoes.ts',
+      'app/api/empresas/[id]/vendas/route.ts',
+      'app/(dashboard)/empresas/[id]/vendas/page.tsx',
+      'components/estoque/central-de-import.tsx',
+    ]
+
+    /**
+     * ⛔ A soma proibida, em qualquer ordem e com qualquer prefixo de objeto:
+     * `produtos + complementos`, `vProd + vComp`, `valorProdutos + valorComplementos`,
+     * `x.produtos + x.complementos`, `prod + comp`.
+     */
+    const SOMA_PROIBIDA =
+      /\b(?:\w+\.)?(?:v(?:alor)?)?[Pp]rod(?:utos?)?\b\s*\+\s*(?:\w+\.)?(?:v(?:alor)?)?[Cc]omp(?:lementos?)?\b|\b(?:\w+\.)?(?:v(?:alor)?)?[Cc]omp(?:lementos?)?\b\s*\+\s*(?:\w+\.)?(?:v(?:alor)?)?[Pp]rod(?:utos?)?\b/
+
+    for (const f of CONSUMIDORES) {
+      const src = semComentarios(readFileSync(join(process.cwd(), f), 'utf8'))
+      expect(src, `${f} voltou a somar produtos + complementos`).not.toMatch(SOMA_PROIBIDA)
+    }
+  })
+
+  /**
+   * ⭐ AUTO-TESTE DO DETECTOR (REGRA 11) — sem ele o guard de cima passaria por **cegueira**,
+   * e esta casa já pagou isso 7 vezes. Ele tem que pegar as formas reais que o código usava.
+   */
+  it('⭐ o detector da soma proibida reconhece as formas que existiam no código', async () => {
+    const SOMA_PROIBIDA =
+      /\b(?:\w+\.)?(?:v(?:alor)?)?[Pp]rod(?:utos?)?\b\s*\+\s*(?:\w+\.)?(?:v(?:alor)?)?[Cc]omp(?:lementos?)?\b|\b(?:\w+\.)?(?:v(?:alor)?)?[Cc]omp(?:lementos?)?\b\s*\+\s*(?:\w+\.)?(?:v(?:alor)?)?[Pp]rod(?:utos?)?\b/
+    // as 4 formas que realmente estiveram no repo até 11/10
+    expect('valor: round2(vProd + vComp),').toMatch(SOMA_PROIBIDA)
+    expect('a.total = round2(a.produtos + a.complementos)').toMatch(SOMA_PROIBIDA)
+    expect('formatBRL(prod + comp)').toMatch(SOMA_PROIBIDA)
+    expect('x.valorProdutos + x.valorComplementos').toMatch(SOMA_PROIBIDA)
+    // ⚠️ e NÃO morde a composição viajando (que tem que continuar)
+    expect('produtos: v.produtos, complementos: v.complementos').not.toMatch(SOMA_PROIBIDA)
+    expect('expect(x.valorComplementos).toBe(0)').not.toMatch(SOMA_PROIBIDA)
   })
 })
 

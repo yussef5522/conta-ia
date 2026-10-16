@@ -23,6 +23,7 @@ import type { PrismaClient } from '@prisma/client'
 import { totaisDoPdvPorDia } from './total-do-pdv'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { ehPizza, ehSaborDeVerdade, vereditoDoDia, ROTULO_DO_SELO, SELOS_QUE_PEDEM_ACAO, type SeloDoDia } from './razao-sabor-pizza'
+import { acharDiasRachados, type DiaRachado } from './dia-rachado'
 
 const ISO = (d: Date) => d.toISOString().slice(0, 10)
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -62,20 +63,29 @@ export interface DiaDaCentral {
   frase: string
   unidades: number
   /**
-   * ⭐⭐⭐ `valor` É O TOTAL — **produtos + complementos cobrados** (decisão do dono, 10/10:
-   * *"VENDEU = produtos + complementos cobrados — o dinheiro que o cliente pagou"*).
+   * ⭐⭐⭐ `valor` É O QUE **VENDEU** — a Σ do relatório de PRODUTOS, e só (lei do dono,
+   * 16/10: *"valor de venda mesmo so vem de 1 relatorio: produtos"*).
    *
-   * ⛔⛔ ANTES ELE ERA **SÓ PRODUTOS**, e isso fazia esta tela e a de Vendas mostrarem
-   * números DIFERENTES pro mesmo dia (06/10: R$ 15.873,77 aqui × R$ 17.102,63 lá). As duas
-   * estavam certas sobre a pergunta delas; o que não existia era **uma definição só**.
-   * ***Duas telas com números diferentes pro mesmo dia é a doença que esta casa mais paga.***
+   * ⚠️⚠️ **ISTO REVERTE A DECISÃO DE 10/10, que vivia escrita aqui** (*"produtos +
+   * complementos cobrados — o dinheiro que o cliente pagou"*). O estudo de 16/10 mediu que
+   * adicional/borda **já entra no `valorTotal` da linha de PRODUTOS**, então somar o
+   * complemento por cima contava o mesmo dinheiro **2×** (06/10: R$ 17.102,63 no lugar de
+   * R$ 15.873,77).
    *
-   * ⭐ E o dinheiro vem do **DONO ÚNICO** (`totaisDoPdvPorDia`), nunca de uma soma local:
-   * somá-lo aqui seria a 2ª derivação da mesma pergunta, e ela divergiria no 1º caso de
-   * borda — é a lição dos 7 detectores de par e dos três agostos.
+   * ⭐⭐ E O NÚMERO VEM DO **DONO ÚNICO** (`totaisDoPdvPorDia.vendeu`) — não existe soma
+   * local aqui. Até 16/10 esta linha fazia `round2(vProd + vComp)` **por conta própria**: era
+   * a 2ª derivação de *"quanto vendeu"*, e é por isso que esta tela e a de Vendas puderam
+   * divergir em primeiro lugar. ***Duas telas com números diferentes pro mesmo dia é a
+   * doença que esta casa mais paga*** — e a cura é a definição morar num lugar só.
    */
   valor: number
-  /** ⭐ a composição, pra a tela DIZER a conta em vez de o dono descobrir comparando telas */
+  /**
+   * ⭐ A COMPOSIÇÃO, pra a tela DIZER a conta.
+   *
+   * ⚠️ `valorComplementos` é **CONFERÊNCIA DE IMPORT** (*"o arquivo de sabores entrou?"*),
+   * nunca parcela da venda — e o rótulo na tela diz isso por escrito. Ele continua aqui
+   * justamente pra o dono ver que o arquivo chegou sem achar que o número soma.
+   */
   valorProdutos: number
   valorComplementos: number
   pizzas: number
@@ -91,6 +101,12 @@ export interface DiaDaCentral {
   conferencia: ConferenciaDoDia
   /** ⭐ dia de venda (pelo calendário) sem import nenhum — a faixa coral do topo */
   buraco: boolean
+  /**
+   * ⚠️⚠️ **O SELO DO DIA RACHADO** — preenchido SÓ no dia que carrega o alarme (o dos
+   * produtos), com a frase que nomeia o vizinho. ⛔ Nos dois dias do par seria **o mesmo fato
+   * gritando duas vezes**; ver o anti-spam em `dia-rachado.ts`.
+   */
+  rachado: DiaRachado | null
 }
 
 export interface CentralDeImport {
@@ -106,6 +122,11 @@ export interface CentralDeImport {
    * um dos dois faltou — **antes de o dono sair da tela**.
    */
   parDoUltimoDia: { dia: string; temProdutos: boolean; temComplementos: boolean } | null
+  /**
+   * ⭐ os pares rachados do mês — **um por caso**, pra a faixa do topo nomear o dia sem o dono
+   * ter que caçar a linha numa lista de 31.
+   */
+  diasRachados: DiaRachado[]
 }
 
 /**
@@ -231,13 +252,29 @@ export async function lerCentralDeImport(
     COMPLETO: 0,
     COMPLEMENTOS_INCOMPLETOS: 0,
     SABORES_NAO_IMPORTADOS: 0,
+    PRODUTOS_NAO_IMPORTADOS: 0,
     SEM_IMPORTACAO: 0,
   }
+
+  /**
+   * ⭐⭐ O RACHO É CALCULADO **ANTES** do laço dos dias, sobre o par de arquivos de TODOS eles —
+   * ele é a única pergunta desta tela que **atravessa dois dias**, e por isso não cabe dentro do
+   * `vereditoDoDia`, que é puro e por-dia.
+   */
+  const rachados = acharDiasRachados(
+    todos.map((dia) => ({
+      dia,
+      temProdutos: temProdutosNoDia.has(dia),
+      temComplementos: temCompNoDia.has(dia),
+    })),
+  )
+  const rachoPorDia = new Map(rachados.map((r) => [r.dia, r]))
 
   const dias: DiaDaCentral[] = todos.map((dia) => {
     const a = porDia.get(dia) ?? zero()
     const temProdutos = temProdutosNoDia.has(dia)
-    const v = vereditoDoDia({ temProdutos, pizzas: a.pizzas, sabores: a.sabores })
+    const temComplementos = temCompNoDia.has(dia)
+    const v = vereditoDoDia({ temProdutos, temComplementos, pizzas: a.pizzas, sabores: a.sabores })
     contagem[v.selo] += 1
 
     const arqs = arqPorDia.get(dia) ?? []
@@ -283,13 +320,17 @@ export async function lerCentralDeImport(
       razao: v.razao,
       frase: v.frase,
       unidades: a.unidades,
-      // ⭐ "VENDEU" = produtos + complementos cobrados (a definição do dono, 10/10)
-      valor: round2(vProd + vComp),
+      /**
+       * ⭐⭐ VENDEU vem da PORTA, nunca de soma aqui (a lei de 16/10). A linha antiga era
+       * `round2(vProd + vComp)` — a 2ª definição de "vendeu", que é o que permitiu as duas
+       * telas divergirem.
+       */
+      valor: round2(t?.vendeu ?? 0),
       valorProdutos: vProd,
       valorComplementos: vComp,
       pizzas: a.pizzas,
       sabores: a.sabores,
-      arquivos: (temProdutos ? 1 : 0) + (temCompNoDia.has(dia) ? 1 : 0),
+      arquivos: (temProdutos ? 1 : 0) + (temComplementos ? 1 : 0),
       detalheArquivos: arqs.map((x) => ({
         relatorio: x.relatorio as Relatorio,
         nomeArquivo: x.nomeArquivo,
@@ -317,6 +358,7 @@ export async function lerCentralDeImport(
        * ⛔ O terceiro termo é o que separa "o dono esqueceu" de "o dia ainda está rodando".
        */
       buraco: !temProdutos && diasDeVenda.has(dia) && (!hoje || dia < hoje),
+      rachado: rachoPorDia.get(dia) ?? null,
     }
   })
 
@@ -326,6 +368,7 @@ export async function lerCentralDeImport(
     dias,
     buracos: dias.filter((d) => d.buraco).map((d) => d.dia),
     contagem,
+    diasRachados: rachados,
     parDoUltimoDia: ultimo
       ? {
           dia: ultimo.dia,

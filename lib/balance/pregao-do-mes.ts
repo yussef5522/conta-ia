@@ -71,8 +71,15 @@ export interface PregaoInput {
   hoje: string
   /** 0 = domingo … 6 = sábado, do dia do Brasil — também da ROTA */
   dowDeHoje: number
-  /** Σ das parcelas/compromissos agendados do mês (do dono único de compromissos) */
-  emprestimosDoMes: { total: number; quantos: number }
+  /**
+   * Σ dos compromissos agendados do mês, do dono único (`lerCompromissos`).
+   *
+   * ⛔⛔ **São DUAS contagens, não uma — e o rótulo precisa das duas.** Até 16/10 a mesa somava
+   * os dois tipos num `quantos` e a frase dizia *"13 parcela(s)"* com **9 parcelas + 4 faturas
+   * de cartão** por baixo. *Nenhum rótulo promete mais do que entrega* (13/09): fatura de
+   * cartão não é parcela de empréstimo, e quem lê "13 parcelas" vai procurar 13 contratos.
+   */
+  emprestimosDoMes: { total: number; parcelas: number; faturas: number }
 }
 
 export function montarPregao(i: PregaoInput): PregaoDoMes {
@@ -181,7 +188,16 @@ export function fraseDaCasaDeHoje(i: PregaoInput): string {
  * desaparece faz o dono se perguntar se o sistema olhou — e ele não tem como saber.
  */
 export function fraseDosEmprestimos(i: PregaoInput): string {
-  const { total, quantos } = i.emprestimosDoMes
-  if (quantos === 0) return 'empréstimos do mês: nenhum compromisso agendado'
-  return `empréstimos do mês: ${brl(total)} em ${quantos} parcela(s)`
+  const { total, parcelas, faturas } = i.emprestimosDoMes
+  if (parcelas + faturas === 0) return 'empréstimos do mês: nenhum compromisso agendado'
+
+  /**
+   * ⚠️ **Tipo com ZERO não aparece** — *"9 parcelas + 0 faturas"* é ruído que faz o dono
+   * procurar a fatura que não existe. E o plural acompanha o número: o rótulo tem que ler
+   * como gente escreve.
+   */
+  const pedacos: string[] = []
+  if (parcelas > 0) pedacos.push(`${parcelas} parcela${parcelas === 1 ? '' : 's'}`)
+  if (faturas > 0) pedacos.push(`${faturas} fatura${faturas === 1 ? '' : 's'}`)
+  return `empréstimos do mês: ${brl(total)} em ${pedacos.join(' + ')}`
 }

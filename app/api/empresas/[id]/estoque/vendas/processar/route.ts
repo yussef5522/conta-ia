@@ -10,6 +10,8 @@ import { montarPlanoVenda, processarVendas, reprocessarDia, montarPlanoReprocess
 import { SuitableParseError } from '@/lib/stock/vendas/parse-suitable'
 import { SanidadeNaoConfirmadaError } from '@/lib/stock/vendas/medir-sanidade'
 import { BaixaComItemBarradoError } from '@/lib/stock/vendas/itens-pendentes-da-baixa'
+import { exigirDiaDecidido, DiaNaoConfirmadoError } from '@/lib/stock/vendas/lei-da-data'
+import { irmaoDoPar } from '@/lib/stock/vendas/registrar-arquivo'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -34,6 +36,11 @@ const schema = z.object({
    * um nome ali seria afirmar uma origem que não houve.
    */
   nomeArquivo: z.string().trim().min(1).max(300).optional(),
+  /**
+   * ⭐ a resposta do dono à pergunta do dia (a lei da data, 16/10). ⛔ NÃO é um `force`: ela
+   * só vale se bater com uma das opções que a pergunta ofereceu.
+   */
+  confirmouDia: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -43,8 +50,25 @@ export async function POST(request: NextRequest, { params }: Params) {
   const user = a.user
   const parsed = schema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }, { status: 400 })
-  const { data, html, confirmar, reprocessar, incluir, confirmouSanidade, itensPendentes, nomeArquivo } = parsed.data
+  const { data, html, confirmar, reprocessar, incluir, confirmouSanidade, itensPendentes, nomeArquivo, confirmouDia } = parsed.data
   try {
+    /**
+     * ⛔⛔ **A LEI DA DATA, pela porta ÚNICA** — a MESMA que o import de complementos chama
+     * (16/10). Duas avaliações, uma por rota, seriam o caminho pra os dois relatórios do
+     * MESMO par perguntarem coisas diferentes: exatamente o defeito que a lei fecha.
+     *
+     * ⚠️ **O REPROCESSO fica fora, e o motivo é de fato:** ele relê as linhas **já gravadas**
+     * de um dia que o dono já decidiu — não há data nova sendo apontada. Perguntar ali seria
+     * reabrir uma decisão tomada.
+     */
+    const dia = reprocessar
+      ? data
+      : exigirDiaDecidido({
+          diaEscolhido: data,
+          agora: new Date(),
+          irmao: await irmaoDoPar(companyId, 'PRODUTOS', prisma),
+          confirmouDia,
+        })
     if (reprocessar) {
       if (confirmar) return NextResponse.json({ ok: true, recibo: await reprocessarDia(companyId, data, user.sub, prisma, confirmouSanidade ?? false, itensPendentes ?? []) })
       const r = await montarPlanoReprocesso(companyId, data, prisma)
@@ -52,9 +76,16 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ plano: r.plano, reprocesso: true, estornaItens: r.estornaItens })
     }
     if (!html) return NextResponse.json({ erro: 'Envie o arquivo do dia.' }, { status: 400 })
-    if (confirmar) return NextResponse.json({ ok: true, recibo: await processarVendas(companyId, data, html, user.sub, prisma, incluir ?? null, confirmouSanidade ?? false, itensPendentes ?? [], nomeArquivo) })
-    return NextResponse.json({ plano: await montarPlanoVenda(companyId, data, html, prisma, incluir ?? null) })
+    if (confirmar) return NextResponse.json({ ok: true, recibo: await processarVendas(companyId, dia, html, user.sub, prisma, incluir ?? null, confirmouSanidade ?? false, itensPendentes ?? [], nomeArquivo) })
+    return NextResponse.json({ plano: await montarPlanoVenda(companyId, dia, html, prisma, incluir ?? null) })
   } catch (e) {
+    /** ⭐ 409 = PERGUNTA (o desenho da sanidade): a tela mostra os dois botões e o dono decide */
+    if (e instanceof DiaNaoConfirmadoError) {
+      return NextResponse.json(
+        { erro: e.message, code: 'CONFIRME_O_DIA', dia: e.veredicto },
+        { status: 409 },
+      )
+    }
     if (e instanceof SuitableParseError) return NextResponse.json({ erro: e.message }, { status: 422 })
     // ⭐ 409 = "pergunta", não "erro": a tela mostra os números e o dono decide. Reenviar
     // com confirmouSanidade:true passa — é o desenho do dono (pergunta, nunca recusa cega).
