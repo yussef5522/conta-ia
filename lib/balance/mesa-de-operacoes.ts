@@ -29,6 +29,14 @@ import { totaisDoPdvPorDia } from '@/lib/stock/vendas/total-do-pdv'
 import { whereCruzaOMes } from '@/lib/vendas/janela-mes'
 import { montarDias, mediaPorDiaDaSemana, type EntradaDoExtrato } from '@/lib/vendas/dia-a-dia'
 import { whereDoStatus } from '@/lib/contas-pagar/escopo'
+/**
+ * ⛔⛔ **"DE QUEM É ESTA CONTA A PAGAR?" TEM UM DONO — e ele não é `bankAccount.companyId`.**
+ * Conta a pagar nasce SEM conta bancária; filtrar por ela devolve ZERO em silêncio. Foi o
+ * defeito deste arquivo em 15/10 (`CONTAS 7 DIAS` em R$ 0 com R$ 58.653,84 vencendo, e o
+ * radar dizendo *"Vencem hoje · nada"* com R$ 17.701,34 vencendo HOJE). Ver o porquê inteiro
+ * em `ramosDaEmpresaEmContaAPagar`.
+ */
+import { ramosDaEmpresaEmContaAPagar } from '@/lib/contas-pagar/list-filters'
 import { saldosDaEmpresa } from '@/lib/stock/saldo'
 import { filaDeConferencia } from '@/lib/stock/producao/fila-de-conferencia'
 import { lerCompromissos } from '@/lib/custos-fixos/compromissos'
@@ -136,9 +144,11 @@ export async function lerMesaDeOperacoes(
         () =>
           db.transaction.findMany({
             where: {
-              ...whereDoStatus('A_PAGAR', agora),
-              bankAccount: { companyId: empresaId },
-              dueDate: { gte: dt(hoje), lt: fim7 },
+              AND: [
+                { OR: ramosDaEmpresaEmContaAPagar(empresaId) },
+                whereDoStatus('A_PAGAR', agora),
+                { dueDate: { gte: dt(hoje), lt: fim7 } },
+              ],
             },
             orderBy: { dueDate: 'asc' },
             select: { id: true, dueDate: true, amount: true, description: true },
@@ -156,7 +166,12 @@ export async function lerMesaDeOperacoes(
         'as contas que vencem hoje',
         () =>
           db.transaction.aggregate({
-            where: { ...whereDoStatus('VENCE_HOJE', agora), bankAccount: { companyId: empresaId } },
+            where: {
+              AND: [
+                { OR: ramosDaEmpresaEmContaAPagar(empresaId) },
+                whereDoStatus('VENCE_HOJE', agora),
+              ],
+            },
             _count: true,
             _sum: { amount: true },
           }),

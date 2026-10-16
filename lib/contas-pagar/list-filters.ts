@@ -116,6 +116,39 @@ export const listPayableSchema = z.object({
 export type ListPayableInput = z.infer<typeof listPayableSchema>
 
 /**
+ * ⛔⛔⛔ **DE QUEM É ESTA CONTA A PAGAR? — A PERGUNTA GANHOU DONO (15/10/2026).**
+ *
+ * **Conta a pagar NASCE SEM `bankAccountId`** (a ponte do estoque, desde 24/08): quem a
+ * prende à empresa é o **fornecedor**, o **funcionário**, o **cliente** ou a **categoria**.
+ * Então `where: { bankAccount: { companyId } }` — que é o reflexo natural de quem escreve
+ * uma consulta nova — devolve **ZERO**, e devolve em SILÊNCIO: lista vazia é resposta
+ * plausível, ninguém desconfia.
+ *
+ * ⚠️⚠️ **ESTA CASA JÁ PAGOU POR ISSO TRÊS VEZES, e as três estão registradas:**
+ *   · **24/08** o invariante **F1** da ponte resolvia por `bankAccount.companyId` → o alerta
+ *     sumia no filtro por empresa (corrigido pra resolver pelo fornecedor);
+ *   · **06/10** o retrato dos custos fixos mediu **115 PAYABLE em aberto, ZERO com conta
+ *     bancária** — o selo *"vence dia X"* nunca apareceria;
+ *   · **15/10** a **mesa ①** (este sprint, pela minha mão): `CONTAS 7 DIAS` dizia **R$ 0** com
+ *     R$ 58.653,84 vencendo, e o radar dizia **"Vencem hoje · nada"** com R$ 17.701,34
+ *     vencendo HOJE. ***Radar que mente verde é pior que radar vermelho errado.***
+ *
+ * ⭐ Enquanto a régua era um `const` LOCAL, ela era invisível pra quem escrevia a 4ª consulta
+ * — e a 4ª consulta é sempre a que esquece. Exportada, a decisão tem **um dono** e `grep`
+ * acha. ⛔ Repetir os 5 ramos à mão num leitor novo é a 2ª régua de multi-tenant, que é
+ * exatamente onde vazamento entre empresas nasce.
+ */
+export function ramosDaEmpresaEmContaAPagar(empresaId: string) {
+  return [
+    { bankAccount: { companyId: empresaId } },
+    { supplier: { companyId: empresaId } },
+    { employee: { companyId: empresaId } },
+    { customer: { companyId: empresaId } },
+    { category: { companyId: empresaId } },
+  ]
+}
+
+/**
  * Constrói o `where` Prisma com:
  *   - Multi-tenant guard via OR em supplier/employee/category/bankAccount.companyId
  *   - Escopo "Contas a Pagar": PAYABLE (a pagar) OR EFFECTED que nasceu de PAYABLE
@@ -171,13 +204,7 @@ export function buildPayableListWhere(
   }
 
   // Multi-tenant guard — bankAccountId pode ser null em PAYABLE.
-  const multiTenantOR = [
-    { bankAccount: { companyId: empresaId } },
-    { supplier: { companyId: empresaId } },
-    { employee: { companyId: empresaId } },
-    { customer: { companyId: empresaId } },
-    { category: { companyId: empresaId } },
-  ]
+  const multiTenantOR = ramosDaEmpresaEmContaAPagar(empresaId)
 
   // Combina via AND (lifecycleScope precisa do próprio OR + multi-tenant tem o seu)
   const where: Record<string, unknown> = {
