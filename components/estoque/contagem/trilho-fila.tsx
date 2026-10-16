@@ -57,24 +57,26 @@ export function TrilhoFila({
       onDrop={(e) => { e.preventDefault(); if (arrastando !== null) onMover(arrastando, k); setArrastando(null) }}
       onDragEnd={() => setArrastando(null)}
       className={`flex items-center gap-1 rounded-md px-1 py-1 text-[12px] ${
-        i.itemId === atualId ? 'bg-sky-50 ring-1 ring-sky-300' : 'hover:bg-slate-50'
+        i.itemId === atualId
+          ? 'bg-[var(--fam-azul-bg)] ring-1 ring-[var(--fam-azul-mid)]'
+          : 'hover:bg-[var(--prod-surface-1)]'
       } ${arrastando === k ? 'opacity-40' : ''}`}
     >
-      {podeReordenar && !q && <GripVertical className="h-3 w-3 shrink-0 cursor-grab text-slate-300" aria-hidden />}
-      <button type="button" onClick={() => onIr(i.itemId)} className="min-w-0 flex-1 truncate text-left text-slate-700">
+      {podeReordenar && !q && <GripVertical className="h-3 w-3 shrink-0 cursor-grab" style={{ color: 'var(--prod-line-strong)' }} aria-hidden />}
+      <button type="button" onClick={() => onIr(i.itemId)} className="min-w-0 flex-1 truncate text-left" style={{ color: 'var(--prod-primary)' }}>
         {i.titulo}
       </button>
       {/* ⚠️ o que aparece é o que ELA contou — nunca o saldo do sistema (contagem cega) */}
       {i.estado === 'CONTADO' && i.contado && (
-        <span className="shrink-0 tabular-nums text-[11px] text-emerald-700">
+        <span className="shrink-0 tabular-nums text-[11px]" style={{ color: 'var(--fam-verde-ink)' }}>
           <Check className="mr-0.5 inline h-3 w-3" />{num(i.contado.qtdContada)} {i.unidadeControle}
         </span>
       )}
       {i.estado === 'NAO_SEI' && (
-        <span className="shrink-0 text-[11px] text-amber-600"><HelpCircle className="mr-0.5 inline h-3 w-3" />a apurar</span>
+        <span className="shrink-0 text-[11px]" style={{ color: 'var(--fam-ambar-ink)' }}><HelpCircle className="mr-0.5 inline h-3 w-3" />a apurar</span>
       )}
       {i.estado === 'PULADO' && (
-        <span className="shrink-0 text-[11px] text-slate-400"><SkipForward className="mr-0.5 inline h-3 w-3" />pulado</span>
+        <span className="shrink-0 text-[11px]" style={{ color: 'var(--prod-muted)' }}><SkipForward className="mr-0.5 inline h-3 w-3" />pulado</span>
       )}
     </li>
   )
@@ -82,15 +84,16 @@ export function TrilhoFila({
   return (
     <div className="flex h-full flex-col gap-2">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--prod-muted)' }} />
         <input value={busca} onChange={(e) => setBusca(e.target.value)}
           placeholder="pular pro item que tenho na mão"
-          className="h-8 w-full rounded-md border border-slate-300 pl-7 pr-2 text-[12px]" />
+          className="h-8 w-full rounded-md border pl-7 pr-2 text-[12px]"
+          style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }} />
       </div>
 
       {pendentes.length > 0 && (
         <div>
-          <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+          <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
             Próximos ({pendentes.length})
           </p>
           <ul className="space-y-px">{pendentes.slice(0, 40).map(({ i, k }) => <Linha key={i.itemId} i={i} k={k} />)}</ul>
@@ -98,8 +101,8 @@ export function TrilhoFila({
       )}
 
       {passados.length > 0 && (
-        <div className="border-t border-slate-100 pt-2">
-          <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+        <div className="border-t pt-2" style={{ borderColor: 'var(--prod-line)' }}>
+          <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
             Já passaram ({passados.length}) — clica e volta
           </p>
           <ul className="space-y-px">{passados.slice(0, 40).map(({ i, k }) => <Linha key={i.itemId} i={i} k={k} />)}</ul>
@@ -107,7 +110,7 @@ export function TrilhoFila({
       )}
 
       {podeReordenar && !q && (
-        <p className="px-1 text-[10px] leading-snug text-slate-400">
+        <p className="px-1 text-[10px] leading-snug" style={{ color: 'var(--prod-muted)' }}>
           Arraste pra deixar na ordem em que você <b>anda</b> pelo estoque. Fica guardado
           pras próximas contagens.
         </p>

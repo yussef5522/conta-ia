@@ -17,6 +17,25 @@
 // "contei e deu zero" eram a mesma coisa. É a régua da casa — **a apurar > número
 // inventado** — a mesma do "sem contagem" da Posição e do "A DEFINIR" da etiqueta.
 
+/**
+ * ⭐⭐ **O UPGRADE DE TINTA (15/10)** — e este arquivo é a lição de que a tela não é só a
+ * `page.tsx`. A página da contagem foi migrada pra token mais cedo hoje e **a medição do
+ * CHUNK em prod acusou 5 hex do azul legado**: eles vinham daqui (4) e do `revisao-contagem`
+ * (1), os dois componentes que a página desenha.
+ *
+ * ⛔ Deixar assim seria a tela **MIGRADA PELA METADE, e na metade pior**: a moldura invertendo
+ * no tema escuro e **o cartão que a pessoa TOCA** preso no azul claro. Quem conta está de
+ * celular na mão dentro da CÂMARA FRIA — o controle é justamente o que não pode deslavar.
+ *
+ * ⚠️ A troca é por **PAPEL** e segue a convenção do módulo **ao pé da letra** (cor por `style`
+ * inline, como a `page.tsx` e a lista de Receitas fazem; primário `--prod-acao-bg/ink` **sem
+ * hover**, desabilitado por `disabled:opacity-50`). ⛔ Convenção própria aqui faria o mesmo
+ * botão ter dois comportamentos em duas telas do mesmo módulo.
+ *
+ * ⛔ **ESTRUTURA E COMPORTAMENTO INTOCADOS**: a contagem cega, o registro do "revelar", o
+ * "não sei", o freio da fração e a régua do `quantidade.ts` são exatamente os mesmos.
+ */
+
 import { useEffect, useRef, useState } from 'react'
 import { aceitaFracao, sanitizarQtd, valorQtd } from '@/lib/stock/quantidade'
 import { Eye, EyeOff, SkipForward, HelpCircle, Check, Loader2, AlertTriangle, MessageSquarePlus } from 'lucide-react'
@@ -89,21 +108,21 @@ export function CartaoContar({
       {/* progresso SEMPRE visível — era "0/91" repetido duas vezes e nenhuma proeminente */}
       <div>
         <div className="mb-1 flex items-baseline justify-between">
-          <span className="text-[13px] font-semibold text-slate-700">{posicao} de {total}</span>
-          <span className="text-[11px] text-slate-400">{linha.categoriaLabel}</span>
+          <span className="text-[13px] font-semibold" style={{ color: 'var(--prod-primary)' }}>{posicao} de {total}</span>
+          <span className="text-[11px]" style={{ color: 'var(--prod-muted)' }}>{linha.categoriaLabel}</span>
         </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-[#185FA5] transition-all" style={{ width: `${(posicao / Math.max(1, total)) * 100}%` }} />
+        <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'var(--prod-surface-2)' }}>
+          <div className="h-full rounded-full transition-all" style={{ width: `${(posicao / Math.max(1, total)) * 100}%`, background: 'var(--prod-acao-bg)' }} />
         </div>
       </div>
 
       {/* ⭐ o NOME é a maior coisa da tela: o que é grande, qual é pequeno */}
       <div>
-        <h2 className="text-[26px] font-bold leading-tight text-slate-900 sm:text-[30px]">{linha.titulo}</h2>
+        <h2 className="text-[26px] font-bold leading-tight sm:text-[30px]" style={{ color: 'var(--prod-primary)' }}>{linha.titulo}</h2>
         {linha.especificacao && (
-          <p className="mt-0.5 text-[15px] leading-snug text-slate-500">{linha.especificacao}</p>
+          <p className="mt-0.5 text-[15px] leading-snug" style={{ color: 'var(--prod-secondary)' }}>{linha.especificacao}</p>
         )}
-        <p className="mt-1.5 text-[11px] text-slate-400">
+        <p className="mt-1.5 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
           {linha.ultimaContagemEm
             ? <>contado em {dataCurta(linha.ultimaContagemEm)}{linha.ultimaContagemPor ? ` por ${linha.ultimaContagemPor}` : ''}</>
             : 'nunca contado'}
@@ -112,14 +131,21 @@ export function CartaoContar({
 
       {/* ⚠️ o aviso da unidade suspeita: a divergência aqui pode ser do CADASTRO */}
       {linha.avisoUnidade && (
-        <p className="flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-[12px] leading-snug text-amber-900">
+        <p className="flex items-start gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] leading-snug"
+          style={{ borderColor: 'var(--fam-ambar-mid)', background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {linha.avisoUnidade}
         </p>
       )}
 
       {/* ⭐ campo GRANDE com a unidade COLADA — era do outro lado da tela */}
       <div>
-        <div className={`flex items-stretch overflow-hidden rounded-xl border-2 ${fracaoProibida ? 'border-rose-400' : 'border-slate-300 focus-within:border-[#185FA5]'}`}>
+        {/*
+          ⚠️ AQUI a cor vai por CLASSE, não por `style` inline — e é o único lugar do arquivo
+          que foge da convenção, de propósito: existe um `focus-within:` em jogo, e **estilo
+          inline GANHA de classe**, então um `style={{ borderColor }}` apagaria o anel de foco
+          do teclado em silêncio. Acessibilidade não se perde por consistência de forma.
+        */}
+        <div className={`flex items-stretch overflow-hidden rounded-xl border-2 ${fracaoProibida ? 'border-[var(--fam-coral-mid)]' : 'border-[var(--prod-line-strong)] focus-within:border-[var(--prod-acao-bg)]'}`}>
           <input
             ref={campo}
             value={texto}
@@ -131,14 +157,16 @@ export function CartaoContar({
             autoComplete="off"
             placeholder="—"
             aria-label={`quantidade contada de ${linha.nome}`}
-            className="min-w-0 flex-1 bg-transparent px-4 py-5 text-center text-[40px] font-bold tabular-nums text-slate-900 outline-none placeholder:text-slate-200"
+            className="min-w-0 flex-1 bg-transparent px-4 py-5 text-center text-[40px] font-bold tabular-nums outline-none placeholder:text-[color:var(--prod-line-strong)]"
+            style={{ color: 'var(--prod-primary)' }}
           />
-          <span className="flex items-center bg-slate-50 px-4 text-[15px] font-semibold text-slate-500">
+          <span className="flex items-center px-4 text-[15px] font-semibold"
+            style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-secondary)' }}>
             {linha.unidadeControle}
           </span>
         </div>
         {fracaoProibida && (
-          <p className="mt-1 text-[11px] text-rose-600">
+          <p className="mt-1 text-[11px]" style={{ color: 'var(--fam-coral-ink)' }}>
             {linha.unidadeControle} se conta inteiro. Se você usa meia unidade, o item precisa ser cadastrado numa unidade menor.
           </p>
         )}
@@ -147,14 +175,16 @@ export function CartaoContar({
       {/* ⭐⭐ CONTAGEM CEGA: revelar é escolha, e fica registrado */}
       {!revelado ? (
         <button type="button" onClick={() => setRevelado(true)}
-          className="inline-flex items-center justify-center gap-1.5 self-center text-[12px] text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline">
+          className="inline-flex items-center justify-center gap-1.5 self-center text-[12px] underline-offset-2 hover:underline"
+          style={{ color: 'var(--prod-muted)' }}>
           <Eye className="h-3.5 w-3.5" /> ver o que o sistema diz
         </button>
       ) : (
-        <p className="flex items-center justify-center gap-1.5 self-center rounded-lg bg-slate-100 px-3 py-1.5 text-[12px] text-slate-600">
+        <p className="flex items-center justify-center gap-1.5 self-center rounded-lg px-3 py-1.5 text-[12px]"
+          style={{ background: 'var(--prod-surface-2)', color: 'var(--prod-secondary)' }}>
           <EyeOff className="h-3.5 w-3.5" />
           sistema: <b className="tabular-nums">{num(linha.saldoSistema)} {linha.unidadeControle}</b>
-          <span className="text-slate-400">— fica registrado que você viu</span>
+          <span style={{ color: 'var(--prod-muted)' }}>— fica registrado que você viu</span>
         </p>
       )}
 
@@ -163,11 +193,12 @@ export function CartaoContar({
         <textarea
           value={obs} onChange={(e) => setObs(e.target.value)} rows={2} maxLength={300}
           placeholder="o que você viu: “estava molhado”, “achei em dois lugares”, “caixa aberta”"
-          className="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-[13px]"
+          className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
+          style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
         />
       ) : (
         <button type="button" onClick={() => setObsAberta(true)}
-          className="inline-flex items-center gap-1 self-center text-[12px] text-slate-400 hover:text-slate-600">
+          className="inline-flex items-center gap-1 self-center text-[12px]" style={{ color: 'var(--prod-muted)' }}>
           <MessageSquarePlus className="h-3.5 w-3.5" /> anotar alguma coisa sobre este item
         </button>
       )}
@@ -175,20 +206,23 @@ export function CartaoContar({
       {/* botões na zona do polegar */}
       <div className="space-y-2">
         <button type="button" onClick={confirmar} disabled={!valido || salvando}
-          className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#185FA5] text-[16px] font-semibold text-white hover:bg-[#0F4A8C] disabled:bg-slate-200 disabled:text-slate-400">
+          className="flex h-14 w-full items-center justify-center gap-2 rounded-xl text-[16px] font-semibold disabled:opacity-50"
+          style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
           {salvando ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />} Confirmar
         </button>
         <div className="flex gap-2">
           <button type="button" onClick={() => onMarcar('NAO_SEI', obs.trim() || null)} disabled={salvando}
-            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 text-[13px] text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border text-[13px] hover:bg-[var(--prod-surface-1)] disabled:opacity-40"
+            style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
             <HelpCircle className="h-4 w-4" /> não sei
           </button>
           <button type="button" onClick={onPular} disabled={salvando}
-            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 text-[13px] text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border text-[13px] hover:bg-[var(--prod-surface-1)] disabled:opacity-40"
+            style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
             pular <SkipForward className="h-4 w-4" />
           </button>
         </div>
-        <p className="text-center text-[10px] text-slate-400">
+        <p className="text-center text-[10px]" style={{ color: 'var(--prod-muted)' }}>
           “não sei” fica registrado como <b>a apurar</b> — não vira zero nem some do relatório
         </p>
       </div>

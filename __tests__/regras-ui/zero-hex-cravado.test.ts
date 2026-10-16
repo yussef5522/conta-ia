@@ -161,8 +161,11 @@ const DIVIDA_DE_HEX = new Set<string>([
   'components/estoque/acoes-do-gerente-hoje.tsx',
   'components/estoque/cadastrar-pessoa-modal.tsx',
   'components/estoque/conferencia-view.tsx',
-  'components/estoque/contagem/cartao-contar.tsx',
-  'components/estoque/contagem/revisao-contagem.tsx',
+  // ⛔ `contagem/cartao-contar.tsx` e `contagem/revisao-contagem.tsx` SAÍRAM da dívida em
+  // 15/10 (−5 hex). Eles entraram aqui pela PROVA EM PROD: a `contagem/page.tsx` tinha ido
+  // pra token mais cedo no mesmo dia e a medição do CHUNK ainda acusava 5 hex do azul legado
+  // — era a tela MIGRADA PELA METADE (moldura em token, o cartão que a pessoa TOCA preso no
+  // azul claro). Foi o guard desta lista que nomeou os dois.
   'components/estoque/ficha-editor.tsx',
   'components/estoque/itens-manuais-editor.tsx',
   'components/estoque/placar-da-equipe.tsx',
@@ -239,13 +242,18 @@ describe('⭐⭐⭐ a catraca do hex cravado', () => {
    * baixa fica DATADA aqui: 113 na medição de 14/10 → **112** quando o sininho virou token no
    * mesmo dia (o chassi `.icbt` da referência levou o `#fff` do contador embora) → **109** em
    * 15/10, com o UPGRADE DE TINTA do módulo de produção (`producao/hoje` 31 hex,
-   * `producao/receitas` 9 e `estoque/contagem` 7, todos pra token da fundação).
+   * `producao/receitas` 9 e `estoque/contagem` 7, todos pra token da fundação) → **107** horas
+   * depois, quando a PROVA EM PROD mostrou que a contagem estava migrada pela METADE (a
+   * `page.tsx` em token e os 5 hex restantes vindo dos COMPONENTES que ela desenha).
    *
    * ⚠️ Mexer neste número **pra cima** é o sinal de que alguém cravou cor nova: aí o certo é
    * trocar o hex por token, nunca ajustar a catraca.
    */
   it('⭐ a dívida de 14/10 tem o tamanho que foi medido', () => {
-    expect(DIVIDA_DE_HEX.size, 'medida em 113 (14/10) → 112 (sininho) → 109 (produção, 15/10)').toBe(109)
+    expect(
+      DIVIDA_DE_HEX.size,
+      'medida em 113 (14/10) → 112 (sininho) → 109 (produção, 15/10) → 107 (componentes da contagem)',
+    ).toBe(107)
     expect(TELAS.length, 'o universo varrido').toBeGreaterThan(400)
   })
 })
