@@ -2688,6 +2688,14 @@ VendaDiaria 194 · movimentos 7187 · imports 35 — ⭐ ZERO ESCRITA (só GET)
 
 ## 📏💵 "VENDEU" = PRODUTOS + COMPLEMENTOS NAS DUAS TELAS · E A FAIXA VENDIDO × RECEBIDO (11/10/2026)
 
+> ⚠️⚠️⚠️ **A PRIMEIRA METADE DESTA SEÇÃO FOI SUBSTITUÍDA EM 16/10 — leia o sprint 2.1 (item 1).**
+> A definição que vale é **VENDEU = Σ do relatório de PRODUTOS, e só**: medido, adicional/borda
+> **já entra no `valorTotal` da linha de produtos**, então somar o complemento contava o mesmo
+> dinheiro **2×** (06/10 saía R$ 17.102,63 onde o PDV diz R$ 15.873,77).
+> ⭐ **O que continua valendo inteiro:** a FAIXA *vendido × recebido* (e a escolha da régua de
+> **COMPETÊNCIA**, com o porquê medido), a régua da sobreposição ganhando consumidor, e as três
+> réguas de honestidade da faixa. Só a composição do `vendeu` mudou.
+
 **Decisão do dono, e ela fecha a pergunta nº 3 que o v4 deixou aberta:** *"«VENDEU» = produtos + complementos cobrados — o dinheiro que o cliente pagou. A CENTRAL passa a mostrar os DOIS Σ no cabeçalho de cada dia: mesma definição nas duas telas, divergência de aparência morta."*
 
 ### ⛔⛔ PARTE 1 — A DIVERGÊNCIA ERA DE DEFINIÇÃO, NÃO DE NÚMERO
@@ -4082,8 +4090,9 @@ da home VELHA — virou estrutural: `iGate` antes de `prisma.bankAccount` **e** 
 
 ### 📋 O QUE FICA PRA 2.1 (nomeado, não disfarçado)
 
-1. ⛔⛔ **A FITA TEM 3 BALDES SEM PORTA LIGADA** — `lotesConferidos` (o carimbo de QUATRO OLHOS),
-   `contasPagas` e `avisos`, os três `[]`. ⚠️⚠️ **E o comentário deles MENTIA:** afirmava que a
+1. ✅ **FECHADO EM 16/10 (sprint 2.1, item 3) — os 3 baldes estão ligados.** O texto abaixo fica
+   como o retrato do defeito. ⛔⛔ **A FITA TINHA 3 BALDES SEM PORTA LIGADA** — `lotesConferidos`
+   (o carimbo de QUATRO OLHOS), `contasPagas` e `avisos`, os três `[]`. ⚠️⚠️ **E o comentário deles MENTIA:** afirmava que a
    ausência estava *"DITA em `naoAlcancado`"*, e a prova mostrou **`naoAlcancado: []`**
    (*comentário que promete ser a trava sem ser a trava é pior que comentário nenhum*). ⛔ **Eles
    NÃO podem entrar em `naoAlcancado`** — aquele campo é *"a porta CAIU"*, e 3 entradas
@@ -4091,11 +4100,13 @@ da home VELHA — virou estrutural: `iGate` antes de `prisma.bankAccount` **e** 
    construí ainda"* e *"a porta caiu"* são estados diferentes. Corrigido o comentário; a
    pendência é esta linha. **Enquanto estiverem vazios a fita mostra MENOS do que o dia teve —
    ela não INVENTA evento, mas não é a fita completa.**
-2. ⛔ **`preview-queries` esconde R$ 135.777,81** na projeção de 30 dias (medido acima). É a mesma
-   troca de uma linha; **fora do brief da mesa**, decisão do dono.
-3. ⚠️ **A busca do modo REVISAR da contagem é `toLowerCase().includes()` CRU**, não a `casaBusca`
-   da casa — o bug de 08/09 sobrevivendo naquele componente. **Não corrigido** porque o item 9 é
-   *"sem mudar comportamento"*. **Medido em prod (380 itens ativos, 19 com acento):**
+2. ✅ **FECHADO EM 16/10 (sprint 2.1, item 2).** O `preview-queries` escondia **R$ 135.777,81** em
+   82 contas na projeção de 30 dias, pelo mesmo `bankAccount.companyId`. Trocado pelo dono único
+   `ramosDaEmpresaEmContaAPagar`.
+3. ✅ **FECHADO EM 16/10 (sprint 2.1, item 4) — e eram DOIS componentes, não um** (a revisão **e**
+   o trilho da fila). ⚠️ **A busca do modo REVISAR era `toLowerCase().includes()` CRU**, não a
+   `casaBusca` da casa — o bug de 08/09 sobrevivendo ali. **Medido em prod (380 itens ativos, 19
+   com acento):**
    ```
    o dono digita "porcao" → a régua de hoje acha 15, a casa acharia 22   (7 invisíveis)
    o dono digita "porçao" → acha  7, a casa acharia 22                   (15 invisíveis)
@@ -4106,9 +4117,9 @@ da home VELHA — virou estrutural: `iGate` antes de `prisma.bankAccount` **e** 
    defeito deste sprint** — é o desenho de 07/09, e a mesa apenas o tornou VISÍVEL (ela conta 9,
    a fita mostra 8). Dar à conclusão um evento próprio na timeline é mudança no `dia-ao-vivo`,
    que o brief da FRENTE B proíbe (*"nenhum fluxo muda — só as roupas"*). Decisão do dono.
-5. ⚠️ **O rótulo do pregão diz *"13 parcela(s)"*** e são **9 parcelas + 4 faturas de cartão** (os
-   compromissos de 07/10). *Nenhum rótulo promete mais do que entrega* — é um nome, não um número
-   errado.
+5. ✅ **FECHADO EM 16/10 (sprint 2.1, item 5).** O rótulo dizia *"13 parcela(s)"* sobre **9
+   parcelas + 4 faturas de cartão**; agora diz *"9 parcelas + 4 faturas"*. A Σ não mudou, o nome
+   mudou — *nenhum rótulo promete mais do que entrega*.
 6. 📋 **SCREENSHOT INDISPONÍVEL** (extensão do Chrome desligada nesta sessão): a prova mede o que
    prod SERVE — zero hex nos 3 chunks, os 26 tokens nos DOIS mapas do CSS, as 5 telas 200 nos dois
    viewports. **O olho nos 2 temas é do dono (REGRA 2).**
@@ -10933,6 +10944,224 @@ Nasceu do `FITID == YYMMDD`: a regra funcionou nos arquivos da época, **armou**
 **⚠️ NÃO rodar `npm run build` na mão no servidor** — volta a escrever no diretório vivo e o D2 vai acusar. Use sempre `bash scripts/deploy.sh`.
 
 **MEMÓRIA — leitura DURANTE o build de 26/08 (o gatilho (b) NÃO disparou):** memória disponível no pico **431 MB** de 3.915 · swap **68 MB** de 2.047 · **zero OOM kills**. O build come ~3,5 GB e sobrevive, mas com ~11% de folga. O gatilho (b) do upgrade 4→8 GB é *"swap usado em operação normal, FORA de build"* — swap está em 68 MB, bem abaixo dos 256 MB do N1. **Não disparou.** ⚠️ E com o deploy em diretório separado, um OOM durante o build passou a ser **inofensivo** (o symlink não move): a urgência do resize CAIU. O gatilho que continua valendo é o **(a)** — a rotina real começar.
+
+## ⛔⛔⛔ SPRINT 2.1 — SEIS ACERTOS, E O DIA QUE A CASA LIA COMO DOIS (16/10/2026)
+
+**`pg_dump pre-redatar-produtos-1610-20261016-171756.dump` (9.495.731 bytes, tamanho conferido) ·
+deploy 4/4 (`zVshVclhOtW4knXQBUZPz`) · Δ chunks +4 KB · 988 arquivos · 13.270 verdes · TS 0.**
+⛔ **Escrita em prod: SÓ o item 6c** (autorizado). Os outros cinco são leitura/tela.
+
+### ⭐⭐⭐ 1 · A DEFINIÇÃO DE "VENDEU" — e ela REVERTE a decisão de 11/10
+
+**Lei do dono, com as palavras dele:** *"relatorio de produtos ja vem total que foi vendido…
+valor de venda mesmo so vem de 1 relatorio: produtos"*. **VENDEU = Σ do relatório de PRODUTOS, e
+só**; o complemento volta a ser **CONFERÊNCIA DE IMPORT** (*"o arquivo de sabores entrou?"*),
+nunca parcela da venda — e os complementos continuam contando **QUANTIDADE** (ocorrência), que é
+o que faz o estoque baixar sabor.
+
+⚠️⚠️ **ISTO SUBSTITUI a seção de 11/10** (*"produtos + complementos cobrados"*), e o motivo é
+**medido**: adicional/borda **já entra no `valorTotal` da linha de PRODUTOS**, então somar o
+complemento por cima contava **o mesmo dinheiro 2×** — 06/10 saía **R$ 17.102,63** onde o PDV diz
+**R$ 15.873,77**. ⭐ *A régua não mudou de lado; mudou o que se descobriu sobre o dado.*
+
+**⭐⭐ E O NÚMERO PASSOU A VIR DO DONO ÚNICO** (`totaisDoPdvPorDia.vendeu`): a central fazia
+`round2(vProd + vComp)` **por conta própria** — a **2ª derivação** de *"quanto vendeu"*, e é por
+isso que esta tela e a de Vendas **puderam** divergir. ***Duas telas com números diferentes pro
+mesmo dia é a doença que esta casa mais paga***, e a cura é a definição morar num lugar só.
+
+⚠️ **A CONFERÊNCIA CONTINUA SÓ DE PRODUTOS, de propósito:** ela compara o gravado com o
+`somaValor` que **o arquivo de produtos declarou**. Pôr o total ali faria a central **acusar
+divergência em TODO dia com complemento** — alarme falso diário, e *alarme falso repetido é como
+um alarme morre*. **Duas perguntas, dois nomes.**
+
+### ⛔⛔ 2 · A PROJEÇÃO CEGA — R$ 135.777,81 que a tela escondia
+
+`lib/relatorios/preview-queries.ts` resolvia a empresa por **`bankAccount.companyId`**, e
+**conta a pagar NASCE SEM conta bancária** (a ponte do estoque, 24/08). A projeção de 30 dias
+devolvia **R$ 0,00** com **82 contas** dentro da janela. Trocado pelo dono único
+`ramosDaEmpresaEmContaAPagar`. ⚠️ **4ª ocorrência da MESMA classe** (F1 da ponte 24/08 · selo dos
+custos fixos 06/10 · a mesa ① 15/10 · esta) — e o débito estava **registrado desde 15/10 com o
+número medido**. ***Débito registrado não é débito pago.***
+
+### ⭐⭐ 3 · A FITA COMPLETA — os 3 baldes vazios ligados nas portas que JÁ existiam
+
+`lotesConferidos` · `contasPagas` · `avisos`, cada um da porta do assunto. ⚠️ E o comentário
+deles **MENTIA**: afirmava que a ausência estava *"DITA em `naoAlcancado`"*, e a prova media
+`naoAlcancado: []`.
+
+**⭐⭐ O CARIMBO GANHOU PORTA PRÓPRIA** (`carimbosDoDia`, em `conferencia.ts` — quem conhece a
+tabela), em **3 consultas pras N linhas**, nunca uma por carimbo. ⛔⛔ **E ela FILTRA conclusão
+ESTORNADA:** a correção do gerente é estorna-e-relança, então sem o filtro **o mesmo lote
+apareceria carimbado DUAS VEZES na fita** — ***o cartão duplo de 12/10 renascendo na fita***.
+⭐ **Quem me cobrou foi o guard `uma-ordem-um-cartao`**, e ele estava certo: eu tinha escrito um
+`findMany` em `stockProducaoConclusao` **sem** a régua. ***A régua existia e o leitor novo nasceu
+sem ela*** — exatamente o que aquele guard existe pra impedir. A porta passou a **exportar
+`idsEstornados`** pra o filtro ser **1 consulta**, nunca um `for … await`.
+
+### ⛔ 4 · A BUSCA DO REVISAR era `includes()` cru
+
+Medido em prod (380 itens, 19 com acento): o dono digitava **`"porcao"` → 15 de 22** · **`"porçao"`
+→ 7 de 22** · **`"acem"` → ZERO** (*"Acém" nunca aparecia*). O bug de 08/09 sobrevivendo em dois
+componentes. Trocado pela **`casaBusca`** da casa; ⛔ **a CONTAGEM em si não foi tocada** (o
+pedido era *"sem mudar comportamento"*), e há regressão travada em teste.
+
+### ⭐ 5 · O RÓTULO DO PREGÃO prometia 13 parcelas
+
+*"13 parcela(s)"* sobre **9 parcelas + 4 faturas de cartão**. ***Nenhum rótulo promete mais do que
+entrega.*** A Σ não mudou (o dono é `lerCompromissos`); mudou o NOME — e o **`tsc` achou o único
+call-site de graça** (REGRA 4 sem grep).
+
+### ⭐⭐⭐ 6 · O DIA RACHADO — a lei da data, o selo, e a cirurgia
+
+**O CASO REAL, medido antes de uma linha de código:** à 1h da manhã de 16/10 a cozinha subiu os
+DOIS relatórios da sexta que **ainda não tinha aberto**. Os dois arquivos têm o sufixo **"(1)"** no
+nome (mesma sessão de download) e os `importadoEm` ficam a **16 segundos** um do outro:
+
+```
+COMPLEMENTOS → dia 15/10 · "Relatório de Complementos - Agrupado (1).xls" · 03:40:20.526
+PRODUTOS     → dia 16/10 · "Relatório de Produtos - Agrupado (1).xls"     · 03:40:04.997
+```
+O dono: *"venda de sexta nem chegou, estamos na 1 da manhã"*.
+
+**⚠️⚠️ E A PREMISSA DO BRIEF CAIU NA MEDIÇÃO: NÃO HAVIA FALLBACK DE "HOJE".** Os dois campos de
+data **nascem vazios** e as duas rotas **EXIGEM** `data` via zod — **o 16/10 foi APONTADO, não
+adivinhado**. O que faltava era alguém **PERGUNTAR**. ⛔ Consertar um fallback que não existe teria
+sido uma tarde no lugar errado.
+
+**⭐⭐ A LEI (`lib/stock/vendas/lei-da-data.ts`, PURA), em três degraus:** 1º o **ARQUIVO** manda
+(dormente — o Suitable não declara data nenhuma) · 2º o **DONO** aponta · 3º o sistema **PERGUNTA,
+e só na discordância**. **UMA confirmação curta** com as duas opções na mão
+(*"esse relatório parece de quinta 15/10 — confirma?"* `[15/10] [16/10]`), **409
+`CONFIRME_O_DIA`** — ***pergunta, nunca erro***.
+- ⛔⛔ **O `confirmouDia` NÃO é um `force`:** ele tem que **casar com uma das opções oferecidas**
+  (a régua do `diferencaAceita`, 12/09). ***Bater exato é o que separa "vi as duas datas e
+  escolhi" de "ignora a trava".*** E dia **FUTURO** continua recusado mesmo confirmado.
+- ⭐ **A ROTINA PASSA EM SILÊNCIO** — travado com os 3 dias medidos (12, 13 e 14/10, todos
+  importados de madrugada): zero pergunta. ⚠️ A assinatura do racho é **madrugada (< 6h)** *ou*
+  **irmão do par em outro dia a ≤ 10 min** (os 16 segundos reais) *e* **1 dia de distância** — um
+  catch-up de 5 dias passa calado. ***Régua que nasce ruidosa é pior que régua nenhuma.***
+- ⛔ **O fallback de "hoje" que EXISTIA era outro, e esse morreu:** o campo de data do
+  complemento era um **`useState` próprio do `ImportComplementos`**, e era ele que jogava a data
+  fora. Os dois relatórios passaram a dividir **um estado só**.
+
+**⭐⭐ O SELO `🪓 dia rachado` NA CENTRAL** (`dia-rachado.ts`, pura): dia só-complementos com o
+**dia seguinte** só-produtos = alarme. ⛔⛔ **UM CASO, UM ALARME** — a entrada é ancorada no dia dos
+PRODUTOS (o que o dono acabou de importar, o suspeito); marcar os dois faria o mesmo fato gritar
+duas vezes. ⚠️ **A assinatura é a COMPLEMENTARIDADE**, nunca *"o dia está incompleto"*: dia
+só-complementos com vizinho **COMPLETO** não é racho, é arquivo que falta. ⚠️ **E a ordem não é
+simétrica**: produtos antes e complementos depois não é racho de data — é o par de amanhã, que a
+lei recusa na entrada.
+
+**⛔⛔ E A FRASE FALSA QUE ESCONDIA METADE DO DINHEIRO:** o 15/10 saía como `SEM_IMPORTACAO` dizendo
+***"dia de venda sem arquivo nenhum"*** — **com 1 arquivo e R$ 769,10 de sabores dentro**. ***Frase
+falsa com cara de fato:*** o dono lê que nada entrou, importa de novo, e o sistema aceita (o
+reimport substitui) **sem ninguém nunca saber que a metade que faltava era a OUTRA**. Nasceu o
+selo **`PRODUTOS_NAO_IMPORTADOS`**, e o `SEM_IMPORTACAO` voltou a significar **uma coisa só**:
+zero arquivo. ⚠️ Ele **entrou em `SELOS_QUE_PEDEM_ACAO`** — sem isso o dia sairia da contagem e o
+sininho **calaria** sobre um dia sem venda lançada, o oposto do que o selo existe pra fazer.
+
+### ⛔⛔⛔ A CIRURGIA 6c — e a perícia MUDOU o tamanho dela
+
+**O retrato achou o que a hipótese não previa: o dia 16/10 FOI BAIXADO** — **57 `BAIXA_VENDA`** com
+o `receiptId` do import. Re-datar só a linha deixaria **o ledger dizendo que o consumo foi na sexta
+e a venda no sábado** — meia-correção, com o Real vs Teórico dos dois dias torto. Então foi em
+**dois tempos**:
+
+- **(A) a DATA do dado cru** (`stock_venda_import` · `stock_venda_linha` · `stock_venda_arquivo`),
+  **subtraindo exatamente 24h de cada valor** — ⭐ nunca escrevendo uma data nova: cada tabela tem
+  a SUA convenção de hora (import e linha gravam **15:00Z**, o arquivo **12:00Z**) e o −24h
+  preserva as três **por construção**, sem eu precisar saber qual é qual (a cicatriz de 14/09).
+- **(B) o LEDGER, pela PORTA DA CASA** (`reprocessarDia`) — ⛔ nunca por `UPDATE`: *movimento é
+  IMUTÁVEL, correção é estorno + novo*. O `gravarVenda` estorna as baixas daquele `receiptId` (o
+  id do import **não muda** com a re-datação) e refaz com a data nova. **Mecanismo que já existe,
+  idempotente e provado** — zero porta nova de escrita.
+
+⚠️ **O FREIO pediu confirmação, e eu LI antes de confirmar:** *"XIS COMPLETO: 28 num dia — o
+normal é 2"*. ⭐ **O dia 14/10 — normal, já baixado e COMPLETO — acusa a MESMA coisa com 62**: a
+média do NOME é 2 porque a maioria das vendas entra por outra grafia, e o **total do arquivo (504)
+está em 1× a média do dia (507,7)**. Falso positivo conhecido do nome, não sinal da cirurgia — e o
+dono já o confirmou no import original **deste mesmo arquivo**. ***Confirmar sanidade sem ler é o
+que o freio existe pra impedir.***
+
+⚠️ **O autor dos movimentos novos é o `criadoPorId` do import ORIGINAL** — o rastro REAL de quem
+subiu o arquivo, nunca um nome inventado nem um `null` que apagaria a autoria que existe.
+
+**PROVADO EM PROD, antes → depois:**
+```
+                      ANTES                                    DEPOIS
+15/10   vendeu R$      0,00 · comp R$ 769,10      vendeu R$ 13.748,51 · comp R$ 769,10
+16/10   vendeu R$ 13.748,51 · comp R$   0,00      vendeu R$      0,00 · comp R$   0,00
+06/10   vendeu R$ 15.873,77                       vendeu R$ 15.873,77   ⭐ INTACTO
+OUTUBRO R$ 292.099,08 em 16 dias                  R$ 292.099,08 em 15 dias
+        ⭐⭐ IDÊNTICO AO CENTAVO — o dinheiro só mudou de DIA, não de valor
+
+o LEDGER   16/10: 0 vivas de 57 ⭐ (estornadas)   15/10: 57 vivas de 57 ⭐
+a CENTRAL  15/10 · COMPLETO · 2 arquivos · "razão 4,5 sabores/pizza · normal"
+           diasRachados: 0 ⭐ · buracos: [] ⭐ · o 16/10 saiu da lista (não é dia de venda)
+```
+
+**E O SELO NOVO JÁ FUNCIONAVA EM PROD ANTES DA CIRURGIA** (é o red-then-green do dado real):
+`15/10 · PRODUTOS_NAO_IMPORTADOS · arquivos=1 · "o relatório de sabores entrou, o de PRODUTOS
+não"` e `diasRachados: [{dia 16/10, vizinho 15/10}]` — **um** racho, ancorado nos produtos.
+
+**⚠️ OS INVARIANTES DEPOIS (read-only, nada persistido): 579 achados, e ZERO sobre os dias
+14→17/10.**
+```
+V1 125 · E7 135 · P6 89 · P8 66 · P3 61 · M1 54 · F2 26 · E15 10 · P5 4 · B1 3 · E17 2 · P1 2 · M2 1 · M3 1
+⭐ M1: 54 total, 0 ERRO — são avisos EXPLICADOS ("a receita mudou depois desta baixa")
+⭐ e nenhum achado do M1 menciona 14, 15, 16 ou 17/10 (vão até o dia 13)
+```
+⚠️⚠️ **E A MINHA SONDA QUASE REPORTOU UM SALTO QUE NÃO EXISTE:** a 1ª versão somava
+`[...checkStockInvariants, ...checkBaixaInvariants]` e imprimiu **M1 108** — o **dobro** de 54,
+porque o `checkStockInvariants` **já agrega o M1 por dentro**. Daria *"M1 saltou 53 → 108 desde
+14/10"*. ***Sonda que conta duas vezes produz um achado tão convincente quanto um real.***
+
+### ⚠️⚠️ REGRA 11 — 7 DEFEITOS REPOSTOS, 7 VERMELHOS. E TRÊS VIERAM VERDES
+
+| defeito reposto | vermelhos |
+|---|---|
+| **a frase FALSA de volta** (`SEM_IMPORTACAO` num dia que tem arquivo) | **3** |
+| **dois alarmes pro mesmo par** (o anti-spam cai) | **4** |
+| a vizinhança caindo (qualquer dia anterior serve) | 1 |
+| a central parando de passar `temComplementos` | 2 |
+| **o sininho voltando a pedir o arquivo que JÁ existe** | **1** |
+| o selo novo saindo da fila de ação (o sininho cala) | 2 |
+| a faixa do racho saindo da TELA | 1 |
+
+**baseline 0 · restaurado 0.** ⚠️ A sonda guarda backup pela **chave do caminho inteiro**,
+**ASSERTA por md5 que a substituição aplicou** e **conta suíte que não coletou como vermelho** —
+as três cicatrizes de sonda desta casa.
+
+**⛔⛔ OS TRÊS VERDES, e cada um ensina:**
+1. **a reposição do anti-spam não reproduzia o defeito** — eu troquei a condição por uma
+   equivalente (a assimetria também mora na BUSCA do anterior). ***Reposição que não reproduz o
+   defeito é um verde de graça.***
+2. **a linha `ehVizinho` NÃO MORDIA** — a vizinhança é garantida pela **CONSTRUÇÃO** do dia
+   anterior (`dia − 1`, procurado pela chave exata), então removê-la deixava os 16 verdes.
+   ***Linha que não pode falhar é linha que finge ser trava*** — removida, com o motivo escrito;
+   o que morde é o teste do dia DISTANTE.
+3. **o guard da TELA media a MENÇÃO:** `usosDe(tela, 'diasRachados')` passou **VERDE** com a faixa
+   arrancada, porque a reposição deixou `typeof central.diasRachados[number]` na anotação de tipo.
+   ***"Menção, não uso" dentro do guard que existe pra isso*** — apertado pro `.map(` que
+   RENDERIZA.
+
+⚠️ **E DOIS GUARDS DA CASA ME PEGARAM:** o **`cnpj-de-teste-nao-colide`** (eu criei **duas**
+colisões no mesmo CNPJ hoje) e o **`uma-ordem-um-cartao`** (o `findMany` sem a régua da estornada,
+o achado da fita acima). ⭐ *Guard de sprint antigo pagando o aluguel no sprint novo.*
+
+📋 **ACHADOS À PARTE, MEDIDOS E NÃO ATACADOS (fora do escopo):**
+1. **B1 3 — NOVO desde 14/10:** `PIZZA GRANDE 35CM`, `GRANDE PRECINHO` e `FAMILIA 45CM`
+   *"apontadas como base mas a composição não tem a forma de uma base"*. O B1 estava **ZERO** em
+   08/10 depois da normalização — ou alguém editou as 3 fichas, ou a régua as reavalia diferente.
+   **Receita é decisão do dono desde 17/08; eu não toco.**
+2. **E17 1 → 2** (memória de custo × ledger) e **E7 118 → 135** (itens com saldo nunca contados) —
+   deltas de operação, já na lista de débitos.
+
+📋 **FICA PRO DONO (REGRA 2, o olho é dele):** navegar **Vendas e o calendário** (15/10 com
+R$ 13.748,51 e 16/10 fora), a **central** (15/10 COMPLETO, 2 arquivos, sem racho), a **mesa ①**, e
+a **contagem em modo REVISAR digitando `acem` e `porcao`** — nos dois temas. ⚠️ **Screenshot
+indisponível** (extensão do Chrome desligada nesta sessão): a prova mede o que prod serve e o que
+o motor devolve; **quem vê a cara é ele**.
 
 ## ⛔⛔⛔ O TRILHO PERDEU O «» E GANHOU ROLAGEM · E OS 2 CHECKs FRACOS DO ESTOQUE (14/10/2026, tarde)
 
