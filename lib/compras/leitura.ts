@@ -54,6 +54,14 @@ import { mediaPorDiaDaSemana, MIN_AMOSTRAS_DO_DIA } from '@/lib/vendas/dia-a-dia
 import { janelaDaMargem, hojeBrasil, type PeriodoDaMargem, type JanelaDaMargem } from '@/lib/margem/janela'
 import { configsDeCompraDaEmpresa, configPadrao, type ConfigDeCompra } from './config-de-compra'
 import {
+  montarDias,
+  entraNaMedia,
+  temDiaAApurar,
+  legendaDaCobertura,
+  type EstadoDoDia,
+} from './dia-do-consumo'
+import { medirPendenciaDoLivro, pendentesDoItem, cobertoDesdeDoItem } from './pendencia-do-livro'
+import {
   contaDoPedido,
   contaDoPlano,
   coberturaEmDias,
@@ -63,6 +71,7 @@ import {
   totalDoCard,
   segPrimeiro,
   DIAS_DA_BASELINE,
+  COMPRAS_NA_MEDIA,
   DIAS,
   type ContaDoPedido,
   type ContaDoPlano,
@@ -95,19 +104,30 @@ export interface DestinoDoConsumo {
 export interface PrecoPago {
   /** a última compra (custo por unidade daquela nota) */
   ultimo: number | null
-  /** média das últimas 4 compras */
-  media4: number | null
+  /** ⭐ média das últimas compras (até `COMPRAS_NA_MEDIA`) — lei C12 */
+  mediaDasUltimas: number | null
   /** ▲ subiu · ▼ caiu · ━ estável (5% de banda morta) */
   tendencia: 'SUBIU' | 'CAIU' | 'ESTAVEL' | null
   ultimaEm: string | null
+  /** quantas compras o livro tem na janela lida */
   comprasConsideradas: number
+  /**
+   * ⭐⭐ quantas compras entraram **na base da tendência** — é ESTE o número que a tela escreve.
+   * ⛔ Antes ela dizia `comprasConsideradas` (todas da janela) sobre uma conta feita com 3.
+   */
+  baseDaTendencia: number
 }
 
 export interface BarraDaSemana {
   dia: string
   diaDaSemana: number
-  /** o consumo do dia; `null` = fora do que o livro cobre */
+  /**
+   * ⭐ FECHADO → o número (**0** quando não houve consumo) · HOJE → o parcial · PENDENTE →
+   * `null`, o único "a apurar" que existe. Ver a lei em `dia-do-consumo.ts`.
+   */
   valor: number | null
+  /** ⭐⭐ o ESTADO manda no rótulo: zero de verdade ≠ dia pendente ≠ hoje parcial */
+  estado: EstadoDoDia
   /** ⭐ o GHOST tracejado: o mesmo dia-da-semana na semana anterior (lei C3) */
   ghost: number | null
 }
@@ -124,6 +144,13 @@ export interface LinhaDeConsumo {
   /** Δ% contra o período anterior de MESMO tamanho; `null` sem base pra comparar */
   deltaPct: number | null
   consumoAnterior: number | null
+  /**
+   * ⭐⭐ **UM selo, nunca N** (anti-spam, ordem do dono): `true` quando existe dia PENDENTE DE
+   * VERDADE em **qualquer um dos dois lados** do Δ% — é o herói avisando que a comparação tem
+   * um período incompleto. ⛔ Sem pendência, **sem selo**: alarme que pisca em todo item é
+   * alarme que o dono aprende a ignorar (a lição dos 111 falsos de 26/08).
+   */
+  temDiaAApurar: boolean
   /** ⭐ 8 semanas, da mais antiga pra a mais recente */
   spark: number[]
   barras: BarraDaSemana[]
@@ -135,6 +162,12 @@ export interface LinhaDeConsumo {
   custoDoPeriodo: number | null
   coberturaDias: number | null
   farol: FarolDaCobertura
+  /**
+   * ⭐⭐ A legenda que MATA A CONTRADIÇÃO (*"7,6 dias"* embaixo de *"sem média medida ainda"*):
+   * ela sai do dono único (`legendaDaCobertura`), com a JANELA escrita. ⛔ Montá-la na tela
+   * seria a 2ª régua do mesmo rótulo — e é a tela que estava mentindo.
+   */
+  coberturaLegenda: string
 
   // ── o livro
   destinos: DestinoDoConsumo[]
@@ -300,6 +333,19 @@ export async function lerConsumoECompras(
     })) tipoOriginal.set(o.id, o.tipo)
   }
 
+  /**
+   * ⭐⭐⭐ A PENDÊNCIA DO LIVRO — MEDIDA, nunca suposta (ver `pendencia-do-livro.ts`).
+   *
+   * ⚠️ **O brief apontava a fila de CONFERÊNCIA e a medição refutou:** separação, devolução e a
+   * correção do gerente são datadas com `now()`, então **não mudam o consumo de um dia passado**.
+   * A única coisa que ainda escreve consumo retroativo é a **BAIXA DA VENDA** daquele dia — e é
+   * dela que "a apurar" nasce. ⛔ Uma consulta pros N itens e N dias, nunca uma por dia.
+   */
+  const pendencia = await medirPendenciaDoLivro(
+    { companyId: input.companyId, desde, hoje, movimentos: movs, itemIds: ids },
+    db,
+  )
+
   const paraConsumo = new Map<string, MovimentoParaConsumo[]>()
   for (const m of movs) {
     const a = paraConsumo.get(m.itemId) ?? []
@@ -377,18 +423,43 @@ export async function lerConsumoECompras(
       spark.push(consumoEntre(ini, fim))
     }
 
-    // ⭐ barras da semana do seletor, com o GHOST do mesmo dia-da-semana da semana anterior
-    const barras: BarraDaSemana[] = []
-    for (let d = new Date(janela.deUtc); d < janela.ateUtc; d = new Date(d.getTime() + DIA_MS)) {
-      const dia = iso(d)
-      const ghostDia = iso(new Date(d.getTime() - 7 * DIA_MS))
-      barras.push({
-        dia,
-        diaDaSemana: segPrimeiro(d.getUTCDay()),
-        valor: porDia.has(dia) ? round3(Math.max(0, porDia.get(dia)!)) : null,
+    /**
+     * ⭐⭐⭐ BARRAS E BASELINE PELA **MESMA** LEI (`montarDias`) — e isto não é economia.
+     *
+     * A barra diz *"o dia foi zero"* e a média usa esse mesmo zero; duas montagens divergiriam
+     * no primeiro estado novo, e aí **a tela mostraria "0" num dia que a média tratou como
+     * pendente** — a doença do B1 dentro de um item só.
+     */
+    const pendentes = pendentesDoItem(itemId, pendencia)
+    const cobertoDesde = cobertoDesdeDoItem(itemId, pendencia)
+
+    const diasDoPeriodo = montarDias({
+      de: janela.de, ate: janela.ate, hoje, pendentes, cobertoDesde, porDia,
+      diaDaSemana: (d) => segPrimeiro(diaDaSemanaDe(d)),
+      arredonda: round3,
+    })
+    const barras: BarraDaSemana[] = diasDoPeriodo.map((d) => {
+      const ghostDia = iso(new Date(Date.parse(`${d.dia}T00:00:00Z`) - 7 * DIA_MS))
+      return {
+        dia: d.dia,
+        diaDaSemana: d.diaDaSemana,
+        valor: d.valor,
+        estado: d.estado,
+        // ⚠️ o GHOST é REFERÊNCIA visual, não medição: ele segue mostrando só o que o ledger
+        //    tem (sem a lei), porque um "0" tracejado no fundo da barra é ruído, não dado.
         ghost: porDia.has(ghostDia) ? round3(Math.max(0, porDia.get(ghostDia)!)) : null,
-      })
-    }
+      }
+    })
+
+    /**
+     * ⭐ O SELO DO HERÓI cobre **os dois lados do Δ%** — é a comparação que ele mostra. Olhar só
+     * o período atual deixaria o dono comparar um período completo com um incompleto sem saber.
+     */
+    const diasDoAnterior = montarDias({
+      de: anteriorDe, ate: anteriorAte, hoje, pendentes, cobertoDesde, porDia,
+      diaDaSemana: (d) => segPrimeiro(diaDaSemanaDe(d)),
+      arredonda: round3,
+    })
 
     /**
      * ⭐⭐ A BASELINE DO PEDIDO: média por dia-da-semana sobre 28 dias, pelo DONO ÚNICO.
@@ -398,15 +469,29 @@ export async function lerConsumoECompras(
      * que o dono já aprovou em 10/10: *"média de uma amostra"* não é média).
      * ⛔ A conversão pra SEG-first passa pelo `segPrimeiro`, o único lugar que sabe disso.
      */
-    const diasDaBaseline: { dia: string; diaDaSemana: number; total: number | null }[] = []
-    for (let k = DIAS_DA_BASELINE; k >= 1; k--) {
-      const dia = iso(new Date(Date.parse(`${hoje}T00:00:00Z`) - k * DIA_MS))
-      diasDaBaseline.push({
-        dia,
-        diaDaSemana: diaDaSemanaDe(dia),
-        total: porDia.has(dia) ? Math.max(0, porDia.get(dia)!) : null,
-      })
-    }
+    /**
+     * ⭐⭐⭐ **OS ZEROS ENTRAM, OS PENDENTES FICAM FORA, HOJE FORA ATÉ FECHAR** (a lei de 17/10).
+     *
+     * ⛔ Antes a baseline mandava `null` pra todo dia sem movimento, e o efeito era grande: no
+     * coxão **nenhum dia-da-semana alcançava `MIN_AMOSTRAS_DO_DIA`** → `mediaPorDia` todo `null`
+     * → cobertura `null` → o `contaDoPedido` dizia *"sem consumo medido"* num item que a casa
+     * usa toda semana. **Dia fechado sem consumo é uma MEDIÇÃO de zero, não uma lacuna.**
+     *
+     * ⚠️ `montarDias` já exclui HOJE da conta (ele vira `HOJE`, e `entraNaMedia` só aceita
+     * `FECHADO`) — a baseline nem o inclui na janela, então é cinto sobre suspensório.
+     */
+    const baseDe = iso(new Date(Date.parse(`${hoje}T00:00:00Z`) - DIAS_DA_BASELINE * DIA_MS))
+    const baseAte = iso(new Date(Date.parse(`${hoje}T00:00:00Z`) - DIA_MS))
+    const diasDaBaseline = montarDias({
+      de: baseDe, ate: baseAte, hoje, pendentes, cobertoDesde, porDia,
+      // ⚠️ `mediaPorDiaDaSemana` fala DOM-first — a conversão pra SEG-first é na SAÍDA
+      diaDaSemana: diaDaSemanaDe,
+      arredonda: (n) => n,
+    }).map((d) => ({
+      dia: d.dia,
+      diaDaSemana: d.diaDaSemana,
+      total: entraNaMedia(d.estado) ? d.valor : null,
+    }))
     const medias = mediaPorDiaDaSemana(diasDaBaseline, hoje)
     const mediaPorDia: (number | null)[] = Array.from({ length: 7 }, () => null)
     for (const m of medias) {
@@ -451,14 +536,15 @@ export async function lerConsumoECompras(
       .filter((m) => m.itemId === itemId && !m.estornoDeId && TIPOS_DE_ENTRADA.has(m.tipo) && m.quantidade > 0)
       .sort((a, b) => b.dataMovimento.getTime() - a.dataMovimento.getTime())
     const unit = (m: typeof compras[number]) => round2(Math.abs(m.custoTotal) / Math.abs(m.quantidade))
-    const ultimas4 = compras.slice(0, 4)
-    const media4 = ultimas4.length ? round2(ultimas4.reduce((s, m) => s + unit(m), 0) / ultimas4.length) : null
+    const ultimas = compras.slice(0, COMPRAS_NA_MEDIA)
+    const mediaDasUltimas = ultimas.length ? round2(ultimas.reduce((s, m) => s + unit(m), 0) / ultimas.length) : null
     const ultimo = compras.length ? unit(compras[0]) : null
     // ⚠️ banda morta de 5%: oscilação de centavo não é "subiu" — alarme de tendência que
     //    pisca em todo item é alarme que o dono aprende a ignorar.
     let tendencia: PrecoPago['tendencia'] = null
     if (ultimo != null && compras.length >= 2) {
-      const anteriores = compras.slice(1, 4)
+      // ⚠️ a base é o que veio ANTES da última — comparar a última com ela mesma diluiria o sinal
+      const anteriores = compras.slice(1, 1 + COMPRAS_NA_MEDIA)
       const base = round2(anteriores.reduce((s, m) => s + unit(m), 0) / anteriores.length)
       if (base > 0) {
         const d = (ultimo - base) / base
@@ -486,6 +572,7 @@ export async function lerConsumoECompras(
 
     const cobertura = coberturaEmDias(estoque, mediaPorDia)
     const chegaEm = pedido?.ok ? pedido.chegaEm : null
+    const farol = farolDaCobertura(cobertura, chegaEm)
 
     const p = perdaPorItem.get(itemId)
     return {
@@ -502,11 +589,25 @@ export async function lerConsumoECompras(
       custoVigente,
       // ⛔ sem custo vigente o custo do período é `null`, nunca R$ 0,00 (lei C2)
       custoDoPeriodo: custoVigente != null ? round2(consumoDoPeriodo * custoVigente) : null,
+      temDiaAApurar: temDiaAApurar(diasDoPeriodo) || temDiaAApurar(diasDoAnterior),
       coberturaDias: cobertura,
-      farol: farolDaCobertura(cobertura, chegaEm),
+      farol,
+      coberturaLegenda: legendaDaCobertura({
+        cobertura,
+        farol,
+        diasComMedia: mediaPorDia.filter((m) => m != null).length,
+        diasDaBaseline: DIAS_DA_BASELINE,
+      }),
       destinos,
       naoAtribuido: round3(Math.max(0, naoAtribuido)),
-      precoPago: { ultimo, media4, tendencia, ultimaEm: compras.length ? iso(compras[0].dataMovimento) : null, comprasConsideradas: compras.length },
+      precoPago: {
+        ultimo,
+        mediaDasUltimas,
+        tendencia,
+        ultimaEm: compras.length ? iso(compras[0].dataMovimento) : null,
+        comprasConsideradas: compras.length,
+        baseDaTendencia: Math.max(0, Math.min(COMPRAS_NA_MEDIA, compras.length - 1)),
+      },
       /**
        * ⚠️ **PERDA SEM OS DOIS LADOS É "A APURAR"** (ordem do dono). A variância do Real vs
        * Teórico é `null` quando o item **não foi contado** no período — e `null` ali nunca vira

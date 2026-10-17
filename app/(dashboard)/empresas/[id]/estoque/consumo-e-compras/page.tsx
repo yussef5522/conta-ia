@@ -99,8 +99,20 @@ function Spark8({ valores }: { valores: number[] }) {
  * ⭐⭐ AS BARRAS DA SEMANA COM O FANTASMA TRACEJADO (lei C3/C4): a barra cheia é o período, a
  * tracejada é o MESMO dia-da-semana na semana anterior.
  *
- * ⛔ **Dia sem dado é barra VAZIA, nunca altura zero** — *"dia sem dado = 'a apurar', proibido
- * inventar"* (lei C2). É a mesma régua da barra do Radar.
+ * ⭐⭐⭐ **A LEI DO DIA FECHADO (17/10) MANDA NO RÓTULO — e ela nasceu de um defeito de RÓTULO,
+ * não de número.** Antes, *"dia sem dado = a apurar"* era a única régua, e aí **ausência de
+ * MOVIMENTO virava ausência de DADO**: o coxão aparecia com qua/qui/sex como "—" porque a casa
+ * não abriu coxão naqueles dias — um fato que o dono conhece inteiro, mostrado como dúvida.
+ *
+ * | estado | barra | número |
+ * |---|---|---|
+ * | **FECHADO** | barra **NO CHÃO** (3px, cheia) | **"0" ESCRITO** — zero é dado |
+ * | **HOJE** | o parcial, com selo *hoje · parcial* | o que já saiu |
+ * | **PENDENTE** | tracejada vazia | **"—"**, com o MOTIVO no título |
+ * | **SEM_LIVRO** | tracejada vazia | "—", *o item não estava na casa* |
+ *
+ * ⛔ Quem decide é o `estado` que o SERVIDOR mandou (`dia-do-consumo.ts`) — a tela **nunca**
+ * pergunta `valor == null`: era essa pergunta que colapsava "zero" com "a apurar".
  */
 function BarrasDaSemana({ barras, unidade }: { barras: LinhaDeConsumo['barras']; unidade: string }) {
   const medidos = barras.flatMap((b) => [b.valor, b.ghost]).filter((v): v is number => v != null)
@@ -111,13 +123,25 @@ function BarrasDaSemana({ barras, unidade }: { barras: LinhaDeConsumo['barras'];
       <div className="flex items-end gap-[9px] px-4 pt-1" style={{ height: MED.barras }}>
         {barras.map((b) => {
           const top = b.valor != null && b.valor === pico && pico > 0
+          const aApurar = b.estado === 'PENDENTE' || b.estado === 'SEM_LIVRO' || b.estado === 'FUTURO'
+          const porque =
+            b.estado === 'PENDENTE'
+              ? 'a apurar — a venda deste dia ainda não foi baixada do estoque'
+              : b.estado === 'SEM_LIVRO'
+                ? 'a apurar — o item ainda não estava na casa neste dia'
+                : b.estado === 'FUTURO'
+                  ? 'o dia ainda não aconteceu'
+                  : b.estado === 'HOJE'
+                    ? `hoje · parcial: ${fmt1(b.valor ?? 0)} ${unidade.toLowerCase()} até agora`
+                    : `${fmt1(b.valor ?? 0)} ${unidade.toLowerCase()}`
           return (
             <div key={b.dia} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
               <span
                 className="text-[10px] font-extrabold tabular-nums"
-                style={{ color: top ? CC.verde : CC.tinta2 }}
+                style={{ color: top ? CC.verde : b.estado === 'HOJE' ? CC.acao : CC.tinta2 }}
+                title={porque}
               >
-                {b.valor == null ? '—' : fmt1(b.valor)}
+                {aApurar ? '—' : fmt1(b.valor ?? 0)}
               </span>
               <div className="flex w-full flex-1 items-end justify-center gap-[3px]">
                 <span
@@ -132,16 +156,26 @@ function BarrasDaSemana({ barras, unidade }: { barras: LinhaDeConsumo['barras'];
                 />
                 <span
                   className="w-[42%] max-w-[24px] rounded-t-[5px]"
-                  title={b.valor == null ? 'a apurar — o livro não cobre este dia' : `${fmt1(b.valor)} ${unidade.toLowerCase()}`}
+                  title={porque}
                   style={
-                    b.valor == null
-                      ? { height: 6, background: CC.mod2, border: `1px dashed ${CC.linha}` }
-                      : { height: `${Math.round((b.valor / max) * 100)}%`, background: top ? CC.verde : CC.acao, opacity: 0.92 }
+                    aApurar
+                      ? // ⛔ tracejada VAZIA: é a única coisa na tela que significa "a apurar"
+                        { height: 6, background: CC.mod2, border: `1px dashed ${CC.linha}` }
+                      : {
+                          // ⭐ ZERO É BARRA NO CHÃO, cheia: o dia foi medido e deu zero
+                          height: `${Math.max(3, Math.round(((b.valor ?? 0) / max) * 100))}%`,
+                          background: top ? CC.verde : CC.acao,
+                          opacity: b.estado === 'HOJE' ? 0.45 : 0.92,
+                          border: b.estado === 'HOJE' ? `1.5px dashed ${CC.acao}` : undefined,
+                        }
                   }
                 />
               </div>
-              <span className="text-[10px] font-extrabold" style={{ color: CC.tinta3 }}>
-                {DIAS[b.diaDaSemana]?.toLowerCase()}
+              <span
+                className="text-[10px] font-extrabold"
+                style={{ color: b.estado === 'HOJE' ? CC.acao : CC.tinta3 }}
+              >
+                {b.estado === 'HOJE' ? 'hoje' : DIAS[b.diaDaSemana]?.toLowerCase()}
               </span>
             </div>
           )
@@ -158,6 +192,13 @@ function BarrasDaSemana({ barras, unidade }: { barras: LinhaDeConsumo['barras'];
             style={{ border: `1.5px dashed ${CC.linhaForte}` }}
           />
           o período anterior
+        </span>
+        <span>
+          <i
+            className="mr-[5px] inline-block h-[9px] w-[9px] rounded-[3px] align-[-1px]"
+            style={{ border: `1.5px dashed ${CC.acao}`, background: CC.acao, opacity: 0.45 }}
+          />
+          hoje · parcial
         </span>
       </div>
     </>
@@ -800,6 +841,23 @@ export default function ConsumoEComprasPage({ params }: { params: Promise<{ id: 
                       ? 'sem período anterior pra comparar — a apurar'
                       : `${item.deltaPct >= 0 ? '▲ +' : '▼ '}${fmt1(item.deltaPct)}% vs o período anterior`}
                   </div>
+                  {/**
+                   * ⭐⭐ **UM selo, e só com pendência DE VERDADE** (anti-spam, ordem do dono):
+                   * o Δ% compara dois períodos pelo MESMO critério, e o selo avisa quando um
+                   * dos lados tem dia que **ainda vai mudar**. ⛔ Sem pendência, **sem selo** —
+                   * alarme que pisca em todo item é alarme que o dono aprende a ignorar.
+                   * ⚠️ Quem decide é o SERVIDOR (`temDiaAApurar`): se a tela varresse as barras,
+                   * ela só veria o período atual e calaria sobre o lado anterior da comparação.
+                   */}
+                  {item.temDiaAApurar && (
+                    <div
+                      className="mt-1 inline-block rounded-[7px] px-2 py-[3px] text-[11px] font-extrabold"
+                      style={{ background: CC.ambarFundo, color: CC.ambar }}
+                      title="a venda de algum dia do período ainda não foi baixada do estoque — o número vai mudar"
+                    >
+                      ⚠ tem dia a apurar
+                    </div>
+                  )}
                   <Spark8 valores={item.spark} />
                 </div>
 
@@ -863,14 +921,15 @@ export default function ConsumoEComprasPage({ params }: { params: Promise<{ id: 
                   >
                     {item.coberturaDias == null ? 'a apurar' : `${fmt1(item.coberturaDias)} dias`}
                   </div>
+                  {/**
+                   * ⭐⭐ **MORRE A CONTRADIÇÃO DE 17/10** — a tela dizia *"7,6 dias"* com
+                   * *"sem média medida ainda"* embaixo. Eram DUAS perguntas colapsadas numa: a
+                   * cobertura existe (precisa de média) e o farol existe (precisa dos dias de
+                   * CHEGADA). ⛔ A legenda vem do SERVIDOR (`legendaDaCobertura`) — montá-la
+                   * aqui seria a 2ª régua do mesmo rótulo, e era a tela que estava mentindo.
+                   */}
                   <div className="mt-px text-[10.5px] font-semibold" style={{ color: CC.tinta3 }}>
-                    {item.farol === 'CORAL'
-                      ? 'acaba antes da chegada'
-                      : item.farol === 'AMBAR'
-                        ? 'apertado'
-                        : item.farol === 'VERDE'
-                          ? 'tranquilo'
-                          : 'sem média medida ainda'}
+                    {item.coberturaLegenda}
                   </div>
                 </div>
 
@@ -898,7 +957,7 @@ export default function ConsumoEComprasPage({ params }: { params: Promise<{ id: 
                       <div className="mt-px text-[10.5px] font-semibold" style={{ color: CC.tinta3 }}>
                         {item.precoPago.tendencia == null
                           ? 'sem compra suficiente pra comparar'
-                          : `${item.precoPago.tendencia === 'SUBIU' ? '▲ subiu' : item.precoPago.tendencia === 'CAIU' ? '▼ caiu' : '━ estável'} vs a média das ${item.precoPago.comprasConsideradas} últimas`}
+                          : `${item.precoPago.tendencia === 'SUBIU' ? '▲ subiu' : item.precoPago.tendencia === 'CAIU' ? '▼ caiu' : '━ estável'} vs a média das ${item.precoPago.baseDaTendencia} anteriores`}
                       </div>
                     </div>
 

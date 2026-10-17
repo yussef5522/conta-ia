@@ -42,6 +42,18 @@ export const ANTECEDENCIA_PADRAO = 1
  */
 export const DIAS_DA_BASELINE = 28
 
+/**
+ * ⭐⭐ QUANTAS COMPRAS A MÉDIA DO PREÇO PAGO USA (lei C12) — **aprovado pelo dono em 17/10**.
+ *
+ * ⚠️⚠️ **Antes havia TRÊS verdades pro mesmo número**, e isso foi MEDIDO: a lib usava `slice(0, 4)`
+ * (4 compras) e `slice(1, 4)` (3 na base da tendência); a REFERÊNCIA dizia *"média das 4
+ * últimas"*; e **a TELA escrevia *"vs a média das N últimas"* com N = TODAS as compras da janela
+ * de leitura** — ou seja, um rótulo que prometia 10 sobre uma conta feita com 3.
+ * ***Nenhum rótulo promete mais do que entrega*** (13/09): agora a constante é UMA, a tela diz o
+ * número que a conta de fato usou, e a referência fala a mesma língua.
+ */
+export const COMPRAS_NA_MEDIA = 10
+
 /** ⭐ SEG-first, como a referência e como os chips da config */
 export const DIAS = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'] as const
 export type NomeDoDia = (typeof DIAS)[number]

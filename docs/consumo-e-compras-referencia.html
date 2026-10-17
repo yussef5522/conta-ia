@@ -3,10 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CAIXAOS — CONSUMO &amp; COMPRAS · REFERÊNCIA OFICIAL v3 (tela própria, nível mundial)</title>
+<title>CAIXAOS — CONSUMO &amp; COMPRAS · REFERÊNCIA OFICIAL v3.1 (tela própria, nível mundial)</title>
 <style>
 /* ============================================================================
-   CAIXAOS · CONSUMO & COMPRAS — REFERÊNCIA OFICIAL v3 (16/10/2026)
+   CAIXAOS · CONSUMO & COMPRAS — REFERÊNCIA OFICIAL v3.1 (16-17/10/2026)
+   v3.1 = aprovado pelo dono 17/10: a LEI DO DIA FECHADO em C2 (zero de
+   verdade × "a apurar"), a janela da cobertura dita em C13, e C12 de 4 pra
+   até 10 compras na média do preço — UMA verdade.
    v1 reprovada ("muito básico"). v2 reprovada na parte da compra ("não quero
    escrito, nem sistema faz desse jeito" — a conta em prosa morreu).
    v3 = ordem do dono: (1) compra em MESA DE PEDIDO estruturada como os
@@ -24,6 +27,20 @@
        tabela própria CREATE-only, porta única, REGRA 13, nascem vazias.
    C2. CONSUMO = O LIVRO (baixas + separações), nunca digitado. Dia sem dado
        = "a apurar", nunca inventado.
+       ⭐⭐ A LEI DO DIA FECHADO (aprovado pelo dono 17/10, refina este C2 —
+       nasceu do Coxão Mole, semana 11→17/10, em que a casa NÃO abriu coxão
+       de qua a sex porque já tinha porção pronta, e a tela mostrou "—" em
+       vez de 0): DIA PASSADO sem nada pendente de conferência pra aquele
+       item naquele dia = CONSUMO 0. ZERO É DADO — barra no chão com o "0"
+       escrito, e ENTRA na média. "A apurar" (—) fica SÓ pra dia com o livro
+       daquele item ainda por mudar, e o traço DIZ O MOTIVO no título. HOJE é
+       DIA ABERTO: mostra o parcial já lançado com selo "hoje · parcial" e
+       NÃO entra como dia completo em média nenhuma. Dia ANTES do 1º
+       movimento do item não é zero, é ausência de livro (o item não estava
+       na casa) — fora da média também. O Δ% compara os dois períodos pelo
+       MESMO critério, e quando um dos lados tem dia pendente DE VERDADE o
+       herói ganha UM selo "⚠ tem dia a apurar" (um caso, um alarme — SEM
+       selo quando não há pendência).
    C3. O NÚMERO É O HERÓI (ordem do dono): o TOTAL consumido do período
        domina — gigante, Δ% vs período anterior, linha das 8 semanas atrás.
    C4. PERÍODOS: dia · SEMANA (padrão) · mês · 📅 datas — janelas das telas
@@ -61,10 +78,24 @@
         o item), top 5 com %, pela explosão/separações do livro.
    C11. PERDA (real × teórico): consumo do livro × fichas × produção — as
         MESMAS portas da tela Real vs Teórico; sem os dois lados, "a apurar".
-   C12. PREÇO PAGO: entradas do livro — última compra, média das 4 últimas,
-        tendência ▲▼. Custo da semana = consumo × VIGENTE.
+   C12. PREÇO PAGO: entradas do livro — última compra, média das ÚLTIMAS
+        COMPRAS (até 10, constante COMPRAS_NA_MEDIA), tendência ▲▼ contra a
+        média das anteriores. Custo da semana = consumo × VIGENTE.
+        ⚠️ ERA "média das 4 últimas" (aprovado pelo dono 17/10 pra 10) — e a
+        troca matou TRÊS verdades que conviviam, medidas em 17/10: a lib
+        usava 4 (base da tendência 3), ESTE arquivo dizia 4, e a TELA
+        escrevia "vs a média das N últimas" com N = TODAS as compras da
+        janela, sobre uma conta feita com 3. Agora a constante é UMA e a tela
+        escreve o número que a conta de fato usou.
    C13. COBERTURA = estoque ÷ média 7d; coral quando acaba ANTES da próxima
         chegada possível; âmbar < chegada + 2 dias.
+        ⭐ (aprovado pelo dono 17/10) O SUBTÍTULO DIZ A JANELA USADA
+        (exemplo: "média de 28d · N de 7 dias da semana") e morre a
+        contradição de mostrar
+        "7,6 dias" com "sem média medida ainda" embaixo: são DUAS perguntas
+        — a cobertura existe (precisa de média medida) e o farol existe
+        (precisa dos dias de CHEGADA). Sem média de verdade, NÃO mostra
+        número; com média e sem config, mostra o número e cobra a config.
    C14. RADAR DA MESA ①: pedido-de-hoje-não-feito e cobertura coral viram
         alarmes (tradutor puro, um caso um alarme).
    C15. Tudo clicável (item → estoque; destino → receita; agenda → item).
@@ -274,7 +305,7 @@ footer{max-width:1440px;margin:0 auto;padding:0 26px 26px;font-size:11.5px;color
     </div>
   </main>
 
-  <footer>CONSUMO &amp; COMPRAS · REFERÊNCIA OFICIAL v3 — tela própria · mesa de pedido por fornecedor (sem prosa) · plano de produção das porções · herói do total · agenda do comprador · para onde foi · perda · preço pago — estudo: MarketMan, Choco, MarginEdge/Supy · aprovação do dono pendente</footer>
+  <footer>CONSUMO &amp; COMPRAS · REFERÊNCIA OFICIAL v3.1 — tela própria · mesa de pedido por fornecedor (sem prosa) · plano de produção das porções · herói do total · agenda do comprador · para onde foi · perda · preço pago — estudo: MarketMan, Choco, MarginEdge/Supy · leis C2/C12/C13 refinadas e aprovadas pelo dono em 17/10</footer>
 
 <script>
 /* ===== AMOSTRA de referência — em prod: lib pura consumo-e-compras.ts ===== */
@@ -460,7 +491,7 @@ function draw(){
  if(AB==0){
   stats+='<div class="stat"><div class="l">CUSTO DA SEMANA</div><div class="n">'+fR(tot*it.cust)+'</div><div class="s">pelo vigente</div></div>';
   var pd=100*(it.pago[0]-it.pago[1])/it.pago[1];
-  stats+='<div class="stat"><div class="l">PREÇO PAGO</div><div class="n">R$ '+f1(it.pago[0])+'</div><div class="s">'+(pd>=0?"▲ +":"▼ ")+f1(pd)+'% vs média das 4 últimas</div></div>';
+  stats+='<div class="stat"><div class="l">PREÇO PAGO</div><div class="n">R$ '+f1(it.pago[0])+'</div><div class="s">'+(pd>=0?"▲ +":"▼ ")+f1(pd)+'% vs média das anteriores</div></div>';
   stats+='<div class="stat"><div class="l">PERDA (REAL × TEÓRICO)</div><div class="n" style="color:'+(it.perda>8?"var(--coral)":it.perda>4?"var(--ambar)":"var(--verde)")+'">'+f1(it.perda)+'%</div><div class="s">portas do Real vs Teórico</div></div>';
  } else {
   var pl=contaDoPlano(it);

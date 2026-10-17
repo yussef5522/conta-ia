@@ -24,7 +24,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { semComentarios, usosDe, hexCravados } from './_leitura-de-fonte'
+import { semComentarios, usosDe, hexCravados, blocoEntre } from './_leitura-de-fonte'
 import {
   lerReferenciaVisual,
   paletaDoSeletor,
@@ -384,16 +384,57 @@ describe('⛔⛔ "A APURAR" NUNCA VIRA ZERO (lei C2)', () => {
     for (const r of [
       'sem período anterior pra comparar',
       'sem compra suficiente pra comparar',
-      'sem média medida ainda',
     ]) {
       expect(CODIGO, `a tela parou de dizer "${r}"`).toContain(r)
     }
+    /**
+     * ⚠️⚠️ **REAPONTADO EM 17/10, NÃO AFROUXADO — e o alvo antigo era o DEFEITO.** Este bloco
+     * exigia a frase **"sem média medida ainda"** na tela; ela era exatamente a contradição que
+     * o dono reportou (*"cobertura 7,6 dias · sem média medida ainda"* — um número com a legenda
+     * se contradizendo ao lado). A frase MORREU. ⭐ A pergunta não mudou (*"a tela diz 'a apurar'
+     * quando não há base?"*), mudou o DONO da resposta: a legenda vem do servidor
+     * (`legendaDaCobertura`), e é lá que *"sem consumo medido ainda"* vive — provado em
+     * `lib/compras/__tests__/dia-do-consumo.test.ts`.
+     */
+    expect(CODIGO, 'a legenda da cobertura voltou a ser montada na TELA').toContain('item.coberturaLegenda')
+    expect(CODIGO, 'a contradição de 17/10 voltou: a tela nega a média que ela mesma usa')
+      .not.toContain('sem média medida ainda')
     expect((CODIGO.match(/a apurar/g) ?? []).length, 'a tela deixou de nomear "a apurar"').toBeGreaterThan(4)
   })
 
-  it('⭐⭐ dia sem dado é barra VAZIA, nunca altura zero', () => {
-    // ⛔ zero se leria como "ninguém usou", e a verdade é "ninguém mediu"
-    expect(CODIGO, 'a barra do dia sem dado deixou de ser tracejada').toMatch(/valor == null[\s\S]{0,200}dashed/)
+  /**
+   * ⚠️⚠️ **REAPONTADO E MAIS FORTE (17/10).** A âncora antiga era `/valor == null …{0,200} dashed/`
+   * — e ela tinha DOIS problemas: (a) `valor == null` É A PERGUNTA DO DEFEITO (era ela que
+   * colapsava *"zero medido"* com *"a apurar"*); (b) **janela de distância**, a classe que já
+   * produziu falso vermelho E falso verde nesta casa nove vezes.
+   *
+   * ⭐ Agora a régua é a LEI: quem decide é o `estado` que o servidor mandou, a barra "a apurar"
+   * é tracejada e vazia, e a de **ZERO é CHEIA, no chão** (3% de piso), com o "0" escrito.
+   */
+  it('⭐⭐ dia PENDENTE é barra vazia tracejada — e ZERO é barra CHEIA no chão', () => {
+    const bloco = semComentarios(blocoEntre(CODIGO, 'function BarrasDaSemana', '/* ═'))
+    expect(bloco, 'a tela voltou a decidir "a apurar" por `valor == null`').not.toMatch(/valor == null/)
+    expect(bloco, 'a barra deixou de decidir pelo ESTADO que o servidor mandou').toMatch(/b\.estado === 'PENDENTE'/)
+    expect(bloco, 'a barra "a apurar" deixou de ser tracejada').toMatch(/aApurar[\s\S]*?dashed \$\{CC\.linha\}/)
+    // ⭐ ZERO não pode virar barra invisível: o piso de 3% é o que faz o dia medido APARECER
+    expect(bloco, 'a barra do dia FECHADO com zero deixou de ter piso — ela desaparece').toMatch(/Math\.max\(3,/)
+    // ⛔ e o número "0" tem que ser ESCRITO (zero é dado, não ausência)
+    expect(bloco, 'o número do dia zero voltou a ser "—"').toMatch(/aApurar \? '—' : fmt1\(b\.valor \?\? 0\)/)
+  })
+
+  it('⭐⭐ HOJE é dia ABERTO e a tela DIZ isso — nunca um dia fechado disfarçado', () => {
+    const bloco = semComentarios(blocoEntre(CODIGO, 'function BarrasDaSemana', '/* ═'))
+    expect(bloco, 'o selo de hoje sumiu da barra').toMatch(/hoje · parcial/)
+    expect(bloco, 'a barra de hoje deixou de se distinguir do dia fechado').toMatch(/b\.estado === 'HOJE'/)
+    expect(CODIGO, 'a legenda deixou de explicar o parcial de hoje').toContain('hoje · parcial')
+  })
+
+  it('⭐⭐ UM selo de "tem dia a apurar" no herói — e só com pendência de verdade', () => {
+    // ⛔ anti-spam: um caso, um alarme. E quem decide é o SERVIDOR, nunca a tela varrendo barras.
+    expect(usosDe(CODIGO, 'temDiaAApurar'), 'o selo do herói sumiu').toBeGreaterThan(0)
+    expect(CODIGO, 'o selo deixou de ser gateado pela pendência do servidor')
+      .toMatch(/item\.temDiaAApurar && \(/)
+    expect((CODIGO.match(/tem dia a apurar/g) ?? []).length, 'o selo virou N selos').toBe(1)
   })
 
   it('⭐⭐ item sem config APARECE e é DITO (lei C5) — nunca escondido', () => {
@@ -503,5 +544,86 @@ describe('⭐⭐ O TRILHO — o item nasce logo abaixo de Produção (lei C0)', 
     const bloco = SIDEBAR.slice(Math.max(0, i - 200), i)
     expect(bloco, 'o item novo usa o ícone de Vendas').not.toContain('icon={ShoppingCart}')
     expect(bloco, 'o item novo não declara ícone próprio').toContain('icon={ShoppingBasket}')
+  })
+})
+
+/* ══════════ 7 · A LEI DO DIA FECHADO MORA NA REFERÊNCIA *E* NO CÓDIGO (17/10) ══════════ */
+
+/**
+ * ⭐⭐ **GUARD DE DOIS LADOS, de propósito.** Guard que só olhasse o CÓDIGO aprovaria o dia em
+ * que a lei saísse da referência versionada (e aí *"igual à referência"* voltaria a ser memória
+ * minha — a cicatriz de 10/09); guard que só olhasse a REFERÊNCIA aprovaria a lei escrita e não
+ * implementada (*"invariante planejado num doc e não construído é pior que invariante nenhum"*,
+ * 23/08).
+ */
+describe('⭐⭐⭐ A LEI DO DIA FECHADO — na referência E no motor', () => {
+  const REFCRU = ler(R(CAMINHO_DE_CONSUMO_E_COMPRAS))
+  const LEI = semComentarios(ler(R('lib/compras/dia-do-consumo.ts')))
+  const LEITURA_SRC = semComentarios(ler(R(LEITURA)))
+
+  it('⭐ a REFERÊNCIA declara a lei no C2, com a aprovação do dono datada', () => {
+    for (const frase of [
+      'A LEI DO DIA FECHADO',
+      'aprovado pelo dono 17/10',
+      'CONSUMO 0',
+      'ZERO É DADO',
+      'DIA ABERTO',
+      'hoje · parcial',
+      'tem dia a apurar',
+    ]) {
+      expect(REFCRU, `a referência parou de declarar "${frase}"`).toContain(frase)
+    }
+  })
+
+  it('⭐ o C12 virou UMA verdade: até 10 compras, com a constante nomeada', () => {
+    /**
+     * ⚠️⚠️ A asserção mede a **REGRA**, não a ausência da palavra — e isto nasceu de um vermelho:
+     * a 1ª versão proibia *"média das 4 últimas"* no arquivo inteiro e **reprovou a própria nota
+     * que DOCUMENTA a troca** (*"ERA 'média das 4 últimas' …"*). ***O arquivo que registra o
+     * defeito não pode ser condenado por registrá-lo*** — então o proibido é o "4" na
+     * ESPECIFICAÇÃO (o `<script>`, que é o comportamento que a tela copia) e no enunciado da lei.
+     */
+    expect(REF.script, 'a ESPECIFICAÇÃO do C12 voltou a dizer "média das 4 últimas"')
+      .not.toMatch(/média das 4 últimas/)
+    expect(REFCRU, 'o C12 deixou de declarar o teto novo').toMatch(/até 10/)
+    expect(REFCRU, 'o C12 deixou de nomear a constante').toContain('COMPRAS_NA_MEDIA')
+    expect(semComentarios(ler(R(LIB_PURA))), 'a constante do C12 saiu da lib pura')
+      .toMatch(/COMPRAS_NA_MEDIA = 10/)
+    // ⛔ e o 4 não pode voltar DIGITADO no motor
+    expect(LEITURA_SRC, 'o motor voltou a cravar 4 compras na média do preço')
+      .not.toMatch(/slice\(0, 4\)|slice\(1, 4\)/)
+  })
+
+  it('⭐ o C13 diz a JANELA usada — e a janela não é digitada em lugar nenhum', () => {
+    expect(REFCRU, 'o C13 deixou de declarar a janela da cobertura').toContain('média de 28d')
+    // ⚠️ na tela e na lei, o número vem do parâmetro/constante — nunca um "28" cravado
+    expect(LEI, 'a legenda da cobertura cravou a janela').not.toMatch(/média de 28d/)
+  })
+
+  it('⛔⛔ a LEI é PURA — ela não conhece banco nem React', () => {
+    for (const proibido of ['prisma', '@prisma/client', 'react']) {
+      expect(LEI.toLowerCase(), `a lei do dia fechado passou a importar ${proibido}`)
+        .not.toContain(`from '${proibido}`)
+    }
+  })
+
+  it('⭐⭐ BARRAS e BASELINE leem a MESMA lei — nunca duas montagens', () => {
+    // ⛔ duas montagens divergiriam no 1º estado novo, e a barra diria "0" num dia que a média
+    //    tratou como pendente (o B1 dentro de um item só)
+    expect(usosDe(LEITURA_SRC, 'montarDias'), 'a baseline parou de usar a lei das barras')
+      .toBeGreaterThanOrEqual(3)
+    expect(LEITURA_SRC, 'a baseline voltou a decidir por `porDia.has`')
+      .not.toMatch(/total: porDia\.has/)
+    expect(LEITURA_SRC, 'a média deixou de perguntar pra lei quem entra').toContain('entraNaMedia')
+  })
+
+  it('⛔ a pendência é MEDIDA — e a trava do item não alcançado pela venda segue de pé', () => {
+    const PEND = semComentarios(ler(R('lib/compras/pendencia-do-livro.ts')))
+    expect(PEND, 'a pendência deixou de exigir o import do dia como evidência')
+      .toContain('stockVendaImport')
+    expect(PEND, 'a trava (c) caiu: item não alcançado pela venda voltaria a dizer "a apurar"')
+      .toMatch(/itensAlcancadosPorVenda\.has\(itemId\) \? p\.diasSemBaixa : SEM_PENDENCIA/)
+    expect(usosDe(LEITURA_SRC, 'pendentesDoItem'), 'o motor parou de usar a régua por item')
+      .toBeGreaterThan(0)
   })
 })
