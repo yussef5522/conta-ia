@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAIXAOS — CONSUMO &amp; COMPRAS · REFERÊNCIA OFICIAL v3 (tela própria, nível mundial)</title>
+<style>
+/* ============================================================================
+   CAIXAOS · CONSUMO & COMPRAS — REFERÊNCIA OFICIAL v3 (16/10/2026)
+   v1 reprovada ("muito básico"). v2 reprovada na parte da compra ("não quero
+   escrito, nem sistema faz desse jeito" — a conta em prosa morreu).
+   v3 = ordem do dono: (1) compra em MESA DE PEDIDO estruturada como os
+   líderes mundiais (MarketMan: pedido sugerido POR FORNECEDOR, quantidade
+   editável, total do pedido; Choco: dias de entrega e prazo de pedido por
+   fornecedor; MarginEdge/Supy: teórico × real) — números rotulados, NUNCA
+   frase; (2) PORÇÕES mostram QUANTO PRODUZIR de cada item, não comprar;
+   (3) TELA PRÓPRIA no trilho — fora de Produção, pra não estragar nada lá.
+   Língua visual da mesa (dashboard-referencia). NÚMEROS DE AMOSTRA.
+
+   AS LEIS (C0–C15):
+   C0. TELA PRÓPRIA: item novo no trilho (grupo da operação, logo abaixo de
+       Produção), rota /consumo-e-compras. NADA muda na tela de Produção.
+   C1. DUAS LISTAS DO DONO (🥩 OS CAROS · 🍟 AS PORÇÕES), padrão da estrela:
+       tabela própria CREATE-only, porta única, REGRA 13, nascem vazias.
+   C2. CONSUMO = O LIVRO (baixas + separações), nunca digitado. Dia sem dado
+       = "a apurar", nunca inventado.
+   C3. O NÚMERO É O HERÓI (ordem do dono): o TOTAL consumido do período
+       domina — gigante, Δ% vs período anterior, linha das 8 semanas atrás.
+   C4. PERÍODOS: dia · SEMANA (padrão) · mês · 📅 datas — janelas das telas
+       de vendas; sex/sáb destacados; barras com FANTASMA tracejado do
+       período anterior.
+   C5. CONFIG DE COMPRA POR ITEM (a escrita nova, porta única + REGRA 13):
+       dias de CHEGADA (chips SEG…DOM, um ou vários) · antecedência do
+       pedido em dias (prazo do fornecedor) · fornecedor (texto) · folga %
+       (padrão 10). Tudo opcional: item sem config fica fora da mesa.
+   C6. A CONTA DO PEDIDO (motor): pedido que chega dia X cobre de X até a
+       PRÓXIMA chegada; precisa = Σ médias por dia-da-semana da janela ×
+       folga − estoque projetado na chegada (atual − consumo até lá, nunca
+       negativo). NA TELA a conta aparece como NÚMEROS ROTULADOS (linha ⓘ
+       com chips: cobre · sai na janela · folga · sobra na chegada) —
+       PROSA É PROIBIDA na mesa.
+   C7. AGENDA DO COMPRADOR no topo: os próximos pedidos em ordem (HOJE ⚠ ·
+       SÁB · DOM), derivados de chegada − antecedência. Toque abre o item.
+   C8. MESA DE PEDIDO = UM CARD POR FORNECEDOR (como os líderes: um pedido
+       = um fornecedor): cabeçalho fornecedor · chega DIA · pedir até DIA
+       (⚠ quando é hoje/atrasado). HIERARQUIA DOS NÚMEROS NA LINHA (ordem
+       do dono): o MAIOR é o PEDIR (quanto pedir pra não faltar, JÁ com a
+       folga de 10%, editável − / +, caixa índigo); o segundo destaque é o
+       USO NO PERÍODO (quanto o produto gasta na semana — segue o seletor
+       semana/mês/datas, rótulo acompanha). Depois TEM AGORA · SAI ATÉ
+       CHEGAR · R$ pago/un · R$ total; a conta inteira (sai na janela ·
+       folga · precisa · sobra na chegada) vive nos chips ⓘ. Rodapé =
+       total do pedido + 📋 COPIAR PEDIDO (texto pronto pro WhatsApp do
+       fornecedor). Editar PEDIR recalcula total e agenda na hora.
+   C9. PLANO DE PRODUÇÃO (AS PORÇÕES): tabela O QUE PRODUZIR — TEM AGORA ·
+       MÍNIMO (3 dias × média) · SAI HOJE (média do dia da semana) ·
+       PRODUZIR ~N (mínimo + saída de hoje − tem, nunca negativo) · farol ·
+       link "criar ordem →" da receita homônima (só aponta). Ordenada pela
+       falta. Rodapé = total de UN do dia.
+   C10. PARA ONDE FOI: consumo aberto por DESTINO (receita/porção que levou
+        o item), top 5 com %, pela explosão/separações do livro.
+   C11. PERDA (real × teórico): consumo do livro × fichas × produção — as
+        MESMAS portas da tela Real vs Teórico; sem os dois lados, "a apurar".
+   C12. PREÇO PAGO: entradas do livro — última compra, média das 4 últimas,
+        tendência ▲▼. Custo da semana = consumo × VIGENTE.
+   C13. COBERTURA = estoque ÷ média 7d; coral quando acaba ANTES da próxima
+        chegada possível; âmbar < chegada + 2 dias.
+   C14. RADAR DA MESA ①: pedido-de-hoje-não-feito e cobertura coral viram
+        alarmes (tradutor puro, um caso um alarme).
+   C15. Tudo clicável (item → estoque; destino → receita; agenda → item).
+        Número morto proibido. Lib pura consumo-e-compras.ts; a tela ecoa.
+        Constantes nomeadas: FOLGA_PADRAO=1,10 · PAR_DIAS=3 · antecedência
+        padrão 1 (por item na config).
+   ========================================================================= */
+:root{
+  --bg:#070A14; --mod:#0E1326; --mod-2:#131A33;
+  --linha:#1E2747; --linha-forte:#2C3764;
+  --tinta:#EBF0FF; --tinta-2:#93A0C8; --tinta-3:#596690;
+  --acao:#7C84FF; --acao-fundo:#1A2048; --acao-vivo:#4F46E5;
+  --verde:#2EE6A8; --verde-chao:#064E38; --verde-fundo:#0A2E22;
+  --coral:#FF6B61; --coral-fundo:#38150F;
+  --ambar:#FFB224; --ambar-fundo:#33230A;
+  --r:14px; --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+:root[data-theme="light"]{
+  --bg:#EEF1F8; --mod:#FFFFFF; --mod-2:#F4F6FC;
+  --linha:#DDE3F2; --linha-forte:#BCC7E4;
+  --tinta:#0A0F1E; --tinta-2:#46516B; --tinta-3:#8B94AD;
+  --acao:#4F46E5; --acao-fundo:#EEF0FE; --acao-vivo:#4F46E5;
+  --verde:#0E9F6E; --verde-chao:#07654A; --verde-fundo:#E4F7EF;
+  --coral:#D93B30; --coral-fundo:#FDECEA;
+  --ambar:#B45309; --ambar-fundo:#FCF0DC;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tinta);font-family:var(--font);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important;animation:none!important} }
+
+.topo{display:flex;align-items:center;gap:14px;padding:14px 26px;border-bottom:1px solid var(--linha-forte);flex-wrap:wrap}
+.marca{display:flex;align-items:center;gap:10px}
+.marca .m{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#4F46E5,#6D28D9);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px}
+.marca b{font-size:15px;font-weight:800}
+.lab{font-size:11px;color:var(--tinta-3);font-weight:700}
+.titulo-tela{font-size:14px;font-weight:800;padding-left:12px;border-left:1px solid var(--linha-forte)}
+.topo .dir{margin-left:auto;display:flex;gap:8px}
+.tbt{border:1px solid var(--linha-forte);background:var(--mod);color:var(--tinta-2);font:inherit;font-size:12.5px;font-weight:700;border-radius:9px;padding:7px 13px;cursor:pointer}
+
+.miolo{max-width:1440px;margin:0 auto;padding:14px 26px 70px;width:100%}
+.mod{background:var(--mod);border:1px solid var(--linha);border-radius:var(--r);overflow:hidden;margin-bottom:12px}
+.mod-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px 8px;flex-wrap:wrap}
+.mod-cab h2{margin:0;font-size:11px;font-weight:800;letter-spacing:.09em;color:var(--tinta-3)}
+.chip{font-size:12.5px;font-weight:700;padding:6px 13px;border-radius:999px;border:1px solid var(--linha-forte);color:var(--tinta-2);background:var(--mod);cursor:pointer;white-space:nowrap;font-family:inherit}
+.chip.on{background:var(--acao-vivo);border-color:var(--acao-vivo);color:#fff}
+.chip.add{border-style:dashed;color:var(--tinta-3)}
+.chip.mini{font-size:11px;padding:3px 10px}
+.chip.dia-on{background:var(--verde-chao);border-color:var(--verde-chao);color:#fff}
+.linha-chips{display:flex;gap:7px;flex-wrap:wrap;padding:2px 16px 12px;align-items:center}
+
+/* C7 · agenda */
+.agenda{display:flex;gap:10px;align-items:center;padding:12px 16px;flex-wrap:wrap}
+.agenda .hoje{font-size:14px;font-weight:800}
+.a-chip{display:inline-flex;gap:8px;align-items:center;border-radius:10px;padding:7px 12px;font-size:12.5px;font-weight:800;cursor:pointer;border:1px solid var(--linha-forte);background:var(--mod-2);color:var(--tinta-2)}
+.a-chip b{color:var(--tinta)}
+.a-chip.urg{background:var(--coral-fundo);border-color:var(--coral);color:var(--coral)}
+.a-chip.urg b{color:var(--coral)}
+
+/* C3 · herói do item */
+.heroi{display:flex;gap:20px;padding:6px 16px 10px;flex-wrap:wrap;align-items:flex-start}
+.heroi .bloco{min-width:250px;flex:1}
+.heroi .nome{font-size:16px;font-weight:800;letter-spacing:-.01em}
+.heroi .forn{font-size:11.5px;color:var(--tinta-3);font-weight:700}
+.heroi .giga{font-size:46px;font-weight:800;letter-spacing:-.03em;line-height:1.05;margin-top:6px}
+.heroi .giga small{font-size:20px;color:var(--tinta-2);font-weight:700}
+.heroi .delta{font-size:13px;font-weight:800;margin-top:2px}
+.heroi .delta.up{color:var(--coral)} .heroi .delta.down{color:var(--verde)}
+.spark8{width:100%;height:44px;margin-top:8px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:9px;padding:0 16px 12px}
+.stat{background:var(--mod-2);border-radius:10px;padding:9px 12px}
+.stat .l{font-size:10px;color:var(--tinta-3);font-weight:800;letter-spacing:.05em}
+.stat .n{font-size:19px;font-weight:800;letter-spacing:-.02em;margin-top:2px}
+.stat .s{font-size:10.5px;color:var(--tinta-3);font-weight:600;margin-top:1px}
+
+/* C4 · barras com fantasma */
+.barras{display:flex;gap:9px;align-items:flex-end;height:120px;padding:4px 16px 0}
+.bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.bar .v{font-size:10px;font-weight:800;color:var(--tinta-2)}
+.bar .par-b{display:flex;gap:3px;align-items:flex-end;width:100%;justify-content:center;flex:1}
+.bar .b{width:42%;max-width:24px;border-radius:5px 5px 0 0;background:var(--acao);opacity:.92}
+.bar .g{width:42%;max-width:24px;border-radius:5px 5px 0 0;border:1.5px dashed var(--linha-forte);border-bottom:0;background:transparent}
+.bar.top .b{background:var(--verde)} .bar.top .v,.bar.top .d{color:var(--verde)}
+.bar .d{font-size:10px;color:var(--tinta-3);font-weight:800}
+.leg{display:flex;gap:14px;padding:6px 16px 12px;font-size:11px;color:var(--tinta-2);font-weight:700}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+/* C10 · para onde foi */
+.destinos{padding:2px 16px 12px}
+.dest{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:12.5px;font-weight:700;cursor:pointer}
+.dest .nm{width:210px;min-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dest .tr{flex:1;height:9px;border-radius:999px;background:var(--mod-2);overflow:hidden}
+.dest .tr>span{display:block;height:100%;border-radius:999px;background:var(--acao)}
+.dest .vv{width:120px;text-align:right;font-weight:800}
+.dest .vv small{color:var(--tinta-3);font-weight:600}
+
+/* C8 · MESA DE PEDIDO (um card por fornecedor) */
+.ped-card{margin:4px 16px 14px;border:1px solid var(--linha-forte);border-radius:12px;overflow:hidden}
+.ped-card.urg{border-color:var(--coral)}
+.ped-cab{display:flex;gap:12px;align-items:center;padding:11px 14px;background:var(--mod-2);flex-wrap:wrap}
+.ped-cab .fn{font-size:13.5px;font-weight:800}
+.ped-cab .mt{font-size:11.5px;font-weight:700;color:var(--tinta-3)}
+.ped-cab .prazo{margin-left:auto;font-size:11.5px;font-weight:800;padding:4px 11px;border-radius:999px;background:var(--acao-fundo);color:var(--acao)}
+.ped-card.urg .prazo{background:var(--coral-fundo);color:var(--coral)}
+.ped-head,.ped-row{display:grid;grid-template-columns:minmax(110px,1.2fr) 1fr .85fr .95fr 1.5fr .85fr .85fr;gap:8px;align-items:center;padding:9px 14px}
+.ped-head{font-size:9.5px;font-weight:800;letter-spacing:.06em;color:var(--tinta-3);border-bottom:1px solid var(--linha)}
+.ped-row{border-bottom:1px solid var(--linha);font-size:13px;font-weight:700;cursor:pointer}
+.ped-row:hover{background:var(--mod-2)}
+.ped-row .it{font-weight:800}
+.ped-row .sub{display:block;font-size:10px;color:var(--tinta-3);font-weight:700}
+.ped-row .dir{text-align:right}
+.ped-row .uso{font-size:16.5px;font-weight:800;letter-spacing:-.01em}
+.qtd{display:inline-flex;align-items:center;gap:2px;background:var(--acao-fundo);border:1.5px solid var(--acao);border-radius:10px;overflow:hidden}
+.qtd button{border:0;background:transparent;color:var(--acao);font:inherit;font-weight:800;width:28px;height:36px;cursor:pointer;font-size:15px}
+.qtd button:hover{color:#fff;background:var(--acao-vivo)}
+.qtd .q{min-width:88px;text-align:center;font-size:19px;font-weight:800;color:var(--acao);letter-spacing:-.02em}
+.conta-i{grid-column:1/-1;display:flex;gap:7px;flex-wrap:wrap;padding:2px 0 6px}
+.ci{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;background:var(--mod-2);border:1px solid var(--linha);color:var(--tinta-2)}
+.ci b{color:var(--tinta)}
+.ped-pe{display:flex;gap:12px;align-items:center;padding:11px 14px;flex-wrap:wrap}
+.ped-pe .tot{font-size:14px;font-weight:800}
+.ped-pe .tot small{color:var(--tinta-3);font-weight:700;font-size:11px}
+.btn-copiar{margin-left:auto;border:1px solid var(--acao);background:var(--acao-fundo);color:var(--acao);font:inherit;font-size:12.5px;font-weight:800;border-radius:9px;padding:8px 14px;cursor:pointer}
+.btn-copiar.ok{border-color:var(--verde);background:var(--verde-fundo);color:var(--verde)}
+
+/* C9 · PLANO DE PRODUÇÃO */
+.pl-head,.pl-row{display:grid;grid-template-columns:minmax(140px,1.5fr) .8fr 1fr 1fr 1.1fr 1fr;gap:8px;align-items:center;padding:8px 16px}
+.pl-head{font-size:9.5px;font-weight:800;letter-spacing:.06em;color:var(--tinta-3);border-bottom:1px solid var(--linha)}
+.pl-row{border-bottom:1px solid var(--linha);font-size:13px;font-weight:700;cursor:pointer}
+.pl-row:hover{background:var(--mod-2)}
+.pl-row .it{font-weight:800}
+.pl-row .sub{display:block;font-size:10px;color:var(--tinta-3);font-weight:700}
+.prod-n{font-size:15px;font-weight:800}
+.prod-n.urg{color:var(--coral)} .prod-n.aten{color:var(--ambar)} .prod-n.ok{color:var(--verde)}
+.pl-link{font-size:11.5px;font-weight:800;color:var(--acao);text-decoration:underline;cursor:pointer}
+.pl-pe{display:flex;gap:12px;align-items:center;padding:11px 16px;font-size:13px;font-weight:800}
+.selo{font-size:10px;font-weight:800;padding:2px 9px;border-radius:999px}
+.selo.ok{background:var(--verde-fundo);color:var(--verde)}
+footer{max-width:1440px;margin:0 auto;padding:0 26px 26px;font-size:11.5px;color:var(--tinta-3);text-align:center}
+</style>
+</head>
+<body>
+  <header class="topo">
+    <div class="marca"><div class="m">C</div><b>CAIXAOS</b><span class="lab" style="margin-left:2px">· caçula mix</span></div>
+    <span class="titulo-tela">🛒 Consumo &amp; Compras</span>
+    <span class="lab">tela própria no trilho — Produção fica intocada</span>
+    <div class="dir"><button class="tbt" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='light'?'':'light'">☀ / 🌙</button></div>
+  </header>
+
+  <main class="miolo">
+
+    <!-- ===== C7 · AGENDA DO COMPRADOR ===== -->
+    <section class="mod" aria-label="agenda do comprador">
+      <div class="mod-cab"><h2>A AGENDA DO COMPRADOR — PRÓXIMOS PEDIDOS</h2><span class="lab">pedido = chegada − prazo do fornecedor · toque abre o item</span></div>
+      <div class="agenda num" id="agenda"></div>
+    </section>
+
+    <!-- ===== listas + período ===== -->
+    <section class="mod" aria-label="listas e período">
+      <div class="linha-chips" style="padding-top:12px">
+        <button class="chip" id="ab0" onclick="aba(0)">🥩 OS CAROS</button>
+        <button class="chip" id="ab1" onclick="aba(1)">🍟 AS PORÇÕES</button>
+        <span style="flex:1"></span>
+        <span class="lab">ver por:</span>
+        <span class="chip mini">dia</span><span class="chip mini on">semana ✓</span>
+        <span class="chip mini">mês</span><span class="chip mini">📅 datas</span>
+      </div>
+      <div class="linha-chips" id="itens"></div>
+    </section>
+
+    <!-- ===== C3 · O ITEM, FUNDO ===== -->
+    <section class="mod" aria-label="o item em detalhe">
+      <div class="heroi">
+        <div class="bloco">
+          <div class="nome num" id="nome"></div>
+          <div class="forn num" id="forn"></div>
+          <div class="giga num" id="giga"></div>
+          <div class="delta num" id="delta"></div>
+          <svg class="spark8" id="spark8" viewBox="0 0 600 44" preserveAspectRatio="none" aria-label="últimas 8 semanas">
+            <path id="sp8f" fill="var(--acao)" opacity="0.10"></path>
+            <path id="sp8l" fill="none" stroke="var(--acao)" stroke-width="2.5"></path>
+          </svg>
+        </div>
+        <div class="bloco" style="max-width:420px" id="blocoCheg">
+          <div class="lab" style="margin-bottom:6px">DIAS DE CHEGADA (toque liga/desliga — grava na config do item)</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap" id="cheg"></div>
+          <div class="lab" style="margin-top:8px" id="antec"></div>
+        </div>
+      </div>
+      <div class="stats num" id="stats"></div>
+      <div class="barras num" id="barras"></div>
+      <div class="leg"><span><i style="background:var(--acao)"></i>esta semana</span><span><i style="border:1.5px dashed var(--linha-forte);background:transparent"></i>semana passada</span></div>
+      <div class="mod-cab" style="padding-top:2px"><h2>PARA ONDE FOI</h2><span class="lab">pela explosão do livro · toque abre a receita</span></div>
+      <div class="destinos num" id="dest"></div>
+    </section>
+
+    <!-- ===== C8 · MESA DE PEDIDO  /  C9 · PLANO DE PRODUÇÃO ===== -->
+    <section class="mod" aria-label="mesa de pedido ou plano de produção">
+      <div class="mod-cab"><h2 id="mesaTit"></h2><span class="lab" id="mesaSub"></span></div>
+      <div id="mesa" class="num"></div>
+    </section>
+
+    <div class="lab" style="padding:0 2px">
+      consumo = o livro (baixas + separações) · teórico = fichas × produção (portas do Real vs Teórico) · preço pago = entradas do livro ·
+      estoque = posição · custo = vigente · dia sem dado = "a apurar" · folga 10% · mínimo das porções = 3 dias × média · prazo por fornecedor na config
+    </div>
+  </main>
+
+  <footer>CONSUMO &amp; COMPRAS · REFERÊNCIA OFICIAL v3 — tela própria · mesa de pedido por fornecedor (sem prosa) · plano de produção das porções · herói do total · agenda do comprador · para onde foi · perda · preço pago — estudo: MarketMan, Choco, MarginEdge/Supy · aprovação do dono pendente</footer>
+
+<script>
+/* ===== AMOSTRA de referência — em prod: lib pura consumo-e-compras.ts ===== */
+var DIAS=["SEG","TER","QUA","QUI","SEX","SÁB","DOM"];
+var HOJE=4; /* amostra: sexta */
+var FOLGA=1.10, PAR_DIAS=3;
+var LISTAS=[
+ {itens:[
+  {n:"FRANGO",u:"KG",forn:"Frigorífico Silva",cheg:[0,2,4],antec:1,d:[3.2,2.8,3.5,4.1,6.8,8.2,5.9],g:[3.0,2.9,3.2,3.8,6.1,7.4,5.5],s8:[28,30,29,33,31,35,32,34.5],est:14.2,cust:14.9,pago:[14.9,13.8],perda:6.2,
+   dest:[["porção frango frito",11.2],["iscas de frango",8.4],["parmegiana de frango",6.1],["frango no prato",5.3],["outros",3.5]]},
+  {n:"ACÉM",u:"KG",forn:"Frigorífico Silva",cheg:[0],antec:2,d:[2.1,1.9,2.4,2.6,4.9,6.1,4.2],g:[2.0,2.0,2.2,2.4,4.5,5.6,4.0],s8:[20,21,19,22,23,22,24,24.2],est:9.8,cust:32.5,pago:[32.5,31.9],perda:3.1,
+   dest:[["beef de xis",9.8],["beef de hamburger",7.1],["alaminuta",4.9],["outros",2.4]]},
+  {n:"QUEIJO",u:"KG",forn:"Divine Alimentos",cheg:[0,3],antec:3,d:[4.5,4.0,4.8,5.5,9.2,11.4,8.1],g:[4.2,4.1,4.4,5.1,8.6,10.8,7.7],s8:[40,42,41,44,43,46,45,47.5],est:18.6,cust:38.0,pago:[38.0,36.2],perda:8.9,
+   dest:[["bases de pizza",19.8],["porção queijo 135g",9.4],["xis e lanches",8.7],["queijo empanado",5.2],["outros",4.4]]}
+ ]},
+ {itens:[
+  {n:"metade de bolinha",u:"UN",d:[18,15,19,22,38,46,33],g:[17,15,18,20,35,42,31],s8:[158,164,160,171,168,176,172,191],est:12,
+   dest:[["bases de pizza GRANDE",98],["bases FAMÍLIA",52],["bases PEQUENA",28],["outros",13]]},
+  {n:"porção de frango",u:"UN",d:[11,9,12,14,24,31,22],g:[10,9,11,13,22,28,21],s8:[98,104,101,110,108,115,112,123],est:38,
+   dest:[["vendido balcão/tele",96],["usado em pratos",18],["outros",9]]},
+  {n:"beef de xis",u:"UN",d:[14,12,15,18,31,39,27],g:[13,12,14,17,29,36,25],s8:[128,131,127,138,135,144,140,156],est:41,
+   dest:[["vendido (xis)",121],["combos",28],["outros",7]]}
+ ]}
+];
+var AB=0,IT=0,PEDIDO={};
+function f1(v){return v.toLocaleString("pt-BR",{maximumFractionDigits:1})}
+function fR(v){return "R$ "+Math.round(v).toLocaleString("pt-BR")}
+function media(it){return it.d.reduce(function(a,b){return a+b},0)/7}
+
+/* C6 — a conta do pedido (lib pura em prod) */
+function contaDoPedido(it){
+ if(!it.cheg||!it.cheg.length)return null;
+ var prox=null;for(var k=1;k<=7;k++){var dd=(HOJE+k)%7;if(it.cheg.indexOf(dd)>=0){prox={dia:dd,em:k};break}}
+ if(!prox)return null;
+ var seg=null;for(var k2=1;k2<=7;k2++){var d2=(prox.dia+k2)%7;if(it.cheg.indexOf(d2)>=0){seg={dia:d2,dur:k2};break}}
+ var jan=[];for(var j=0;j<seg.dur;j++)jan.push((prox.dia+j)%7);
+ var saiJanela=jan.reduce(function(s,dd){return s+it.d[dd]},0);
+ var precisa=saiJanela*FOLGA;
+ var saiAte=0;for(var c=0;c<prox.em;c++)saiAte+=it.d[(HOJE+c)%7];
+ var sobra=Math.max(0,it.est-saiAte);
+ var comprar=Math.max(0,precisa-sobra);
+ var pedirEm=prox.em-(it.antec||1);
+ return {prox:prox,jan:jan,saiJanela:saiJanela,precisa:precisa,saiAte:saiAte,sobra:sobra,comprar:comprar,pedirEm:pedirEm};
+}
+function diaPedir(p){return p.pedirEm<=0?"HOJE":DIAS[(HOJE+p.pedirEm)%7]}
+
+/* C9 — o plano (lib pura em prod) */
+function contaDoPlano(it){
+ var med=media(it);
+ var minimo=Math.ceil(med*PAR_DIAS);
+ var saiHoje=it.d[HOJE];
+ var produzir=Math.max(0,Math.ceil(minimo+saiHoje-it.est));
+ return {minimo:minimo,saiHoje:saiHoje,produzir:produzir};
+}
+
+function aba(a){AB=a;IT=0;draw()}
+function sel(i){IT=i;draw()}
+function abrir(a,i){AB=a;IT=i;draw();window.scrollTo({top:0,behavior:"smooth"})}
+function tgl(d){var it=LISTAS[0].itens[IT];var p=it.cheg.indexOf(d);if(p>=0)it.cheg.splice(p,1);else{it.cheg.push(d);it.cheg.sort()}PEDIDO={};draw()}
+function mais(n,delta){var it=LISTAS[0].itens[n];var c=contaDoPedido(it);if(!c)return;var atual=(PEDIDO[n]!=null?PEDIDO[n]:c.comprar);PEDIDO[n]=Math.max(0,Math.round((atual+delta)*10)/10);draw()}
+function copiar(id){
+ var el=document.getElementById(id);
+ try{navigator.clipboard.writeText(el.dataset.txt)}catch(e){}
+ el.classList.add("ok");el.textContent="✓ copiado";
+}
+function spark(it){
+ var a=it.s8,min=Math.min.apply(null,a),max=Math.max.apply(null,a);
+ var pts=a.map(function(v,i){return [i*(600/(a.length-1)),38-((v-min)/(max-min||1))*30]});
+ var d=pts.map(function(p,i){return (i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)}).join(' ');
+ document.getElementById("sp8l").setAttribute("d",d);
+ document.getElementById("sp8f").setAttribute("d",d+" L600,44 L0,44 Z");
+}
+
+function drawAgenda(){
+ var ag=LISTAS[0].itens.map(function(it,i){var c=contaDoPedido(it);return {i:i,n:it.n,u:it.u,c:c}})
+  .filter(function(x){return x.c&&(PEDIDO[x.i]!=null?PEDIDO[x.i]:x.c.comprar)>0})
+  .sort(function(a,b){return a.c.pedirEm-b.c.pedirEm});
+ document.getElementById("agenda").innerHTML='<span class="hoje">HOJE é '+DIAS[HOJE].toLowerCase()+' →</span>'+
+  ag.map(function(x){
+   var urg=x.c.pedirEm<=0;
+   return '<span class="a-chip'+(urg?" urg":"")+'" onclick="abrir(0,'+x.i+')">'+(urg?"⚠ pedir hoje":"pedir "+diaPedir(x.c))+' <b>'+x.n+'</b> · chega '+DIAS[x.c.prox.dia]+' · ~'+f1((PEDIDO[x.i]!=null?PEDIDO[x.i]:x.c.comprar))+' '+x.u+'</span>'
+  }).join("");
+}
+
+function drawMesa(){
+ var tit=document.getElementById("mesaTit"),sub=document.getElementById("mesaSub"),box=document.getElementById("mesa");
+ if(AB==0){
+  tit.textContent="A MESA DE PEDIDO — UM PEDIDO POR FORNECEDOR";
+  sub.textContent="PEDIR já vem com a folga de 10% · − / + ajusta · ⓘ = a conta em números · 📋 copia pro WhatsApp do fornecedor";
+  var grupos={};
+  LISTAS[0].itens.forEach(function(it,i){
+   var c=contaDoPedido(it);if(!c)return;
+   var k=(it.forn||"sem fornecedor")+"|"+c.prox.dia;
+   (grupos[k]=grupos[k]||{forn:it.forn,chega:c.prox.dia,rows:[]}).rows.push({i:i,it:it,c:c});
+  });
+  box.innerHTML=Object.keys(grupos).map(function(k,gi){
+   var g=grupos[k];
+   var pedirEmMin=Math.min.apply(null,g.rows.map(function(r){return r.c.pedirEm}));
+   var urg=pedirEmMin<=0;
+   var total=0;
+   var rows=g.rows.map(function(r){
+    var q=(PEDIDO[r.i]!=null?PEDIDO[r.i]:r.c.comprar);
+    var custoL=q*(r.it.pago?r.it.pago[0]:0);total+=custoL;
+    var uso=r.it.d.reduce(function(a,b){return a+b},0);
+    return '<div class="ped-row" onclick="sel('+r.i+')">'
+     +'<span class="it">'+r.it.n+'<span class="sub">pedir '+diaPedir(r.c)+'</span></span>'
+     +'<span class="uso">'+f1(uso)+' '+r.it.u+'<span class="sub">USO NA SEMANA</span></span>'
+     +'<span>'+f1(r.it.est)+' '+r.it.u+'<span class="sub">TEM AGORA</span></span>'
+     +'<span>'+f1(r.c.saiAte)+' '+r.it.u+'<span class="sub">SAI ATÉ CHEGAR</span></span>'
+     +'<span onclick="event.stopPropagation()"><span class="qtd"><button onclick="mais('+r.i+',-1)">−</button><span class="q">'+f1(q)+' '+r.it.u+'</span><button onclick="mais('+r.i+',1)">+</button></span><span class="sub">PRA NÃO FALTAR · JÁ COM +10%</span></span>'
+     +'<span class="dir">'+(r.it.pago?("R$ "+f1(r.it.pago[0])+"/"+r.it.u.toLowerCase()):"—")+'<span class="sub">PAGO ÚLT.</span></span>'
+     +'<span class="dir"><b>'+fR(custoL)+'</b><span class="sub">TOTAL</span></span>'
+     +'<span class="conta-i"><span class="ci">ⓘ cobre <b>'+r.c.jan.map(function(dd){return DIAS[dd].toLowerCase()}).join("+")+'</b></span>'
+     +'<span class="ci">sai na janela <b>'+f1(r.c.saiJanela)+' '+r.it.u+'</b></span>'
+     +'<span class="ci">folga <b>+10%</b></span>'
+     +'<span class="ci">precisa <b>'+f1(r.c.precisa)+' '+r.it.u+'</b></span>'
+     +'<span class="ci">sobra na chegada <b>'+f1(r.c.sobra)+' '+r.it.u+'</b></span>'
+     +'<span class="ci">→ pedir <b>'+f1(r.c.comprar)+' '+r.it.u+'</b></span></span>'
+     +'</div>';
+   }).join("");
+   var txt="Pedido Caçula Mix — "+(g.forn||"")+" (entrega "+DIAS[g.chega]+"): "
+    +g.rows.map(function(r){var q=(PEDIDO[r.i]!=null?PEDIDO[r.i]:r.c.comprar);return r.it.n+" "+f1(q)+" "+r.it.u}).join(" · ");
+   return '<div class="ped-card'+(urg?" urg":"")+'">'
+    +'<div class="ped-cab"><span class="fn">'+(g.forn||"sem fornecedor")+'</span><span class="mt">chega '+DIAS[g.chega]+' · '+g.rows.length+' item'+(g.rows.length>1?"s":"")+'</span>'
+    +'<span class="prazo">'+(urg?"⚠ PEDIR HOJE":"pedir até "+DIAS[(HOJE+pedirEmMin)%7])+'</span></div>'
+    +'<div class="ped-head"><span>ITEM</span><span>NA SEMANA</span><span>TEM AGORA</span><span>SAI ATÉ CHEGAR</span><span>PEDIR · JÁ COM +10%</span><span class="dir">PAGO ÚLT.</span><span class="dir">TOTAL</span></div>'
+    +rows
+    +'<div class="ped-pe"><span class="tot">'+fR(total)+' <small>o pedido inteiro</small></span>'
+    +'<button class="btn-copiar" id="cp'+gi+'" data-txt="'+txt.replace(/"/g,"&quot;")+'" onclick="copiar(\'cp'+gi+'\')">📋 copiar pedido</button></div>'
+    +'</div>';
+  }).join("");
+ } else {
+  tit.textContent="O PLANO DE PRODUÇÃO — O QUE PRODUZIR";
+  sub.textContent="mínimo = 3 dias × média · produzir = mínimo + saída de hoje − tem agora · toque abre o item";
+  var tot=0;
+  var rows=LISTAS[1].itens.map(function(it,i){return {i:i,it:it,p:contaDoPlano(it)}})
+   .sort(function(a,b){return b.p.produzir-a.p.produzir})
+   .map(function(r){
+    tot+=r.p.produzir;
+    var cls=r.p.produzir>r.p.minimo*0.5?"urg":r.p.produzir>0?"aten":"ok";
+    return '<div class="pl-row" onclick="sel('+r.i+')">'
+     +'<span class="it">'+r.it.n+'<span class="sub">sai '+f1(media(r.it))+'/dia na média</span></span>'
+     +'<span>'+f1(r.it.est)+' '+r.it.u+'<span class="sub">TEM AGORA</span></span>'
+     +'<span>'+r.p.minimo+' '+r.it.u+'<span class="sub">MÍNIMO (3 DIAS)</span></span>'
+     +'<span>~'+f1(r.p.saiHoje)+' '+r.it.u+'<span class="sub">SAI HOJE ('+DIAS[HOJE].toLowerCase()+')</span></span>'
+     +'<span class="prod-n '+cls+'">'+(r.p.produzir>0?"produzir ~"+r.p.produzir:"✓ no mínimo")+'</span>'
+     +'<span>'+(r.p.produzir>0?'<span class="pl-link">criar ordem →</span>':'<span class="selo ok">tranquilo</span>')+'</span>'
+     +'</div>';
+   }).join("");
+  box.innerHTML='<div class="pl-head"><span>PORÇÃO</span><span>TEM AGORA</span><span>MÍNIMO</span><span>SAI HOJE</span><span>PRODUZIR</span><span></span></div>'
+   +rows
+   +'<div class="pl-pe">o dia pede ~'+tot+' UN de produção<span class="lab" style="margin-left:auto">a ordem nasce na receita homônima — aqui só aponta</span></div>';
+ }
+}
+
+function draw(){
+ document.getElementById("ab0").className="chip"+(AB==0?" on":"");
+ document.getElementById("ab1").className="chip"+(AB==1?" on":"");
+ var L=LISTAS[AB].itens;
+ document.getElementById("itens").innerHTML=L.map(function(x,i){
+  return '<button class="chip'+(i==IT?" on":"")+'" onclick="sel('+i+')">'+x.n+'</button>'
+ }).join("")+'<button class="chip add">+ adicionar</button>';
+ var it=L[IT],tot=it.d.reduce(function(a,b){return a+b},0),ant=it.g.reduce(function(a,b){return a+b},0);
+ var med=tot/7,max=Math.max.apply(null,it.d.concat(it.g));
+ document.getElementById("nome").textContent=it.n;
+ document.getElementById("forn").textContent=it.forn?("fornecedor: "+it.forn+" · prazo do pedido: "+(it.antec||1)+" dia"+((it.antec||1)>1?"s":"")):"produzido na casa";
+ document.getElementById("giga").innerHTML=f1(tot)+" <small>"+it.u+" esta semana</small>";
+ var dpc=100*(tot-ant)/ant,up=dpc>=0;
+ document.getElementById("delta").className="delta num "+(up?"up":"down");
+ document.getElementById("delta").textContent=(up?"▲ +":"▼ ")+f1(dpc)+"% vs semana passada · média "+f1(med)+" "+it.u+"/dia";
+ spark(it);
+ var bc=document.getElementById("blocoCheg");
+ if(it.cheg){
+  bc.style.display="";
+  document.getElementById("cheg").innerHTML=DIAS.map(function(dn,di){
+   return '<button class="chip mini '+(it.cheg.indexOf(di)>=0?"dia-on":"")+'" onclick="tgl('+di+')">'+dn+'</button>'}).join("");
+  var p=contaDoPedido(it);
+  document.getElementById("antec").textContent=p?("próxima chegada: "+DIAS[p.prox.dia]+" (em "+p.prox.em+" dia"+(p.prox.em>1?"s":"")+") · pedir "+diaPedir(p)):"liga pelo menos um dia de chegada";
+ } else bc.style.display="none";
+ var cob=it.est/med;
+ var stats='<div class="stat"><div class="l">NO ESTOQUE AGORA</div><div class="n">'+f1(it.est)+' '+it.u+'</div><div class="s">pela posição</div></div>'
+  +'<div class="stat"><div class="l">COBERTURA</div><div class="n" style="color:'+(cob<2?"var(--coral)":cob<4?"var(--ambar)":"var(--verde)")+'">'+f1(cob)+' dias</div><div class="s">'+(cob<2?"acaba antes da chegada":cob<4?"apertado":"tranquilo")+'</div></div>';
+ if(AB==0){
+  stats+='<div class="stat"><div class="l">CUSTO DA SEMANA</div><div class="n">'+fR(tot*it.cust)+'</div><div class="s">pelo vigente</div></div>';
+  var pd=100*(it.pago[0]-it.pago[1])/it.pago[1];
+  stats+='<div class="stat"><div class="l">PREÇO PAGO</div><div class="n">R$ '+f1(it.pago[0])+'</div><div class="s">'+(pd>=0?"▲ +":"▼ ")+f1(pd)+'% vs média das 4 últimas</div></div>';
+  stats+='<div class="stat"><div class="l">PERDA (REAL × TEÓRICO)</div><div class="n" style="color:'+(it.perda>8?"var(--coral)":it.perda>4?"var(--ambar)":"var(--verde)")+'">'+f1(it.perda)+'%</div><div class="s">portas do Real vs Teórico</div></div>';
+ } else {
+  var pl=contaDoPlano(it);
+  stats+='<div class="stat"><div class="l">ESTOQUE MÍNIMO</div><div class="n">'+pl.minimo+' '+it.u+'</div><div class="s">3 dias × média</div></div>'
+   +'<div class="stat"><div class="l">SAI HOJE ('+DIAS[HOJE]+')</div><div class="n">~'+f1(pl.saiHoje)+' '+it.u+'</div><div class="s">média das '+DIAS[HOJE].toLowerCase()+'</div></div>'
+   +'<div class="stat"><div class="l">PRODUZIR</div><div class="n" style="color:'+(pl.produzir>0?"var(--coral)":"var(--verde)")+'">'+(pl.produzir>0?"~"+pl.produzir+" "+it.u:"✓ ok")+'</div><div class="s">mínimo + hoje − tem</div></div>';
+ }
+ document.getElementById("stats").innerHTML=stats;
+ document.getElementById("barras").innerHTML=it.d.map(function(v,i){
+  var top=(i==4||i==5);
+  return '<div class="bar'+(top?" top":"")+'"><span class="v">'+f1(v)+'</span>'
+   +'<div class="par-b"><span class="g" style="height:'+Math.round(it.g[i]/max*100)+'%"></span><span class="b" style="height:'+Math.round(v/max*100)+'%"></span></div>'
+   +'<span class="d">'+["seg","ter","qua","qui","sex","sáb","dom"][i]+'</span></div>'}).join("");
+ var dmax=Math.max.apply(null,it.dest.map(function(x){return x[1]}));
+ var dtot=it.dest.reduce(function(s,x){return s+x[1]},0);
+ document.getElementById("dest").innerHTML=it.dest.map(function(x){
+  return '<div class="dest"><span class="nm">'+x[0]+'</span><span class="tr"><span style="width:'+Math.round(x[1]/dmax*100)+'%"></span></span><span class="vv">'+f1(x[1])+' '+it.u+' <small>· '+Math.round(100*x[1]/dtot)+'%</small></span></div>'}).join("");
+ drawAgenda();
+ drawMesa();
+}
+draw();
+</script>
+</body>
+</html>

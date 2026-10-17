@@ -5028,6 +5028,40 @@ model StockReceitaPrincipal {
   @@map("stock_receita_principal")
 }
 
+/// ⭐⭐ A CONFIG DE COMPRA POR ITEM — a lei C5 da tela CONSUMO & COMPRAS (16/10).
+///
+/// Por item dos 🥩 CAROS o dono declara os **dias de CHEGADA**, a **antecedência** do pedido
+/// (prazo do fornecedor), o **fornecedor** e a **folga %**. Sem isso a conta do pedido não
+/// existe — *"pedido que chega dia X cobre de X até a PRÓXIMA chegada"* precisa dos dias.
+///
+/// ⚠️ `companyId` é VALOR indexado, **sem `@relation`** (REGRA 8 do módulo): migration de
+/// estoque não referencia tabela fechada. Item sem config aparece na lista e fica FORA da
+/// mesa de pedido, com o aviso *"configura os dias de chegada"*.
+model StockCompraConfig {
+  id        String @id @default(cuid())
+  companyId String
+  itemId    String // stock_item
+  /// CSV SEG-first dos dias em que a mercadoria CHEGA (`"0,2,4"` = SEG/QUA/SEX).
+  /// ⭐ `''` = nenhum dia configurado — e o CHECK valida a FORMA (`^$|^[0-6](,[0-6])*$`),
+  /// nunca o vocabulário (a cicatriz de 21/09: lista fechada no banco virou parede em 1 dia).
+  /// ⛔ CSV e não `Int[]`: array do Postgres não existe no SQLite do dev, e código que só
+  /// compila num dos dois bancos é a divergência dev×prod de 28/08.
+  diasChegada String @default("")
+  /// quantos dias ANTES da chegada o pedido tem que sair (prazo do fornecedor)
+  antecedenciaDias Int @default(1)
+  fornecedor       String?
+  /// a folga em PONTOS PERCENTUAIS (10 = +10%); a lib converte pro fator 1,10
+  folgaPct Int @default(10)
+  /// ⚠️ rastro: config de COMPRA tem autor e data — é por isso que ela não é coluna em
+  /// `stock_item` (além de ALTER ser proibido em migration `stock_`).
+  definidoPorId String?
+  definidoEm    DateTime @default(now())
+
+  @@unique([companyId, itemId]) // salvar 2× é UPDATE, nunca uma 2ª config que divirja
+  @@index([companyId])
+  @@map("stock_compra_config")
+}
+
 model StockFichaRetalho {
   id            String   @id @default(cuid())
   companyId     String
