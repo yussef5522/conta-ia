@@ -61,6 +61,39 @@ const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const round3 = (n: number) => Math.round((n + 1e-9) * 1000) / 1000
 
 /**
+ * ⭐⭐⭐ O CONSUMO **POR DIA DE CALENDÁRIO** — extraído de dentro do `consumoDoItem` em 16/10,
+ * **sem mudar o comportamento dele** (ele passou a ser um consumidor que soma a janela).
+ *
+ * ⛔⛔ A extração existe porque a tela CONSUMO & COMPRAS faz a MESMA pergunta com outro
+ * recorte: ela precisa do consumo **por dia-da-semana** pra montar a conta do pedido. Escrever
+ * o laço dos baldes lá seria a **2ª derivação de "o que conta como consumo"**, e as duas
+ * divergiriam no primeiro tipo de movimento novo — a doença que esta casa mais paga (os 7
+ * detectores de par, as 2 cópias do FITID, o `recomputeVendas` corrigido em dias diferentes).
+ *
+ * ⚠️ **Devolve valores CRUS, sem arredondar e sem clamp em zero.** Quem soma arredonda no fim:
+ * arredondar por dia e somar depois dá um total diferente de arredondar o total (o resíduo de
+ * 3 casas do módulo, a cicatriz do custo do pão), e o `Math.max(0, …)` é do TOTAL — um dia
+ * isolado PODE ser negativo quando o estorno de uma baixa cai num dia depois dela.
+ */
+export function consumoPorDiaDoItem(movs: readonly MovimentoParaConsumo[]): Map<string, number> {
+  const porDia = new Map<string, number>()
+  for (const m of movs) {
+    // ⭐ o estorno conta pelo tipo que ele DESFEZ, com o sinal invertido
+    const base = m.estornoDeTipo ?? m.tipo
+    const sinal = m.estornoDeTipo ? -1 : 1
+    // ⚠️ o SINAL do ledger (saída é negativa) não importa aqui: o consumo é POSITIVO por
+    //    definição, e quem decide somar ou subtrair é o BALDE do tipo.
+    let delta = 0
+    if (TIPOS_DE_CONSUMO.has(base)) delta = sinal * Math.abs(m.quantidade)
+    else if (TIPOS_QUE_VOLTAM.has(base)) delta = -sinal * Math.abs(m.quantidade)
+    else continue
+    const d = dia(m.data)
+    porDia.set(d, (porDia.get(d) ?? 0) + delta)
+  }
+  return porDia
+}
+
+/**
  * ⭐ O CONSUMO MÉDIO DIÁRIO, pela janela.
  *
  * ⚠️ `agora` é PARÂMETRO — o relógio não decide nada aqui dentro (régua da casa desde 13/08:
@@ -69,15 +102,9 @@ const round3 = (n: number) => Math.round((n + 1e-9) * 1000) / 1000
 export function consumoDoItem(movs: MovimentoParaConsumo[], agora: Date, janelaDias = JANELA_CONSUMO_DIAS): ConsumoDoItem {
   const desde = dia(new Date(agora.getTime() - janelaDias * 86_400_000).toISOString())
   let total = 0
-  for (const m of movs) {
-    if (dia(m.data) < desde) continue
-    // ⭐ o estorno conta pelo tipo que ele DESFEZ, com o sinal invertido
-    const base = m.estornoDeTipo ?? m.tipo
-    const sinal = m.estornoDeTipo ? -1 : 1
-    // ⚠️ o SINAL do ledger (saída é negativa) não importa aqui: o consumo é POSITIVO por
-    //    definição, e quem decide somar ou subtrair é o BALDE do tipo.
-    if (TIPOS_DE_CONSUMO.has(base)) total += sinal * Math.abs(m.quantidade)
-    else if (TIPOS_QUE_VOLTAM.has(base)) total -= sinal * Math.abs(m.quantidade)
+  for (const [d, v] of consumoPorDiaDoItem(movs)) {
+    if (d < desde) continue
+    total += v
   }
   const consumo = round3(Math.max(0, total))
   return {

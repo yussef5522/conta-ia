@@ -51,6 +51,23 @@ export interface FatosDoRadar {
    * pelo MESMO `vereditoDoDia` que pinta o selo da tela — nunca uma régua nova).
    */
   importacao: { diasQuePedemAcao: number; diaMaisAntigo: string | null }
+  /**
+   * ⭐⭐ COMPRAS (lei C14, 16/10) — os dois fatos que a tela CONSUMO & COMPRAS já calcula, pelo
+   * MESMO `contaDoPedido`/`farolDaCobertura` que a mesa de pedido desenha.
+   *
+   * ⛔ O radar **traduz**, nunca decide: se ele perguntasse "este item precisa de pedido?" por
+   * conta própria, o alarme e a mesa divergiriam no primeiro ajuste da folga — e o dono veria
+   * um item coral aqui que a mesa mostra em ordem.
+   *
+   * ⚠️ `compras: null` = a tela ainda não tem listas (ou a leitura falhou) → as duas linhas
+   * saem como **A APURAR**, nunca como "nenhum". *Ausência de medição não é ausência de fato.*
+   */
+  compras: {
+    /** itens com `pedirEm <= 0` e `pedir > 0` — o pedido que já devia ter saído */
+    pedidoDeHojeNaoFeito: { quantos: number; primeiro: string | null }
+    /** itens cuja cobertura acaba ANTES da próxima chegada possível (farol CORAL) */
+    coberturaCoral: { quantos: number; primeiro: string | null }
+  } | null
 }
 
 const brl = (n: number) =>
@@ -153,7 +170,99 @@ export function montarRadar(f: FatosDoRadar): LinhaDoRadar[] {
       gravidade: f.importacao.diasQuePedemAcao > 0 ? 'CORAL' : 'VERDE',
       href: `${base}/estoque/vendas`,
     },
+
+    /**
+     * ⭐⭐ PEDIDO DE HOJE NÃO FEITO é CORAL — e aqui o coral é o certo, ao contrário do item
+     * negativo: o dia do pedido **não volta**. Se o pedido sai amanhã, a mercadoria chega um
+     * ciclo depois, e o furo no balcão já aconteceu.
+     *
+     * ⚠️ ANTI-SPAM pela própria conta: só entra item com `pedir > 0`. Item configurado que não
+     * precisa de nada hoje **não acende** — e é isso que mantém a linha legível no dia em que
+     * o dono configurar trinta itens.
+     */
+    {
+      id: 'pedido-de-hoje',
+      rotulo: 'Pedido pra hoje',
+      valor:
+        f.compras == null
+          ? 'a apurar'
+          : f.compras.pedidoDeHojeNaoFeito.quantos > 0
+            ? String(f.compras.pedidoDeHojeNaoFeito.quantos)
+            : 'nenhum',
+      detalhe:
+        f.compras == null
+          ? 'as listas de compra ainda não foram montadas'
+          : f.compras.pedidoDeHojeNaoFeito.quantos > 0
+            ? f.compras.pedidoDeHojeNaoFeito.primeiro
+              ? `${f.compras.pedidoDeHojeNaoFeito.primeiro} e outros — o dia do pedido não volta`
+              : 'o dia do pedido não volta'
+            : null,
+      gravidade:
+        f.compras == null
+          ? 'AMBAR'
+          : f.compras.pedidoDeHojeNaoFeito.quantos > 0
+            ? 'CORAL'
+            : 'VERDE',
+      href: `${base}/estoque/consumo-e-compras`,
+    },
+
+    /**
+     * ⭐ COBERTURA CORAL = o item **acaba antes da próxima chegada possível**, pelo
+     * `farolDaCobertura` (lei C13). ⚠️ O degrau é relativo à CHEGADA, nunca um número fixo de
+     * dias: 2 dias de cobertura é tranquilo pra quem recebe todo dia e é incêndio pra quem
+     * recebe só na segunda — e um limiar fixo calaria justo no segundo caso.
+     *
+     * ⚠️ ÂMBAR, não coral: ela é a **consequência** do pedido não feito, e as duas linhas
+     * acenderiam juntas no mesmo item. Dois corais pro mesmo fato é o que faz o dono parar de
+     * ler o radar (*uma causa, um alarme*).
+     */
+    {
+      id: 'cobertura-coral',
+      rotulo: 'Acaba antes de chegar',
+      valor:
+        f.compras == null
+          ? 'a apurar'
+          : f.compras.coberturaCoral.quantos > 0
+            ? String(f.compras.coberturaCoral.quantos)
+            : 'nenhum',
+      detalhe:
+        f.compras == null
+          ? 'as listas de compra ainda não foram montadas'
+          : f.compras.coberturaCoral.quantos > 0
+            ? f.compras.coberturaCoral.primeiro
+              ? `${f.compras.coberturaCoral.primeiro} — a cobertura não alcança a próxima chegada`
+              : 'a cobertura não alcança a próxima chegada'
+            : null,
+      gravidade:
+        f.compras == null
+          ? 'AMBAR'
+          : f.compras.coberturaCoral.quantos > 0
+            ? 'AMBAR'
+            : 'VERDE',
+      href: `${base}/estoque/consumo-e-compras`,
+    },
   ]
+}
+
+/**
+ * ⭐⭐ OS FATOS DE COMPRA, DERIVADOS DA LEITURA DA TELA — tradutor, zero conta nova.
+ *
+ * ⛔ Ele recebe o que `lerConsumoECompras` já devolveu (a agenda e o farol de cada linha) e
+ * **só conta**. É o que garante que o radar e a mesa nunca discordem: o alarme nasce do MESMO
+ * `contaDoPedido` que desenhou o card.
+ */
+export function fatosDeCompra(input: {
+  agenda: readonly { nome: string; pedirEm: number; pedir: number }[]
+  caros: readonly { nome: string; farol: string }[]
+}): NonNullable<FatosDoRadar['compras']> {
+  // ⚠️ `pedirEm <= 0` e não `=== 0`: antecedência maior que a distância até a chegada significa
+  //    que o pedido JÁ DEVIA TER SAÍDO — a mesma régua do `diaPedir` (lei C6).
+  const atrasados = input.agenda.filter((a) => a.pedirEm <= 0 && a.pedir > 0)
+  const corais = input.caros.filter((c) => c.farol === 'CORAL')
+  return {
+    pedidoDeHojeNaoFeito: { quantos: atrasados.length, primeiro: atrasados[0]?.nome ?? null },
+    coberturaCoral: { quantos: corais.length, primeiro: corais[0]?.nome ?? null },
+  }
 }
 
 /** ⚠️ formata do TEXTO, nunca de `new Date(dia)` — em fuso negativo isso volta um dia */

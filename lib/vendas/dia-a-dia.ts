@@ -265,7 +265,17 @@ export interface MediaDoDiaDaSemana {
  * construção. É a mesma régua do `diaTipico`, pelo mesmo motivo medido em prod (a terça de hoje
  * puxando a média da terça pra baixo).
  */
-export function mediaPorDiaDaSemana(dias: DiaDeVenda[], hoje: string): MediaDoDiaDaSemana[] {
+/**
+ * ⚠️ O PARÂMETRO É O MÍNIMO ESTRUTURAL, não `DiaDeVenda` — ela só lê `dia`, `diaDaSemana` e
+ * `total`. Alargado em 16/10 pra a tela CONSUMO & COMPRAS poder fazer a MESMA pergunta sobre
+ * **consumo** (que não é venda e não tem fonte, nem bloco, nem calor): exigir o objeto inteiro
+ * obrigaria a fabricar um `DiaDeVenda` falso com `fonte: 'PDV'` — ou, pior, a escrever a 2ª
+ * média por dia-da-semana. ⛔ `DiaDeVenda[]` continua satisfazendo o tipo: zero regressão.
+ */
+export function mediaPorDiaDaSemana(
+  dias: readonly { dia: string; diaDaSemana: number; total: number | null }[],
+  hoje: string,
+): MediaDoDiaDaSemana[] {
   const medidos = dias.filter((d) => d.total != null && d.dia < hoje)
   const porDow = new Map<number, number[]>()
   for (const d of medidos) {

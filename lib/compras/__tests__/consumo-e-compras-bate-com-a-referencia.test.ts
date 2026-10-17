@@ -221,7 +221,7 @@ describe('⭐⭐⭐ consumo-e-compras bate com a referência', () => {
     const a = amostra('FRANGO')
     const base = comoItem(a)
     // a terça entra na janela do FRANGO — sem média dela, a conta não existe
-    const media = [...base.mediaPorDia]
+    const media: (number | null)[] = [...base.mediaPorDia]
     media[1] = null
     const c = contaDoPedido({ ...base, mediaPorDia: media }, HOJE)
     expect(c.ok).toBe(false)

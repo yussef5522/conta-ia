@@ -36,6 +36,18 @@ export const CAMINHO_DA_FUNDACAO = 'docs/cara-do-sistema-referencia.html'
  * TOKENS continuam sob a fundação (`CAMINHO_DA_FUNDACAO`) — em conflito, a fundação vence.
  */
 export const CAMINHO_DO_DASHBOARD = 'docs/dashboard-referencia.html'
+/**
+ * ⭐⭐ A referência de 🛒 CONSUMO & COMPRAS (16/10) — a lei do VISUAL, do COMPORTAMENTO **e da
+ * MATEMÁTICA** da tela nova: os comentários do CSS são as leis C0–C15 e o `<script>` é a
+ * especificação de `contaDoPedido`/`contaDoPlano` (a lib pura leva os MESMOS nomes).
+ *
+ * ⛔⛔ **ELA É DARK-FIRST**, como a do dashboard: o `:root` cru carrega o ESCURO e o
+ * `:root[data-theme="light"]` o CLARO. ⚠️ Os campos `valores`/`valoresEscuros` do leitor
+ * recortam *"tudo antes do 1º `@media`"*, então **os dois blocos caem no mesmo recorte e o
+ * último sobrescreve o primeiro** — por isso o guard DELA lê por SELETOR (`paletaDoSeletor`).
+ * *Quem sabe se o arquivo é claro-first ou dark-first é o guard dele*, não o leitor comum.
+ */
+export const CAMINHO_DE_CONSUMO_E_COMPRAS = 'docs/consumo-e-compras-referencia.html'
 
 export interface ReferenciaVisual {
   /** o arquivo inteiro */

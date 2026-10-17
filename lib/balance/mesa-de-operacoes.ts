@@ -49,7 +49,8 @@ import { avisosAbertos } from '@/lib/avisos/central'
 
 import { serieDeSaldo, type SerieDeSaldo } from './serie-de-saldo'
 import { montarPagaXEntra, type PagaXEntra, type ContaAgendada } from './paga-x-entra'
-import { montarRadar, placarDoRadar, type LinhaDoRadar } from './radar-da-mesa'
+import { montarRadar, placarDoRadar, fatosDeCompra, type LinhaDoRadar } from './radar-da-mesa'
+import { lerConsumoECompras } from '@/lib/compras/leitura'
 import { montarFita, type EventoDaFita } from './fita-do-dia'
 import { montarPregao, type PregaoDoMes } from './pregao-do-mes'
 
@@ -135,6 +136,12 @@ export async function lerMesaDeOperacoes(
     venceHoje, central, cozinha, lotesDeHoje, diasDeVenda,
     /** ⭐ os três baldes da fita que faltavam até 15/10 — cada um da porta do assunto */
     carimbos, pagasHoje, avisos,
+    /**
+     * ⭐⭐ A LEITURA DE COMPRAS (lei C14, 16/10) — ela entra NO FIM do array de propósito.
+     * ⚠️ Inserir no meio desloca TODO o destructuring, e foi exatamente esse o erro que o
+     * `tsc` pegou quando as portas de 15/10 nasceram (ver a nota acima).
+     */
+    compras,
   ] = await Promise.all([
       porta('o caixa', () => serieDeSaldo(empresaId, { dias: 30 }, agora, db), falhas),
       porta('o pregão do mês', () => lerMargem(empresaId, 'MES', agora, {}, db), falhas),
@@ -298,6 +305,21 @@ export async function lerMesaDeOperacoes(
       ),
       /** ⭐ os avisos do sininho — a MESMA `avisosAbertos` que o painel dele lê */
       porta('os avisos do dia', () => avisosAbertos(empresaId, db), falhas),
+      /**
+       * ⭐⭐ AS COMPRAS — a MESMA `lerConsumoECompras` que desenha a tela, nunca uma régua de
+       * alarme própria. ⛔ Se o radar perguntasse "precisa pedir?" por conta própria, ele e a
+       * mesa de pedido divergiriam no primeiro ajuste de folga, e o dono veria um item coral
+       * aqui que a tela mostra em ordem.
+       *
+       * ⚠️ O período é **SEMANA** porque o radar fala do que pede a mão HOJE; a conta do
+       * PEDIDO não depende disso (a baseline de 28 dias é independente do seletor, lei C6) —
+       * o período só governa a coluna "no período" dos cards, que o radar nem lê.
+       */
+      porta(
+        'as compras',
+        () => lerConsumoECompras({ companyId: empresaId, empresa: '', periodo: 'SEMANA', agora }, db),
+        falhas,
+      ),
     ])
 
   const medias = diasDeVenda ? mediaPorDiaDaSemana(diasDeVenda, hoje) : []
@@ -408,6 +430,14 @@ export async function lerMesaDeOperacoes(
             diaMaisAntigo: pedem.length > 0 ? pedem[pedem.length - 1].dia : null,
           }
         })(),
+        /**
+         * ⭐ Os dois fatos de compra saem do `fatosDeCompra`, que só CONTA o que a leitura já
+         * devolveu. ⚠️ `null` quando a porta falhou ou não há listas → as linhas dizem
+         * **"a apurar"**, nunca "nenhum" (*ausência de medição não é ausência de fato*).
+         */
+        compras: compras
+          ? fatosDeCompra({ agenda: compras.agenda, caros: compras.caros })
+          : null,
       })
       return { linhas, placar: placarDoRadar(linhas) }
     })(),

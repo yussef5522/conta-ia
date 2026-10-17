@@ -280,3 +280,34 @@ export function textoDoPedido(input: {
 export function fmt1(v: number): string {
   return v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })
 }
+
+/**
+ * ⭐⭐ O − / + DA MESA (lei C8) — e ele mora na LIB porque é **aritmética de PEDIDO**.
+ *
+ * ⚠️ A tela ajusta ao vivo (o dono mexe o número antes de copiar pro WhatsApp), então o
+ * servidor não tem como saber o valor final — mas a RÉGUA do ajuste pode ser provada aqui em
+ * vez de viver num `onClick`: *regra que mora num `onClick` é regra que ninguém prova* (a
+ * cicatriz do prefill do cardápio, que quebrou 2× antes de virar função).
+ *
+ * ⛔ **Nunca abaixo de zero** — pedido negativo não existe, e um `-1` escapando faria o texto
+ * do WhatsApp pedir quantidade negativa ao fornecedor.
+ */
+export function ajustarQuantidade(atual: number, delta: number): number {
+  return Math.max(0, Math.round((atual + delta) * 10) / 10)
+}
+
+/**
+ * ⭐⭐ O TOTAL DO CARD — **UMA régua, DOIS leitores** (o servidor na leitura, a tela no ajuste).
+ *
+ * ⛔⛔ O total só existe se **TODA** linha tem preço: somar tratando `null` como 0 daria um
+ * total MENOR que a verdade, e ele é o número que o dono leva pro fornecedor. ⚠️ E é por isso
+ * que ela é compartilhada — com o servidor somando por uma régua e o − / + por outra, o card
+ * mostraria um total ao abrir e outro depois do primeiro clique.
+ */
+export function totalDoCard(
+  linhas: readonly { quantidade: number; precoPago: number | null }[],
+): number | null {
+  if (!linhas.length) return null
+  if (linhas.some((l) => l.precoPago == null)) return null
+  return round2(linhas.reduce((s, l) => s + l.quantidade * (l.precoPago as number), 0))
+}

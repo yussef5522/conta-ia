@@ -134,13 +134,54 @@ describe('⛔⛔ NENHUMA SEGUNDA IMPLEMENTAÇÃO NO PROJETO', () => {
     expect(fora, `o charme nasceu de novo em: ${fora.join(', ')}`).toEqual([])
   })
 
+  /**
+   * ⚠️⚠️ ESTE DETECTOR FICOU VERMELHO CONTRA CÓDIGO CERTO (16/10) e foi REAPONTADO, não
+   * afrouxado. A régua media o NOME (`function farol*`) e mordeu o `farolDaCobertura` de
+   * `lib/compras/consumo-e-compras.ts` — que é o farol de **DIAS DE ESTOQUE** (coral quando
+   * acaba antes da próxima chegada), outra pergunta, outro domínio, outra entrada
+   * (`cobertura, chegaEm` — nunca custo nem preço).
+   *
+   * ⛔ E a saída NÃO foi pôr a lib de compras em `DONOS_LEGITIMOS`: aquela lista significa
+   * *"quem pode falar de veredito de PREÇO"*, e a lib de compras não pode nem deveria — entrar
+   * nela abriria a porta pra um farol de CMV nascer lá dentro de graça.
+   *
+   * ⭐ O que morde agora é o ASSUNTO, na ASSINATURA: farol que recebe custo/preço/cmv/margem é
+   * o farol do CMV; homônimo de outro domínio não é. ***Guard largo demais reprova o certo e
+   * ensina a afrouxar*** (a lição do `.sort()` do Radar, 21/09) — e ele ficou mais forte, porque
+   * deixou de depender de o autor escolher a palavra "farol".
+   *
+   * ⚠️ A assinatura, nunca o corpo "por perto": janela de distância já produziu falso vermelho
+   * E falso verde nesta casa oito vezes.
+   */
+  function faroisDeCmv(src: string): string[] {
+    const achados: string[] = []
+    const re = /(?:function\s+(farol\w*)|const\s+(farol\w*)\s*=\s*)\(([^)]*)\)/g
+    for (const m of src.matchAll(re)) {
+      const nome = m[1] ?? m[2] ?? '?'
+      if (/custo|preco|preço|cmv|margem/i.test(m[3] ?? '')) achados.push(nome)
+    }
+    return achados
+  }
+
   it('⛔ só a porta define o FAROL do CMV', () => {
-    const fora = arquivos.filter(
-      (f) =>
-        !DONOS_LEGITIMOS.has(f) &&
-        /function\s+farol\w*|const\s+farol\w*\s*=\s*\(/.test(limpa(f)),
-    )
-    expect(fora, `o farol nasceu de novo em: ${fora.join(', ')}`).toEqual([])
+    const fora = arquivos.filter((f) => !DONOS_LEGITIMOS.has(f) && faroisDeCmv(limpa(f)).length > 0)
+    expect(fora, `o farol do CMV nasceu de novo em: ${fora.join(', ')}`).toEqual([])
+  })
+
+  it('⭐ AUTO-TESTE — o farol pega o do CMV e NÃO morde homônimo de outro domínio', () => {
+    // ⭐ o defeito que o guard existe pra pegar
+    expect(faroisDeCmv('function farolLocal(custo: number, preco: number) { return custo/preco }')).toEqual([
+      'farolLocal',
+    ])
+    expect(faroisDeCmv('const farolDaMargem = (cmvPct: number) => cmvPct > 0.33')).toEqual([
+      'farolDaMargem',
+    ])
+    // ⚠️ e NÃO morde o farol de COBERTURA (dias de estoque), que é outra pergunta
+    expect(
+      faroisDeCmv(
+        'export function farolDaCobertura(cobertura: number | null, chegaEm: number | null) { return 1 }',
+      ),
+    ).toEqual([])
   })
 
   it('⛔ só a porta tem o mapa de teto por categoria', () => {

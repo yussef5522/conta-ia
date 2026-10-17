@@ -31,6 +31,7 @@ import {
   UtensilsCrossed,
   Factory,
   ShoppingCart,
+  ShoppingBasket,
   Package,
   FileText,
   Settings,
@@ -607,6 +608,21 @@ export function GlobalSidebar({ onNavigate, naGaveta }: GlobalSidebarProps) {
               label="Produção"
               href={`/empresas/${empresaAtiva}/estoque/producao`}
               isActive={/^\/empresas\/[^/]+\/estoque\/producao(?!\/cadastros)/.test(pathname)}
+              onClick={onNavigate}
+            />
+            {/* ⭐⭐ 🛒 CONSUMO & COMPRAS (16/10) — tela PRÓPRIA, logo abaixo de Produção
+                (lei C0 da referência). ⛔ Ela NÃO entra dentro de Produção: *"a tela de
+                Produção fica INTOCADA"* — e um subitem ali faria a pergunta do COMPRADOR
+                (quanto pedir) morar na casa de quem COZINHA.
+                ⚠️ Ícone PRÓPRIO (`ShoppingBasket`): `ShoppingCart` já é o de "Vendas
+                (Suitable)", e dois itens com o mesmo ícone no mesmo grupo matam o
+                reconhecimento, que é a razão de o ícone existir. */}
+            <SidebarItem
+          perm="stock.view"
+              icon={ShoppingBasket}
+              label="Consumo & Compras"
+              href={`/empresas/${empresaAtiva}/estoque/consumo-e-compras`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/consumo-e-compras/.test(pathname)}
               onClick={onNavigate}
             />
             {/* ⭐ A JANELA DA COZINHA (06/09) — `stock.executar`, a chave mais fraca do
