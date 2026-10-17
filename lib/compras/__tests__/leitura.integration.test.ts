@@ -320,3 +320,38 @@ describe('⭐ O HERÓI (lei C3) — spark e barras com o ghost', () => {
     expect(comGhost.every((b) => b.ghost === 2)).toBe(true)
   })
 })
+
+/**
+ * ⭐⭐ O NOME DA EMPRESA VAI APARADO — achado na PROVA EM PROD, não no código.
+ *
+ * O cadastro da Caçula está gravado como `"caçula mix "`, com espaço no fim (a cicatriz da conta
+ * `'sicredi '`, 25/08). ⚠️ Esse nome é o **cabeçalho do texto que o FORNECEDOR recebe** no
+ * WhatsApp — e o `−/+` da mesa remonta esse texto no cliente, então o espaço sairia na mensagem.
+ */
+describe('⭐ o nome da empresa vai APARADO (o espaço do cadastro não vai pro WhatsApp)', () => {
+  it('apara o espaço do cadastro, mesmo quando as listas estão vazias', async () => {
+    const vazia = await lerConsumoECompras(
+      { companyId, empresa: '  caçula mix  ', periodo: 'SEMANA', agora: AGORA },
+      prisma,
+    )
+    expect(vazia.empresa).toBe('caçula mix')
+  })
+
+  /**
+   * ⚠️ OS DOIS CAMINHOS, de propósito: `lerConsumoECompras` tem **dois `return`** (o atalho de
+   * lista vazia e o cheio). Cobrir um só deixaria o outro livre pra voltar a mandar o espaço —
+   * é a família do *"N caminhos, 1 esquecido"* que esta casa mais paga.
+   */
+  it('apara também no caminho CHEIO (com item na lista)', async () => {
+    const id = await item('FRANGO')
+    await porNaLista({ companyId, itemId: id, lista: 'CAROS' }, prisma)
+    await baixa(id, 2, 1)
+    const cheia = await lerConsumoECompras(
+      { companyId, empresa: 'caçula mix ', periodo: 'SEMANA', agora: AGORA },
+      prisma,
+    )
+    expect(cheia.caros.length).toBeGreaterThan(0)
+    expect(cheia.empresa).toBe('caçula mix')
+  })
+})
+

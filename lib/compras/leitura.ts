@@ -236,6 +236,15 @@ export interface ConsumoECompras {
  * ⚠️ `agora` é PARÂMETRO (régua da casa desde 13/08): o relógio serve pra dizer "hoje" na tela,
  * nunca pra decidir por dentro. Ele entra UMA vez (`hojeBrasil`) e vira `hojeSegPrimeiro`.
  */
+/**
+ * ⭐ O nome da empresa APARADO — e isto não é preciosismo: medido em prod, o cadastro da Caçula
+ * está gravado como `"caçula mix "`, **com espaço no fim** (a cicatriz da conta `'sicredi '`,
+ * 25/08, que já custou um diagnóstico inteiro). ⚠️ Ele vai pro **cabeçalho do texto que o
+ * FORNECEDOR recebe** no WhatsApp — espaço sobrando ali é sujeira na mensagem que sai da casa.
+ * ⛔ Apara-se na EXIBIÇÃO, nunca no cadastro: o nome é decisão do dono.
+ */
+const nomeDaEmpresa = (s: string) => s.trim()
+
 export async function lerConsumoECompras(
   input: {
     companyId: string
@@ -256,7 +265,7 @@ export async function lerConsumoECompras(
   const ids = [...new Set([...listas.caros, ...listas.porcoes])]
   if (!ids.length) {
     return {
-      janela, hoje, hojeSegPrimeiro, empresa: input.empresa,
+      janela, hoje, hojeSegPrimeiro, empresa: nomeDaEmpresa(input.empresa),
       avisos: ['as listas nascem vazias — escolha os itens que você acompanha'],
       caros: [], porcoes: [], agenda: [], mesa: [], plano: [], semConfig: [],
     }
@@ -604,7 +613,7 @@ export async function lerConsumoECompras(
     .sort((a, b) => b.produzir - a.produzir)
 
   return {
-    janela, hoje, hojeSegPrimeiro, empresa: input.empresa,
+    janela, hoje, hojeSegPrimeiro, empresa: nomeDaEmpresa(input.empresa),
     avisos, caros, porcoes, agenda, mesa, plano, semConfig,
   }
 }
