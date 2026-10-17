@@ -10945,6 +10945,213 @@ Nasceu do `FITID == YYMMDD`: a regra funcionou nos arquivos da época, **armou**
 
 **MEMÓRIA — leitura DURANTE o build de 26/08 (o gatilho (b) NÃO disparou):** memória disponível no pico **431 MB** de 3.915 · swap **68 MB** de 2.047 · **zero OOM kills**. O build come ~3,5 GB e sobrevive, mas com ~11% de folga. O gatilho (b) do upgrade 4→8 GB é *"swap usado em operação normal, FORA de build"* — swap está em 68 MB, bem abaixo dos 256 MB do N1. **Não disparou.** ⚠️ E com o deploy em diretório separado, um OOM durante o build passou a ser **inofensivo** (o symlink não move): a urgência do resize CAIU. O gatilho que continua valendo é o **(a)** — a rotina real começar.
 
+## 🛒⭐⭐⭐ CONSUMO & COMPRAS — A TELA NOVA, E A PRODUÇÃO INTOCADA (16-17/10/2026)
+
+**`docs/consumo-e-compras-referencia.html` (v3, aprovada pelo dono) é a LEI** — do visual, do
+comportamento **e da matemática**: os comentários do CSS são as leis **C0–C15** e o `<script>` é a
+especificação de `contaDoPedido`/`contaDoPlano`. **Rota própria** (`/estoque/consumo-e-compras`),
+item no trilho **abaixo** de Produção, **LEI C0: a tela de Produção fica INTOCADA**.
+⛔ **ZERO ESCRITA pela tela** — ela só LÊ; a única porta que grava é a config de compra.
+
+### ⭐⭐ O ESCOPO FICOU MENOR QUE O BRIEF, E ISSO FOI MEDIDO
+
+O brief autorizou **duas** tabelas novas. **A de membership das listas JÁ EXISTE** —
+`stock_radar_item` (20/09) guarda exatamente `CAROS` · `REVENDA` · `PORCOES`, com porta única
+(`listasDoRadar`/`porNaLista`/`tirarDaLista`), semente e tela de gestão no Radar. ⛔ Criar a
+segunda daria **duas verdades pra *"quais itens o dono acompanha"***: ele poria o FRANGO nos
+CAROS por esta tela e o Radar não saberia. ***Reusar não foi economia: é a régua.*** Nasceu **UMA**
+(`stock_compra_config`, CREATE-only).
+
+### ⛔⛔ TOKENS 1:1 POR PAPEL, NUNCA POR HEX
+
+`lib/compras/tokens.ts` mapeia os tokens genéricos da referência (`--bg`, `--tinta`, `--acao`) nos
+da casa (`--prod-bg`, `--prod-primary`, `--fam-indigo-mid`) — que **invertem nos dois temas de
+graça**. ⚠️ **O par NÃO é por VALOR:** cravar o hex da referência trocaria a paleta da casa pela
+do arquivo de exemplo. **Zero hex na tela**, e o guard **proíbe `var(--…)` escrito à mão** — a
+tela lê o mapa ou não pinta.
+
+⚠️ **E o caminho do Radar foi recusado com motivo:** `components/estoque/radar-tokens.ts` crava
+hex porque em 20/09 *"o Radar nasce CLARO"*; a fundação de 14/10 fez o app theme-aware e o brief
+exige *"dark-first com light obedecendo, tudo via token"*.
+
+### ⭐⭐ A TELA NÃO CALCULA — E O TOTAL DO CARD TEM UM DONO SÓ
+
+`ajustarQuantidade` e `totalDoCard` saíram pra a lib pura, e **`leitura.ts` CONSOME o
+`totalDoCard`**. ⛔ Sem isso o card mostraria **um total ao abrir e outro depois do primeiro
+clique** do − / + — duas réguas pro mesmo dinheiro a dez centímetros uma da outra. ⭐ E o total só
+existe quando **TODA** linha tem preço: parcial seria um número que o dono soma na mão e não fecha.
+
+⚠️ **O `−/+` ajusta LOCAL de propósito** (o servidor não pode saber o valor final antes do dono
+decidir) — mas a REGRA dele mora na lib, não num `onClick`: *regra que mora num handler é regra
+que ninguém prova*.
+
+### ⚠️⚠️ UMA DIVERGÊNCIA DECLARADA DA REFERÊNCIA — A FOLGA É POR ITEM
+
+A referência crava **"PEDIR · JÁ COM +10%"** no cabeçalho da mesa porque **a amostra dela tem
+folga fixa**. A **lei C5** faz a folga ser **POR ITEM** — então um número ali **MENTE** num card
+que mistura itens de folgas diferentes. O cabeçalho diz **"PEDIR · JÁ COM A FOLGA DO ITEM"**, com
+a divergência escrita no arquivo. ⚠️ E a folga é **FATOR na lib (`1.1`)** e **PONTOS PERCENTUAIS
+na coluna (`10`)** — misturar os dois é como um `× 100` se perde.
+
+### ⛔⛔ A CONFIG DE COMPRA — CHECK DE FORMA, NUNCA DE VOCABULÁRIO
+
+`stock_compra_config` (CREATE-only, 5 CHECKs, unique por `(companyId, itemId)`): dias de CHEGADA
+(CSV SEG-first), antecedência, fornecedor (opcional) e folga %.
+- ⛔ **TABELA, nunca coluna em `stock_item`:** migration de estoque **SÓ CRIA** (o guard de CI
+  reprova `ALTER` numa migration `stock_`) — e é o certo por conteúdo, porque config de COMPRA tem
+  **autor e data** e o item não.
+- ⛔⛔ **O CHECK dos dias valida a FORMA** (`^$|^[0-6](,[0-6])*$`), nunca o vocabulário: a lição de
+  21/09 é dura — `CHECK (lista IN (…))` virou **parede em UM dia**, e num módulo CREATE-only enum
+  fechada no banco custa uma tabela nova por valor novo. ⭐ E a forma **já recusa só-branco por
+  construção** (`'   '` não casa o regex), que é por que esta tabela **não precisa** do trigger
+  `stock_texto_de_escolha` que as duas de 14/10 ganharam.
+- ⛔ **CSV e não `Int[]`:** array do Postgres **não existe no SQLite do dev**, e código que só
+  compila num dos dois bancos é a divergência dev×prod que custou a busca case-sensitive (28/08).
+  Quem serializa é a porta única; `diasChegada` viaja como `number[]` no resto do sistema.
+- **Item sem config aparece na lista e fica FORA da mesa**, com o aviso *"configura os dias de
+  chegada"* — ausência nomeada, nunca linha que some.
+
+### ⛔⛔⛔ REGRA 13 — AQUI ELA MORDE DE VERDADE
+
+`scripts/prova-check-consumo-e-compras.ts`: **17 de 17 INSERTs tortos recusados pela constraint
+CERTA** · **8 de 8 legítimos aceitos** · a 2ª linha da mesma `(empresa, item)` recusada pelo
+**índice único (23505)** · **escrita líquida ZERO**.
+
+⚠️⚠️ **Ao contrário da prova da estrela (12/10), em que o furo era teórico:** `fornecedor` é
+**NULLABLE comparado por CONTEÚDO** — a forma exata do `chk_aviso_acao_completa` (04/10). Os dois
+contrafactuais, **medidos no próprio banco**:
+```
+(a) a forma INGÊNUA sobre NULL → NULL → o CHECK PASSARIA (o furo de 04/10)
+    a NOSSA (IS NULL explícito e PRIMEIRO) → true → ACEITA (NULL é legítimo: fornecedor é opcional)
+(b) trim() simples num TAB → true ⇒ PASSARIA   ·   btrim com a CLASSE → false ⇒ RECUSA
+colunas: fornecedor nullable=YES · diasChegada nullable=NO
+```
+⚠️ **E é por isso que os tortos incluem TAB e NEWLINE:** o `btrim` do Postgres apara **só o
+espaço** por default (medido em 14/10) — ***caractere que não está na lista é caractere que
+passa.***
+
+### ⚠️⚠️ REGRA 11 — 13 DEFEITOS REPOSTOS, 13 VERMELHOS. E O 13º NASCEU DE UM VERDE DE GRAÇA
+
+hex cravado · a folga DIGITADA · **a folga por DEFAULT cravado** · a tela multiplicando pela folga
+· o total somado na TELA · o SERVIDOR somando por conta própria · a tela lendo o RELÓGIO · o dia
+sem dado virando altura ZERO · PROSA dentro do ⓘ · a AGENDA saindo da tela (**2**) · o trilho indo
+pra antes de Produção · a PRODUÇÃO conhecendo esta tela (lei C0) · o item sem config sumindo.
+**baseline 0 · restaurado 0.**
+
+⛔⛔ **O 13º é o mais instrutivo:** o guard da folga veio **VERDE** porque eu proibia **UMA FORMA**
+(`+10%` seguido de quote) e a reposição real usou outra (`+10%` + newline). ***Guard que proíbe
+uma forma aprova a próxima.*** ⭐ **E o aperto expôs um defeito MEU de verdade:** o cabeçalho tinha
+`?? 10` — **a constante da lib cravada como default na tela**.
+
+⚠️ A sonda guarda backup pela **chave do caminho inteiro**, **ASSERTA por md5 que a substituição
+aplicou** e **conta suíte que NÃO COLETOU como vermelho** — as três cicatrizes de sonda desta casa.
+
+### ⚠️ 2 GUARDS REAPONTADOS, nenhum afrouxado, e um ficou MAIS FORTE
+
+1. **A ordem dos módulos ancorava em `'O ITEM'` — 7 caracteres.** O cabeçalho novo da mesa
+   (*"PEDIR · JÁ COM A FOLGA DO ITEM"*) casava **PRIMEIRO** (posição **8.426**, dentro do
+   componente, contra **22.721** da lista de render) e o guard acusou o C3 de estar fora de ordem
+   — **vermelho contra a tela CERTA**. A âncora virou o **`titulo="…"` que RENDERIZA** o módulo:
+   ***âncora genérica casa a PROSA da tela e mede a posição errada*** (a família do *"menção, não
+   uso"* — o que define o módulo é a PROP, não as palavras que aparecem perto).
+2. **`veredito-tem-uma-porta-so` (13/10) media o NOME** (`function farol*`) e mordeu o
+   **`farolDaCobertura`** — o farol de **DIAS DE ESTOQUE**, outra pergunta, outra entrada
+   (`cobertura, chegaEm` — nunca custo nem preço). ⛔ **A saída NÃO foi pôr a lib de compras em
+   `DONOS_LEGITIMOS`:** aquela lista significa *"quem pode falar de veredito de PREÇO"*, e entrar
+   nela abriria a porta pra um farol de CMV nascer lá dentro de graça. ⭐ Agora o guard mede o
+   **ASSUNTO, na ASSINATURA** (custo/preço/cmv/margem) — e ficou **mais forte**, porque deixou de
+   depender de o autor escolher a palavra *"farol"*. **Repondo um farol de CMV na tela da margem:
+   2 vermelhos.**
+
+⚠️ E **o guard da UI foi RENOMEADO** (`tela-de-compras-bate-com-a-referencia`) — havia **dois
+arquivos com o mesmo nome** em pastas diferentes (um bate a MATEMÁTICA contra o `<script>`, o
+outro o VISUAL contra o CSS). É a cicatriz do **backup por basename** (09/10) esperando acontecer.
+
+### ⛔⛔ E A PROVA EM PROD ACHOU UM ESPAÇO QUE IA PRO WHATSAPP DO FORNECEDOR
+
+O cadastro da Caçula está gravado como **`"caçula mix "`** — com espaço no fim, **a cicatriz da
+conta `'sicredi '`** (25/08). ⚠️ Esse nome é o **cabeçalho do texto que o FORNECEDOR recebe**, e o
+`−/+` da mesa **remonta esse texto no cliente**. Aparado na **EXIBIÇÃO** (o `return` da leitura, um
+lugar só pros N chamadores), **nunca no cadastro** — o nome é decisão do dono. ⚠️ **E nos DOIS
+`return`** da função (o atalho de lista vazia e o cheio): cobrir um só deixaria o outro livre, a
+família do *"N caminhos, 1 esquecido"*. Repondo: **2 vermelhos, um por caminho**.
+
+### A PROVA EM PROD — NAVEGANDO, 2 VIEWPORTS × 2 TEMAS (REGRA 12)
+
+```
+A PÁGINA     CELULAR 200 em 370ms · DESKTOP 200 em 59ms
+LEI C0       Produção (lista) 200 · Produção (Hoje) 200 · Radar do estoque 200 — INTOCADAS
+O CHUNK      34 KB (de 17 na página) · 18/18 peças da referência · ⛔ hex cravado: 0
+OS TOKENS    ⭐ 17 de 17 definidos nos DOIS mapas do CSS servido (2.732 regras recortadas)
+A ROTA       HOJE/SEMANA/MES 200 · periodo=XPTO → 200 e cai no DEFAULT (7 dias),
+             nunca numa tela vazia ("erro disfarçado de vazio")
+RADAR ①      7 linhas · os 2 juízes novos (C14) com href pra esta tela:
+             [VERDE] Pedido pra hoje · nenhum      [VERDE] Acaba antes de chegar · nenhum
+ESCRITA      movimentos 8535 → 8535 · configs 0 → 0   ⭐ ZERO ESCRITA
+```
+
+### ⭐⭐ OS NÚMEROS REAIS DA SEMANA (11/10 → 17/10) — os 3 que o dono pediu
+
+```
+⭐ FILE DE PEITO DE FRANGO [CAROS] KG
+   consumo 118,2 KG (Δ −15%) · custo R$ 2.099,23 (vigente R$ 17,76/KG)
+   TEM AGORA 110,0 KG · cobertura ~5,9 dias · preço pago último R$ 17,84 (SUBIU)
+   PERDA real×teórico −7,5 KG (−R$ 123,67)
+
+⭐ QUEIJO MUSSARELA EM PECA 02 KG [CAROS] KG
+   consumo 234,9 KG (Δ −5%) · custo R$ 7.120,43 (vigente R$ 30,31/KG)
+   TEM AGORA 591,7 KG · cobertura ~14,8 dias · preço pago último R$ 29,99 (ESTÁVEL)
+   PARA ONDE FOI: porçao queijo 135 grama 100% · ⭐ não atribuído 0,0
+   PERDA real×teórico 14,6 KG (R$ 445,15)
+
+⭐ ACÉM [CAROS] KG
+   consumo 62,1 KG (Δ −51%) · custo R$ 2.115,75 (vigente R$ 34,07/KG)
+   TEM AGORA 147,8 KG · cobertura ~7,5 dias · preço pago último R$ 34,25 (ESTÁVEL)
+   PARA ONDE FOI: beef de xis 51% · beef de hamburger 49% — ⭐ 100% atribuído, zero palpite
+   PERDA real×teórico −0,9 KG (−R$ 30,85)
+
+AS LISTAS: 9 caros + 24 porções = 33 itens · O PLANO: 13 linhas
+   porcao coxao 80 grama      tem 97 · mín 182 · sai hoje 80,0 → produzir ~165
+   beef de xis                tem 338 · mín 326 · sai hoje 171,0 → produzir ~159
+   porçao queijo 135 grama    tem 1.225 · mín 709 · sai hoje 388,8 → produzir ~0
+```
+
+**⛔⛔ A MESA ESTÁ COM 0 CARDS, E ISSO É O ESTADO HONESTO — NÃO UM DEFEITO.** Os **9 itens dos
+CAROS estão SEM config de dias de chegada** (a tabela nasceu vazia), e **a lei C5 manda**: item sem
+config aparece na lista e fica **fora da mesa**, com o aviso. ⭐ *O sistema não inventa dia de
+chegada* — ele é a declaração do dono, e sem ela a frase *"pedido que chega dia X cobre de X até a
+PRÓXIMA chegada"* não tem de onde sair. **O PEDIR nasce no clique dele.** ⚠️ E é por isso que os 2
+juízes do radar estão em **VERDE/nenhum**: eles contam `agenda`/`farol` da MESMA leitura que
+desenha o card — zero config, zero alarme, por construção.
+
+**989 arquivos · 13.380 verdes · 2 todo · TS 0 · migration CREATE-only (1 CREATE TABLE · 5 CHECKs ·
+1 unique · 1 índice) · `pg_dump pre-tela-consumo-compras-20261016-235528.dump` (9.547.795 bytes,
+tamanho conferido) · deploys 4/4 (`n5t4ZAWYXpTBl10kfkPlS`, `lHJOeuaxzveLWf4rcyC00`) ·
+Δ chunks +36 KB.**
+
+### ⚠️ TRÊS ERROS DE SONDA, os três meus, e cada um com cara de defeito de prod
+
+1. **a âncora da cobertura era `'dá pra'`** — essa frase é da **página do item v4** (06/10); a
+   referência escreve `f1(cob) + ' dias'` e a tela obedece. **⛔ numa tela CERTA.**
+2. **chutei `destino.rotulo`** e o campo é **`.nome`** — a sonda imprimiu *"undefined 58%"* sobre
+   um payload correto. ***Chutar o nome do campo produz achado falso tão convincente quanto um
+   real*** — o certo é o que fiz depois: **ler o TIPO**.
+3. **chutei a URL da mesa ①** (`/mesa-de-operacoes`, é `/mesa`) e os 2 juízes vieram como **404**,
+   parecendo que o C14 não subiu.
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):**
+1. **Declarar os dias de CHEGADA** dos itens caros (FRANGO · QUEIJO · ACÉM primeiro) — é o que
+   acende a **AGENDA**, a **MESA**, o **PEDIR** e os 2 juízes do radar. Enquanto não houver, a tela
+   mostra consumo/estoque/cobertura/preço e **diz** que falta a config.
+2. **Abrir a tela no celular e no notebook, nos dois temas** — a prova mede o que prod serve (as 18
+   peças, os 17 tokens nos dois mapas, zero hex no chunk desta tela); **o olho é dele**.
+   ⚠️ Screenshot indisponível (extensão do Chrome desligada nesta sessão).
+3. ⚠️ **As listas vêm do Radar** (`stock_radar_item`) — mexer nelas por lá vale aqui e vice-versa,
+   de propósito: uma verdade pra *"quais itens eu acompanho"*.
+4. ⚠️ **O `não atribuído` do `porçao queijo 135 grama` é 1.107 de 1.168 (95%)** — a baixa de venda
+   não diz a receita, e a tela **nomeia isso** em vez de ratear por palpite (lei C10). É a mesma
+   lacuna do livro registrada desde 20/09, agora visível no item de maior giro.
+
 ## ⛔⛔⛔ SPRINT 2.1 — SEIS ACERTOS, E O DIA QUE A CASA LIA COMO DOIS (16/10/2026)
 
 **`pg_dump pre-redatar-produtos-1610-20261016-171756.dump` (9.495.731 bytes, tamanho conferido) ·
