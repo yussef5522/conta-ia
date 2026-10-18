@@ -323,3 +323,109 @@ export function totalDoCard(
   if (linhas.some((l) => l.precoPago == null)) return null
   return round2(linhas.reduce((s, l) => s + l.quantidade * (l.precoPago as number), 0))
 }
+
+/* ═════════════════ C7 v3.2 · A SEMANA DO COMPRADOR ═════════════════ */
+
+/**
+ * ⭐⭐⭐ A ESTEIRA DE 7 DIAS (lei C7 da v3.2, aprovada pelo dono 18/10) — *"a agenda em texto
+ * morre; a esteira se lê em 2 segundos"*.
+ *
+ * ⛔⛔ **A DECISÃO MORA AQUI, NÃO NA TELA.** Agrupar os pedidos por dia é escolher em que slot
+ * cada um aparece — e isso é régua, não pintura. Montá-la no componente faria a 2ª derivação da
+ * MESMA pergunta (*"quando eu peço isto?"*), que o `pedirEm` do motor já responde; as duas
+ * divergiriam no 1º caso de borda (o atrasado), e o dono veria o pedido num slot na esteira e
+ * noutro no card da mesa.
+ *
+ * ⚠️ **O ATRASADO ENTRA NO SLOT DE HOJE (clamp em 0), nunca num slot negativo que não existe** —
+ * é o comprador vendo hoje o que já devia ter pedido. ⛔ E ele **não some**: sumir com pedido
+ * atrasado é exatamente o buraco que a esteira existe pra fechar.
+ */
+export interface PedidoDaSemana {
+  itemId: string
+  nome: string
+  unidade: string
+  /** a quantidade que a conta pediu (com a folga), ou o ajuste do dono quando houver */
+  quantidade: number
+  chegaDia: number
+  /** ⭐ o `pedirEm` CRU — negativo quando atrasado; o clamp decide o slot, não este campo */
+  pedirEm: number
+}
+
+export interface SlotDaSemana {
+  /** SEG-first */
+  diaDaSemana: number
+  /** ⭐ "HOJE · dom" · "amanhã · seg" · "TER" — o rótulo é da LIB, nunca montado na tela */
+  rotulo: string
+  ehHoje: boolean
+  /** ⚠️ coral SÓ quando é o slot de hoje E tem pedido — slot de hoje vazio não é alarme */
+  urgente: boolean
+  pedidos: PedidoDaSemana[]
+}
+
+/**
+ * ⚠️ `hoje` é PARÂMETRO (SEG-first). O relógio só serve pra exibir "hoje" na tela, nunca pra
+ * decidir — a régua da casa desde 13/08, e é o que faz esta função ser testável.
+ */
+export function montarSemanaDoComprador(
+  pedidos: readonly PedidoDaSemana[],
+  hoje: number,
+): SlotDaSemana[] {
+  const out: SlotDaSemana[] = []
+  for (let k = 0; k < 7; k++) {
+    const dia = (hoje + k) % 7
+    // ⭐ o clamp é o que traz o atrasado pra HOJE
+    const doDia = pedidos.filter((p) => Math.max(0, p.pedirEm) === k && p.quantidade > 0)
+    const rotulo =
+      k === 0 ? `HOJE · ${DIAS[dia].toLowerCase()}`
+      : k === 1 ? `amanhã · ${DIAS[dia].toLowerCase()}`
+      : DIAS[dia]
+    out.push({ diaDaSemana: dia, rotulo, ehHoje: k === 0, urgente: k === 0 && doDia.length > 0, pedidos: doDia })
+  }
+  return out
+}
+
+/* ═════════════════ C8 v3.2 · O ESTADO DA MESA ═════════════════ */
+
+/**
+ * ⭐⭐ OS TRÊS ESTADOS DA MESA — e o 2º nasceu de um caso REAL (18/10): o queijo em peça estava
+ * **configurado** e com **591 KG em estoque** (logo `PEDIR 0`), e a mesa dizia *"nenhum item com
+ * dias de chegada configurados"*. ⛔ ***A mensagem acusava o campo errado*** — ela mandava o dono
+ * configurar o que já estava configurado (a família do *"mensagem que acusa o campo errado faz o
+ * dono caçar um erro que não existe"*, 16/09).
+ *
+ * ⚠️ `NADA_A_PEDIR` é **estado próprio, não um vazio mudo**: *"tudo abastecido"* é uma RESPOSTA,
+ * e ela vem com o próximo dia de pedido pra o comprador saber quando voltar.
+ */
+export type EstadoDaMesa = 'SEM_CONFIG' | 'NADA_A_PEDIR' | 'TEM_PEDIDO'
+
+export function estadoDaMesa(input: {
+  /** quantos cards a mesa tem (card só existe com PEDIR > 0) */
+  cards: number
+  /** quantos itens das listas TÊM dias de chegada configurados */
+  itensComConfig: number
+}): EstadoDaMesa {
+  if (input.cards > 0) return 'TEM_PEDIDO'
+  return input.itensComConfig > 0 ? 'NADA_A_PEDIR' : 'SEM_CONFIG'
+}
+
+/**
+ * ⭐ O PRÓXIMO DIA DE PEDIDO, pra o `NADA_A_PEDIR` não terminar numa frase sem saída.
+ * ⛔ Devolve `null` quando nenhum item tem chegada — ali quem fala é o `SEM_CONFIG`.
+ */
+export function proximoDiaDePedido(
+  itens: readonly { diasChegada: readonly number[]; antecedenciaDias: number }[],
+  hoje: number,
+): { diaDaSemana: number; emDias: number } | null {
+  let melhor: { diaDaSemana: number; emDias: number } | null = null
+  for (const it of itens) {
+    if (!it.diasChegada.length) continue
+    for (let k = 1; k <= 7; k++) {
+      if (!it.diasChegada.includes((hoje + k) % 7)) continue
+      // ⚠️ o clamp de novo: pedido que já passou da hora é "hoje", nunca um dia negativo
+      const em = Math.max(0, k - it.antecedenciaDias)
+      if (!melhor || em < melhor.emDias) melhor = { diaDaSemana: (hoje + em) % 7, emDias: em }
+      break
+    }
+  }
+  return melhor
+}

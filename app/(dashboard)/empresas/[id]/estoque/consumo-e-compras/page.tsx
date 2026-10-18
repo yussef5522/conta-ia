@@ -276,6 +276,9 @@ function MesaDePedido({
   aoAjustar,
   aoAbrirItem,
   hoje,
+  aberto,
+  aoAlternar,
+  temSel,
 }: {
   card: CardDaMesa
   ajustes: Record<string, number>
@@ -283,6 +286,11 @@ function MesaDePedido({
   aoAjustar: (itemId: string, delta: number) => void
   aoAbrirItem: (itemId: string) => void
   hoje: number
+  /** ⭐ quem decide quem nasce aberto é a PÁGINA (o card do item na tela) — o card só obedece */
+  aberto: boolean
+  aoAlternar: () => void
+  /** ⭐ este card contém o item aberto na tela → borda de AÇÃO (a `.sel` da referência) */
+  temSel: boolean
 }) {
   const [copiado, setCopiado] = useState(false)
   // ⭐ a quantidade EXIBIDA é o ajuste do dono quando existe, senão o que a conta pediu
@@ -297,7 +305,15 @@ function MesaDePedido({
     chegaDia: card.chegaDia,
     linhas: linhas.map((l) => ({ nome: l.nome, quantidade: l.q, unidade: l.unidade })),
   })
-  const urgente = card.linhas.some((l) => l.conta.cobre !== '' && l.pedir > 0 && card.chegaDia === hoje)
+  /**
+   * ⛔⛔ O PILL DO PRAZO VEM DO `pedirEmMin` (lei C8 v3.2), NUNCA de `chegaDia === hoje`.
+   *
+   * A pergunta do card é *"quando eu PEÇO?"* — e pedir é **chegada − antecedência**. A régua
+   * antiga perguntava *"a mercadoria chega hoje?"*, que é outra coisa: o pedido de um fornecedor
+   * que entrega em 3 dias tem que gritar HOJE três dias ANTES da chegada. Com a régua antiga o
+   * card só acendia no dia em que a entrega era esperada — ou seja, **tarde demais, sempre**.
+   */
+  const urgente = card.urgente
 
   const copiar = async () => {
     try {
@@ -312,17 +328,59 @@ function MesaDePedido({
   return (
     <div
       className="mx-4 mb-3.5 mt-1 overflow-hidden rounded-[12px] border"
-      style={{ borderColor: urgente ? CC.coral : CC.linhaForte }}
+      /* ⚠️ a ORDEM é a do CSS da referência (`.urg` e depois `.sel`): o card do item ABERTO
+         ganha a borda de AÇÃO mesmo sendo urgente — ali o dono já está trabalhando. */
+      style={{ borderColor: temSel ? CC.acao : urgente ? CC.coral : CC.linhaForte }}
     >
-      <div className="flex flex-wrap items-center gap-3 px-3.5 py-[11px]" style={{ background: CC.mod2 }}>
+      {/**
+        * ⭐⭐⭐ A LINHA-RESUMO (lei C8 v3.2) — o card NASCE RECOLHIDO.
+        *
+        * Com 5 fornecedores pendentes a mesa inteira aberta era uma parede de 7 colunas × N
+        * itens: o dono rolava a tela pra achar o que pedir. Recolhido, cada card responde em uma
+        * linha *"quanto é e até quando"*, e ele abre o que vai pedir agora.
+        *
+        * ⛔ O TOQUE INTEIRO DO CABEÇALHO ABRE — não um chevron de 11px: no celular, alvo pequeno
+        * é alvo que se erra, e errar aqui abre o card errado.
+        */}
+      <button
+        type="button"
+        onClick={aoAlternar}
+        aria-expanded={aberto}
+        className="flex w-full flex-wrap items-center gap-3 px-3.5 py-[11px] text-left"
+        style={{ background: CC.mod2 }}
+      >
         <span className="text-[13.5px] font-extrabold" style={{ color: CC.tinta }}>
           {card.fornecedor ?? 'sem fornecedor'}
         </span>
         <span className="text-[11.5px] font-bold" style={{ color: CC.tinta3 }}>
-          chega {DIAS[card.chegaDia]} · {card.linhas.length} item{card.linhas.length > 1 ? 's' : ''}
+          chega {DIAS[card.chegaDia]}
         </span>
-      </div>
+        <span className="ml-auto text-[12px] font-extrabold tabular-nums" style={{ color: CC.tinta2 }}>
+          {card.linhas.length} item{card.linhas.length > 1 ? 's' : ''} ·{' '}
+          {total == null ? 'total a apurar' : brl(total)}
+        </span>
+        {/* ⭐ o PRAZO é o que decide se o dono abre agora — por isso ele é pill, não texto solto */}
+        <span
+          className="rounded-full px-[11px] py-[4px] text-[11.5px] font-extrabold"
+          style={
+            urgente
+              ? { background: CC.coralFundo, color: CC.coral }
+              : { background: CC.acaoFundo, color: CC.acao }
+          }
+        >
+          {urgente
+            ? '⚠ PEDIR HOJE'
+            : `pedir até ${DIAS[(hoje + card.pedirEmMin + 7) % 7]}`}
+        </span>
+        <span className="text-[11px] font-extrabold" style={{ color: CC.tinta3 }}>
+          {aberto ? '▲' : '▼'}
+        </span>
+      </button>
 
+      {/* ⛔ o corpo NÃO renderiza quando recolhido — esconder por CSS deixaria 7 colunas × N
+          itens no DOM de cada card, e a mesa tem um card por fornecedor pendente */}
+      {aberto && (
+        <>
       {/* ⭐ as 7 colunas da referência, na ordem dela */}
       <div
         className="hidden grid-cols-[minmax(110px,1.2fr)_1fr_.85fr_.95fr_1.5fr_.85fr_.85fr] gap-2 border-b px-3.5 py-[9px] text-[9.5px] font-extrabold tracking-[.06em] min-[900px]:grid"
@@ -465,7 +523,11 @@ function MesaDePedido({
         </span>
         <button
           type="button"
-          onClick={() => void copiar()}
+          onClick={(e) => {
+            // ⛔ o copiar NÃO pode fechar o card (lei C8 v3.2): o dono copia e confere o texto
+            e.stopPropagation()
+            void copiar()
+          }}
           className="ml-auto rounded-[9px] border px-3.5 py-2 text-[12.5px] font-extrabold"
           style={
             copiado
@@ -480,6 +542,8 @@ function MesaDePedido({
       <p className="px-3.5 pb-3 text-[11px]" style={{ color: CC.tinta3 }}>
         {texto}
       </p>
+        </>
+      )}
     </div>
   )
 }
@@ -498,6 +562,23 @@ export default function ConsumoEComprasPage({ params }: { params: Promise<{ id: 
   const [adicionando, setAdicionando] = useState(false)
   /** ⭐ o − / + é LOCAL de propósito: é o ajuste do dono ANTES de copiar, não um estado do banco */
   const [ajustes, setAjustes] = useState<Record<string, number>>({})
+  /**
+   * ⭐ o que o DONO abriu/fechou na mesa, por chave de card.
+   *
+   * ⚠️ Mapa esparso de propósito (`undefined` = *"ele não tocou"*): assim o default
+   * *"o card do item aberto nasce aberto"* continua valendo, e um `false` só existe quando ele
+   * FECHOU de verdade. Pré-popular com `false` apagaria o default no primeiro render.
+   */
+  const [cardsAbertos, setCardsAbertos] = useState<Record<string, boolean>>({})
+  /**
+   * ⭐ o que o dono está DIGITANDO nos campos de config, por item.
+   *
+   * ⚠️ **Rascunho local porque gravar a cada tecla seria um POST por caractere** — e cada POST
+   * recarrega a conta inteira (`carregar()`), então a tela piscaria no meio da digitação. A
+   * gravação é no blur/Enter. ⚠️ E ele é **por `itemId`**: trocar de item com um rascunho
+   * pendurado não pode levar o texto do frango pro queijo.
+   */
+  const [rascunho, setRascunho] = useState<Record<string, { fornecedor?: string; antecedencia?: string; folga?: string }>>({})
   const [podeConfigurar, setPodeConfigurar] = useState(false)
   const [salvando, setSalvando] = useState(false)
 
@@ -551,31 +632,121 @@ export default function ConsumoEComprasPage({ params }: { params: Promise<{ id: 
     [lista, itemId],
   )
 
-  /** ⭐ liga/desliga um dia de chegada — grava pela PORTA ÚNICA e recarrega a conta inteira */
-  const mexerNoDia = useCallback(
-    async (dia: number) => {
+  /**
+   * ⭐⭐⭐ A GRAVAÇÃO DA CONFIG — **UMA** função pros QUATRO campos (lei C5 v3.2).
+   *
+   * ⛔⛔ **ZERO PORTA NOVA:** os dias de chegada, o fornecedor, a antecedência e a folga vão
+   * pela MESMA rota (`/config`, `stock.manage`) que já era a única porta de escrita de
+   * `stock_compra_config`. Uma rota por campo faria quatro lugares gravando a mesma linha, e
+   * eles divergiriam no primeiro campo novo — é a doença que o cabeçalho de
+   * `config-de-compra.ts` existe pra impedir.
+   *
+   * ⚠️ `diasChegada` vai SEMPRE no corpo porque o zod da rota o exige; os outros três são
+   * opcionais e só viajam quando mudam (o `fornecedor` é `nullable`: `null` explícito é
+   * *"não tem"*, e é diferente de não mandar).
+   */
+  const salvarConfig = useCallback(
+    async (
+      patch: { diasChegada?: number[]; antecedenciaDias?: number; fornecedor?: string | null; folgaPct?: number },
+      oQue: string,
+    ) => {
       if (!item) return
-      const atuais = item.config.diasChegada
-      const novos = atuais.includes(dia) ? atuais.filter((d) => d !== dia) : [...atuais, dia]
       setSalvando(true)
       const r = await fetchComTimeout<{ ok: boolean }>(
         `/api/empresas/${empresaId}/estoque/consumo-e-compras/config`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ itemId: item.itemId, diasChegada: novos }),
+          body: JSON.stringify({
+            itemId: item.itemId,
+            diasChegada: item.config.diasChegada,
+            ...patch,
+          }),
         },
       )
       setSalvando(false)
-      // ⛔ falhou é ESTADO, não silêncio: o chip não muda e a tela diz o porquê
+      // ⛔ falhou é ESTADO, não silêncio: o campo não muda e a tela diz o porquê
       if (!r.ok) {
-        setErro(r.erro ?? 'Não consegui gravar os dias de chegada.')
+        setErro(r.erro ?? `Não consegui gravar ${oQue}.`)
         return
       }
       setAjustes({})
       await carregar()
     },
     [item, empresaId, carregar],
+  )
+
+  /**
+   * ⭐ o fornecedor — casca fina sobre a porta única.
+   *
+   * ⛔⛔ **VAZIO vira `null` EXPLÍCITO, nunca string vazia:** `fornecedor` é `nullable` no banco
+   * e `null` significa *"não tem"* (é o que a mesa agrupa como *"sem fornecedor"*). Gravar `''`
+   * criaria um TERCEIRO estado indistinguível de `null` na leitura e distinto na chave do card.
+   * ⚠️ E o nome é aparado na EXIBIÇÃO pela leitura (a cicatriz da conta `'sicredi '`), mas o
+   * espaço do dono não se grava: `trim()` aqui é o que impede o fornecedor `' '`.
+   */
+  const gravarFornecedor = useCallback(async () => {
+    if (!item || !podeConfigurar) return
+    const cru = rascunho[item.itemId]?.fornecedor
+    if (cru === undefined) return // ⛔ ele não digitou nada — não grava por abrir e fechar o campo
+    const novo = cru.trim() === '' ? null : cru.trim()
+    // ⛔ nada muda → nada grava (senão todo blur recarrega a conta inteira)
+    if (novo === (item.config.fornecedor ?? null)) {
+      setRascunho((m) => ({ ...m, [item.itemId]: { ...m[item.itemId], fornecedor: undefined } }))
+      return
+    }
+    await salvarConfig({ fornecedor: novo }, 'o fornecedor')
+    setRascunho((m) => ({ ...m, [item.itemId]: { ...m[item.itemId], fornecedor: undefined } }))
+  }, [item, podeConfigurar, rascunho, salvarConfig])
+
+  /**
+   * ⭐ antecedência e folga — os dois são INTEIROS ≥ 0 e a régua é a mesma.
+   *
+   * ⛔ Texto que não é número **não vira zero** (o `|| 0` que esta casa já pagou em quatro
+   * parses de quantidade): ele é RECUSADO com a frase que ensina, e o campo volta pro valor
+   * gravado. Antecedência 0 é legítima (*"peço e chega no mesmo dia"*); folga 0 também
+   * (*"peço o exato"*) — o que não existe é negativo.
+   */
+  const gravarNumero = useCallback(
+    async (qual: 'antecedencia' | 'folga') => {
+      if (!item || !podeConfigurar) return
+      const cru = rascunho[item.itemId]?.[qual]
+      if (cru === undefined) return
+      const limpar = () =>
+        setRascunho((m) => ({ ...m, [item.itemId]: { ...m[item.itemId], [qual]: undefined } }))
+      const n = Number(cru)
+      const atual = qual === 'antecedencia' ? item.config.antecedenciaDias : item.config.folgaPct
+      if (cru.trim() === '' || !Number.isInteger(n) || n < 0) {
+        setErro(
+          qual === 'antecedencia'
+            ? 'A antecedência é em dias inteiros, a partir de 0 — quantos dias antes da chegada você precisa pedir?'
+            : 'A folga é em % inteiro, a partir de 0 — quanto a mais do necessário você quer pedir?',
+        )
+        limpar()
+        return
+      }
+      if (n === atual) {
+        limpar()
+        return
+      }
+      await salvarConfig(
+        qual === 'antecedencia' ? { antecedenciaDias: n } : { folgaPct: n },
+        qual === 'antecedencia' ? 'a antecedência' : 'a folga',
+      )
+      limpar()
+    },
+    [item, podeConfigurar, rascunho, salvarConfig],
+  )
+
+  /** ⭐ liga/desliga um dia de chegada — casca fina sobre a porta única */
+  const mexerNoDia = useCallback(
+    async (dia: number) => {
+      if (!item) return
+      const atuais = item.config.diasChegada
+      const novos = atuais.includes(dia) ? atuais.filter((d) => d !== dia) : [...atuais, dia]
+      await salvarConfig({ diasChegada: novos }, 'os dias de chegada')
+    },
+    [item, salvarConfig],
   )
 
   const mexerNaLista = useCallback(
@@ -661,40 +832,80 @@ export default function ConsumoEComprasPage({ params }: { params: Promise<{ id: 
             </p>
           )}
 
-          {/* ═════════ 1 · C7 · A AGENDA DO COMPRADOR ═════════ */}
+          {/* ═════════ 1 · C7 v3.2 · A SEMANA DO COMPRADOR ═════════ */}
+          {/**
+            * ⭐⭐⭐ A ESTEIRA DE 7 DIAS (aprovada pelo dono 18/10) — *"a esteira se lê em 2
+            * segundos"*. ⛔⛔ **FRASE CORRIDA É PROIBIDA AQUI** (lei C7): a agenda em texto
+            * (*"pedir sáb FRANGO · chega SEG · ~18 KG"*) obrigava a LER pra saber o que fazer
+            * hoje; a esteira põe o dia no eixo e o número no olho.
+            *
+            * ⛔ Os slots vêm do SERVIDOR (`dados.semana`, montada pela lib pura): agrupar por dia
+            * aqui seria a 2ª resposta pra *"quando eu peço isto?"*, e ela divergiria do pill do
+            * card no 1º atrasado.
+            */}
           <Mod
-            titulo="A AGENDA DO COMPRADOR — PRÓXIMOS PEDIDOS"
-            dica="pedido = chegada − prazo do fornecedor · toque abre o item"
+            titulo="A SEMANA DO COMPRADOR — O QUE PEDIR EM CADA DIA"
+            dica="pedido = chegada − prazo do fornecedor · toque abre o pedido na mesa"
           >
-            <div className="flex flex-wrap items-center gap-2.5 px-4 py-3 tabular-nums">
-              <span className="text-[14px] font-extrabold" style={{ color: CC.tinta }}>
-                HOJE é {DIAS[dados.hojeSegPrimeiro]?.toLowerCase()} →
-              </span>
-              {dados.agenda.length === 0 && (
-                <span className="text-[12.5px]" style={{ color: CC.tinta3 }}>
-                  nenhum pedido a fazer — ou os itens ainda não têm dias de chegada configurados
-                </span>
-              )}
-              {dados.agenda.map((a) => {
-                const urg = a.pedirEm <= 0
-                return (
-                  <button
-                    key={a.itemId}
-                    type="button"
-                    onClick={() => abrirItem(a.itemId)}
-                    className="inline-flex items-center gap-2 rounded-[10px] border px-3 py-[7px] text-[12.5px] font-extrabold"
-                    style={
-                      urg
-                        ? { background: CC.coralFundo, borderColor: CC.coral, color: CC.coral }
-                        : { background: CC.mod2, borderColor: CC.linhaForte, color: CC.tinta2 }
-                    }
+            {/* ⚠️ rola no eixo X no celular — 7 slots não cabem em 390px, e encolher o número
+                mataria justamente o que a esteira existe pra mostrar */}
+            <div
+              className="grid gap-2 overflow-x-auto px-4 pb-3.5 pt-1 tabular-nums"
+              style={{ gridTemplateColumns: 'repeat(7,minmax(96px,1fr))' }}
+            >
+              {dados.semana.map((slot) => (
+                <div
+                  key={slot.diaDaSemana}
+                  className="flex min-h-[88px] flex-col gap-1.5 rounded-[12px] border px-[9px] py-2"
+                  style={{
+                    borderColor: slot.urgente ? CC.coral : slot.ehHoje ? CC.acao : CC.linha,
+                    background: slot.ehHoje ? CC.acaoFundo : CC.mod2,
+                  }}
+                >
+                  <span
+                    className="text-[10px] font-extrabold tracking-[.07em]"
+                    style={{ color: slot.urgente ? CC.coral : slot.ehHoje ? CC.acao : CC.tinta3 }}
                   >
-                    {urg ? '⚠ pedir hoje' : `pedir ${a.quando}`}{' '}
-                    <b style={{ color: urg ? CC.coral : CC.tinta }}>{a.nome}</b> · chega{' '}
-                    {DIAS[a.chegaDia]} · ~{fmt1(a.pedir)} {a.unidade}
-                  </button>
-                )
-              })}
+                    {slot.rotulo}
+                  </span>
+                  {slot.pedidos.length === 0 ? (
+                    /* ⛔ traço, NUNCA "0" — zero seria uma afirmação sobre um dia sem pedido */
+                    <span className="my-auto text-[12px] font-bold" style={{ color: CC.tinta3 }}>
+                      —
+                    </span>
+                  ) : (
+                    slot.pedidos.map((ped) => (
+                      <button
+                        key={ped.itemId}
+                        type="button"
+                        onClick={() => abrirItem(ped.itemId)}
+                        className="flex flex-col gap-px rounded-[9px] border px-2 py-1.5 text-left"
+                        style={{
+                          background: slot.urgente ? CC.coralFundo : CC.mod,
+                          borderColor: slot.urgente ? CC.coral : CC.linhaForte,
+                        }}
+                      >
+                        <span
+                          className="overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-extrabold"
+                          style={{ color: CC.tinta }}
+                        >
+                          {ped.pedirEm < 0 ? '⚠ atrasado · ' : slot.urgente ? '⚠ ' : ''}
+                          {ped.nome}
+                        </span>
+                        <span
+                          className="text-[15px] font-extrabold tracking-[-.02em]"
+                          style={{ color: slot.urgente ? CC.coral : CC.tinta }}
+                        >
+                          {fmt1(ped.quantidade)} {ped.unidade}
+                        </span>
+                        <span className="text-[9.5px] font-extrabold" style={{ color: CC.tinta3 }}>
+                          → chega {DIAS[ped.chegaDia]}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ))}
             </div>
           </Mod>
 
@@ -887,9 +1098,94 @@ export default function ConsumoEComprasPage({ params }: { params: Promise<{ id: 
                       {item.pedido?.ok
                         ? `próxima chegada: ${DIAS[item.pedido.chegaDia]} (em ${item.pedido.chegaEm} dia${item.pedido.chegaEm > 1 ? 's' : ''}) · pedir ${item.pedido.pedirEm <= 0 ? 'HOJE' : DIAS[(dados.hojeSegPrimeiro + item.pedido.pedirEm) % 7]}`
                         : 'liga pelo menos um dia de chegada'}
-                      {' · folga '}
-                      {item.config.folgaPct}%
                     </div>
+
+                    {/**
+                      * ⭐⭐⭐ A CONFIG INTEIRA NA TELA (lei C5 v3.2) — *"ao lado dos chips de
+                      * chegada: fornecedor · antecedência · folga"*.
+                      *
+                      * ⛔⛔ É ISTO QUE MATA O *"sem fornecedor"* nos cards e no texto do
+                      * WhatsApp: a mesa agrupa por `(fornecedor, chegaDia)` e o texto abre com
+                      * o nome dele — sem um lugar pra declarar, o pedido chegava no fornecedor
+                      * com o cabeçalho em branco e a mesa juntava fornecedores diferentes no
+                      * mesmo card.
+                      *
+                      * ⛔ A ANTECEDÊNCIA é o prazo DELE, não um palpite nosso: ela é o que
+                      * decide o slot da esteira (`pedirEm = chegaEm − antecedência`). Cravar um
+                      * default pra todo fornecedor faria a esteira avisar tarde pra quem entrega
+                      * em 3 dias — o defeito que a lei C7 v3.2 existe pra matar.
+                      */}
+                    <div className="mt-3 flex flex-wrap items-end gap-2.5">
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[10px] font-extrabold tracking-[.06em]" style={{ color: CC.tinta3 }}>
+                          FORNECEDOR
+                        </span>
+                        <input
+                          type="text"
+                          value={rascunho[item.itemId]?.fornecedor ?? item.config.fornecedor ?? ''}
+                          disabled={!podeConfigurar || salvando}
+                          placeholder="quem entrega"
+                          onChange={(e) =>
+                            setRascunho((m) => ({ ...m, [item.itemId]: { ...m[item.itemId], fornecedor: e.target.value } }))
+                          }
+                          onBlur={() => void gravarFornecedor()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                          }}
+                          className="w-[170px] rounded-[9px] border px-2.5 py-[6px] text-[12.5px] font-bold outline-none disabled:opacity-50"
+                          style={{ borderColor: CC.linhaForte, background: CC.mod, color: CC.tinta }}
+                        />
+                      </label>
+
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[10px] font-extrabold tracking-[.06em]" style={{ color: CC.tinta3 }}>
+                          ANTECEDÊNCIA (dias)
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          inputMode="numeric"
+                          value={rascunho[item.itemId]?.antecedencia ?? String(item.config.antecedenciaDias)}
+                          disabled={!podeConfigurar || salvando}
+                          onChange={(e) =>
+                            setRascunho((m) => ({ ...m, [item.itemId]: { ...m[item.itemId], antecedencia: e.target.value } }))
+                          }
+                          onBlur={() => void gravarNumero('antecedencia')}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                          }}
+                          className="w-[86px] rounded-[9px] border px-2.5 py-[6px] text-[12.5px] font-bold tabular-nums outline-none disabled:opacity-50"
+                          style={{ borderColor: CC.linhaForte, background: CC.mod, color: CC.tinta }}
+                        />
+                      </label>
+
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[10px] font-extrabold tracking-[.06em]" style={{ color: CC.tinta3 }}>
+                          FOLGA (%)
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          inputMode="numeric"
+                          value={rascunho[item.itemId]?.folga ?? String(item.config.folgaPct)}
+                          disabled={!podeConfigurar || salvando}
+                          onChange={(e) =>
+                            setRascunho((m) => ({ ...m, [item.itemId]: { ...m[item.itemId], folga: e.target.value } }))
+                          }
+                          onBlur={() => void gravarNumero('folga')}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                          }}
+                          className="w-[80px] rounded-[9px] border px-2.5 py-[6px] text-[12.5px] font-bold tabular-nums outline-none disabled:opacity-50"
+                          style={{ borderColor: CC.linhaForte, background: CC.mod, color: CC.tinta }}
+                        />
+                      </label>
+                    </div>
+                    {!podeConfigurar && (
+                      <p className="mt-1.5 text-[11px] font-bold" style={{ color: CC.tinta3 }}>
+                        só quem gerencia o estoque pode mudar a config
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -1099,26 +1395,61 @@ export default function ConsumoEComprasPage({ params }: { params: Promise<{ id: 
           {/* ═════════ 4/5 · C8 · A MESA  /  C9 · O PLANO ═════════ */}
           {aba === 'CAROS' ? (
             <Mod
-              titulo="A MESA DE PEDIDO — UM PEDIDO POR FORNECEDOR"
-              dica="PEDIR já vem com a folga · − / + ajusta · ⓘ = a conta em números · 📋 copia pro WhatsApp"
+              titulo="A MESA DE PEDIDO — TODAS AS COMPRAS PENDENTES · UM PEDIDO POR FORNECEDOR"
+              dica="o card do item aberto fica aberto e marcado · toque num card recolhido pra abrir · PEDIR já vem com a folga · 📋 copia pro WhatsApp"
             >
-              {dados.mesa.length === 0 ? (
+              {/**
+                * ⭐⭐⭐ O EMPTY-STATE HONESTO (lei C8 v3.2) — TRÊS estados, e a mensagem nunca mente.
+                *
+                * ⛔⛔ O CASO REAL QUE PARIU A LEI (18/10): queijo em peça CONFIGURADO, com 591 KG
+                * em estoque (PEDIR 0) — e a mesa dizia *"nenhum item com dias de chegada
+                * configurados"*, mandando o dono CONFIGURAR o que já estava configurado. É a
+                * família do *"mensagem que acusa o campo errado faz o dono caçar um erro que não
+                * existe"*: ele abriria a config do queijo, veria tudo certo, e não saberia o que
+                * fazer. **Zero a pedir e zero configurado são dois estados, e a tela diz qual.**
+                *
+                * ⛔ Quem decide é o SERVIDOR (`dados.estadoMesa`), nunca `mesa.length === 0`: a
+                * pergunta *"tem item configurado?"* não dá pra responder olhando a lista de cards.
+                */}
+              {dados.estadoMesa === 'SEM_CONFIG' ? (
                 <p className="px-4 pb-4 text-[13px]" style={{ color: CC.tinta3 }}>
                   nenhum item com dias de chegada configurados — configura no item acima e o pedido
                   nasce aqui.
                 </p>
+              ) : dados.estadoMesa === 'NADA_A_PEDIR' ? (
+                <p className="px-4 pb-4 text-[13px]" style={{ color: CC.tinta3 }}>
+                  <b style={{ color: CC.verde }}>tudo abastecido — nada a pedir</b>
+                  {dados.proximoPedido
+                    ? ` · o próximo dia de pedido é ${
+                        dados.proximoPedido.emDias === 0
+                          ? 'HOJE'
+                          : `${DIAS[dados.proximoPedido.diaDaSemana]} (em ${dados.proximoPedido.emDias} dia${dados.proximoPedido.emDias > 1 ? 's' : ''})`
+                      }`
+                    : ''}
+                </p>
               ) : (
-                dados.mesa.map((c) => (
-                  <MesaDePedido
-                    key={`${c.fornecedor ?? 'sem'}|${c.chegaDia}`}
-                    card={c}
-                    ajustes={ajustes}
-                    empresa={dados.empresa}
-                    hoje={dados.hojeSegPrimeiro}
-                    aoAjustar={ajustar}
-                    aoAbrirItem={abrirItem}
-                  />
-                ))
+                dados.mesa.map((c) => {
+                  const chave = `${c.fornecedor ?? 'sem'}|${c.chegaDia}`
+                  // ⭐ o card que contém o item ABERTO na tela nasce ABERTO e marcado
+                  const temSel = c.linhas.some((l) => l.itemId === itemId)
+                  return (
+                    <MesaDePedido
+                      key={chave}
+                      card={c}
+                      ajustes={ajustes}
+                      empresa={dados.empresa}
+                      hoje={dados.hojeSegPrimeiro}
+                      aoAjustar={ajustar}
+                      aoAbrirItem={abrirItem}
+                      temSel={temSel}
+                      // ⛔ o toque do dono GANHA do default; sem toque, quem manda é o item aberto
+                      aberto={cardsAbertos[chave] ?? temSel}
+                      aoAlternar={() =>
+                        setCardsAbertos((m) => ({ ...m, [chave]: !(m[chave] ?? temSel) }))
+                      }
+                    />
+                  )
+                })
               )}
             </Mod>
           ) : (

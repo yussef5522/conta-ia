@@ -162,6 +162,108 @@ describe('⭐⭐⭐ O ENCAIXE — do LEDGER até a conta do pedido', () => {
   })
 })
 
+/* ══════════ v3.2 · A SEMANA · O PILL DO PRAZO · OS 3 ESTADOS DA MESA ══════════ */
+
+describe('⭐⭐⭐ v3.2 — o que a ESTEIRA e a MESA RECOLHIDA precisam do payload', () => {
+  /** o mesmo cenário constante do encaixe, com estoque 1 (PEDIR 2,2) */
+  async function comPedido(nome: string, antecedenciaDias: number) {
+    const i = await item(nome)
+    await compra(i, 200, 15, DIAS_DA_BASELINE + 2)
+    for (let k = 1; k <= DIAS_DA_BASELINE; k++) await baixa(i, 2, k)
+    await baixa(i, 200 - DIAS_DA_BASELINE * 2 - 1, DIAS_DA_BASELINE + 1)
+    await porNaLista({ companyId, lista: 'CAROS', itemId: i }, prisma)
+    await salvarConfigDeCompra(
+      { companyId, itemId: i, diasChegada: [0, 1, 2, 3, 4, 5, 6], antecedenciaDias, fornecedor: 'Frigorífico Silva' },
+      prisma,
+    )
+    return i
+  }
+
+  it('⭐⭐ a SEMANA são 7 slots começando em HOJE, e o pedido cai no slot do `pedirEm`', async () => {
+    await comPedido('FILE DE PEITO DE FRANGO', 0) // chegaEm 1 − antec 0 = pedirEm 1 → amanhã
+    const r = await lerConsumoECompras({ companyId, empresa: 'Caçula Mix', periodo: 'SEMANA', agora: AGORA }, prisma)
+    expect(r.semana).toHaveLength(7)
+    expect(r.semana[0].ehHoje).toBe(true)
+    expect(r.semana[0].diaDaSemana).toBe(r.hojeSegPrimeiro)
+    // ⭐ o pedido está no slot de AMANHÃ, e o de hoje fica vazio (nada a pedir HOJE)
+    expect(r.semana[1].pedidos.map((p) => p.nome)).toEqual(['FILE DE PEITO DE FRANGO'])
+    expect(r.semana[0].pedidos).toEqual([])
+    expect(r.semana[0].urgente, 'slot sem pedido não acende coral').toBe(false)
+    // ⛔ a Σ dos slots == a agenda: nada se perde, nada conta 2×
+    expect(r.semana.flatMap((s) => s.pedidos)).toHaveLength(r.agenda.length)
+  })
+
+  it('⭐⭐ pedido pra HOJE acende o slot CORAL', async () => {
+    await comPedido('FILE DE PEITO DE FRANGO', 1) // chegaEm 1 − antec 1 = pedirEm 0 → HOJE
+    const r = await lerConsumoECompras({ companyId, empresa: 'Caçula Mix', periodo: 'SEMANA', agora: AGORA }, prisma)
+    expect(r.semana[0].pedidos.map((p) => p.nome)).toEqual(['FILE DE PEITO DE FRANGO'])
+    expect(r.semana[0].urgente).toBe(true)
+  })
+
+  it('⭐⭐⭐ o `pedirEmMin` do card é o MÍNIMO das linhas — é ele que decide o pill do prazo', async () => {
+    /**
+     * ⛔⛔ O CASO QUE ISOLA A RÉGUA (lei C8 v3.2): dois itens do MESMO fornecedor chegando no
+     * MESMO dia, com antecedências diferentes → `pedirEm` 1 e 0 no mesmo card.
+     *
+     * Sem o mínimo, o pill diria *"pedir até AMANHÃ"* num card que tem um item pra **pedir
+     * HOJE** — e o dono perderia o pedido justamente no card que ele leu. ⚠️ E é por isso que a
+     * TELA não deriva isso: ela não vê as antecedências, só as linhas.
+     */
+    await comPedido('FILE DE PEITO DE FRANGO', 0) // pedirEm 1
+    await comPedido('ACÉM', 1) // pedirEm 0 → urgente
+    const r = await lerConsumoECompras({ companyId, empresa: 'Caçula Mix', periodo: 'SEMANA', agora: AGORA }, prisma)
+    expect(r.mesa, 'o mesmo fornecedor + o mesmo dia de chegada = UM card').toHaveLength(1)
+    const card = r.mesa[0]
+    expect(card.linhas.map((l) => l.pedirEm).sort()).toEqual([0, 1])
+    expect(card.pedirEmMin, 'o pill tem que falar do pedido mais urgente do card').toBe(0)
+    expect(card.urgente, 'pedirEmMin <= 0 → ⚠ PEDIR HOJE').toBe(true)
+  })
+
+  it('⭐ card sem nada urgente NÃO acende, e o pill fala do dia do pedido', async () => {
+    await comPedido('FILE DE PEITO DE FRANGO', 0)
+    const r = await lerConsumoECompras({ companyId, empresa: 'Caçula Mix', periodo: 'SEMANA', agora: AGORA }, prisma)
+    expect(r.mesa[0].pedirEmMin).toBe(1)
+    expect(r.mesa[0].urgente).toBe(false)
+  })
+
+  it('⛔⛔ OS 3 ESTADOS DA MESA — e o `NADA_A_PEDIR` é o caso do queijo (18/10)', async () => {
+    // ── (a) nenhum item configurado
+    const r0 = await lerConsumoECompras({ companyId, empresa: 'Caçula Mix', periodo: 'SEMANA', agora: AGORA }, prisma)
+    expect(r0.estadoMesa).toBe('SEM_CONFIG')
+    expect(r0.proximoPedido).toBeNull()
+
+    // ── (b) CONFIGURADO com estoque de sobra → PEDIR 0 → "tudo abastecido", NUNCA "configure"
+    const queijo = await item('QUEIJO MUSSARELA EM PECA 02 KG')
+    await compra(queijo, 600, 30, DIAS_DA_BASELINE + 2)
+    for (let k = 1; k <= DIAS_DA_BASELINE; k++) await baixa(queijo, 2, k)
+    await porNaLista({ companyId, lista: 'CAROS', itemId: queijo }, prisma)
+    await salvarConfigDeCompra(
+      { companyId, itemId: queijo, diasChegada: [0, 1, 2, 3, 4, 5, 6], antecedenciaDias: 0, fornecedor: 'Laticínios' },
+      prisma,
+    )
+    const r1 = await lerConsumoECompras({ companyId, empresa: 'Caçula Mix', periodo: 'SEMANA', agora: AGORA }, prisma)
+    expect(r1.mesa, '591 KG em estoque → nada a pedir').toEqual([])
+    expect(r1.estadoMesa, 'o defeito de 18/10: a mesa mandava CONFIGURAR o que já estava configurado').toBe('NADA_A_PEDIR')
+    /**
+     * ⭐ e o "volte em…" existe, senão "nada a pedir" é um beco.
+     *
+     * ⚠️ **O TESTE ME CORRIGIU:** eu esperava `emDias: 0`. A próxima chegada com entrega diária
+     * é **AMANHÃ** (o pedido de hoje chega amanhã — é o mesmo `chegaEm: 1` do encaixe), então
+     * com antecedência 0 o próximo dia de pedido é amanhã. O motor estava certo.
+     *
+     * ⛔ E o dia é DERIVADO do `hojeSegPrimeiro`, nunca cravado: um número fixo aqui seria uma
+     * bomba de calendário — verde hoje, vermelho no dia em que a semana virar.
+     */
+    expect(r1.proximoPedido).toEqual({ diaDaSemana: (r1.hojeSegPrimeiro + 1) % 7, emDias: 1 })
+
+    // ── (c) com pedido → os cards
+    await comPedido('FILE DE PEITO DE FRANGO', 0)
+    const r2 = await lerConsumoECompras({ companyId, empresa: 'Caçula Mix', periodo: 'SEMANA', agora: AGORA }, prisma)
+    expect(r2.estadoMesa).toBe('TEM_PEDIDO')
+    expect(r2.mesa.length).toBeGreaterThan(0)
+  })
+})
+
 describe('⛔⛔ AS RÉGUAS DE HONESTIDADE (lei C2)', () => {
   it('⛔⛔ item SEM config aparece na lista e fica FORA da mesa, com o que fazer escrito', async () => {
     const i = await item('ACEM')

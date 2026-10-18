@@ -3,13 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CAIXAOS — CONSUMO &amp; COMPRAS · REFERÊNCIA OFICIAL v3.1 (tela própria, nível mundial)</title>
+<title>CAIXAOS — CONSUMO &amp; COMPRAS · REFERÊNCIA OFICIAL v3.2 (tela própria, nível mundial)</title>
 <style>
 /* ============================================================================
-   CAIXAOS · CONSUMO & COMPRAS — REFERÊNCIA OFICIAL v3.1 (16-17/10/2026)
-   v3.1 = aprovado pelo dono 17/10: a LEI DO DIA FECHADO em C2 (zero de
-   verdade × "a apurar"), a janela da cobertura dita em C13, e C12 de 4 pra
-   até 10 compras na média do preço — UMA verdade.
+   CAIXAOS · CONSUMO & COMPRAS — REFERÊNCIA OFICIAL v3.2 (16-18/10/2026)
+   v3.2 = aprovado pelo dono 18/10: a SEMANA DO COMPRADOR em C7 (a esteira de
+   7 dias matou a agenda em texto), a MESA RECOLHIDA em C8, e a config
+   INTEIRA editável na tela em C5.
+   ⚠️⚠️ NOTA DE BASE (medida em 18/10, NÃO é uma lei — é a história do arquivo):
+   o v3.2 foi editado a partir da v3 e, por isso, nasceu SEM as três leis que o
+   dono aprovou em 17/10 (a LEI DO DIA FECHADO em C2, o C12 de 4 pra até 10
+   compras, e a janela dita em C13) — elas estão RE-APLICADAS abaixo, com a
+   aprovação datada, porque estão IMPLEMENTADAS e EM PROD com prova, e o guard
+   de dois lados (referência × motor) ficou VERMELHO sem elas. Perdê-las aqui
+   obrigaria a REVERTER código aprovado; o dono listou C5/C7/C8 como o que
+   mudou nesta versão, e nada sobre C2/C12/C13.
    v1 reprovada ("muito básico"). v2 reprovada na parte da compra ("não quero
    escrito, nem sistema faz desse jeito" — a conta em prosa morreu).
    v3 = ordem do dono: (1) compra em MESA DE PEDIDO estruturada como os
@@ -49,15 +57,22 @@
    C5. CONFIG DE COMPRA POR ITEM (a escrita nova, porta única + REGRA 13):
        dias de CHEGADA (chips SEG…DOM, um ou vários) · antecedência do
        pedido em dias (prazo do fornecedor) · fornecedor (texto) · folga %
-       (padrão 10). Tudo opcional: item sem config fica fora da mesa.
+       (padrão 10). Tudo opcional: item sem config fica fora da mesa. A
+       config INTEIRA é editável na própria tela, ao lado dos chips de
+       chegada: fornecedor · antecedência · folga.
    C6. A CONTA DO PEDIDO (motor): pedido que chega dia X cobre de X até a
        PRÓXIMA chegada; precisa = Σ médias por dia-da-semana da janela ×
        folga − estoque projetado na chegada (atual − consumo até lá, nunca
        negativo). NA TELA a conta aparece como NÚMEROS ROTULADOS (linha ⓘ
        com chips: cobre · sai na janela · folga · sobra na chegada) —
        PROSA É PROIBIDA na mesa.
-   C7. AGENDA DO COMPRADOR no topo: os próximos pedidos em ordem (HOJE ⚠ ·
-       SÁB · DOM), derivados de chegada − antecedência. Toque abre o item.
+   C7. A SEMANA DO COMPRADOR no topo (v3.2 — matou a agenda em texto):
+       esteira de 7 DIAS começando em hoje, um slot por dia; dentro de
+       cada slot, os pedidos a FAZER naquele dia como mini-cards (nome ·
+       QUANTIDADE grande · "→ chega DIA"). Hoje destacado; slot com
+       pedido pra hoje/atrasado fica coral (atrasado entra no slot de
+       hoje); dia sem pedido = traço. Toque abre o card na mesa. A
+       esteira se lê em 2 segundos — frase corrida é PROIBIDA aqui.
    C8. MESA DE PEDIDO = UM CARD POR FORNECEDOR (como os líderes: um pedido
        = um fornecedor): cabeçalho fornecedor · chega DIA · pedir até DIA
        (⚠ quando é hoje/atrasado). HIERARQUIA DOS NÚMEROS NA LINHA (ordem
@@ -69,6 +84,12 @@
        folga · precisa · sobra na chegada) vive nos chips ⓘ. Rodapé =
        total do pedido + 📋 COPIAR PEDIDO (texto pronto pro WhatsApp do
        fornecedor). Editar PEDIR recalcula total e agenda na hora.
+       A MESA É DE TODAS AS COMPRAS PENDENTES, nunca só do item aberto —
+       o comprador vê a semana inteira sem caçar item por item. Contra a
+       poluição (pedido do dono, 18/10): os cards nascem RECOLHIDOS numa
+       linha-resumo (fornecedor · chega · nº itens · total · prazo ·
+       seta), toque abre; o card que contém o item aberto nasce ABERTO e
+       marcado com a borda de ação.
    C9. PLANO DE PRODUÇÃO (AS PORÇÕES): tabela O QUE PRODUZIR — TEM AGORA ·
        MÍNIMO (3 dias × média) · SAI HOJE (média do dia da semana) ·
        PRODUZIR ~N (mínimo + saída de hoje − tem, nunca negativo) · farol ·
@@ -148,13 +169,21 @@ body{background:var(--bg);color:var(--tinta);font-family:var(--font);font-size:1
 .chip.dia-on{background:var(--verde-chao);border-color:var(--verde-chao);color:#fff}
 .linha-chips{display:flex;gap:7px;flex-wrap:wrap;padding:2px 16px 12px;align-items:center}
 
-/* C7 · agenda */
-.agenda{display:flex;gap:10px;align-items:center;padding:12px 16px;flex-wrap:wrap}
-.agenda .hoje{font-size:14px;font-weight:800}
-.a-chip{display:inline-flex;gap:8px;align-items:center;border-radius:10px;padding:7px 12px;font-size:12.5px;font-weight:800;cursor:pointer;border:1px solid var(--linha-forte);background:var(--mod-2);color:var(--tinta-2)}
-.a-chip b{color:var(--tinta)}
-.a-chip.urg{background:var(--coral-fundo);border-color:var(--coral);color:var(--coral)}
-.a-chip.urg b{color:var(--coral)}
+/* C7 · a esteira da semana */
+.est{display:grid;grid-template-columns:repeat(7,minmax(96px,1fr));gap:8px;padding:4px 16px 14px;overflow-x:auto}
+.est .dia{border:1px solid var(--linha);border-radius:12px;background:var(--mod-2);padding:8px 9px;min-height:88px;display:flex;flex-direction:column;gap:6px}
+.est .dia.hj{border-color:var(--acao);background:var(--acao-fundo)}
+.est .dia.urg{border-color:var(--coral)}
+.est .rot{font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--tinta-3)}
+.est .dia.hj .rot{color:var(--acao)}
+.est .dia.urg .rot{color:var(--coral)}
+.est .vazio{font-size:12px;color:var(--tinta-3);font-weight:700;margin:auto 0}
+.est .ped{border-radius:9px;padding:6px 8px;background:var(--mod);border:1px solid var(--linha-forte);cursor:pointer;display:flex;flex-direction:column;gap:1px}
+.est .dia.urg .ped{background:var(--coral-fundo);border-color:var(--coral)}
+.est .ped .pi{font-size:11px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.est .ped .pq{font-size:15px;font-weight:800;letter-spacing:-.02em}
+.est .dia.urg .ped .pq{color:var(--coral)}
+.est .ped .pc{font-size:9.5px;font-weight:800;color:var(--tinta-3)}
 
 /* C3 · herói do item */
 .heroi{display:flex;gap:20px;padding:6px 16px 10px;flex-wrap:wrap;align-items:flex-start}
@@ -196,10 +225,15 @@ body{background:var(--bg);color:var(--tinta);font-family:var(--font);font-size:1
 /* C8 · MESA DE PEDIDO (um card por fornecedor) */
 .ped-card{margin:4px 16px 14px;border:1px solid var(--linha-forte);border-radius:12px;overflow:hidden}
 .ped-card.urg{border-color:var(--coral)}
-.ped-cab{display:flex;gap:12px;align-items:center;padding:11px 14px;background:var(--mod-2);flex-wrap:wrap}
+.ped-card.sel{border-color:var(--acao)}
+.ped-card .corpo{display:none}
+.ped-card.aberto .corpo{display:block}
+.ped-cab{display:flex;gap:12px;align-items:center;padding:11px 14px;background:var(--mod-2);flex-wrap:wrap;cursor:pointer}
 .ped-cab .fn{font-size:13.5px;font-weight:800}
 .ped-cab .mt{font-size:11.5px;font-weight:700;color:var(--tinta-3)}
-.ped-cab .prazo{margin-left:auto;font-size:11.5px;font-weight:800;padding:4px 11px;border-radius:999px;background:var(--acao-fundo);color:var(--acao)}
+.ped-cab .resumo{margin-left:auto;font-size:12px;font-weight:800;color:var(--tinta-2)}
+.ped-cab .seta{font-size:11px;color:var(--tinta-3);font-weight:800}
+.ped-cab .prazo{font-size:11.5px;font-weight:800;padding:4px 11px;border-radius:999px;background:var(--acao-fundo);color:var(--acao)}
 .ped-card.urg .prazo{background:var(--coral-fundo);color:var(--coral)}
 .ped-head,.ped-row{display:grid;grid-template-columns:minmax(110px,1.2fr) 1fr .85fr .95fr 1.5fr .85fr .85fr;gap:8px;align-items:center;padding:9px 14px}
 .ped-head{font-size:9.5px;font-weight:800;letter-spacing:.06em;color:var(--tinta-3);border-bottom:1px solid var(--linha)}
@@ -221,6 +255,9 @@ body{background:var(--bg);color:var(--tinta);font-family:var(--font);font-size:1
 .ped-pe .tot small{color:var(--tinta-3);font-weight:700;font-size:11px}
 .btn-copiar{margin-left:auto;border:1px solid var(--acao);background:var(--acao-fundo);color:var(--acao);font:inherit;font-size:12.5px;font-weight:800;border-radius:9px;padding:8px 14px;cursor:pointer}
 .btn-copiar.ok{border-color:var(--verde);background:var(--verde-fundo);color:var(--verde)}
+.cfg{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;align-items:center;font-size:11.5px;font-weight:700;color:var(--tinta-2)}
+.cfg input{background:var(--mod-2);border:1px solid var(--linha-forte);border-radius:8px;color:var(--tinta);font:inherit;font-weight:800;padding:5px 8px}
+.cfg .fx{width:130px}.cfg .dx{width:42px;text-align:center}
 
 /* C9 · PLANO DE PRODUÇÃO */
 .pl-head,.pl-row{display:grid;grid-template-columns:minmax(140px,1.5fr) .8fr 1fr 1fr 1.1fr 1fr;gap:8px;align-items:center;padding:8px 16px}
@@ -250,8 +287,8 @@ footer{max-width:1440px;margin:0 auto;padding:0 26px 26px;font-size:11.5px;color
 
     <!-- ===== C7 · AGENDA DO COMPRADOR ===== -->
     <section class="mod" aria-label="agenda do comprador">
-      <div class="mod-cab"><h2>A AGENDA DO COMPRADOR — PRÓXIMOS PEDIDOS</h2><span class="lab">pedido = chegada − prazo do fornecedor · toque abre o item</span></div>
-      <div class="agenda num" id="agenda"></div>
+      <div class="mod-cab"><h2>A SEMANA DO COMPRADOR — O QUE PEDIR EM CADA DIA</h2><span class="lab">pedido = chegada − prazo do fornecedor · toque abre o pedido na mesa</span></div>
+      <div class="est num" id="agenda"></div>
     </section>
 
     <!-- ===== listas + período ===== -->
@@ -284,6 +321,7 @@ footer{max-width:1440px;margin:0 auto;padding:0 26px 26px;font-size:11.5px;color
           <div class="lab" style="margin-bottom:6px">DIAS DE CHEGADA (toque liga/desliga — grava na config do item)</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap" id="cheg"></div>
           <div class="lab" style="margin-top:8px" id="antec"></div>
+          <div class="cfg num" id="cfg"></div>
         </div>
       </div>
       <div class="stats num" id="stats"></div>
@@ -305,7 +343,7 @@ footer{max-width:1440px;margin:0 auto;padding:0 26px 26px;font-size:11.5px;color
     </div>
   </main>
 
-  <footer>CONSUMO &amp; COMPRAS · REFERÊNCIA OFICIAL v3.1 — tela própria · mesa de pedido por fornecedor (sem prosa) · plano de produção das porções · herói do total · agenda do comprador · para onde foi · perda · preço pago — estudo: MarketMan, Choco, MarginEdge/Supy · leis C2/C12/C13 refinadas e aprovadas pelo dono em 17/10</footer>
+  <footer>CONSUMO &amp; COMPRAS · REFERÊNCIA OFICIAL v3.2 — tela própria · mesa de pedido por fornecedor (sem prosa) · plano de produção das porções · herói do total · agenda do comprador · para onde foi · perda · preço pago — estudo: MarketMan, Choco, MarginEdge/Supy · aprovação do dono pendente</footer>
 
 <script>
 /* ===== AMOSTRA de referência — em prod: lib pura consumo-e-compras.ts ===== */
@@ -330,7 +368,7 @@ var LISTAS=[
    dest:[["vendido (xis)",121],["combos",28],["outros",7]]}
  ]}
 ];
-var AB=0,IT=0,PEDIDO={};
+var AB=0,IT=0,PEDIDO={},ABERTO={},GK=[],GAB=[];
 function f1(v){return v.toLocaleString("pt-BR",{maximumFractionDigits:1})}
 function fR(v){return "R$ "+Math.round(v).toLocaleString("pt-BR")}
 function media(it){return it.d.reduce(function(a,b){return a+b},0)/7}
@@ -361,9 +399,10 @@ function contaDoPlano(it){
  return {minimo:minimo,saiHoje:saiHoje,produzir:produzir};
 }
 
-function aba(a){AB=a;IT=0;draw()}
-function sel(i){IT=i;draw()}
-function abrir(a,i){AB=a;IT=i;draw();window.scrollTo({top:0,behavior:"smooth"})}
+function aba(a){AB=a;IT=0;ABERTO={};draw()}
+function sel(i){IT=i;ABERTO={};draw()}
+function abrir(a,i){AB=a;IT=i;ABERTO={};draw()}
+function tglCard(gi){ABERTO[GK[gi]]=!GAB[gi];draw()}
 function tgl(d){var it=LISTAS[0].itens[IT];var p=it.cheg.indexOf(d);if(p>=0)it.cheg.splice(p,1);else{it.cheg.push(d);it.cheg.sort()}PEDIDO={};draw()}
 function mais(n,delta){var it=LISTAS[0].itens[n];var c=contaDoPedido(it);if(!c)return;var atual=(PEDIDO[n]!=null?PEDIDO[n]:c.comprar);PEDIDO[n]=Math.max(0,Math.round((atual+delta)*10)/10);draw()}
 function copiar(id){
@@ -380,21 +419,29 @@ function spark(it){
 }
 
 function drawAgenda(){
- var ag=LISTAS[0].itens.map(function(it,i){var c=contaDoPedido(it);return {i:i,n:it.n,u:it.u,c:c}})
-  .filter(function(x){return x.c&&(PEDIDO[x.i]!=null?PEDIDO[x.i]:x.c.comprar)>0})
-  .sort(function(a,b){return a.c.pedirEm-b.c.pedirEm});
- document.getElementById("agenda").innerHTML='<span class="hoje">HOJE é '+DIAS[HOJE].toLowerCase()+' →</span>'+
-  ag.map(function(x){
-   var urg=x.c.pedirEm<=0;
-   return '<span class="a-chip'+(urg?" urg":"")+'" onclick="abrir(0,'+x.i+')">'+(urg?"⚠ pedir hoje":"pedir "+diaPedir(x.c))+' <b>'+x.n+'</b> · chega '+DIAS[x.c.prox.dia]+' · ~'+f1((PEDIDO[x.i]!=null?PEDIDO[x.i]:x.c.comprar))+' '+x.u+'</span>'
-  }).join("");
+ var peds=LISTAS[0].itens.map(function(it,i){var c=contaDoPedido(it);return {i:i,it:it,c:c}})
+  .filter(function(x){return x.c&&(PEDIDO[x.i]!=null?PEDIDO[x.i]:x.c.comprar)>0});
+ var html="";
+ for(var k=0;k<7;k++){
+  var dd=(HOJE+k)%7;
+  var doDia=peds.filter(function(x){return Math.max(0,x.c.pedirEm)==k});
+  var urg=(k==0&&doDia.length>0);
+  html+='<div class="dia'+(k==0?" hj":"")+(urg?" urg":"")+'">'
+   +'<span class="rot">'+(k==0?"HOJE · "+DIAS[dd].toLowerCase():(k==1?"amanhã · "+DIAS[dd].toLowerCase():DIAS[dd]))+'</span>'
+   +(doDia.length?doDia.map(function(x){
+     var q=(PEDIDO[x.i]!=null?PEDIDO[x.i]:x.c.comprar);
+     return '<span class="ped" onclick="abrir(0,'+x.i+')"><span class="pi">'+(urg?"⚠ ":"")+x.it.n+'</span><span class="pq">'+f1(q)+' '+x.it.u+'</span><span class="pc">→ chega '+DIAS[x.c.prox.dia]+'</span></span>'
+    }).join(""):'<span class="vazio">—</span>')
+   +'</div>';
+ }
+ document.getElementById("agenda").innerHTML=html;
 }
 
 function drawMesa(){
  var tit=document.getElementById("mesaTit"),sub=document.getElementById("mesaSub"),box=document.getElementById("mesa");
  if(AB==0){
-  tit.textContent="A MESA DE PEDIDO — UM PEDIDO POR FORNECEDOR";
-  sub.textContent="PEDIR já vem com a folga de 10% · − / + ajusta · ⓘ = a conta em números · 📋 copia pro WhatsApp do fornecedor";
+  tit.textContent="A MESA DE PEDIDO — TODAS AS COMPRAS PENDENTES · UM PEDIDO POR FORNECEDOR";
+  sub.textContent="o card do item aberto fica aberto e marcado · toque num card recolhido pra abrir · PEDIR já vem com a folga · 📋 copia pro WhatsApp";
   var grupos={};
   LISTAS[0].itens.forEach(function(it,i){
    var c=contaDoPedido(it);if(!c)return;
@@ -428,14 +475,20 @@ function drawMesa(){
    }).join("");
    var txt="Pedido Caçula Mix — "+(g.forn||"")+" (entrega "+DIAS[g.chega]+"): "
     +g.rows.map(function(r){var q=(PEDIDO[r.i]!=null?PEDIDO[r.i]:r.c.comprar);return r.it.n+" "+f1(q)+" "+r.it.u}).join(" · ");
-   return '<div class="ped-card'+(urg?" urg":"")+'">'
-    +'<div class="ped-cab"><span class="fn">'+(g.forn||"sem fornecedor")+'</span><span class="mt">chega '+DIAS[g.chega]+' · '+g.rows.length+' item'+(g.rows.length>1?"s":"")+'</span>'
-    +'<span class="prazo">'+(urg?"⚠ PEDIR HOJE":"pedir até "+DIAS[(HOJE+pedirEmMin)%7])+'</span></div>'
-    +'<div class="ped-head"><span>ITEM</span><span>NA SEMANA</span><span>TEM AGORA</span><span>SAI ATÉ CHEGAR</span><span>PEDIR · JÁ COM +10%</span><span class="dir">PAGO ÚLT.</span><span class="dir">TOTAL</span></div>'
+   var temSel=g.rows.some(function(r){return r.i==IT});
+   GK[gi]=k;
+   var ab=(k in ABERTO)?ABERTO[k]:temSel;
+   GAB[gi]=ab;
+   return '<div class="ped-card'+(urg?" urg":"")+(temSel?" sel":"")+(ab?" aberto":"")+'">'
+    +'<div class="ped-cab" onclick="tglCard('+gi+')"><span class="fn">'+(g.forn||"sem fornecedor")+'</span><span class="mt">chega '+DIAS[g.chega]+'</span>'
+    +'<span class="resumo">'+g.rows.length+' item'+(g.rows.length>1?"s":"")+' · '+fR(total)+'</span>'
+    +'<span class="prazo">'+(urg?"⚠ PEDIR HOJE":"pedir até "+DIAS[(HOJE+pedirEmMin)%7])+'</span><span class="seta">'+(ab?"▲":"▼")+'</span></div>'
+    +'<div class="corpo">'
+    +'<div class="ped-head"><span>ITEM</span><span>NA SEMANA</span><span>TEM AGORA</span><span>SAI ATÉ CHEGAR</span><span>PEDIR · JÁ COM A FOLGA</span><span class="dir">PAGO ÚLT.</span><span class="dir">TOTAL</span></div>'
     +rows
     +'<div class="ped-pe"><span class="tot">'+fR(total)+' <small>o pedido inteiro</small></span>'
-    +'<button class="btn-copiar" id="cp'+gi+'" data-txt="'+txt.replace(/"/g,"&quot;")+'" onclick="copiar(\'cp'+gi+'\')">📋 copiar pedido</button></div>'
-    +'</div>';
+    +'<button class="btn-copiar" id="cp'+gi+'" data-txt="'+txt.replace(/"/g,"&quot;")+'" onclick="event.stopPropagation();copiar(\'cp'+gi+'\')">📋 copiar pedido</button></div>'
+    +'</div></div>';
   }).join("");
  } else {
   tit.textContent="O PLANO DE PRODUÇÃO — O QUE PRODUZIR";
@@ -484,6 +537,7 @@ function draw(){
    return '<button class="chip mini '+(it.cheg.indexOf(di)>=0?"dia-on":"")+'" onclick="tgl('+di+')">'+dn+'</button>'}).join("");
   var p=contaDoPedido(it);
   document.getElementById("antec").textContent=p?("próxima chegada: "+DIAS[p.prox.dia]+" (em "+p.prox.em+" dia"+(p.prox.em>1?"s":"")+") · pedir "+diaPedir(p)):"liga pelo menos um dia de chegada";
+  document.getElementById("cfg").innerHTML='fornecedor <input class="fx" value="'+(it.forn||"")+'" placeholder="quem entrega"> · pedir com <input class="dx" value="'+(it.antec||1)+'"> dia(s) de antecedência · folga <input class="dx" value="10">%';
  } else bc.style.display="none";
  var cob=it.est/med;
  var stats='<div class="stat"><div class="l">NO ESTOQUE AGORA</div><div class="n">'+f1(it.est)+' '+it.u+'</div><div class="s">pela posição</div></div>'

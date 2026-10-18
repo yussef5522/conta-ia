@@ -194,8 +194,13 @@ describe('⭐ AS MEDIDAS — os números que o ARQUIVO declara, sem tradução m
  * casa a PROSA da tela e mede a posição errada*** — a mesma família do *"menção, não uso"*: o que
  * define o módulo é a PROP que o renderiza, não as palavras que aparecem perto.
  */
+/**
+ * ⚠️ REAPONTADO em 18/10 (v3.2), NÃO afrouxado: a agenda em TEXTO morreu e virou a ESTEIRA de 7
+ * dias (lei C7 v3.2). A pergunta do guard não mudou — *"o módulo existe e está na ordem do
+ * arquivo?"* —, mudou o título que o dono aprovou. O título vem da referência ao caractere.
+ */
 const MODULOS: [string, string][] = [
-  ['C7 · a agenda do comprador', 'titulo="A AGENDA DO COMPRADOR — PRÓXIMOS PEDIDOS"'],
+  ['C7 · a semana do comprador', 'titulo="A SEMANA DO COMPRADOR — O QUE PEDIR EM CADA DIA"'],
   ['C1/C4 · as listas e o período', 'titulo="AS SUAS LISTAS"'],
   ['C3 · o item, fundo', 'titulo="O ITEM"'],
 ]
@@ -216,7 +221,8 @@ describe('⭐⭐ OS MÓDULOS — presentes, e NA ORDEM', () => {
   })
 
   it('⭐⭐ a MESA (C8) e o PLANO (C9) são EXCLUSIVOS — a aba decide qual aparece', () => {
-    expect(CODIGO).toContain('A MESA DE PEDIDO — UM PEDIDO POR FORNECEDOR')
+    // ⚠️ título REAPONTADO pra v3.2 (a mesa passou a mostrar TODAS as compras pendentes)
+    expect(CODIGO).toContain('A MESA DE PEDIDO — TODAS AS COMPRAS PENDENTES · UM PEDIDO POR FORNECEDOR')
     expect(CODIGO).toContain('O PLANO DE PRODUÇÃO — O QUE PRODUZIR')
     // ⛔ os dois ao mesmo tempo seriam duas respostas pra "o que eu faço agora?" na mesma tela
     expect(CODIGO, 'a mesa e o plano não estão no ternário da aba').toMatch(
@@ -254,6 +260,19 @@ describe('⭐⭐ OS MÓDULOS — presentes, e NA ORDEM', () => {
  */
 const cru = (s: string) => s.replace(/\s+/g, ' ').trim()
 
+/**
+ * ⭐ o corpo de um trecho da TELA, entre dois marcos — asserção ESTRUTURAL, nunca por distância.
+ *
+ * ⚠️ Ele usa o `blocoEntre` COMPARTILHADO (um detector, um lugar) e **aborta quando o marco não
+ * existe**: bloco vazio faria `not.toContain` passar por VACUIDADE, que é o verde de graça que
+ * este arquivo já pagou.
+ */
+function blocoDe(inicio: string, fim: string): string {
+  const b = blocoEntre(CODIGO, inicio, fim)
+  expect(b.length, `o marco "${inicio}" saiu da tela — o guard ficaria cego`).toBeGreaterThan(0)
+  return b
+}
+
 function fraseNosDoisLados(texto: string) {
   expect(cru(REF.html), `a referência não imprime "${texto}"`).toContain(cru(texto))
   expect(cru(CODIGO), `a tela parou de imprimir "${texto}"`).toContain(cru(texto))
@@ -262,7 +281,7 @@ function fraseNosDoisLados(texto: string) {
 describe('⭐⭐ AS FRASES DECLARADAS — na referência E na tela', () => {
   it('⭐ a agenda e a mesa dizem o que o arquivo manda', () => {
     fraseNosDoisLados('pedido = chegada − prazo do fornecedor')
-    fraseNosDoisLados('A MESA DE PEDIDO — UM PEDIDO POR FORNECEDOR')
+    fraseNosDoisLados('A MESA DE PEDIDO — TODAS AS COMPRAS PENDENTES · UM PEDIDO POR FORNECEDOR')
     fraseNosDoisLados('O PLANO DE PRODUÇÃO — O QUE PRODUZIR')
     fraseNosDoisLados('PARA ONDE FOI')
   })
@@ -478,7 +497,198 @@ describe('⭐⭐ A TELA NOVA NASCEU COM O GUARD DA CASA', () => {
   })
 
   it('⭐ falha ao gravar é ESTADO, nunca silêncio', () => {
-    expect(CODIGO, 'a tela engole a falha de gravar os dias de chegada').toContain('Não consegui gravar os dias de chegada')
+    /**
+     * ⚠️ REAPONTADO em 18/10: a gravação virou UMA porta pros 4 campos (lei C5 v3.2), então a
+     * frase passou a ser montada com o QUE falhou. A régua é a mesma — *falha não pode ser
+     * silêncio* —, e ela ficou MAIS FORTE: o guard exige o fallback **e** que cada chamador diga
+     * o nome do campo, senão a mensagem volta a ser genérica ("não consegui gravar").
+     */
+    expect(CODIGO, 'a tela engole a falha de gravar a config').toContain('Não consegui gravar ${oQue}')
+    for (const oQue of ['os dias de chegada', 'o fornecedor', 'a antecedência', 'a folga']) {
+      expect(CODIGO, `a falha de gravar "${oQue}" não diz o que falhou`).toContain(`'${oQue}'`)
+    }
+  })
+})
+
+/* ══════════════ 6.5 · AS LEIS DA v3.2 — ESTEIRA · MESA RECOLHIDA · CONFIG NA TELA ══════════════ */
+
+describe('⭐⭐⭐ C7 v3.2 · A ESTEIRA DE 7 DIAS — a agenda em TEXTO morreu', () => {
+  it('⭐ os 7 slots vêm do SERVIDOR, e a tela não agrupa por conta própria', () => {
+    expect(CODIGO, 'a tela parou de desenhar a semana').toContain('dados.semana.map')
+    expect(CODIGO, 'o rótulo do slot é escrito na tela em vez de vir da lib').toContain('slot.rotulo')
+    /**
+     * ⛔⛔ AGRUPAR AQUI SERIA A 2ª RESPOSTA pra *"quando eu peço isto?"* — e ela divergiria do
+     * pill do card no 1º pedido ATRASADO (o clamp traz pra HOJE, e a tela não sabe disso).
+     */
+    expect(CODIGO, 'a tela agrupa os pedidos por dia por conta própria').not.toMatch(
+      /agenda[\s\S]{0,120}\.filter\([\s\S]{0,80}pedirEm/,
+    )
+  })
+
+  it('⛔⛔ FRASE CORRIDA É PROIBIDA na esteira (lei C7 v3.2)', () => {
+    // a agenda velha escrevia "pedir sáb FRANGO · chega SEG · ~18 KG" — era preciso LER pra agir
+    expect(CODIGO, 'a agenda em texto voltou').not.toContain('A AGENDA DO COMPRADOR')
+    expect(CODIGO, 'a frase corrida da agenda velha voltou').not.toMatch(/pedir \$\{DIAS/)
+  })
+
+  it('⭐ o mini-card diz NOME · QUANTIDADE grande · → chega DIA', () => {
+    const bloco = blocoDe('dados.semana.map', 'A MESA DE PEDIDO')
+    expect(bloco, 'o mini-card perdeu o nome do item').toContain('ped.nome')
+    expect(bloco, 'o mini-card perdeu a quantidade').toContain('fmt1(ped.quantidade)')
+    expect(bloco, 'o mini-card parou de dizer quando chega').toContain('→ chega {DIAS[ped.chegaDia]}')
+    // ⭐ o toque abre o item (e, pela mesa, o card dele) — esteira que não leva a lugar nenhum é enfeite
+    expect(bloco, 'o mini-card não abre o item').toContain('abrirItem(ped.itemId)')
+  })
+
+  it('⛔ dia sem pedido é TRAÇO, nunca ZERO (lei C2)', () => {
+    const bloco = blocoDe('dados.semana.map', 'A MESA DE PEDIDO')
+    expect(bloco, 'o slot vazio parou de mostrar o traço').toMatch(/slot\.pedidos\.length === 0[\s\S]{0,400}—/)
+  })
+
+  it('⭐ a esteira ROLA no eixo x e tem a medida da referência', () => {
+    // ⚠️ as medidas vêm do CSS do ARQUIVO, nunca escolhidas aqui
+    expect(cru(REF.css), 'a referência mudou o grid da esteira').toContain('repeat(7,minmax(96px,1fr))')
+    expect(CODIGO, 'a esteira parou de usar o grid de 7 slots da referência').toContain(
+      "gridTemplateColumns: 'repeat(7,minmax(96px,1fr))'",
+    )
+    expect(CODIGO, 'a esteira parou de rolar no eixo x — no celular 7 slots não cabem').toMatch(
+      /dados\.semana\.map[\s\S]{0,1200}|overflow-x-auto[\s\S]{0,1200}dados\.semana\.map/,
+    )
+  })
+})
+
+describe('⭐⭐⭐ C8 v3.2 · A MESA RECOLHIDA', () => {
+  const CARD = blocoDe('function MesaDePedido', '/* ═══════════════════════ a página')
+
+  it('⛔ o card NASCE RECOLHIDO: o corpo não renderiza fechado', () => {
+    /**
+     * ⛔ Esconder por CSS deixaria 7 colunas × N itens no DOM de CADA card da mesa — e a mesa
+     * tem um card por fornecedor pendente.
+     */
+    expect(CARD, 'o corpo do card deixou de ser gateado pelo `aberto`').toMatch(/\{aberto && \(/)
+    expect(CARD, 'o cabeçalho parou de alternar o card').toContain('onClick={aoAlternar}')
+    expect(CARD, 'o cabeçalho não diz o estado pra leitor de tela').toContain('aria-expanded={aberto}')
+  })
+
+  it('⭐ a linha-resumo diz fornecedor · chega DIA · nº itens · R$ total · prazo · seta', () => {
+    const cab = blocoDe('onClick={aoAlternar}', '{aberto && (')
+    expect(cab, 'o resumo perdeu o fornecedor').toContain('card.fornecedor')
+    expect(cab, 'o resumo perdeu o dia de chegada').toContain('chega {DIAS[card.chegaDia]}')
+    expect(cab, 'o resumo perdeu a contagem de itens').toContain('card.linhas.length')
+    expect(cab, 'o resumo perdeu o total — é o número que decide se ele abre').toContain('brl(total)')
+    expect(cab, 'o resumo perdeu a seta').toMatch(/▲[\s\S]{0,20}▼/)
+  })
+
+  it('⛔⛔ o PILL DO PRAZO sai do `pedirEmMin`, NUNCA de `chegaDia === hoje`', () => {
+    /**
+     * ⛔ A régua antiga perguntava *"a mercadoria chega hoje?"* — outra pergunta. O pedido de um
+     * fornecedor que entrega em 3 dias tem que gritar HOJE três dias ANTES da chegada; com ela o
+     * card só acendia no dia da entrega, ou seja **tarde demais, sempre**.
+     */
+    expect(CARD, 'o urgente voltou a sair de chegaDia === hoje').not.toContain('card.chegaDia === hoje')
+    expect(CARD, 'o card deixou de usar o urgente do servidor').toContain('const urgente = card.urgente')
+    expect(CARD, 'o pill perdeu o PEDIR HOJE').toContain('⚠ PEDIR HOJE')
+    expect(CARD, 'o pill do prazo deixou de usar o pedirEmMin').toContain('card.pedirEmMin')
+  })
+
+  it('⭐ o card do item ABERTO nasce aberto E marcado', () => {
+    expect(CODIGO, 'a página parou de dizer qual card tem o item aberto').toMatch(
+      /temSel = c\.linhas\.some\(\(l\) => l\.itemId === itemId\)/,
+    )
+    // ⛔ o TOQUE do dono ganha do default — senão fechar o card do item aberto é impossível
+    expect(CODIGO, 'o toque do dono deixou de ganhar do default').toContain('cardsAbertos[chave] ?? temSel')
+    expect(CARD, 'o card do item aberto perdeu a borda de ação').toContain('temSel ? CC.acao')
+  })
+
+  it('⛔ o COPIAR não propaga o clique do cabeçalho', () => {
+    /**
+     * ⛔ Sem isso o gesto de copiar fecharia o card que o dono acabou de abrir pra conferir.
+     *
+     * ⚠️ A asserção é ESTRUTURAL (o corpo do handler ATÉ o `copiar()`), não uma janela de N
+     * caracteres: a palavra "copiar" aparece 4× neste componente (a função, o rótulo, o
+     * "copiado") e **janela de distância já produziu falso vermelho E falso verde nesta casa**.
+     */
+    const handler = blocoEntre(CARD, 'onClick={(e) => {', 'void copiar()')
+    expect(handler.length, 'o handler do copiar saiu do card').toBeGreaterThan(0)
+    expect(handler, 'o copiar voltou a propagar o clique').toContain('e.stopPropagation()')
+  })
+})
+
+describe('⭐⭐⭐ C8 v3.2 · O EMPTY-STATE HONESTO — 3 estados, e a mensagem nunca mente', () => {
+  const MESA = blocoDe("titulo=\"A MESA DE PEDIDO", 'O PLANO DE PRODUÇÃO')
+
+  it('⛔⛔ zero a pedir NÃO é zero configurado (o caso do queijo, 18/10)', () => {
+    /**
+     * ⛔ Com a régua antiga (`mesa.length === 0`) a mesa dizia *"nenhum item com dias de chegada
+     * configurados"* num queijo CONFIGURADO com 591 KG em estoque — mandando o dono consertar o
+     * que já estava certo. É a família do *"mensagem que acusa o campo errado"*.
+     */
+    expect(MESA, 'a mesa voltou a decidir o vazio por mesa.length').not.toContain('dados.mesa.length === 0')
+    expect(MESA, 'a mesa deixou de ler o estado do servidor').toContain("dados.estadoMesa === 'SEM_CONFIG'")
+    expect(MESA, 'o estado NADA_A_PEDIR saiu da tela').toContain("dados.estadoMesa === 'NADA_A_PEDIR'")
+  })
+
+  it('⭐ o NADA_A_PEDIR diz "tudo abastecido" E quando é o próximo pedido', () => {
+    expect(MESA, 'a mesa parou de dizer que está tudo abastecido').toContain('tudo abastecido — nada a pedir')
+    /**
+     * ⛔ "nada a pedir" sem dizer quando voltar é um beco: ele não sabe se tem que olhar amanhã.
+     *
+     * ⚠️⚠️ A asserção mede o **USO no GATE que renderiza**, não a MENÇÃO: com
+     * `toContain('dados.proximoPedido')` eu repus o defeito (troquei o gate por `{false`) e o
+     * guard ficou **VERDE**, porque o símbolo sobrevive nas linhas que leem `.diaDaSemana` e
+     * `.emDias` logo abaixo. ***"Menção, não uso"*** — a classe que esta casa já pagou 18 vezes.
+     */
+    expect(MESA, 'o NADA_A_PEDIR não diz o próximo dia de pedido').toMatch(
+      /\{dados\.proximoPedido\s*\n?\s*\?/,
+    )
+    expect(MESA, 'o próximo pedido de HOJE não é dito').toContain("'HOJE'")
+  })
+
+  it('⭐ TEM_PEDIDO é o terceiro estado — os cards', () => {
+    expect(MESA, 'a mesa parou de desenhar os cards').toContain('dados.mesa.map')
+  })
+})
+
+describe('⭐⭐⭐ C5 v3.2 · A CONFIG INTEIRA NA TELA', () => {
+  const PAINEL = blocoDe('DIAS DE CHEGADA', 'os stats')
+
+  it('⭐ os três campos estão ao lado dos chips de chegada', () => {
+    for (const r of ['FORNECEDOR', 'ANTECEDÊNCIA (dias)', 'FOLGA (%)']) {
+      expect(PAINEL, `o campo "${r}" saiu da tela`).toContain(r)
+    }
+    // ⛔ rótulo que some quando se digita não é rótulo (a lei de 09/09): placeholder não serve
+    expect(PAINEL, 'o fornecedor perdeu o rótulo fixo').toMatch(/FORNECEDOR[\s\S]{0,400}<input/)
+  })
+
+  it('⛔⛔ ZERO PORTA NOVA — os 4 campos gravam pela MESMA rota de config', () => {
+    const porta = '/estoque/consumo-e-compras/config'
+    const n = CODIGO.split(porta).length - 1
+    expect(n, 'nasceu uma 2ª porta de gravação da config').toBe(1)
+    expect(CODIGO, 'a gravação deixou de ter dono único').toContain('const salvarConfig = useCallback')
+    for (const campo of ['fornecedor', 'antecedenciaDias', 'folgaPct']) {
+      expect(CODIGO, `o campo ${campo} não chega no corpo do gesto`).toContain(campo)
+    }
+  })
+
+  it('⛔ fornecedor VAZIO vira `null` explícito, nunca string vazia', () => {
+    /**
+     * ⛔ `fornecedor` é nullable e `null` significa *"não tem"* (é o que a mesa agrupa como
+     * "sem fornecedor"). Gravar `''` criaria um 3º estado indistinguível na leitura e DISTINTO
+     * na chave do card.
+     */
+    expect(CODIGO, 'o fornecedor vazio deixou de virar null').toMatch(
+      /trim\(\) === ''[\s\S]{0,40}\? null/,
+    )
+  })
+
+  it('⛔ número torto NÃO vira zero — ele é recusado com a frase que ensina', () => {
+    // ⛔ o `|| 0` que esta casa já pagou em quatro parses de quantidade
+    expect(CODIGO, 'a antecedência voltou a engolir lixo como zero').not.toMatch(
+      /Number\(cru\) \|\| 0/,
+    )
+    expect(CODIGO, 'o número torto deixou de ser recusado').toContain('!Number.isInteger(n) || n < 0')
+    expect(CODIGO, 'a recusa da antecedência não ensina a saída').toContain('quantos dias antes da chegada')
+    expect(CODIGO, 'a recusa da folga não ensina a saída').toContain('quanto a mais do necessário')
   })
 })
 

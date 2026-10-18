@@ -69,6 +69,11 @@ import {
   diaPedir,
   textoDoPedido,
   totalDoCard,
+  montarSemanaDoComprador,
+  estadoDaMesa,
+  proximoDiaDePedido,
+  type SlotDaSemana,
+  type EstadoDaMesa,
   segPrimeiro,
   DIAS_DA_BASELINE,
   COMPRAS_NA_MEDIA,
@@ -208,6 +213,12 @@ export interface LinhaDaMesa {
   temAgora: number
   saiAteChegar: number
   pedir: number
+  /**
+   * ⭐ em quantos dias este item tem que ser PEDIDO — negativo quando atrasado.
+   * ⚠️ Ele viaja na linha porque o **card recolhido** (lei C8 v3.2) precisa do pill do prazo, e
+   * derivá-lo na tela seria a 2ª resposta pra *"quando eu peço isto?"*, que o motor já deu.
+   */
+  pedirEm: number
   precoPago: number | null
   total: number | null
   /** ⓘ a conta aberta, em números rotulados — PROSA É PROIBIDA (lei C8) */
@@ -217,6 +228,15 @@ export interface LinhaDaMesa {
 export interface CardDaMesa {
   fornecedor: string | null
   chegaDia: number
+  /**
+   * ⭐⭐ o MENOR `pedirEm` do card — é ele que decide o pill do cabeçalho recolhido
+   * (*"⚠ PEDIR HOJE"* × *"pedir até DIA"*). ⛔ Decidido AQUI, não na tela: o `urgente` da tela
+   * antiga olhava `chegaDia === hoje`, que é **outra pergunta** (chegada ≠ pedido) — e por isso
+   * o card podia dizer "pedir até seg" com um item já atrasado dentro.
+   */
+  pedirEmMin: number
+  /** ⚠️ `pedirEmMin <= 0` — o dia de pedir é hoje ou já passou */
+  urgente: boolean
   linhas: LinhaDaMesa[]
   totalReais: number | null
   /** ⭐ o texto pronto pro WhatsApp */
@@ -258,7 +278,18 @@ export interface ConsumoECompras {
   caros: LinhaDeConsumo[]
   porcoes: LinhaDeConsumo[]
   agenda: LinhaDaAgenda[]
+  /**
+   * ⭐⭐⭐ A SEMANA DO COMPRADOR (lei C7 v3.2): 7 slots começando em hoje, montados pela LIB PURA
+   * (`montarSemanaDoComprador`). ⛔ A `agenda` continua no payload porque ela é a ORDEM do
+   * trabalho (o atrasado primeiro) e alimenta o juiz da mesa ①; a esteira é a mesma verdade
+   * desenhada por DIA. **Uma régua (`pedirEm`), duas vistas** — nunca dois cálculos.
+   */
+  semana: SlotDaSemana[]
   mesa: CardDaMesa[]
+  /** ⭐⭐ qual dos TRÊS estados a mesa está — a tela ECOA, nunca deduz (lei C8 v3.2) */
+  estadoMesa: EstadoDaMesa
+  /** ⭐ o "volte em…" do `NADA_A_PEDIR`; `null` quando ninguém tem chegada configurada */
+  proximoPedido: { diaDaSemana: number; emDias: number } | null
   plano: LinhaDoPlano[]
   semConfig: ItemSemConfig[]
 }
@@ -300,7 +331,8 @@ export async function lerConsumoECompras(
     return {
       janela, hoje, hojeSegPrimeiro, empresa: nomeDaEmpresa(input.empresa),
       avisos: ['as listas nascem vazias — escolha os itens que você acompanha'],
-      caros: [], porcoes: [], agenda: [], mesa: [], plano: [], semConfig: [],
+      caros: [], porcoes: [], agenda: [], semana: montarSemanaDoComprador([], hojeSegPrimeiro),
+      mesa: [], estadoMesa: 'SEM_CONFIG', proximoPedido: null, plano: [], semConfig: [],
     }
   }
 
@@ -657,7 +689,7 @@ export async function lerConsumoECompras(
     if (!l.pedido?.ok || l.pedido.pedir <= 0) continue
     const p = l.pedido
     const chave = `${l.config.fornecedor ?? ''}|${p.chegaDia}`
-    const card = cards.get(chave) ?? { fornecedor: l.config.fornecedor, chegaDia: p.chegaDia, linhas: [], totalReais: null, texto: '' }
+    const card = cards.get(chave) ?? { fornecedor: l.config.fornecedor, chegaDia: p.chegaDia, pedirEmMin: p.pedirEm, urgente: false, linhas: [], totalReais: null, texto: '' }
     const preco = l.precoPago.ultimo
     card.linhas.push({
       itemId: l.itemId,
@@ -667,6 +699,7 @@ export async function lerConsumoECompras(
       temAgora: l.estoque,
       saiAteChegar: p.saiAteChegar,
       pedir: p.pedir,
+      pedirEm: p.pedirEm,
       precoPago: preco,
       total: preco != null ? round2(p.pedir * preco) : null,
       conta: {
@@ -679,15 +712,39 @@ export async function lerConsumoECompras(
     })
     cards.set(chave, card)
   }
-  const mesa = [...cards.values()].map((c) => ({
+  const mesa = [...cards.values()].map((c) => {
+    // ⭐ o prazo do CARD é o do item mais apertado — quem manda é o pior caso, não a média
+    const pedirEmMin = Math.min(...c.linhas.map((l) => l.pedirEm))
+    return {
     ...c,
+    pedirEmMin,
+    urgente: pedirEmMin <= 0,
     linhas: c.linhas.sort((a, b) => (b.total ?? 0) - (a.total ?? 0)),
     // ⭐⭐ a MESMA régua que o − / + da tela usa (`totalDoCard`, na lib pura): o total só existe
     //    se TODA linha tem preço. ⛔ Somar aqui por conta própria faria o card mostrar um total
     //    ao abrir e outro depois do primeiro clique — o número que o dono leva pro fornecedor.
     totalReais: totalDoCard(c.linhas.map((l) => ({ quantidade: l.pedir, precoPago: l.precoPago }))),
     texto: textoDoCard(input.empresa, c),
-  })).sort((a, b) => a.chegaDia - b.chegaDia)
+    }
+  // ⭐ o card mais urgente primeiro — é a ordem do TRABALHO, não a da chegada
+  }).sort((a, b) => a.pedirEmMin - b.pedirEmMin || a.chegaDia - b.chegaDia)
+
+  // ── 9b. A SEMANA DO COMPRADOR (lei C7 v3.2) e OS TRÊS ESTADOS DA MESA (lei C8 v3.2)
+  const semana = montarSemanaDoComprador(
+    agenda.map((a) => ({
+      itemId: a.itemId, nome: a.nome, unidade: a.unidade,
+      quantidade: a.pedir, chegaDia: a.chegaDia, pedirEm: a.pedirEm,
+    })),
+    hojeSegPrimeiro,
+  )
+  // ⚠️ "configurado" é TER DIA DE CHEGADA — é o que separa o `NADA_A_PEDIR` do `SEM_CONFIG`, e
+  //    foi confundir os dois que fez a mesa mandar configurar o queijo que JÁ estava configurado.
+  const comConfig = caros.filter((l) => l.config.diasChegada.length > 0)
+  const estadoMesa = estadoDaMesa({ cards: mesa.length, itensComConfig: comConfig.length })
+  const proximoPedido = proximoDiaDePedido(
+    comConfig.map((l) => ({ diasChegada: l.config.diasChegada, antecedenciaDias: l.config.antecedenciaDias })),
+    hojeSegPrimeiro,
+  )
 
   // ── 10. O PLANO DE PRODUÇÃO (lei C9) — ordenado pelo que falta mais
   const fichaPorItem = new Map(
@@ -715,7 +772,7 @@ export async function lerConsumoECompras(
 
   return {
     janela, hoje, hojeSegPrimeiro, empresa: nomeDaEmpresa(input.empresa),
-    avisos, caros, porcoes, agenda, mesa, plano, semConfig,
+    avisos, caros, porcoes, agenda, semana, mesa, estadoMesa, proximoPedido, plano, semConfig,
   }
 }
 
