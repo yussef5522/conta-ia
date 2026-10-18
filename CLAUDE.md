@@ -11152,6 +11152,190 @@ tamanho conferido) · deploys 4/4 (`n5t4ZAWYXpTBl10kfkPlS`, `lHJOeuaxzveLWf4rcyC
    não diz a receita, e a tela **nomeia isso** em vez de ratear por palpite (lei C10). É a mesma
    lacuna do livro registrada desde 20/09, agora visível no item de maior giro.
 
+## ⛔⛔⛔ ZERO DE VERDADE × "A APURAR" — A LEI DO DIA FECHADO (17/10/2026)
+
+**O caso que pariu a lei (Coxão Mole, 11→17/10, palavra do dono):** a casa produziu porção
+dom/seg/ter e **NÃO abriu coxão de qua a sex porque já tinha porção pronta no estoque**. A tela
+mostrou **qua–sáb como "—" (a apurar)**, o herói disse *"56 KG · ▼ −17,7%"* e a cobertura dizia
+*"7,6 dias"* ao lado de *"sem média medida ainda"* — **um número cuja própria legenda o negava.**
+⭐ ***O defeito não era o número, era o RÓTULO.***
+
+**⛔⛔ A CAUSA, numa linha:** `porDia.has(dia)` era a **única pergunta** — então **ausência de
+MOVIMENTO virava ausência de DADO**. Dia que o dono conhece inteiro aparecia como dúvida, ficava
+**fora da média** (diluindo o `contaDoPedido` e a cobertura) e empurrava o Δ% pra uma comparação
+entre dois períodos medidos com réguas diferentes.
+
+### ⭐⭐ A LEI (refina a C2), em três estados e nenhum silêncio
+
+| estado | quando | valor | entra na média? |
+|---|---|---|---|
+| **FECHADO** | dia PASSADO sem pendência pra aquele item | ⭐ **ZERO É DADO** — barra no chão com o "0" escrito | **SIM** |
+| **PENDENTE** | o livro daquele dia **ainda vai mudar** | **`null`** — o único "a apurar" que sobrou, e o traço **DIZ o motivo no título** | não |
+| **HOJE** | dia ABERTO | o parcial que já saiu, com selo *"hoje · parcial"* | ⛔ **não** (parcial puxaria toda média pra baixo no meio do dia) |
+
+⛔ **`dia-do-consumo.ts` é PURO** — não conhece `prisma`, não sabe de onde vem a pendência. Quem
+**MEDE** é `pendencia-do-livro.ts`; quem decide o **RÓTULO** é ele. Misturar faria a régua
+depender de banco e deixar de ser testável sem ele — e é essa régua que a tela, a média, a
+cobertura e o `contaDoPedido` leem.
+
+### ⛔⛔⛔ A FONTE DA PENDÊNCIA FOI MEDIDA — E O BRIEF PRECISOU DE CORREÇÃO
+
+O pedido nomeava a fila de **CONFERÊNCIA**. Medido no código, **nenhum daqueles gestos muda o
+consumo de um dia PASSADO**:
+
+| gesto | data do movimento | muda dia passado? |
+|---|---|---|
+| `confirmarSeparacao` · `devolverInsumo` · a correção do gerente | **sem `dataMovimento` → `now()`** | ⛔ não |
+| **`BAIXA_VENDA`** | **`dataMovimento: dataDate`** — o dia do relatório | ⭐ **SIM** |
+
+⭐ ***A ÚNICA coisa que escreve consumo com data de um dia que já passou é a BAIXA DA VENDA.***
+Marcar "a apurar" por separação apontaria o dedo pro dia errado — a família do *"mensagem que
+acusa o campo errado faz o dono caçar um erro que não existe"* (16/09).
+
+**A régua tem três condições, e a (c) é a que salva o item do sprint:** (a) dia PASSADO · (b)
+existe **import de venda** daquele dia **e nenhuma `BAIXA_VENDA` datada nele** — ⭐ pendência por
+**EVIDÊNCIA**, nunca por ausência dela (dia em que a loja não abriu também não tem baixa, e
+chamá-lo de "a apurar" inventaria uma dúvida onde o fato é zero) · ⛔⛔ (c) **o item é alcançado
+pela baixa de venda**. **Sem (c) o coxão seria marcado "a apurar"** — ele é consumido por
+SEPARAÇÃO, nunca por venda (medido: 100% do consumo dele) —, **alarme falso exatamente no item
+que motivou o sprint**.
+
+⚠️ **LIMITE DECLARADO, não disfarçado:** baixa que rodou **PARCIAL** (nome do PDV sem destino)
+não entra aqui — ali há baixas no dia e a régua (b) não morde. Esse caso tem tela própria (a
+revisão do import), e virar "—" pra sempre seria pior que o zero: *ninguém mapeia o que a tela
+esconde.*
+
+### ⛔⛔ `SEM_LIVRO` NASCEU DE UM TESTE DE 16/10 REPROVANDO A LEI DE 17/10 — e ele estava certo
+
+Com *"dia passado sem movimento = 0"*, a baseline de 28 dias **inventava 21 dias de consumo zero
+pra um item que entrou no sistema há 7** — e a média por dia-da-semana saía **diluída a 1/4 do
+real**. ⭐ ***Número plausível e errado é pior que "a apurar"***: o pedido sairia menor e a
+prateleira acabaria. **Dia ANTES do primeiro movimento do item não é zero, é ausência de livro.**
+⚠️ E ele exige a consulta do 1º movimento **SEM filtro de data** (`groupBy _min dataMovimento`) —
+sem ela não dá pra saber se o 1º movimento *da janela* é o 1º *da vida*, e o item antigo seria
+tratado como recém-nascido. ⭐ **Não ajustei o teste pra caber na lei: inverti o pressuposto da
+fixture com o motivo escrito** (a compra andou de 10 pra 7 dias atrás).
+
+### ⭐⭐ A COBERTURA PAROU DE SE CONTRADIZER — eram DUAS perguntas colapsadas numa
+
+*"A cobertura existe?"* (precisa de média medida) × *"o farol existe?"* (precisa dos dias de
+CHEGADA declarados). Com média e sem config, **a cobertura é um número honesto e o farol é que
+não dá pra acender** — e a legenda passou a dizer isso em vez de negar a média que ela mesma
+acabou de usar. ⛔ `legendaDaCobertura` tem **dono único** e a **janela vem por PARÂMETRO**
+(digitar "28" ali seria a 2ª régua no dia em que a baseline mudar — a cicatriz do `TETO = 25`
+cravado em tela).
+
+### ⭐ O C12 VIROU **UMA** VERDADE — três números pro mesmo rótulo
+
+A lib fazia `slice(0,4)` e comparava com `slice(1,4)` (**3** compras), a referência dizia *"média
+das 4 últimas"*, e a tela escrevia `comprasConsideradas` (**todas** da janela) sobre uma conta
+feita com 3. Agora é **`COMPRAS_NA_MEDIA = 10`** (constante nomeada na lib pura — *"a tela já faz
+10, o dono aprovou, fica UMA verdade"*) + **`baseDaTendencia`**, que é o número que a tela
+escreve: ***o % tem que dizer contra quantas compras ele está comparando.***
+
+### ⚠️⚠️ REGRA 11 — 16 DEFEITOS REPOSTOS, 16 VERMELHOS. E UM VEIO VERDE
+
+o defeito do coxão de volta (**11**) · HOJE entrando na média (**1**) · PENDENTE entrando (**3**) ·
+a ORDEM das perguntas invertida (**1**) · `SEM_LIVRO` caindo (**3**) · a trava (c) caindo (**2**) ·
+a pendência virando ausência-de-evidência (**2**) · a baseline voltando a `porDia.has` (**4**) · a
+legenda voltando pra a tela (**1**) · a barra decidindo por `valor == null` (**1**) · a barra do
+zero perdendo o piso (**1**) · o selo saindo da tela (**1**) · o C12 voltando a 4 (**2**) · a
+ESPECIFICAÇÃO da referência voltando a dizer 4 (**1**) · a lei saindo do arquivo versionado (**1**).
+**baseline 0 · restaurado 0.**
+
+⛔⛔ **O verde foi o selo do herói olhando SÓ o período atual** — e a causa é instrutiva:
+**nenhum cenário punha a pendência SÓ no período ANTERIOR**, então o 2º termo do `||` nunca era
+executado. ⭐ O caso que **ISOLA** é a pendência **fora** da janela atual e **dentro** da anterior:
+o número do herói não muda, **o Δ% muda** — ele compara com um período incompleto. ***Selo que
+fala de um lado só mede meia conta.*** Com ele, o defeito morde.
+
+### ⚠️ 2 GUARDS REAPONTADOS, nenhum afrouxado, e os dois ficaram MAIS FORTES
+
+1. um exigia a frase **`'sem média medida ainda'`** na tela — **que ERA o defeito**. Agora exige
+   `item.coberturaLegenda` e **PROÍBE** a frase.
+2. o outro ancorava em `/valor == null[\s\S]{0,200}dashed/` — **`valor == null` é a PERGUNTA do
+   defeito**, e `{0,200}` é **janela de distância** (⚠️ **9ª ocorrência da classe**: ela já
+   produziu falso vermelho E falso verde nesta casa). Agora é **estrutural** (`blocoEntre` no
+   componente das barras) e **proíbe** a forma antiga.
+
+⚠️ **E a asserção do C12 teve que medir a LEI, não a nota histórica:** a 1ª versão proibia *"média
+das 4 últimas"* **no arquivo inteiro** e **reprovou a própria nota que DOCUMENTA a troca**
+(*"⚠️ ERA 'média das 4 últimas'…"*). ⭐ ***O arquivo que registra o defeito não pode ser condenado
+por registrá-lo*** — o proibido passou a ser o "4" na **ESPECIFICAÇÃO** (o `<script>`, que é o
+comportamento que a tela copia) e no enunciado da lei.
+
+**`docs/consumo-e-compras-referencia.html` → v3.1** (C2 ganhou o parágrafo da lei, C12 virou "até
+10 / `COMPRAS_NA_MEDIA`", C13 ganhou o subtítulo da janela; o `<script>` corrigido — *a
+especificação é ele*), com **"aprovado pelo dono 17/10"** escrito em cada edição.
+
+### A PROVA EM PROD — NAVEGANDO, 2 VIEWPORTS × 2 TEMAS, ZERO ESCRITA
+
+```
+⭐⭐ O COXÃO DEPOIS DA CURA (período 12→18/10)
+   HERÓI 74,78 KG · Δ +10,8%   ·   ⚠ tem dia a apurar: NÃO (sem selo)
+     12/10 seg FECHADO 19,440      15/10 qui FECHADO  0,000   ⭐ era "—"
+     13/10 ter FECHADO  8,640      16/10 sex FECHADO  0,000   ⭐ era "—"
+     14/10 qua FECHADO  0,000  ⭐  17/10 sáb FECHADO 23,480
+     18/10 dom HOJE    23,220  (parcial — não entra como dia completo)
+   COBERTURA ~8,8 dias · farol A_APURAR
+   LEGENDA  "média de 28d · 7 de 7 dias da semana · falta os dias de chegada pro farol"
+            ⭐ a contradição MORREU — o número e a legenda dizem a mesma coisa
+   PREÇO PAGO último R$ 44,95 · média das últimas R$ 46,55 · ⭐ base da tendência 9 de 10
+
+⭐⭐ QUANTOS DIAS "A APURAR" DE VERDADE EXISTEM — a resposta do dono
+   dias com import de venda SEM baixa (a fila do livro): 0
+   itens com dia PENDENTE no período: 0 de 33   ·   com o selo aceso: 0
+   ⭐ A FILA ESTÁ LIMPA — nenhum item/dia pendente entre os 9 caros
+
+⛔ A LEI, nos 33 itens das listas
+   FECHADO 198 (dos quais ZERO DE VERDADE: 107) · HOJE 33 · PENDENTE 0 · SEM_LIVRO 0 · FUTURO 0
+   ⛔ barras que violam a lei do valor: 0 ✓
+   ⛔ coberturas que se CONTRADIZEM (número + "sem média"): 0 ✓
+   ⛔ tendência de preço sem base declarada: 0 ✓
+
+REGRA 12 — celular 200/80ms · desktop 200/34ms · chunk DESTA tela 31 KB
+   ✓ 6/6 peças da lei nos DOIS · ⛔ hex cravado: 0 · ⛔ 2ª composição: 0
+   ⭐ os 21 tokens (lidos de lib/compras/tokens.ts) nos DOIS mapas do CSS servido
+   ⛔→✓ MORRERAM: "sem média medida ainda" · "valor == null"
+LEI C0 intocada: Produção 200 · Hoje ao vivo 200 · Radar 200 · mesa ① 200 (os dois viewports)
+movimentos 8.768 → 8.768   ⭐ ZERO ESCRITA
+```
+
+**994 arquivos · 13.428 verdes · 2 todo · TS 0 · migration NENHUMA · deploy 4/4
+(`Q7jPoGBgaZNt18SGVFNMm`) · Δ chunks +4 KB.**
+
+### ⚠️⚠️ O DEPLOY FALHOU UMA VEZ POR SONDA MINHA NO RAIZ DO REPO — a cicatriz de 30/09
+
+O build morreu no type-check em **`scripts/medir-zero.ts`**, uma sonda minha que usava
+**`prisma.stockConclusaoConferida`** — delegate que **eu chutei e não existe**. ⭐ **O blue-green
+segurou: o symlink não moveu e prod seguiu no build anterior** — falha de build continua sendo
+não-evento pro cliente. Removida com **`saferm`** (que recusa git-tracked) e o deploy passou 4/4.
+***Sonda vive fora do raiz do repo, ou sai antes do deploy.***
+
+### ⚠️⚠️ REGRA PERMANENTE DE SONDA (reafirmada pelo dono 18/10)
+
+> **Sonda em bundle minificado compara com ESCAPE (`\xNN`/`\uNNNN`) ou sonda o DOM renderizado —
+> proibido grep de literal com acento no bundle. E caminho de módulo / nome de campo / nome de
+> token se LÊ do repo, nunca se chuta.**
+
+Nasceu de **cinco falsos vermelhos meus na mesma prova**: (a) `@/lib/auth/jwt` (é `@/lib/auth`) ·
+(b) `r.revenda` (não existe; são `caros` + `porcoes`) · (c) `cox.consumo` (é `consumoDoPeriodo`) ·
+(d) `tendencia !== 'SEM_BASE'` (é `null`) · (e) ⭐⭐ **10 tokens "ausentes" porque eu chutei
+`--cc-*`** — eles são os **da casa** (`--prod-*`/`--fam-*`, mapeados 1:1 por PAPEL) — e **2 peças
+"ausentes" porque o minificador escapa `média` como `m\xe9dia`** (a cicatriz do `Sa\xeddas:` de
+15/09). Lendo os nomes **do arquivo** e comparando **com escape**: **6/6 e 21/21**.
+⚠️ E a URL da mesa ① foi chutada **pela 2ª vez** (é `/dashboard`). ***Sonda errada dá um vermelho
+tão convincente quanto um defeito real.***
+
+📋 **FICA PRO DONO (REGRA 2, o olho é dele):** abrir a tela no celular e no notebook, **nos dois
+temas**, e ver o coxão com qua–sex em **0** e a cobertura dizendo a janela. A prova mede o que
+prod serve (as 6 peças, os 21 tokens nos dois mapas, zero hex no chunk); **quem vê a cara é ele.**
+⚠️ Screenshot indisponível (extensão do Chrome desligada nesta sessão).
+📋 **E 4 sondas minhas antigas seguem untracked em `scripts/` no servidor**
+(`preview-maionese` · `retro-queijo` · `tmp-med` · `vinagres`, de 12-13/09). Elas **compilam**
+hoje, então não bloqueiam — mas são **bomba armada pro próximo deploy** no dia em que um delegate
+que elas citam mudar de nome. Decisão dele se limpo (`saferm`, untracked, nada as referencia).
+
 ## ⛔⛔⛔ SPRINT 2.1 — SEIS ACERTOS, E O DIA QUE A CASA LIA COMO DOIS (16/10/2026)
 
 **`pg_dump pre-redatar-produtos-1610-20261016-171756.dump` (9.495.731 bytes, tamanho conferido) ·
