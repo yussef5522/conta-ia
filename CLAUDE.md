@@ -12068,6 +12068,136 @@ mede o que prod serve (a geometria nos 2 estados, o último grupo dentro do scro
 passando da tela nos 4 casos); **quem confirma que o dedo chega lá é ele**. ⚠️ Screenshot
 indisponível (extensão do Chrome desligada nesta sessão).
 
+## ⛔⛔⛔ A RESPOSTA DA PERGUNTA DO DIA EVAPORAVA — O LAÇO (19/10/2026)
+
+**O laço, na forma exata:** a resposta do dono vivia **só como PARÂMETRO do `abrirPreview`**. O
+`confirmar` é um gesto **POSTERIOR** e montou o corpo dele **sem o campo**; o servidor
+**re-avalia a lei da data no confirmar** (ele é o FREIO), devolve **409**, e o ramo do 409
+**fechava o modal e reabria A MESMA pergunta**. O dono respondia, respondia, e **nada salvava**.
+
+⛔ **E o `setData(confirmouDia)` que existia é CERTO quando a resposta é o OUTRO dia** — ele só
+não podia ser a **única memória**: quando a resposta é o dia que já está no campo, trocar o campo
+é **no-op** e a resposta desaparece do mundo. ⚠️ **O defeito só morde dentro da janela de 10 min
+do racho** (`MESMO_LOTE_MINUTOS`): fora dela a lei diz ACEITA e nenhuma pergunta aparece — é por
+isso que ele conseguiu subir o 17/10 pelo workaround, e é por isso que o caso passa facilmente por
+"às vezes funciona".
+
+### ⭐⭐ A CURA — A RESPOSTA VIROU ESTADO, E UMA FUNÇÃO A ENTREGA AOS TRÊS GESTOS
+
+`diaConfirmado` nasce **ao lado de `perguntaDia`** (um guarda a PERGUNTA, o outro a RESPOSTA) e
+`respostaDoDia(explicito?)` é a **porta única** que os **três** gestos que falam com
+`/vendas/processar` consomem: **preview** · **confirmar** · **reenvio-sem-os-barrados**.
+⛔ O argumento explícito ganha porque resposta-e-reenvio acontecem **no mesmo tick** (o `setState`
+ainda não voltou); os outros dois leem o estado.
+
+- ⭐⭐ **A RESPOSTA SÓ É GUARDADA DEPOIS QUE O SERVIDOR ACEITOU** — guardar no clique afirmaria
+  uma decisão que o freio pode recusar, e aí a tela mentiria pra sempre sobre um dia que nunca
+  passou.
+- ⛔ **`escolherData` APAGA a resposta** (campo de data, "importar outro dia", "substituir o dia"):
+  a resposta pertence a um **PAR de dias**, não é passe livre — mudar o dia na mão invalida ela.
+  `onFile` idem: arquivo novo, pergunta nova.
+- ⭐ **O 409 PASSOU A TER DOIS SIGNIFICADOS, e o segundo é confissão nossa:** sem resposta em
+  estado é **pergunta legítima** (e agora ela não lacei mais, porque responder GUARDA); **com**
+  resposta em estado é **DEFEITO NOSSO** — o modal **fica aberto** com a frase honesta
+  (*"você já confirmou o dia X e o servidor recusou de novo — isto é defeito nosso, não seu"*) em
+  vez de devolver o dono ao laço.
+- ⛔⛔ **SERVIDOR INTOCADO:** `exigirDiaDecidido` continua re-avaliando e **só aceita opção que ele
+  mesmo ofereceu** — afrouxar ali viraria `force`. ⭐ E `confirmouDia` **não é um force**: com
+  `decisao === 'ACEITA'` a lei retorna no primeiro degrau e **ignora o campo**.
+- ⚠️ **`undefined`, nunca `null`** (o zod é `.optional()` e `JSON.stringify` descarta a chave) e o
+  ramo `reprocessar` fica de fora de propósito — ele usa `data` direto.
+
+### ⭐⭐ O GUARD OLHA O **CORPO DO GESTO**, NÃO O ARQUIVO
+
+`resposta-do-dia-viaja-no-gesto.test.ts` parte do **`fetch`**, extrai o corpo (literal inline **ou**
+`const body = cond ? {A} : {B}`) e cobra: *todo gesto que manda `confirmar` pra rota que roda a lei
+inclui `confirmouDia`*. **Gesto novo sem o campo fica vermelho** — foi exatamente assim que este
+escapou (o `abrirPreview` tinha; o `confirmar`, nascido depois, não).
+
+**⚠️⚠️ E O DETECTOR REPROVOU TRÊS VEZES ANTES DE MORDER, cada uma com uma cicatriz desta casa:**
+1. **janela por distância** → fatiou até "o próximo `function`", entrou no JSX e mordeu
+   `onConfirmar={confirmar}` como se fosse corpo de POST. ***Janela de distância já produziu falso
+   vermelho E falso verde aqui*** (10ª ocorrência) — virou **brace-matching**.
+2. **dono por proximidade** → com a atribuição ao bloco mais interno, o "culpado" virou
+   `VendasImportPage`, que contém **todas** as rotas da tela — e o corpo de `/vendas/manual` manda
+   `confirmar: true` **legitimamente** (aquela rota não roda a lei). A régua passou a ser a **ROTA**.
+3. **regex cego no padrão da casa** → `\bfetch\s*\(` achou 3 corpos e **perdeu os 2 que gravam**,
+   porque aqui se escreve `fetchComTimeout<{ recibo: Recibo }>(`. É a **cicatriz de 20/09**
+   (`fetchComTimeout(` não contém `fetch(`), re-medida: com o regex cego o guard acusa
+   *"expected 3 to be greater than or equal to 5"*.
+
+### ⚠️ REGRA 11 — 7 DEFEITOS REPOSTOS, 7 VERMELHOS (baseline 0 · restaurado 0)
+
+| defeito reposto | vermelhos |
+|---|---|
+| **o corpo do CONFIRMAR sem o campo** (o defeito de 17/10) | **4** |
+| **o 409 voltando a fechar o modal e reabrir a pergunta** (o laço) | **1** |
+| a resposta deixando de ser ESTADO (volta a só argumento) | **4** |
+| o reenvio-sem-os-barrados sem o campo | **1** |
+| a resposta guardada no CLIQUE, não na aceitação do servidor | **1** |
+| trocar o dia na mão deixando de apagar a resposta | **1** |
+| o detector voltando ao regex cego de `fetch(` | **2** |
+
+⚠️ **D1 precisou de duas voltas:** o `perl` da sonda **não aplicou** e o assert de md5 gritou
+*"⛔⛔ A SUBSTITUIÇÃO NÃO APLICOU"*; o fallback `/m` sob `-0777` podia pegar **os dois** corpos.
+Re-medido **isolado**, com regex ancorado em `confirmouSanidade, nomeArquivo:` → **4 vermelhos
+nomeando exatamente o defeito de 17/10**. ⭐ *Sonda que não acusa a própria falha de aplicação é
+pior que sonda nenhuma* — e foi o assert que impediu um verde de graça.
+
+### A PROVA EM PROD — 2 VIEWPORTS (REGRA 12), ZERO ESCRITA
+
+```
+(a) BUNDLE SERVIDO   celular 200/271ms · desktop 200/52ms · chunk 79 KB nos dois
+    ⭐ a CHAVE `confirmouDia:` nos corpos: 4×   ·   ⭐ a frase do 409-defeito-nosso: está lá
+    ⚠️ só KEY e LITERAL se medem no bundle — o minificador RENOMEIA `diaConfirmado`/
+       `respostaDoDia`, e escapa acento como `\xNN` (a cicatriz do `Sa\xeddas:`)
+
+(b) O CONFIRMAR pela rota real (3 formas) → HTTP 400 "Envie o arquivo do dia."
+    ⭐ 400 e não 409: a lei roda ANTES do `if (!html)`, então 409 = lei recusou · 400 = lei PASSOU
+
+(c)(d) A LEI com o estado REAL, no instante do gesto dele (01:10 BRT)
+    irmão 18/10 importado 04:02:02 · 8,0 min antes do clique
+    decisão PERGUNTA · porque IRMAO_EM_OUTRO_DIA
+    opções: 2026-10-18 [como o outro] · 2026-10-17 [dias diferentes mesmo]
+    ⛔ SEM confirmouDia → 409 "o outro relatório deste par acabou de entrar em domingo 18/10,
+       e você apontou sábado 17/10 — se forem dias diferentes, um fica com o faturamento
+       e o outro com os sabores."
+    ⭐ COM confirmouDia → ACEITOU o dia 2026-10-17
+
+(e) movimentos 9177→9177 · imports 44→44 · linhas 3769→3769 · arquivos 22→22  ⭐ ZERO ESCRITA
+```
+
+**⚠️⚠️ E O MEU PRIMEIRO CONTRAFACTUAL DEU "NÃO ACHEI O ARQUIVO DE 18/10" — ERRO MEU, A CICATRIZ DE
+14/09:** comparei o `data` do `stock_venda_arquivo` pelo **instante EXATO** (`00:00Z`), e aquele
+writer grava **12:00Z** (import e linha gravam 15:00Z, complemento 00:00Z). ***Comparar timestamp
+exato acerta um writer e erra o outro, em silêncio*** — refeito por **FAIXA do dia**, e aí a lei
+reproduziu o 409 do caso real ao pé da letra.
+
+**⚠️⚠️ CORREÇÃO HONESTA — O ESTADO MUDOU DEBAIXO DA MEDIÇÃO: o dono subiu o 17/10 INTEIRO às
+01:19-01:21 BRT, ANTES do deploy** (`04:19:11Z` produtos + `04:21:02Z` complementos contra o
+`20261019-013712` = 04:37Z). **Com o código VELHO**, pelo workaround: os dois arquivos entraram
+com **2 min de distância**, fora da janela de 10 min do racho → a lei disse **ACEITA** e nenhuma
+pergunta apareceu. ⭐ **Ou seja: o dia está salvo e completo** — PRODUTOS 102 linhas · 897 un ·
+Σ R$ 30.983,70 · COMPLEMENTOS 110 linhas · **63 `BAIXA_VENDA` somando R$ 8.163,12** (1 estorno).
+⚠️ **Consequências pra o relatório:** o 17/10 **não é mais virgem** (as três chamadas do caminho do
+confirmar devolveram **400**, porque a lei agora é ACEITA e nem olha o campo), e o contrafactual do
+409 **não sai do estado de hoje** — `irmaoDoPar(PRODUTOS)` passou a devolver o complemento de 17/10
+em vez do de 18/10. Ele se reproduz **com o irmão real daquele instante**, que é o que a prova (c)/(d)
+acima faz.
+
+**998 arquivos · 13.505 verdes · 2 todo · TS 0 · migration NENHUMA · ledger intocado · deploy 4/4
+(`VI5-aW4pLLUuiucG8CbJn`, SHA `675aa7b8`) · Δ chunks +0 KB.**
+
+⚠️ **Sonda criada no servidor e removida com `saferm` na MESMA linha de comando**
+(`git status --short scripts/` limpo depois) — a regra de 18/10: *sonda nunca dorme no workspace
+de build*.
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** o **18/10** segue sem import (medido: 0 imports
+daquele dia). Quando ele subir os dois relatórios dentro da janela de 10 min, a pergunta aparece
+**e agora a resposta viaja** — responder uma vez resolve, e o laço deixou de existir. ⚠️ Se mesmo
+assim vier 409, o modal **fica aberto** com a frase que pede pra ele me mandar o texto: ali o 409 é
+defeito nosso, não dele.
+
 ## Ordem de deploy (PJ + PF)
 
 **⚠️ SWAP DE 2GB É OBRIGATÓRIO NO SERVIDOR (25/08).** O `npm run build` do Next roda o type-check num worker que chega a **~1,9 GB de RSS**; o servidor tem 3,9 GB e estava **sem swap nenhum** → o OOM killer matava o worker (`signal: SIGKILL`) e o `.next` ficava **sem `BUILD_ID`**, deixando o pm2 em loop de erro. **Não adianta mexer no `--max-old-space-size`:** teto alto (2560) o kernel mata igual; teto baixo (1400) o próprio V8 aborta por heap insuficiente (`SIGABRT`) — o type-check PRECISA de ~2 GB. Criado em 25/08: `fallocate -l 2G /swapfile && chmod 600 && mkswap && swapon` + linha no `/etc/fstab` (persiste no reboot). Build voltou a passar de primeira. **Servidor novo nasce quebrado sem isso** — incluir no provisionamento junto com o poppler. Pra desfazer: `swapoff /swapfile && rm /swapfile` + tirar a linha do fstab.
