@@ -12,9 +12,8 @@ import { registrarArquivoDoImport } from './registrar-arquivo'
 import { medirSanidade, SanidadeNaoConfirmadaError } from './medir-sanidade'
 import type { ResultadoDaSanidade } from './sanidade-do-import'
 import { criarMovimento, estornarMovimento } from '../movement'
-import { custoMedioPorItem, recomputeSaldoCache, saldosDaEmpresa } from '../saldo'
-import { avaliarResiduo, custoParaBaixar } from '../residuo-de-centavos'
-import { custoVigentePorItem } from '../custo-vigente'
+import { recomputeSaldoCache } from '../saldo'
+import { custoDaBaixa, estadoParaBaixa, valorPrevistoDaBaixa } from './custo-da-baixa'
 import { BaixaComItemBarradoError, semOsPendentes, type ItemBarrado } from './itens-pendentes-da-baixa'
 import { MovementInvalidError } from '../movement'
 
@@ -128,12 +127,21 @@ export interface LinhaVenda { produto: string; quantidade: number; valorTotal: n
 /** DRY-RUN a partir de LINHAS (parseadas ou do banco). incluir = nomes marcados pelo dono
  *  (null = todos os mapeados). Mapeado não-marcado → "fora" (não baixa, não é pendente). */
 export async function montarPlanoDeLinhas(companyId: string, data: string, linhas: LinhaVenda[], incluir: string[] | null, db: PrismaClient = defaultPrisma): Promise<PlanoVenda> {
-  const [mapa, ctx, custoMap, sanidade] = await Promise.all([
+  /**
+   * ⭐⭐ O PREVIEW LÊ O MESMO ESTADO QUE A GRAVAÇÃO (19/10/2026).
+   *
+   * ⛔ Antes o `valor` do plano saía de `qtd × custoMedioArredondado` enquanto a gravação
+   * usava precisão cheia (desde 19/09) — uma deriva de centavos entre o que o modal promete
+   * e o que o ledger escreve. *Preview e confirm discordando* é a doença mais cara deste
+   * módulo. ⚠️ O `custoMedio` exibido segue arredondado: é LEITURA, e é o número da Posição.
+   */
+  const [mapa, ctx, estado, sanidade] = await Promise.all([
     db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true, itemId: true } }),
     montarCtx(companyId, db),
-    custoMedioPorItem(db, companyId),
+    estadoParaBaixa(db, companyId),
     medirSanidade(companyId, linhas.map((l) => ({ produto: l.produto, quantidade: l.quantidade })), db),
   ])
+  const custoDeLeitura = (itemId: string) => estado.porItem.get(itemId)?.custoMedio ?? null
   const mapaPorNome = new Map(mapa.map((m) => [m.nomeSuitable, m]))
   const incluirSet = incluir ? new Set(incluir) : null
   const nomeAlvo = (m: { alvoTipo: string; fichaId: string | null; itemId: string | null }) =>
@@ -158,14 +166,14 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
     const acc = new Map<string, number>()
     if (m.alvoTipo === 'FICHA' && m.fichaId) explodir({ tipo: 'FICHA', fichaId: m.fichaId }, l.quantidade, ctx, acc, fichasUsadas)
     else if (m.alvoTipo === 'REVENDA' && m.itemId) explodir({ tipo: 'REVENDA', itemId: m.itemId }, l.quantidade, ctx, acc, fichasUsadas)
-    const baixa = [...acc.entries()].map(([itemId, qtd]) => ({ itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round6(qtd), custoMedio: custoMap.get(itemId) ?? null }))
+    const baixa = [...acc.entries()].map(([itemId, qtd]) => ({ itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round6(qtd), custoMedio: custoDeLeitura(itemId) }))
     for (const [itemId, qtd] of acc) agregada.set(itemId, round6((agregada.get(itemId) ?? 0) + qtd))
     produtos.push({ nome: l.produto, quantidade: l.quantidade, alvoTipo: m.alvoTipo as 'FICHA' | 'REVENDA', alvoNome: nomeAlvo(m), baixa })
   }
 
   return {
     data, produtos, pendentes, fora, ignorados,
-    agregada: [...agregada.entries()].map(([itemId, qtd]) => { const c = custoMap.get(itemId) ?? null; return { itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round6(qtd), custoMedio: c, valor: c != null ? round2(qtd * c) : null } }),
+    agregada: [...agregada.entries()].map(([itemId, qtd]) => ({ itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round6(qtd), custoMedio: custoDeLeitura(itemId), valor: valorPrevistoDaBaixa(itemId, round6(qtd), estado) })),
     totalUnidades: linhas.reduce((s, l) => s + l.quantidade, 0),
     totalMapeados: produtos.length,
     totalPendentes: pendentes.length,
@@ -270,32 +278,25 @@ async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[]
      * dentro do teto do arredondamento (`avaliarResiduo`). Acima do teto continua recusando:
      * ali não é centavo, é dado torto.
      */
-    const saldosAgora = await saldosDaEmpresa(tx, companyId)
-    const estado = new Map(saldosAgora.map((s) => [s.itemId, s]))
     /**
-     * ⭐⭐ A MEMÓRIA DO CUSTO, lida UMA VEZ pro lote inteiro (15/10/2026).
+     * ⭐⭐ O CUSTO DA BAIXA TEM UM DONO SÓ (19/10/2026) — `custo-da-baixa.ts`.
      *
-     * Ela é o que faz a saída de item **negativado** sair pelo **custo vigente** em vez de
-     * R$ 0,00 — o furo que pôs 293 movimentos a custo zero no ledger. Quem decide é a porta
-     * única (`custoParaBaixar`), que delega o ramo negativo à lei de 13/10.
+     * ⛔ A aritmética (precisão cheia de 19/09 + memória do saldo ≤ 0 de 15/10) **morava
+     * aqui** e o `baixa-complemento.ts` — que compartilha o MOTOR de explosão com esta
+     * função desde 03/09 — ficou com a versão antiga. Resultado medido em 19/10: a baixa dos
+     * complementos de 17/10 **barrada** pelo guarda do estado impossível (calabresa ralada
+     * 49 UN → final 0 UN / −R$ 0,12). *Uma régua pra "quanto vale esta baixa", dois leitores.*
      *
-     * ⚠️ **FORA do laço, de propósito:** uma consulta por item num plano de 58 itens é a
-     * doença dos 4.909 ms / 1.786 consultas de 28/09. Aqui é 1 consulta pro lote.
+     * ⚠️ **DEPOIS dos estornos e DENTRO da transação:** num reprocesso o estado que importa é
+     * o de depois de desfazer as baixas antigas. E em **2 consultas pro lote**, nunca uma por
+     * item (a doença dos 4.909 ms de 28/09).
      */
-    const vigentes = await custoVigentePorItem(tx, companyId)
+    const estado = await estadoParaBaixa(tx, companyId)
     const barrados: ItemBarrado[] = []
     const aBaixar = semOsPendentes(plano.agregada, itensPendentes)
     for (const a of aBaixar) {
       if (a.qtd <= 0) continue
-      const at = estado.get(a.itemId)
-      const custo = custoParaBaixar(at?.valor ?? 0, at?.saldo ?? 0, vigentes.get(a.itemId) ?? null)
-      let custoTotal = round2(-a.qtd * custo)
-      const v = avaliarResiduo({
-        saldoAntes: at?.saldo ?? 0, valorAntes: at?.valor ?? 0,
-        qtdDaBaixa: a.qtd, valorDaBaixa: Math.abs(custoTotal),
-      })
-      // ⭐ zerou a quantidade e sobrou resíduo do histórico? vai junto — zerar qtd zera valor
-      if (v.decisao === 'AJUSTA_RESIDUO') custoTotal = round2(custoTotal + v.valorDepois)
+      const { custoUnitario: custo, custoTotal } = custoDaBaixa(a.itemId, a.qtd, estado)
       try {
         await criarMovimento(tx, { companyId, itemId: a.itemId, tipo: TIPO_BAIXA, quantidade: -a.qtd, custoUnitario: custo, custoTotal, receiptId: imp.id, origem: 'MANUAL', criadoPorId: userId ?? null, dataMovimento: dataDate })
       } catch (e) {

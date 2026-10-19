@@ -125,26 +125,43 @@ describe('⭐⭐ o lote não fica refém de um item', () => {
   })
 
   /**
-   * ⚠️ REAPONTADO EM 15/10, e ficou MAIS FORTE. A asserção antiga casava o texto LITERAL dos
-   * argumentos (`custoParaBaixar(at?.valor ?? 0, at?.saldo ?? 0)`) e **quebrou com o código
-   * CERTO** quando a chamada ganhou o 3º argumento (o custo vigente) — *grep não distingue
-   * "refatorei" de "quebrei"*, que é a razão de existir da REGRA 3.
+   * ⚠️⚠️ REAPONTADO DUAS VEZES, e nas duas ele quebrou **COM O CÓDIGO CERTO** — *grep não
+   * distingue "refatorei" de "quebrei"*, que é a razão de existir da REGRA 3.
+   *   · **15/10:** casava o texto LITERAL dos argumentos e quebrou quando a chamada ganhou o
+   *     3º (o custo vigente).
+   *   · **19/10:** `baixa-venda.ts` deixou de chamar `custoParaBaixar` — a régua mudou de
+   *     casa pra `custo-da-baixa.ts`, a PORTA ÚNICA que nasceu quando se descobriu que a
+   *     baixa de COMPLEMENTOS era um terceiro caminho (e o que barrou o dia 17/10).
    *
-   * ⭐ A pergunta NÃO mudou (*"a baixa move dinheiro com o custo CHEIO?"*); o que mudou é que
-   * ela passou a cobrar as DUAS metades: o custo vem da porta única **e** a porta recebe a
-   * MEMÓRIA do item — sem o 3º argumento, saída de item negativado volta a sair a R$ 0,00.
+   * ⭐ A pergunta NUNCA mudou (*"a baixa move dinheiro com o custo CHEIO e com a memória do
+   * item?"*). O que mudou é o endereço — e ele ficou **MAIS FORTE**, porque agora cobra as
+   * TRÊS metades: a baixa consome a porta · a porta chama a lei com o 3º argumento · e
+   * nenhum dos dois volta a mover dinheiro com o custo de TELA.
    */
-  it('⭐ a baixa usa o custo CHEIO da porta única, e PASSA a memória do item', () => {
+  it('⭐ a baixa usa o custo CHEIO da porta única, e a porta PASSA a memória do item', () => {
     const b = fonte('lib/stock/vendas/baixa-venda.ts')
-    const chamada = b.match(/custoParaBaixar\(([^)]*)\)/)
-    expect(chamada, 'a baixa deixou de usar a porta única do custo').not.toBeNull()
+    const porta = fonte('lib/stock/vendas/custo-da-baixa.ts')
+
+    // (1) a baixa consome a porta — nunca uma régua própria
+    expect(b, 'a baixa deixou de usar a porta única do custo').toMatch(/custoDaBaixa\(/)
+    expect(b, 'a baixa deixou de ler o estado pela porta').toMatch(/estadoParaBaixa\(/)
+
+    // (2) a porta chama a lei COM a memória — sem o 3º argumento, item negativado sai a R$ 0,00
+    const chamada = porta.match(/custoParaBaixar\(([^)]*)\)/)
+    expect(chamada, 'a porta deixou de chamar a lei do custo').not.toBeNull()
     const args = chamada![1].split(',')
     expect(args.length, 'a chamada perdeu o 3º argumento — o vigente').toBe(3)
     expect(args[2], 'o 3º argumento tem que ser a memória daquele item').toMatch(/vigentes?\./)
-    expect(b, 'o vigente passou a ser lido DENTRO do laço (1 consulta por item)')
-      .toMatch(/const vigentes = await custoVigentePorItem\(tx, companyId\)/)
-    expect(b, 'voltou a mover dinheiro com o custo de TELA')
-      .not.toMatch(/const custo = custoMap\.get\(a\.itemId\) \?\? 0/)
+    expect(porta, 'a porta parou de ler a memória do custo')
+      .toMatch(/custoVigentePorItem\(db, companyId\)/)
+
+    // (3) nem a baixa nem a porta voltam a mover dinheiro com o custo ARREDONDADO
+    for (const [nome, src] of [['baixa-venda', b], ['custo-da-baixa', porta]] as const) {
+      expect(src, `${nome} voltou a mover dinheiro com o custo de TELA`)
+        .not.toMatch(/const custo = custoMap\.get\(a\.itemId\) \?\? 0/)
+      expect(src, `${nome} voltou a ARREDONDAR o custo unitário`)
+        .not.toMatch(/round2\(custoParaBaixar\(/)
+    }
   })
 
   it('⭐ a rota devolve 409 com os réus (pergunta, não erro)', () => {

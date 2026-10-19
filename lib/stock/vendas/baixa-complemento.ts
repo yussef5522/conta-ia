@@ -25,7 +25,8 @@ import { montarCtx, explodir } from './baixa-venda'
 import { ehLinhaDePeriodo } from './identidade-import-complemento'
 import { confrontarMotorComLedger } from './confronto-motor-ledger'
 import { criarMovimento, estornarMovimento } from '../movement'
-import { custoMedioPorItem, recomputeSaldoCache } from '../saldo'
+import { recomputeSaldoCache } from '../saldo'
+import { custoDaBaixa, estadoParaBaixa, valorPrevistoDaBaixa } from './custo-da-baixa'
 
 export class BaixaComplementoError extends Error {}
 
@@ -154,16 +155,27 @@ async function planoDeLinhas(
     })
   }
 
-  const custoMap = await custoMedioPorItem(db as PrismaClient, companyId)
-  const saldos = await saldoAtualPorItem(db, companyId, [...agregado.keys()])
-  const agregada: ItemBaixado[] = [...agregado.entries()].map(([itemId, qtd]) => {
-    const custo = custoMap.get(itemId) ?? null
-    return {
-      itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round2(qtd),
-      custoMedio: custo, valor: custo != null ? round2(qtd * custo) : null,
-      saldoDepois: round2((saldos.get(itemId) ?? 0) - qtd),
-    }
-  })
+  /**
+   * ⭐⭐ O PREVIEW LÊ O MESMO ESTADO QUE A GRAVAÇÃO (19/10/2026) — e isto fechou **duas**
+   * cópias de régua que viviam aqui:
+   *
+   *   1. **o VALOR** saía de `qtd × custoMedioArredondado`, enquanto o ledger passou a usar
+   *      precisão cheia → a tela prometeria `R$ 39,69` e o ledger escreveria `R$ 39,57`.
+   *   2. ⛔⛔ **o SALDO DEPOIS** saía de um `saldoAtualPorItem` LOCAL, que excluía só o
+   *      `PRODUCAO_CONSUMO` e **não conhecia o `idsDeEstornoInterno`** (a régua de 09/09, que
+   *      tira o estorno de movimento interno da prateleira). Era uma **QUARTA** resposta pra
+   *      *"qual é o saldo de prateleira?"* — e ela podia mostrar na tela um "depois" que a
+   *      Posição não confirma. Agora os dois saem de `saldosDaEmpresa`, o dono da pergunta.
+   *
+   * ⚠️ O `custoMedio` exibido continua **arredondado**: é leitura, e é o número da Posição.
+   */
+  const estado = await estadoParaBaixa(db, companyId)
+  const agregada: ItemBaixado[] = [...agregado.entries()].map(([itemId, qtd]) => ({
+    itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round2(qtd),
+    custoMedio: estado.porItem.get(itemId)?.custoMedio ?? null,
+    valor: valorPrevistoDaBaixa(itemId, round2(qtd), estado),
+    saldoDepois: round2((estado.porItem.get(itemId)?.saldo ?? 0) - qtd),
+  }))
 
   const ativas = await baixasAtivas(db, companyId, importId)
   const baixadoHoje = new Map<string, number>()
@@ -190,22 +202,11 @@ async function planoDeLinhas(
   }
 }
 
-/** saldo atual dos itens que vão baixar (pra a tela mostrar o "depois") */
-async function saldoAtualPorItem(db: Db, companyId: string, itemIds: string[]): Promise<Map<string, number>> {
-  if (!itemIds.length) return new Map()
-  const movs = await db.stockMovement.findMany({
-    where: { companyId, itemId: { in: itemIds } },
-    select: { itemId: true, quantidade: true, tipo: true },
-  })
-  const saldo = new Map<string, number>()
-  for (const m of movs) {
-    // ⚠️ PRODUCAO_CONSUMO fica FORA, como no `saldo.ts`: é transferência interna (o insumo já
-    // saiu da prateleira na separação). Incluir aqui contaria a baixa duas vezes.
-    if (m.tipo === 'PRODUCAO_CONSUMO') continue
-    saldo.set(m.itemId, round2((saldo.get(m.itemId) ?? 0) + m.quantidade))
-  }
-  return saldo
-}
+// ⛔⛔ `saldoAtualPorItem` MORREU AQUI (19/10/2026) — era a **4ª** resposta pra *"qual é o
+// saldo de prateleira?"*, e ela só conhecia metade da régua: excluía o `PRODUCAO_CONSUMO` e
+// **não conhecia o `idsDeEstornoInterno`** (09/09). Quem responde é `saldosDaEmpresa`, pela
+// `estadoParaBaixa`. ⚠️ **Apagada, não deixada sem chamador:** enquanto a função existe no
+// arquivo, alguém a religa — a lição do `GruposSugeridos` (23/09).
 
 export interface ReciboComplementos {
   importId: string
@@ -243,13 +244,33 @@ export async function processarComplementos(
     const ativas = await baixasAtivas(tx, companyId, plano.importId)
     for (const b of ativas) await estornarMovimento(tx, b.id, { criadoPorId: userId ?? null })
 
-    const custoMap = await custoMedioPorItem(tx as PrismaClient, companyId)
+    /**
+     * ⭐⭐ O CUSTO VEM DA PORTA ÚNICA (19/10/2026) — e isto é a cura de um defeito medido.
+     *
+     * ⛔⛔ **Antes, aqui:** `custoMedioPorItem` (o custo **arredondado em 2 casas**, que é
+     * número de TELA) multiplicado pela quantidade. A baixa dos complementos de 17/10 foi
+     * **BARRADA pelo guarda do estado impossível**:
+     *
+     * ```
+     * «porçao calabresa ralada 50 grama» · 49 UN · valor R$ 39,57
+     *    HOJE: custo 0,81          × 49 = R$ 39,69  →  final 0 UN / −R$ 0,12  ⛔
+     *    A LEI: custo 0,8075510204… × 49 = R$ 39,57  →  final 0 UN /   R$ 0,00  ⭐
+     * ```
+     *
+     * ⭐ Com precisão cheia o resíduo **não nasce**: zerar a quantidade dá
+     * `saldo × (valor/saldo) = valor` **exato**. ⚠️ E ela traz de graça a lei de 15/10 — item
+     * **negativado** passa a sair pelo **custo vigente** em vez de R$ 0,00 (o furo que pôs
+     * 293 movimentos a custo zero no ledger).
+     *
+     * ⛔ **O guarda ficou como está:** ele pegou um estado que não existe e estava certo.
+     */
+    const estado = await estadoParaBaixa(tx, companyId)
     for (const a of plano.agregada) {
       if (a.qtd <= 0) continue
-      const custo = custoMap.get(a.itemId) ?? 0
+      const { custoUnitario, custoTotal } = custoDaBaixa(a.itemId, a.qtd, estado)
       await criarMovimento(tx, {
         companyId, itemId: a.itemId, tipo: TIPO_BAIXA,
-        quantidade: -a.qtd, custoUnitario: custo, custoTotal: round2(-a.qtd * custo),
+        quantidade: -a.qtd, custoUnitario, custoTotal,
         receiptId: plano.importId, origem: 'MANUAL', criadoPorId: userId ?? null, dataMovimento: dia,
       })
     }
