@@ -18,6 +18,7 @@ import { RevisaoDoImport, type RevisaoDTO, type ConfirmarDelegado } from '@/comp
 import { SeletorDeDestino } from '@/components/estoque/seletor-de-destino'
 import { hrefDoEditor } from '@/lib/stock/vendas/volta-da-revisao'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
+import { fraseDoErro } from '@/lib/http/frase-do-erro'
 import { PerguntaDoDia, type VeredictoDoDia } from '@/components/estoque/pergunta-do-dia'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
@@ -133,7 +134,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui ler o arquivo.'); setPreview(null); setPrevRevisao(null); return null }
       setPreview(r.data.preview); setPrevRevisao(r.data.revisao ?? null)
       return r.data.revisao ?? null
-    } catch { setErro('Falha de conexão.'); return null } finally { setCarregando(false) }
+    } catch (e) { setErro(fraseDoErro(e, { rede: 'Falha de conexão. Tentar de novo?', falhou: 'Não consegui ler o arquivo' })); return null } finally { setCarregando(false) }
   }
   const onFile = (f: File) => { setNomeArquivo(f.name); const reader = new FileReader(); reader.onload = () => { const t = String(reader.result ?? ''); setHtml(t); enviar(t) }; reader.readAsText(f, 'utf-8') }
 
@@ -174,7 +175,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       // confirmar perguntar de novo a mesma coisa
       if (confirmouDia) setData(confirmouDia)
       abrirModal(j.plano, null, 0)
-    } catch { setErroProc('Falha de conexão ao processar.') } finally { setProcessando(false) }
+    } catch (e) { setErroProc(fraseDoErro(e, { rede: 'Falha de conexão ao processar. Tentar de novo?', falhou: 'Não consegui montar o preview' })) } finally { setProcessando(false) }
   }
   const reprocessar = async (dia: string) => {
     setProcessando(true)
@@ -183,7 +184,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       const j = await r.json().catch(() => null)
       if (!r.ok) { alert(j?.erro ?? 'Não consegui montar o reprocesso.'); return }
       abrirModal(j.plano, dia, j.estornaItens ?? 0)
-    } catch { alert('Falha de conexão ao reprocessar.') } finally { setProcessando(false) }
+    } catch (e) { alert(fraseDoErro(e, { rede: 'Falha de conexão ao reprocessar. Tentar de novo?', falhou: 'Não consegui montar o reprocesso' })) } finally { setProcessando(false) }
   }
   const confirmar = async (confirmouSanidade = false) => {
     setProcessando(true); setErroModal(null)
@@ -226,7 +227,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         if (c?.code === 'CONFIRME_O_DIA' && c.dia) { setPlano(null); setPerguntaDia(c.dia); return }
         setErroModal(rr.erro ?? 'Não consegui processar.')
       }
-    } catch { setErroModal('Falha de conexão.') } finally { setProcessando(false) }
+    } catch (e) { setErroModal(fraseDoErro(e, { rede: 'Falha de conexão. Tentar de novo?', falhou: 'Não consegui gravar' })) } finally { setProcessando(false) }
   }
 
   /** ⭐ o reenvio: baixa o resto e deixa os barrados pendentes, com o motivo na tela */
@@ -242,7 +243,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         setRecibo(rr.data.recibo); setPlano(null); setModoReprocesso(null); setBarrados(null)
         setPreview(null); setPrevRevisao(null); setHtml(''); carregarProcessados()
       } else setErroModal(rr.erro ?? 'Não consegui processar.')
-    } catch { setErroModal('Falha de conexão.') } finally { setProcessando(false) }
+    } catch (e) { setErroModal(fraseDoErro(e, { rede: 'Falha de conexão. Tentar de novo?', falhou: 'Não consegui gravar' })) } finally { setProcessando(false) }
   }
 
   const sp = useSort<'data' | 'baixados' | 'valor' | 'pendentes'>('data', 'desc')
@@ -394,7 +395,12 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
                   recarregarExterna={() => enviar(html)}
                   confirmar={{
                     rotulo: processando ? 'processando…' : `Confirmar e baixar${data ? ' ' + fmtDia(data) : ''}`,
-                    acao: abrirPreview,
+                    // ⛔⛔ ARGUMENTO EXPLÍCITO, NUNCA A FUNÇÃO POR REFERÊNCIA (18/10/2026).
+                    // `acao: abrirPreview` fazia o React chamar `abrirPreview(syntheticEvent)`
+                    // → o evento caía em `confirmouDia` → `JSON.stringify` estourava ANTES do
+                    // fetch → a tela dizia "Falha de conexão" e o import ficou 2 dias parado.
+                    // Hoje o tipo `AcaoSemArgumento` RECUSA a forma antiga; a seta é a forma.
+                    acao: () => abrirPreview(),
                     habilitado: !!data && !processando,
                     // ⚠️ o rodapé DIZ por que não dá, em vez de ficar cinza mudo
                     resumo: !data
@@ -515,7 +521,7 @@ function LancamentoManual({ id, onProcessado }: { id: string; onProcessado: () =
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui montar o preview.'); return }
       setPlano(j.plano)
-    } catch { setErro('Falha de conexão.') } finally { setBusy(false) }
+    } catch (e) { setErro(fraseDoErro(e, { rede: 'Falha de conexão. Tentar de novo?', falhou: 'Não consegui montar o preview' })) } finally { setBusy(false) }
   }
   const confirmar = async (confirmouSanidade = false) => {
     setBusy(true)
@@ -956,7 +962,11 @@ function BaixaComplementos({ id, recarga, revisandoDia, onRevisar }: { id: strin
             <p className="text-[11px] text-slate-500">{plano.pendentes.length} complemento(s) sem ficha não baixam: {plano.pendentes.slice(0, 5).map((p) => p.nomeSuitable).join(' · ')}{plano.pendentes.length > 5 ? '…' : ''}</p>
           )}
           <div className="flex items-center gap-2">
-            <button onClick={confirmar} disabled={busy}
+            {/* ⚠️ CINTO-E-SUSPENSÓRIO (18/10): o `confirmar` DESTE componente é `async () =>`
+                sem parâmetro, então aqui nunca houve defeito — e o `tsc` cobraria se houvesse
+                (contrato `onClick` é `(e: MouseEvent) => void`). A seta fica pra o dia em que
+                alguém der um parâmetro a ele: aí o evento não tem por onde entrar. */}
+            <button onClick={() => confirmar()} disabled={busy}
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C] disabled:opacity-50">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               {plano.jaBaixado ? 'Estornar e refazer' : 'Confirmar a baixa'}

@@ -53,8 +53,21 @@ describe('⛔⛔ nada grava sem o modal de prévia — nos DOIS relatórios', ()
    * ⛔ O caminho do DIA (lista → revisar) era o que gravava direto. Agora o botão do rodapé
    * ABRE o modal, e quem grava é o `gravar()`, chamado só de dentro dele.
    */
+  /**
+   * ⚠️⚠️ **REAPONTADO EM 18/10/2026, com o motivo escrito — e ele quebrou COM O CÓDIGO
+   * CERTO.** A âncora era o literal `onClick={confirmar ? confirmar.acao : abrirModal}`, e a
+   * cura do import de 16/10 trocou a referência nua por uma seta que CHAMA
+   * (`onClick={() => (confirmar ? confirmar.acao() : abrirModal())}`) — porque entregar a ação
+   * ao React fazia o `SyntheticEvent` cair no parâmetro da função pendurada. ***Grep não
+   * distingue "refatorei" de "quebrei"***, que é a razão de existir da REGRA 3.
+   *
+   * ⭐ A PERGUNTA não mudou (*o botão do rodapé ABRE, nunca grava*) — e a asserção ficou **mais
+   * forte**: ela passou a exigir que a ação seja CHAMADA, e a **proibir** a forma antiga, que
+   * é o defeito de 16/10.
+   */
   it('⭐ o botão do rodapé ABRE o modal, não grava', () => {
-    expect(revisao).toContain('onClick={confirmar ? confirmar.acao : abrirModal}')
+    expect(revisao).toMatch(/onClick=\{\(\)\s*=>\s*\(?confirmar\s*\?\s*confirmar\.acao\(\)\s*:\s*abrirModal\(\)/)
+    expect(revisao).not.toMatch(/onClick=\{confirmar\s*\?\s*confirmar\.acao\s*:/)
     expect(revisao).toMatch(/function abrirModal\(\) \{[^}]*setModal\(true\)/)
   })
 

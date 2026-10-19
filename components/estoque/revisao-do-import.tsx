@@ -16,6 +16,7 @@ import { Loader2, Check, AlertTriangle, Search, EyeOff, Undo2 } from 'lucide-rea
 import { SeletorDeDestino, type EscolhaDeDestino } from './seletor-de-destino'
 import { ancoraDaLinha, hrefDoEditor } from '@/lib/stock/vendas/volta-da-revisao'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
+import type { AcaoSemArgumento } from '@/lib/ui/acao-sem-argumento'
 import { PlanoVendaModal, type PlanoVM } from './plano-venda-modal'
 
 export interface LinhaRevisaoDTO {
@@ -54,7 +55,14 @@ const SELO = {
  */
 export interface ConfirmarDelegado {
   rotulo: string
-  acao: () => void
+  /**
+   * ⛔⛔ `AcaoSemArgumento`, NUNCA `() => void` (18/10/2026) — este botão **chama sem passar
+   * nada**, e `() => void` aceitaria em silêncio uma função que espera dado (o `tsc` deixa,
+   * por variância). Foi exatamente assim que o `abrirPreview(confirmouDia?)` recebeu o
+   * EVENTO do React e o import de 16/17/10 morreu como *"Falha de conexão"*. O porquê inteiro
+   * está em `lib/ui/acao-sem-argumento.ts`.
+   */
+  acao: AcaoSemArgumento
   habilitado: boolean
   /** a frase do rodapé — o que vai acontecer, ou por que ainda não dá */
   resumo: string
@@ -451,9 +459,13 @@ export function RevisaoDoImport({
             </>
           )}
         </div>
+          {/* ⛔⛔ ERA AQUI QUE O EVENTO ENTRAVA (18/10/2026): `onClick={confirmar.acao}` fazia
+              o React chamar a ação COM o `SyntheticEvent`, e quem recebia era o parâmetro da
+              função pendurada. A seta é o que garante que ela é chamada **sem nada** — e com
+              o tipo `AcaoSemArgumento` a forma antiga nem compila mais. */}
         <button
           type="button"
-          onClick={confirmar ? confirmar.acao : abrirModal}
+          onClick={() => (confirmar ? confirmar.acao() : abrirModal())}
           disabled={confirmar ? !confirmar.habilitado : (gravando || !preview || preview.mudam.length === 0)}
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 text-[13px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
         >

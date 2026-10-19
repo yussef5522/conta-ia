@@ -11152,6 +11152,134 @@ primeira tentativa foi em `node_modules/` (fora do `tsconfig`) e **não resolve 
    `CALABRESA`, `Peito`, `Gordura`, `BACON`) — eles aparecem na lista com o aviso e ficam fora da
    mesa, por desenho (lei C5). Cada config nova acende mais um slot da esteira.
 
+## ⛔⛔⛔ FUNÇÃO COM PARÂMETRO PENDURADA POR REFERÊNCIA — 2 DIAS DE IMPORT PARADO (18/10/2026)
+
+**A CURA do defeito que a caça achou.** `pg_dump` NENHUM e migration NENHUMA de propósito:
+**o defeito é de TELA e a cura não toca banco** (a caça provou 0 imports de 16 e 17/10 — nada
+a corrigir no dado). Lei C0 e telas vizinhas intocadas.
+
+### ⛔ O DEFEITO, em uma linha
+
+O Sprint 2.1 deu um parâmetro ao `abrirPreview` (`confirmouDia?: string`) e o botão da revisão
+continuou passando a função **por referência** (`acao: abrirPreview` → `onClick={confirmar.acao}`).
+React chamou `abrirPreview(syntheticEvent)`, o `SyntheticEvent` é **circular**, e o
+`JSON.stringify` do corpo estourou **`Converting circular structure to JSON` ANTES do fetch**:
+
+```
+16/10 00:40 BRT  último import que FUNCIONOU (dia 15, 87 linhas, 504 un)
+16/10 17:15      deploy do Sprint 2.1 (commit 40d73ce4) — abrirPreview ganha o parâmetro
+17/10 00:39      1ª falha · o dono tentou 8× até 01:25 · de novo em 18/10 23:43
+⛔ nginx: ZERO POST /vendas/processar em 17 e 18/10 — a requisição nunca saiu da máquina dele
+⛔ e a tela dizia "Falha de conexão ao processar."
+```
+
+**⚠️⚠️ E O `tsc` FICOU VERDE, porque o buraco é de VARIÂNCIA, não de descuido:** TypeScript
+considera `(dia?: string) => void` **assinável** a `() => void` — é a regra que faz
+`[1,2].map(x => x)` compilar. ***`() => void` numa prop é um convite aberto a pendurar função
+que espera dado.*** É a família do `as never` de 20/09 (*"cast que cala o compilador é o lugar
+onde o contrato incompleto se esconde"*), com uma diferença que a torna pior: **aqui não há
+cast nenhum pra alguém desconfiar** — o código parece correto.
+
+### ⭐⭐ A CURA É O PARÂMETRO `void` — REGRA 5, impossibilidade em vez de vigilância
+
+`lib/ui/acao-sem-argumento.ts`: **`type AcaoSemArgumento = (naoRecebeNada: void) => void`**.
+Declarado assim, a checagem vira **contravariante com um tipo que nada satisfaz** (`void` não é
+assinável a `string | undefined`), então o `tsc` **RECUSA** a função que declara parâmetro — e
+continua aceitando a de zero argumentos, e continua **chamável sem argumento**.
+⚠️ O parâmetro se chama `naoRecebeNada` porque o compilador cita o nome dele: *"Types of
+parameters 'dia' and 'naoRecebeNada' are incompatible"* é a pista que manda quem errou direto
+pro arquivo que explica o porquê.
+
+**⭐⭐ E O TIPO NOVO ACHOU O MECANISMO EXATO NO PRIMEIRO `tsc`** — não no teste, no compilador:
+`onClick={confirmar ? confirmar.acao : abrirModal}` em `revisao-do-import.tsx` ficou
+**vermelho** (*"MouseEvent is not assignable to void"*). ***Era literalmente ali que o evento
+entrava***, e a trava passou a apontar o dedo pro lugar onde o defeito acontecia.
+
+**⛔ O IRMÃO DESTA CLASSE O `tsc` JÁ COBRAVA, E ISSO FOI MEDIDO:** handler de evento do DOM tem
+contrato `(e: MouseEvent) => void`, e aí `MouseEvent → boolean` não passa na contravariância.
+**O buraco existia SÓ no contrato zero-arg.** Por isso o `onClick={() => confirmar()}` da linha
+959 é **cinto-e-suspensório, não conserto**: aquele `confirmar` é `async () =>` sem parâmetro.
+
+### ⚠️⚠️ CORREÇÃO DO MEU PRÓPRIO MAPA — eram 2 achados e é UM
+
+A varredura da caça reportou `page.tsx:959 onClick={confirmar}` como 2º defeito. **Conferindo
+ESCOPO, é inofensivo:** a tela tem **três** `confirmar` (um por componente) e o da linha 959 é
+o do `BaixaComplementos`, **sem parâmetro**. ***Casar nome de função sem olhar o componente
+reporta defeito onde não há*** — e por isso o detector do guard resolve **dentro do bloco** e
+só cai no módulo quando o nome é único no arquivo, com esse caso virando auto-teste.
+
+### ⛔⛔ O CATCH QUE MENTIA — e a régua NÃO pode ser a classe do erro
+
+`lib/http/frase-do-erro.ts`: throw que **não** é de rede mostra a causa real; queda de rede de
+verdade continua com a frase de conexão. ⛔⛔ **E não dá pra separar pelo TIPO: queda de rede
+TAMBÉM é `TypeError`** — Chrome `Failed to fetch`, Firefox `NetworkError…`, Safari
+`Load failed`. Logo `e instanceof TypeError` **não distingue nada**, e essa foi a 1ª ideia,
+descartada pelo dado. ⭐ A régua é **allowlist de MENSAGEM de rede, com o DEFAULT dizendo a
+causa**: o erro seguro é mostrar causa demais (o dono lê uma frase técnica e me manda), não
+esconder causa (o dono perde dois dias).
+
+**⭐⭐ E O TESTE ACHOU UM FURO NA MINHA LISTA:** derrubando um `fetch` de verdade (porta fechada
+em localhost) o **Node/undici responde `TypeError: fetch failed`** — frase que nenhum motor de
+browser usa — e a frase honesta aparecia no lugar da de conexão. ***Lista de mensagem escrita
+de cabeça nasce com furo; a que passa por queda REAL de rede, não.*** Entrou junto a leitura do
+`cause.code` (`ECONNREFUSED` & cia), que o undici esconde um nível abaixo.
+
+### ⭐ O GUARD — e a régua ficou ESTREITA POR MEDIÇÃO
+
+`__tests__/regras-ui/handler-por-referencia.test.ts`, com o detector no dono único
+(`_leitura-de-fonte.ts`). ⚠️⚠️ **A 1ª régua era *"função com parâmetro não-evento pendurada por
+referência"* e deu 39 ACHADOS, DOS QUAIS ~37 LEGÍTIMOS** — `onEscolher={addComp}` com contrato
+`onEscolher: (it: ItemBusca) => void` está CERTO, porque o filho chama com o argumento.
+***Alarme falso no dia 1 é como um guard morre.*** O que distingue o defeito é o **CONTRATO de
+quem recebe**: prop declarada **zero-arg**. Com essa régua: **37 props zero-arg recebendo
+função por referência e 1 único achado — o próprio defeito.** O guard nasce limpo.
+
+⚠️ **E prop de dono AMBÍGUO fica de fora** (uma declaração zero-arg e outra com parâmetro):
+chutar ali inventaria o contrato do vizinho.
+
+**⚠️ A METADE QUE IMPEDE "GUARD QUE TESTA A LIB E APROVA A TELA QUE A IGNORA"** (as cicatrizes
+de 14/09 e 16/09): os testes do `fraseDoErro` provam a LIB, então entrou a asserção de que
+**nenhum catch da tela crava a frase de conexão** e que o `fraseDoErro` é chamado em cada um —
+senão repor `catch { setErroProc('Falha de conexão…') }` passaria verde em tudo. ⚠️ Ela nasceu
+larga e **acusou a própria cura** (a frase de rede é argumento legítimo do tradutor); o token
+temperado `(?!fraseDoErro)` é o que separa a frase CRAVADA da frase passada como parâmetro.
+
+### ⚠️ REGRA 11 — 7 DEFEITOS REPOSTOS, 7 MORDERAM (baseline 0/0 · restaurado 0/0)
+
+| defeito reposto | testes | TS |
+|---|---|---|
+| **a tela volta a pendurar a função por REFERÊNCIA** (o defeito de 16/10) | **2** | **1** |
+| o contrato alarga de volta pra `() => void` | 1 | 0 |
+| **o botão da revisão volta a entregar a ação ao React** | **1** | **1** |
+| o catch mentiroso volta na tela (frase de conexão cravada) | 1 | 0 |
+| a allowlist perde a queda de rede do Node | 1 | 0 |
+| o DETECTOR fica cego (deixa de exigir contrato zero-arg) | 3 | 0 |
+| **o próprio `AcaoSemArgumento` alargado pra `() => void`** | — | **1** (`Unused '@ts-expect-error' directive`) |
+
+⭐ **O último é a trava central, e ela se prova NO `tsc`:** asserção de tipo não roda em
+runtime, então o `@ts-expect-error` é o único jeito de travar variância — alargar o tipo faz o
+erro esperado **deixar de existir** e a diretiva vira ela própria um erro de compilação.
+
+⚠️ A sonda guarda backup pela **chave do caminho inteiro**, **ASSERTA por md5 que a
+substituição aplicou** e **conta suíte que NÃO COLETOU como vermelho** — as três cicatrizes de
+sonda desta casa.
+
+**⚠️ 1 GUARD DE 14/09 REAPONTADO, com o motivo escrito, e ele ficou MAIS FORTE:** o
+`confirmar-nao-e-mudo` ancorava no **literal** `onClick={confirmar ? confirmar.acao : abrirModal}`
+e **quebrou COM O CÓDIGO CERTO** quando a referência nua virou seta que chama. ***Grep não
+distingue "refatorei" de "quebrei"*** — a razão de existir da REGRA 3. A pergunta não mudou (*o
+botão do rodapé ABRE, nunca grava*); agora ela **exige que a ação seja CHAMADA e proíbe a forma
+antiga**, que é o defeito de 16/10.
+
+**997 arquivos · 13.491 verdes · 2 todo · TS 0 · migration NENHUMA · deploy 4/4 · zero escrita
+em prod.**
+
+📋 **FICA PRO DONO (REGRA 2, o upload é dele — eu NÃO importo nada):** subir os relatórios de
+**16, 17 e 18/10** pela tela. O banco provou **0 imports desses dias**, então **nada
+duplica**. ⚠️ E **os arquivos não estão no servidor** (nada foi persistido; o upload é lido no
+navegador via `FileReader`), então a reprodução com ELES segue bloqueada — se algum dia a caça
+precisar, é ele mandar os `.xls`.
+
 ## 🛒⭐⭐⭐ CONSUMO & COMPRAS — A TELA NOVA, E A PRODUÇÃO INTOCADA (16-17/10/2026)
 
 **`docs/consumo-e-compras-referencia.html` (v3, aprovada pelo dono) é a LEI** — do visual, do
@@ -12458,6 +12586,8 @@ Comparação do dono com o Vuca: "eles usam cada canto; as nossas têm coluna es
 TypeScript strict em tudo · commits semânticos (feat/fix/refactor/docs/test/chore) · Zod em toda rota API · textos UI pt-BR · logs de erro em pt-BR · comentários em pt-BR quando explicam regra de negócio · shadcn/ui · path alias `@/*`. Design system atual: cards limpos, `tabular-nums`, Framer Motion `stagger 30ms` `easeOutExpo`, gradient hero `#185FA5→#0F4A8C`, semântica de cor (emerald/rose/amber/slate), radius consistente.
 
 ## Pendências / débitos técnicos
+
+- **⛔⛔ BOMBA DE CALENDÁRIO NO PLANO DE ETAPA — ano NEGATIVO (−1899/−1898) no `stockEtapaPlano.upsert` (achado 18/10, caça própria depois).** **O rastro, colhido pra não esfriar:** 3 ocorrências em **17/10**, no build `.next-build-20261017-011508-e8a07173`, com os valores **exatos** `-001899-07-18T03:06:00.000Z` (1×) e `-001898-10-18T03:06:00.000Z` (2×), estourando como `PrismaClientUnknownRequestError: Could not convert argument value … to ArgumentValue` (Prisma 5.22). ⭐ **A assinatura é o `03:06` — e ela NOMEIA a família:** São Paulo usava **LMT −03:06:28** antes de 1914, então um ano pré-1914 convertido como hora LOCAL sai exatamente nesse horário. **É a MESMA impressão digital da ordem do ano 202 (19/09)**, que sumiu de todas as listas e deixou R$ 42,18 de insumo preso. ⚠️ **O Prisma RECUSOU, então nada foi gravado** — mas é um **gesto do dono que FALHOU** (o "continua depois" / "dia por etapa" não salvou), provavelmente com 500 genérico na tela. ⚠️ **E os dois writers que eu conheço VALIDAM:** `plano-etapas.ts:61` exige `/^\d{4}-\d{2}-\d{2}$/` e a rota `/acao` passa por `dataDaOrdem` (regex + `ANO_MIN 2020`/`ANO_MAX 2100`) — 4 dígitos **não produzem ano negativo**. ⭐ **Logo a pista é: ou existe um TERCEIRO caminho de escrita, ou o valor nasce de ARITMÉTICA sobre uma data já quebrada** (o `janelaDoDiaSP` monta a data do texto e subtrai o offset real daquele instante). **Começar por aí**, e não pelos dois writers já travados. ⛔ **NÃO atacado neste sprint, por ordem do dono.**
 
 - **⏳ PAINEL DE PRODUÇÃO — falta "período…" com calendário + paginação nas concluídas (01/09/2026).** São a MESMA feature (decisão do dono): período grande sem paginação vira lista infinita, e paginação sem calendário não tem o que paginar. A tela hoje tem `hoje / semana / mês`; **o histórico completo não tem caminho**. Entram juntos na próxima volta desta tela.
 
