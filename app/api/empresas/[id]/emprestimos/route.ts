@@ -118,11 +118,12 @@ export async function GET(request: NextRequest, { params }: Params) {
       const veredito = (i: (typeof l.installments)[number]) =>
         estadoDaParcela(
           {
-            dueDate: i.dueDate, payment: i.payment, status: i.status, paidTotal: i.paidTotal,
+            dueDate: i.dueDate, payment: i.payment, interest: i.interest,
+            status: i.status, paidTotal: i.paidTotal,
             pagamentos: i.payments.map((pg) => ({ amount: pg.amount })),
             valorDoVinculo11: i.reconciledTransaction?.amount ?? null,
           },
-          { flexible, hoje: now },
+          { flexible, hoje: now, rateMonthly: l.interestRateMonthly },
         )
       const proximaOpen = l.installments.find((i) => veredito(i).estado !== 'PAGA')
       const vProxima = proximaOpen ? veredito(proximaOpen) : null

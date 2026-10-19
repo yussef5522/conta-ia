@@ -12392,6 +12392,181 @@ desde 03/09 sem ninguém ver.
 o plano promete 610 ocorrências · 30 itens · R$ 2.807,49, e com a cura **nenhum item barra**. ⛔ **Eu
 NÃO reprocessei nada**: a prova rodou a baixa de verdade e **desfez** (movimentos 9177 → 9177).
 
+## ⛔⛔⛔ PARCELA PAGA EM PEDAÇOS — 2 LINHAS DO BANCO → 1 PARCELA (19/10/2026)
+
+**O CASO REAL (16/10, Sicredi, C41022227-1):** o banco debitou a parcela **25** em DUAS linhas por
+saldo insuficiente — `AMORTIZACAO CONTRATO-C61022527` **4.257,46** + `LIQUIDACAO CONTRATO-C61022527`
+**2.798,29** = **7.055,75**. No sistema a parcela é capital **4.385,96** + juros do pós-fixado
+apurados no pagamento. ⛔⛔ **Os rótulos do banco NÃO mapeiam capital/juros** — *"AMORTIZACAO"* não
+é a amortização da parcela (4.257,46 ≠ 4.385,96) e *"LIQUIDACAO"* não é o juros. **Só a SOMA fecha:**
+`7.055,75 − 4.385,96 = 2.669,79`. *Heurística sobre texto livre pode SUGERIR, nunca DECIDIR.*
+
+### ⭐⭐ A DECISÃO NOVA DO DONO (19/10) — E ELA DERRUBA A DE 05/08
+
+> **Conta garantida do Sicredi = VÍNCULO NA PARCELA.** A decisão de 05/08 (*"lançar os 6 como
+> despesa financeira; o caso é isolado"*) **cai**: a premissa *"isolado"* quebrou (o mesmo mecanismo
+> voltou em outubro) e **lançar principal como despesa MENTE no Lucro Real**.
+
+### ⭐⭐⭐ A CURA — O QUE JÁ ESTAVA CERTO E O QUE FALTAVA
+
+⭐ **O CAÇA-LEVE (só leitura) achou que N:1 com movimentos DISTINTOS já era permitido:** o trigger
+`loan_installment_no_double_link` proíbe *"os DOIS mecanismos na mesma parcela"* (1:1 **e** N:1), não
+N pedaços pela porta N:1. **Ele não precisou mudar uma linha** — a régua já era a certa, e isso foi
+MEDIDO antes de eu propor evolução nenhuma.
+
+- **a régua da recusa ganhou DONO ÚNICO** (`bloqueioDoVinculo`, em `link-payment.ts`): os três
+  códigos (`JA_VINCULADA_1_1` · `JA_QUITADA` · `SOMA_ESTOUROU`) numa função **PURA** que **a porta de
+  gravação E o preview consomem**. ⛔ Uma régua em cada ponta divergiria no 1º caso de borda, e o
+  dono veria o botão aceso sobre uma gravação que o servidor recusa — a doença que o `preview ≠
+  confirm` do import de OFX já custou inteira.
+- **o preview DIZ o que será gravado**: `bloqueio` viaja no payload e o modal **recusa ANTES do
+  clique**, com a frase. *Fazer o dono clicar pra levar um 422 é trabalho que dava pra poupar.*
+
+### ⛔⛔ OS 3 FUROS DO MOTOR (os que o dono mandou consertar)
+
+1. **PEDAÇO EM PARCELA JÁ QUITADA = BARRADO** — ⚠️ e a trava é *"quitada POR VÍNCULO"*, **nunca
+   `PAID` seco**: há **180 parcelas `PAID` sem vínculo nenhum** (pagas por documento, histórico
+   anterior ao sistema), e **a #22 deste mesmo contrato é uma delas**. Barrar `PAID` seco tornaria
+   **impossível** anexar depois a transação verdadeira — que é justamente uma decisão em aberto do
+   dono. *Invariante que falha no caso legítimo é pior que invariante nenhum* (REGRA 7).
+2. **TETO NA SOMA** — `capital + 2× o juros do mês` (o juros derivado do `openingBalance × taxa`,
+   porque no POS amort-only a agenda traz `interest 0`). Estourar é **barrado com frase honesta** que
+   nomeia o teto e a saída. ⚠️ **A folga de 2× é escolha com número:** o caso real roda em **1,04×**
+   e o absurdo medido em **6,08×** — teto no nominal reprovaria o pagamento verdadeiro.
+3. **O "FALTAM Z" HONESTO NO PÓS-FIXADO** — `encargosSaoApurados` (`rateMonthly > 0 && interest <= 0`)
+   faz o selo dizer ***"faltam R$ 128,50 de capital + encargos a apurar no pagamento"***. ⛔ Antes a
+   tela prometia *"faltam R$ 128,50"* seco, e o banco ia levar ~2.670 — **número plausível e errado,
+   que é o pior tipo**. ⚠️ **E o RÓTULO DO BOTÃO carregava a mesma mentira** (`rotuloDoGesto`):
+   consertar só o selo deixaria o gesto prometendo o número curto.
+
+### ⭐ A EXCEÇÃO NOMEADA E ESTREITA — o guard Cancian continua mordendo
+
+O `nomeiaOutroContrato` (a régua que impede casar pagamento com contrato alheio) ganhou **UMA**
+exceção, com as 4 condições que o dono ditou: **contrato auxiliar NÃO-cadastrado** · **mesma conta** ·
+**mesmo dia** · **padrão `(AMORTIZACAO|LIQUIDACAO) CONTRATO-<num>`**. ⛔ **Red-then-green em cada
+condição:** linha de contrato **cadastrado** segue barrada · outra conta, outro dia, linha sozinha e
+o formato `LIQUIDACAO DE PARCELA-` seguem barrados. ⚠️ E a comparação vai pro **matcher da casa com
+a descrição inteira** — ele é quem sabe que `C61021346-2` casa com `…-C61021346` (o sufixo não vai no
+extrato); comparar os dígitos soltos furaria exatamente o caso do dono.
+
+### ⛔⛔ E A PROVA EM PROD ACHOU UMA DIVERGÊNCIA PREVIEW↔PORTA QUE JÁ EXISTIA
+
+`buildLinkGroup` devolve o `paidTotal` **só dos candidatos SELECIONADOS**, e o `CANDIDATO_WHERE`
+**exclui o que já está vinculado** — então **as mordidas anteriores eram invisíveis pro preview**. Com
+2 gestos (o cenário mais provável do caso real), o preview avaliava `4.257,46` e a porta gravava
+`7.055,75`: **duas réguas sobre dois números**. Curado com `jaVinculado` + `paidTotalGravado`, e o
+guard exige o número certo **dentro de cada chamada** (`bloqueioDoVinculo` e `computeLinkSplit`).
+
+### ⚠️⚠️ REGRA 11 — 9 DEFEITOS REPOSTOS, E **TRÊS VIERAM VERDES**
+
+| defeito reposto | vermelhos |
+|---|---|
+| o TETO da soma cai (`SOMA_ESTOUROU` nunca dispara) | **2** |
+| a trava do pedaço em parcela JÁ QUITADA cai | **2** |
+| `encargosSaoApurados` sempre FALSE (o *"faltam Z"* volta a mentir) | **1** |
+| a exceção aceita contrato CADASTRADO (o guard Cancian para de morder) | **1** |
+| a porta deixa de consultar a régua única (nada barra na gravação) | **2** |
+| o grupo volta a ignorar `contratosCadastrados` (as 2 linhas ficam fora) | **1** |
+| **a ROTA dropa `contratosCadastrados`** (a exceção fica INALCANÇÁVEL) | ⛔ **VERDE** → **2** |
+| **o MODAL perde a trava do bloqueio** (botão acende sobre a recusa) | ⛔ **VERDE** → **1** |
+| **a rota confere só a soma do GESTO** (preview ≠ porta) | ⛔ **VERDE** → **1** |
+
+**baseline 0 · restaurado 0.**
+
+**⛔⛔ OS DOIS PRIMEIROS VERDES SÃO A 11ª VOLTA DA "PORTA SEM MAÇANETA", e eles passaram com
+1714 testes verdes e TS 0:** o motor estava certo, os testes do motor passavam, e **nada chegava até
+ele** — a exceção da conta garantida ficaria em prod e **inalcançável**, com o dono lendo *"nenhum
+lançamento elegível"* numa tela cujo motor sabe a resposta. ⭐ Fechados por
+`bloqueio-chega-na-tela.test.ts`, **guard de DOIS LADOS** (a peça existe **e** alguém a consome) —
+*guard que só proíbe a forma antiga aprovaria o dia em que a consulta sumisse de todo lugar*.
+
+**⚠️ O TERCEIRO VERDE É SOBRE A MINHA ASSERÇÃO:** eu contava `usosDe(…, 'paidTotalGravado') >= 2` e
+isso passa com o argumento trocado (sobram a declaração e o uso no split). ***Guard que conta
+ocorrência aprova o argumento trocado*** — virou estrutural, exigindo o campo **dentro de cada
+chamada**.
+
+### ⚠️ E O TETO NOVO MORDEU UMA FIXTURE — A RÉGUA ESTAVA CERTA, A FIXTURE NÃO
+
+A suíte cheia voltou com **1 vermelho** em `desfazer-vinculo.integration.test.ts`, e ele é **MEU, não
+pré-existente** (medido, nunca rotulado — a régua de 01/09). A fixture **junta valores de DOIS
+contratos reais diferentes**: o pagamento de **6.903,45** (a parcela do C41022227-1, juros
+~2.517/mês) posto num contrato de teste cujo juros era **1.000,00** — ou seja **2,74× o juros do
+mês** num PRE com taxa declarada, que é literalmente o *"alguma linha não é desta parcela"* que o
+teto existe pra apontar. ⭐ **Corrigida a TAXA pra a real do contrato de onde o valor veio
+(1,72076372375527%), com o motivo escrito** — isso **APROXIMA a fixture do caso de prod** em vez de
+maquiá-la, e o assunto do teste (desfazer o vínculo cruzado) fica intacto. ⛔ *Afrouxar o teto pra a
+fixture passar seria consertar o DADO pra bater com a régua errada.*
+
+### ⭐⭐ O TESTE COM O CASO REAL + OS VERMELHOS
+
+`parcela-em-pedacos.integration.test.ts` (**9, contra banco**) com os números medidos em prod: as duas
+linhas **num gesto** → PAGA · 2 pagamentos · capital 4.385,96 · encargos **2.669,79** · fecha
+**144.736,96**; **em DOIS gestos o MESMO resultado** (o defeito de 02/10, em que o 2º gesto
+sobrescrevia o 1º); o selo e o rótulo depois da 1ª mordida; o contrato PRE **sem** a ressalva; e os
+vermelhos (mesma tx 2×, pedaço em parcela quitada, soma acima do teto **sem nada gravado**, e o
+**legítimo 1,04× passando**). Mais `conta-garantida.test.ts` (**16**, puros, com a lista real de
+contratos cadastrados).
+
+⚠️ **E o teste corrigiu a minha aritmética:** eu escrevi 2.566,**14** de juros mensal esperado; o
+motor devolve **2.566,05** (`149.122,92 × 1,72076372375527%`), conferido por fora em Python. **O
+número do doc era meu, de cabeça.** ⚠️ E duas asserções comparavam com literal `R$ 128,50` — o
+`Intl` usa **espaço NÃO-QUEBRÁVEL** depois de *"R$"* (a cicatriz de 24/09), então o vermelho sai com
+as duas strings **visualmente idênticas**: as asserções passaram a usar o MESMO formatador da lib.
+
+### ⚠️⚠️ E O DONO JÁ TINHA VINCULADO AS 2 LINHAS — medido em prod ANTES de escrever a fixture
+
+A #25 está **PAID · 2 pagamentos · 7.055,75 · fecha 144.736,96** — quase certamente pelo **chip 🏦 da
+caixa de entrada**, que chama a porta com `transactionIds: [tx.id]` **uma linha por vez** e
+**bypassa o `buildLinkGroup`**. ⭐ **A aritmética que o brief previu está confirmada no banco.** Logo
+a cura entregue serve **ao painel e à próxima ocorrência** — e o *"em dois gestos dá o mesmo
+resultado"* deixou de ser teoria: é o caminho que ele usou.
+
+**1005 arquivos · 13.568 verdes · 2 todo · TS 0 · migration NENHUMA · ledger intocado.**
+
+### 📋 O RELATÓRIO DE JULHO (só leitura, pedido do dono — **JULHO NÃO FOI TOCADO**)
+
+As **6 linhas do auxiliar C61021766** (20-21/07, Σ **R$ 7.294,40**), todas em *"Juros sobre
+Empréstimos"* (`DESPESAS_FINANCEIRAS`) e **sem vínculo nenhum**:
+
+```
+20/07  60,99 · 362,89 · 469,87 · 4.962,20   "AMORTIZACAO CONTRATO-C61021766"
+21/07  79,98 · 1.358,47                     "LIQUIDACAO  CONTRATO-C61021766"
+```
+
+**A #22 do C41022227-1** (a parcela que a operação cobriu): venc 15/07 · **PAID** · capital
+**4.385,96** + juros **2.753,89** = parcela **7.139,85** · `paidTotal` 7.139,85 · `paidInterest`
+2.753,89 · **zero vínculo** (paga pelo documento, como a decisão de 05/08 registrou).
+
+| | |
+|---|---|
+| a operação levou | **R$ 7.294,40** |
+| ⛔ **PRINCIPAL lançado como despesa financeira** | **R$ 4.385,96** |
+| ✓ encargos de verdade | R$ 2.908,44 |
+| **impacto no SALDO DEVEDOR** | ⭐ **R$ 0,00** — a #22 já consta paga com split; o saldo (144.736,96) está CERTO |
+| ⛔ **despesa financeira a MAIS em julho** | **R$ 4.385,96** |
+
+⭐ **As duas leituras do "honesto" convergem, o que confirma a conta por dois caminhos:** `7.294,40 −
+4.385,96 (capital) = 2.908,44` e `2.753,89 (juros da agenda) + 154,55 (o custo do próprio auxiliar,
+7.294,40 − 7.139,85) = 2.908,44`.
+
+⭐⭐ **E NÃO HÁ DUPLA CONTAGEM — medido, não suposto:** o DRE injeta encargos N:1 com
+`payments: { some: {} }`, e a #22 tem **zero** vínculos; pelo 1:1 também não entra. O juros dela
+chega ao DRE **só** pela categoria das 6 linhas. ⚠️ **Consequência pra quando o dono decidir
+corrigir:** vincular as 6 à #22 **sem descategorizá-las** criaria dupla contagem de 2.908,44 — a
+correção tem **duas metades** (vincular **e** descategorizar), exatamente como foi feito com os
+3.007,84 em 07/08. E **julho é mês fechado**, então o caminho é `dreHeld=true` pra represar até o
+contador liberar, como no sweep do C41022570 #12 (15/08). ⛔ **Nada disso foi executado.**
+
+⚠️ **E ISTO CORRIGE O PRÓPRIO DOC:** a nota de 05/08 dizia *"capital ≈ R$ 4.166,66"*. **A agenda real
+diz 4.385,96** — o número antigo era estimativa.
+
+⚠️ **Duas sondas minhas erraram antes de eu medir certo:** chutei `reconciledInstallment` (o campo é
+**`loanInstallmentPaid`**) e chamei `saldoDevedorAtual(prisma, loanId)` quando ela é **PURA
+`(loan, installments)`** — devolveu **NaN**, um número plausível com cara de saldo quebrado. É a
+cicatriz de 07/10 cometida de novo. ***Nome de campo e assinatura se LEEM, nunca se chutam.*** ⭐ E a
+sonda rodou em `scripts/` e saiu com **`saferm` na MESMA linha de comando** (`git status --short
+scripts/` limpo depois) — a regra de 18/10.
+
 ## Ordem de deploy (PJ + PF)
 
 **⚠️ SWAP DE 2GB É OBRIGATÓRIO NO SERVIDOR (25/08).** O `npm run build` do Next roda o type-check num worker que chega a **~1,9 GB de RSS**; o servidor tem 3,9 GB e estava **sem swap nenhum** → o OOM killer matava o worker (`signal: SIGKILL`) e o `.next` ficava **sem `BUILD_ID`**, deixando o pm2 em loop de erro. **Não adianta mexer no `--max-old-space-size`:** teto alto (2560) o kernel mata igual; teto baixo (1400) o próprio V8 aborta por heap insuficiente (`SIGABRT`) — o type-check PRECISA de ~2 GB. Criado em 25/08: `fallocate -l 2G /swapfile && chmod 600 && mkswap && swapon` + linha no `/etc/fstab` (persiste no reboot). Build voltou a passar de primeira. **Servidor novo nasce quebrado sem isso** — incluir no provisionamento junto com o poppler. Pra desfazer: `swapoff /swapfile && rm /swapfile` + tirar a linha do fstab.

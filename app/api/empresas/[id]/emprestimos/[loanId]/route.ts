@@ -141,11 +141,12 @@ export async function GET(request: NextRequest, { params }: Params) {
     const veredito = (i: (typeof loan.installments)[number]) =>
       estadoDaParcela(
         {
-          dueDate: i.dueDate, payment: i.payment, status: i.status, paidTotal: i.paidTotal,
+          dueDate: i.dueDate, payment: i.payment, interest: i.interest,
+          status: i.status, paidTotal: i.paidTotal,
           pagamentos: i.payments.map((pg) => ({ amount: pg.amount })),
           valorDoVinculo11: i.reconciledTransaction?.amount ?? null,
         },
-        { flexible, hoje: now },
+        { flexible, hoje: now, rateMonthly: loan.interestRateMonthly },
       )
 
     const proximaOpen = flexible

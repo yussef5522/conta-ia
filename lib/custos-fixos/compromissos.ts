@@ -216,6 +216,14 @@ export async function lerCompromissos(
         lender: true,
         contractNumber: true,
         rateType: true,
+        /**
+         * ⚠️ A TAXA ENTRA PORQUE O SELO PRECISA SABER SE OS ENCARGOS SÃO APURADOS NO
+         * PAGAMENTO (19/10) — no pós-fixado o `interest` da aberta é 0 por desenho, e sem a
+         * taxa o `encargosSaoApurados` não tem como distinguir *"não tem juros"* de *"o juros
+         * deste mês ainda não existe"*. É a doença do select incompleto de novo: sem o campo,
+         * o motor decide calado.
+         */
+        interestRateMonthly: true,
         scheduleSource: true,
         installments: {
           select: {
@@ -328,12 +336,13 @@ export async function lerCompromissos(
             {
               dueDate: i.dueDate,
               payment: i.payment,
+              interest: i.interest,
               status: i.status,
               paidTotal: i.paidTotal,
               pagamentos: i.payments,
               valorDoVinculo11: null,
             },
-            { flexible, hoje: agora },
+            { flexible, hoje: agora, rateMonthly: l.interestRateMonthly },
           )
 
       const v = ref
@@ -358,12 +367,13 @@ export async function lerCompromissos(
             {
               dueDate: x.dueDate,
               payment: x.payment,
+              interest: x.interest,
               status: x.status,
               paidTotal: x.paidTotal,
               pagamentos: x.payments,
               valorDoVinculo11: null,
             },
-            { flexible, hoje: agora },
+            { flexible, hoje: agora, rateMonthly: l.interestRateMonthly },
           ).estado !== 'PAGA',
       ).length
 

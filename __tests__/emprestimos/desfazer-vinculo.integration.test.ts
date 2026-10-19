@@ -27,7 +27,20 @@ beforeEach(async () => {
   const loan = await prisma.loan.create({
     data: {
       companyId, lender: 'Sicredi', contractNumber: 'C-TESTE-1', principal: 100000,
-      interestRateMonthly: 0.01, termMonths: 3, firstDueDate: new Date('2026-09-14'), disbursementDate: new Date('2026-07-14'),
+      // ⚠️⚠️ A TAXA SAIU DE 1% PRA 1,72% EM 19/10, E ISSO NÃO É AFROUXAR RÉGUA PRA CABER:
+      //
+      // o teto novo da soma (`tetoDoPagamento`) barrou esta fixture, e ao medir o motivo a
+      // conta dá razão a ELE — a fixture junta valores de DOIS contratos reais diferentes:
+      // o 6.903,45 é a parcela do **C41022227-1** (juros ~2.517/mês) posta num contrato de
+      // teste cujo juros era **1.000,00**. Pagar 2.736,81 de encargos ali é **2,74× o juros
+      // do mês** num PRE com taxa declarada — exatamente o *"alguma linha não é desta
+      // parcela"* que o teto existe pra apontar.
+      //
+      // ⭐ 1,72076372375527% é a taxa REAL do contrato de onde o 6.903,45 veio, então a
+      // mudança **APROXIMA a fixture do caso de prod** em vez de maquiá-la. O assunto do
+      // teste (desfazer o vínculo cruzado) fica intacto; o que muda é o cenário parar de
+      // misturar dois contratos.
+      interestRateMonthly: 0.0172076372375527, termMonths: 3, firstDueDate: new Date('2026-09-14'), disbursementDate: new Date('2026-07-14'),
       status: 'ACTIVE', amortizationSystem: 'SAC', rateType: 'PRE',
       bankAccountId: contaId, scheduleSource: 'IMPORTED', installmentsPaidBefore: 0,
       installments: {

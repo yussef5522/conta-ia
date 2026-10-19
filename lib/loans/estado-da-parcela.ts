@@ -56,6 +56,12 @@ export interface ParcelaParaEstado {
   dueDate: Date
   /** o devido nominal da agenda (interest + amortization) */
   payment: number
+  /**
+   * ⭐ o JUROS DA AGENDA — **0 nas abertas do pós-fixado**, por desenho (*o juros do mês só
+   * se conhece no vencimento*). É ele que separa *"faltam R$ X e acabou"* de *"faltam R$ X
+   * de capital MAIS os encargos que o banco vai apurar"* — ver `encargosSaoApurados`.
+   */
+  interest: number
   /** o status GRAVADO — `PAID` é decisão e ganha da aritmética */
   status: string
   /** o campo gravado; usado só como último recurso (parcela sem vínculo) */
@@ -76,6 +82,11 @@ export interface VereditoDaParcela {
   mordidas: number
   /** ⭐ a frase pronta pra tela: estado sem o número não ajuda o dono a decidir */
   selo: string
+  /**
+   * ⭐ o `falta` é de CAPITAL e os encargos ainda vão ser apurados (pós-fixado) — a tela
+   * precisa saber pra não prometer que `falta` é tudo que o banco vai levar.
+   */
+  encargosAApurar?: boolean
 }
 
 /** ⚠️ 2 centavos: ruído de arredondamento, o mesmo degrau `FECHA` do resto da casa */
@@ -110,13 +121,31 @@ export function quantoFoiPago(p: ParcelaParaEstado): { pago: number; mordidas: n
   return { pago: round2(p.paidTotal ?? 0), mordidas: 0 }
 }
 
+/**
+ * ⭐⭐⭐ OS ENCARGOS DESTA PARCELA SÃO APURADOS NO PAGAMENTO? (19/10/2026)
+ *
+ * ⛔⛔ **O furo medido:** o `devido` é o `payment` da agenda, e **na agenda importada do
+ * pós-fixado o juros das abertas é 0** — então `payment` é o CAPITAL puro. Depois da 1ª
+ * mordida do caso real (4.257,46 de um capital de 4.385,96) o selo dizia ***"faltam
+ * R$ 128,50"*** enquanto o banco levou **R$ 2.798,29**. ⭐ *O número não estava errado por
+ * conta: ele respondia outra pergunta* — faltava de CAPITAL, não de pagamento.
+ *
+ * ⚠️ E não dá pra "consertar o devido": o juros do pós-fixado **não existe** antes do
+ * pagamento (é a régua da casa desde 10/09, e é o que torna a previsão honesta). O que dá é
+ * **dizer isso**: faltam R$ X de capital **+ encargos a apurar no pagamento**.
+ */
+export function encargosSaoApurados(p: { interest: number }, opts: { rateMonthly: number }): boolean {
+  return opts.rateMonthly > 0 && round2(p.interest) <= 0
+}
+
 export function estadoDaParcela(
   p: ParcelaParaEstado,
-  opts: { flexible: boolean; hoje: Date },
+  opts: { flexible: boolean; hoje: Date; rateMonthly: number },
 ): VereditoDaParcela {
   const { pago, mordidas } = quantoFoiPago(p)
   const devido = round2(p.payment)
   const falta = round2(Math.max(0, devido - pago))
+  const aApurar = encargosSaoApurados(p, opts)
   const quitadaPelaSoma = pago + TOL >= devido && devido > 0
 
   // ⛔ `PAID` gravado é DECISÃO: pode ter vindo de documento, de 1:1, ou da mão do dono.
@@ -149,7 +178,12 @@ export function estadoDaParcela(
       pago,
       falta,
       mordidas,
-      selo: `parcial — ${brl(pago)} de ${brl(devido)}, faltam ${brl(falta)}`,
+      // ⭐ no pós-fixado o `devido` é CAPITAL: a frase diz isso em vez de prometer um total
+      // que ninguém sabe (ver `encargosSaoApurados`).
+      selo: aApurar
+        ? `parcial — ${brl(pago)} de ${brl(devido)} de capital, faltam ${brl(falta)} + encargos a apurar no pagamento`
+        : `parcial — ${brl(pago)} de ${brl(devido)}, faltam ${brl(falta)}`,
+      encargosAApurar: aApurar,
     }
   }
 
@@ -192,7 +226,18 @@ export function ofereceMarcarPaga(
   return v.estado !== 'PAGA'
 }
 
-/** ⚠️ o rótulo do gesto muda com o estado: "completar" ≠ "marcar paga" */
+/**
+ * ⚠️ o rótulo do gesto muda com o estado: "completar" ≠ "marcar paga"
+ *
+ * ⛔⛔ **E ELE CARREGA A MESMA RESSALVA DO SELO (19/10):** o botão dizia *"completar — faltam
+ * R$ 128,50"* no caso real, enquanto o banco levou **R$ 2.798,29** — o número é de CAPITAL, e
+ * no pós-fixado o encargo só nasce no pagamento. **Consertar o selo e deixar o botão
+ * prometendo o número velho seria consertar metade** e deixar a mentira justamente no texto
+ * que o dono CLICA (a família do "N caminhos, 1 esquecido").
+ */
 export function rotuloDoGesto(v: VereditoDaParcela): string {
-  return v.estado === 'PARCIAL' ? `completar — faltam ${brl(v.falta)}` : 'Marcar paga'
+  if (v.estado !== 'PARCIAL') return 'Marcar paga'
+  return v.encargosAApurar
+    ? `completar — faltam ${brl(v.falta)} de capital + encargos`
+    : `completar — faltam ${brl(v.falta)}`
 }

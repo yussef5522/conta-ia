@@ -41,6 +41,8 @@ const maisDias = (n: number) => new Date(Date.now() + n * 86_400_000)
 const REFERENCIA_ABERTA = {
   dueDate: maisDias(60),
   payment: 41428.57,
+  /** ⚠️ mútuo SEM JUROS: a agenda nominal não tem encargo, e a taxa é 0 nos dois opts */
+  interest: 0,
   status: 'OPEN',
   paidTotal: null,
   pagamentos: [],
@@ -51,13 +53,13 @@ const REFERENCIA_VENCIDA = { ...REFERENCIA_ABERTA, dueDate: maisDias(-10) }
 
 describe('⛔⛔ a régua: no flexível a janela bancária não existe', () => {
   it('⛔⛔ `ofereceMarcarPaga` devolve FALSE no flexível — o botão sai da tela', () => {
-    const v = estadoDaParcela(REFERENCIA_ABERTA, { flexible: true, hoje: AGORA })
+    const v = estadoDaParcela(REFERENCIA_ABERTA, { flexible: true, hoje: AGORA, rateMonthly: 0 })
     expect(v.estado, 'flexível nunca atrasa (a isenção de 02/10)').toBe('A_VENCER')
     expect(ofereceMarcarPaga(v, { flexible: true }), 'a janela bancária voltou pro flexível').toBe(false)
   })
 
   it('⭐⭐ E CONTINUA VIVA NO BANCÁRIO — guard que só afirma a ausência aprova o sumiço total', () => {
-    const v = estadoDaParcela(REFERENCIA_VENCIDA, { flexible: false, hoje: AGORA })
+    const v = estadoDaParcela(REFERENCIA_VENCIDA, { flexible: false, hoje: AGORA, rateMonthly: 0 })
     expect(v.estado).toBe('ATRASADA')
     expect(ofereceMarcarPaga(v, { flexible: false }), 'o gesto do contrato de banco morreu').toBe(true)
     /** ⚠️ e sem o parâmetro também — chamador antigo não muda de comportamento */
@@ -67,7 +69,7 @@ describe('⛔⛔ a régua: no flexível a janela bancária não existe', () => {
   it('⛔ parcela PAGA segue sem oferecer, nos dois mundos — era a porta da dupla contagem', () => {
     const paga = estadoDaParcela(
       { ...REFERENCIA_VENCIDA, status: 'PAID' },
-      { flexible: false, hoje: AGORA },
+      { flexible: false, hoje: AGORA, rateMonthly: 0 },
     )
     expect(ofereceMarcarPaga(paga, { flexible: false })).toBe(false)
     expect(ofereceMarcarPaga(paga, { flexible: true })).toBe(false)

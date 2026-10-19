@@ -22,6 +22,11 @@ interface Preview {
   openInstallments: Array<{ number: number; dueDate: string; status: string }>
   candidates: Cand[]
   paidTotal: number
+  /** ⭐ 19/10 — o que JÁ está vinculado, e o TOTAL que a porta vai gravar */
+  jaVinculado: number
+  paidTotalGravado: number
+  /** ⛔ a recusa que a PORTA daria — a mesma função, antes do clique */
+  bloqueio: { code: string; mensagem: string } | null
   split: Split
   saldoAntes: number
   saldoDepois: number
@@ -111,6 +116,19 @@ export function LinkPaymentModal({ empresaId, loanId, txId, onClose, onDone }: {
               </div>
             )}
 
+            {/*
+              ⛔⛔⛔ A RECUSA APARECE ANTES DO CLIQUE (19/10) — e é a MESMA frase que a porta
+              lançaria (`bloqueioDoVinculo`, régua única). Antes o botão acendia, o dono
+              clicava, e o servidor dizia não: *fazer o dono clicar pra levar um «não» é
+              trabalho que dava pra poupar*.
+            */}
+            {pv.bloqueio && (
+              <div className="rounded-md bg-red-50 border border-red-200 p-3 text-xs text-red-800 flex gap-2">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{pv.bloqueio.mensagem}</span>
+              </div>
+            )}
+
             <div className="rounded-md border p-3 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-semibold">Parcela #{pv.installment.number} · vence {fmtD(pv.installment.dueDate)}</p>
@@ -158,6 +176,18 @@ export function LinkPaymentModal({ empresaId, loanId, txId, onClose, onDone }: {
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2"><p className="text-[10px] text-muted-foreground">Amortização (fora do DRE)</p><p className="text-sm font-bold tabular-nums text-slate-700">{formatBRL(pv.split.amortization)}</p></div>
               <div className="rounded-md border border-red-200 bg-red-50 p-2"><p className="text-[10px] text-muted-foreground">Encargos (despesa financeira)</p><p className="text-sm font-bold tabular-nums text-red-700">{formatBRL(pv.split.encargos)}</p></div>
             </div>
+            {/*
+              ⚠️ MORDIDA ANTERIOR APARECE NOMEADA (19/10) — sem isto o *"Pago (grupo)"* e o
+              split não fecham entre si (o split é do TOTAL que vai ser gravado), e o dono
+              lê como defeito. É a régua da casa: *exclusão/soma escondida é tão ruim quanto
+              exclusão nenhuma*.
+            */}
+            {pv.jaVinculado > 0 && (
+              <p className="text-xs text-center text-muted-foreground">
+                Esta parcela já tinha <strong className="tabular-nums">{formatBRL(pv.jaVinculado)}</strong> vinculado —
+                o split acima é do total de <strong className="tabular-nums">{formatBRL(pv.paidTotalGravado)}</strong>.
+              </p>
+            )}
             <p className="text-xs text-center text-muted-foreground">Saldo devedor {formatBRL(pv.saldoAntes)} → <strong>{formatBRL(pv.saldoDepois)}</strong></p>
             {pv.split.isPartial && (
               <p className="text-xs text-center text-amber-700 flex items-center justify-center gap-1"><AlertTriangle className="h-3 w-3" />Pago menor que a amortização — parcela fica PARCIAL, não quita.</p>
@@ -167,7 +197,7 @@ export function LinkPaymentModal({ empresaId, loanId, txId, onClose, onDone }: {
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={confirmar} disabled={saving || loading || !pv || sel.size === 0}>
+          <Button onClick={confirmar} disabled={saving || loading || !pv || sel.size === 0 || pv.bloqueio != null}>
             {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             <CheckCircle2 className="h-4 w-4 mr-1" />Confirmar vínculo ({sel.size})
           </Button>

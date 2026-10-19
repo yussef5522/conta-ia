@@ -23,12 +23,18 @@ import {
 
 const d = (iso: string) => new Date(`${iso}T12:00:00.000Z`)
 const HOJE = d('2026-10-02')
-const normal = { flexible: false, hoje: HOJE }
+/**
+ * ⚠️ A TAXA ENTRA NO `opts` PORQUE ELA É O QUE DISTINGUE *"não tem juros"* de *"o juros deste
+ * mês ainda não existe"* (19/10). O C41033828 é PRÉ com juros na agenda, então aqui o
+ * `encargosSaoApurados` é FALSO — o caso do pós-fixado tem bloco próprio no fim do arquivo.
+ */
+const normal = { flexible: false, hoje: HOJE, rateMonthly: 0.0121 }
 
 /** ⭐ A PARCELA 22 REAL: devido 10.234,35, dois vínculos, `paidTotal` gravado ERRADO */
 const P22 = {
   dueDate: d('2026-09-25'),
   payment: 10234.35,
+  interest: 505.01, // ⭐ o juros REAL da agenda: 9.729,34 de amortização + 505,01
   status: 'PARTIAL',
   paidTotal: 2665.44, // ⛔ o campo que o gesto sobrescreveu — só o ÚLTIMO pagamento
   pagamentos: [{ amount: 7568.91 }, { amount: 2665.44 }],
@@ -70,7 +76,7 @@ describe('⛔⛔⛔ PROMOVE, NUNCA REBAIXA — os 3 casos REAIS que a régua ing
    */
   it('⭐⭐ Banrisul #58: PAID com 4,46 a menos continua PAGA (ninguém deve R$ 4,46)', () => {
     const v = estadoDaParcela(
-      { dueDate: d('2026-08-26'), payment: 2449.08, status: 'PAID', paidTotal: 2444.62, pagamentos: [{ amount: 2444.62 }] },
+      { dueDate: d('2026-08-26'), payment: 2449.08, interest: 310.4, status: 'PAID', paidTotal: 2444.62, pagamentos: [{ amount: 2444.62 }] },
       normal,
     )
     expect(v.estado, 'uma parcela paga foi rebaixada por 4,46').toBe('PAGA')
@@ -79,7 +85,7 @@ describe('⛔⛔⛔ PROMOVE, NUNCA REBAIXA — os 3 casos REAIS que a régua ing
 
   it('⭐⭐ Banrisul #59: idem com 8,76', () => {
     const v = estadoDaParcela(
-      { dueDate: d('2026-09-26'), payment: 2422.62, status: 'PAID', paidTotal: 2413.86, pagamentos: [{ amount: 2413.86 }] },
+      { dueDate: d('2026-09-26'), payment: 2422.62, interest: 298.1, status: 'PAID', paidTotal: 2413.86, pagamentos: [{ amount: 2413.86 }] },
       normal,
     )
     expect(v.estado).toBe('PAGA')
@@ -87,7 +93,7 @@ describe('⛔⛔⛔ PROMOVE, NUNCA REBAIXA — os 3 casos REAIS que a régua ing
 
   it('⭐⭐ as 180 PAID SEM vínculo nenhum (pagas por documento) continuam PAGAS', () => {
     const v = estadoDaParcela(
-      { dueDate: d('2024-05-10'), payment: 3000, status: 'PAID', paidTotal: null, pagamentos: [] },
+      { dueDate: d('2024-05-10'), payment: 3000, interest: 400, status: 'PAID', paidTotal: null, pagamentos: [] },
       normal,
     )
     expect(v.estado, 'o histórico pago por documento foi rebaixado').toBe('PAGA')
@@ -101,8 +107,8 @@ describe('⛔⛔⛔ PROMOVE, NUNCA REBAIXA — os 3 casos REAIS que a régua ing
      * *"atrasada"* seria pior ainda.
      */
     const v = estadoDaParcela(
-      { dueDate: d('2026-07-06'), payment: 41428.57, status: 'OPEN', paidTotal: 40000, valorDoVinculo11: 40000 },
-      { flexible: true, hoje: HOJE },
+      { dueDate: d('2026-07-06'), payment: 41428.57, interest: 0, status: 'OPEN', paidTotal: 40000, valorDoVinculo11: 40000 },
+      { flexible: true, hoje: HOJE, rateMonthly: 0 },
     )
     expect(v.estado, 'o mútuo FLEXIBLE virou parcial/atrasada pelo nominal').toBe('A_VENCER')
     expect(v.selo).toMatch(/devolvido/)
@@ -143,12 +149,12 @@ describe('⛔⛔ ATRASADA é POR DIA, nunca por instante (a cicatriz de fuso)', 
    * INSTANTE. Divergiam no PRÓPRIO dia do vencimento — o bug que já custou o card do cartão
    * (09/09) e o Contas a Pagar (13/09).
    */
-  const semPagamento = { payment: 1000, status: 'OPEN', paidTotal: null, pagamentos: [] }
+  const semPagamento = { payment: 1000, interest: 120, status: 'OPEN', paidTotal: null, pagamentos: [] }
 
   it('⭐ vence HOJE, mesmo às 23h, NÃO está atrasada', () => {
     const v = estadoDaParcela(
       { ...semPagamento, dueDate: new Date('2026-10-02T00:00:00.000Z') },
-      { flexible: false, hoje: new Date('2026-10-02T23:59:00.000Z') },
+      { flexible: false, hoje: new Date('2026-10-02T23:59:00.000Z'), rateMonthly: 0.0121 },
     )
     expect(v.estado, 'o dia do vencimento voltou a contar como atrasado').toBe('VENCE_HOJE')
   })
@@ -156,7 +162,7 @@ describe('⛔⛔ ATRASADA é POR DIA, nunca por instante (a cicatriz de fuso)', 
   it('⛔ ontem-pra-trás é atrasada', () => {
     const v = estadoDaParcela(
       { ...semPagamento, dueDate: new Date('2026-10-01T00:00:00.000Z') },
-      { flexible: false, hoje: new Date('2026-10-02T00:30:00.000Z') },
+      { flexible: false, hoje: new Date('2026-10-02T00:30:00.000Z'), rateMonthly: 0.0121 },
     )
     expect(v.estado).toBe('ATRASADA')
   })
@@ -168,7 +174,7 @@ describe('⛔⛔ ATRASADA é POR DIA, nunca por instante (a cicatriz de fuso)', 
   it('⛔ e FLEXIBLE nunca é atrasada, nem com vencimento nominal no passado', () => {
     const v = estadoDaParcela(
       { ...semPagamento, dueDate: d('2026-05-01') },
-      { flexible: true, hoje: HOJE },
+      { flexible: true, hoje: HOJE, rateMonthly: 0 },
     )
     expect(v.estado).not.toBe('ATRASADA')
   })

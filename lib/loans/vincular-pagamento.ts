@@ -17,9 +17,10 @@
 // (`loan_installment_no_double_link`) recusa quem tiver as duas. Agora só existe uma.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
-import { computeLinkSplit, storedScheduleValid, shouldWriteSplit } from './link-payment'
+import { computeLinkSplit, storedScheduleValid, shouldWriteSplit, bloqueioDoVinculo } from './link-payment'
 // ⚠️ o arredondamento vem de um lugar só — um `round2` local aqui seria a 3ª cópia
 import { arredondar2 } from './estado-da-parcela'
+
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -67,15 +68,18 @@ export async function vincularPagamentoDeParcela(input: VincularInput): Promise<
 
   const target = await prisma.loanInstallment.findFirst({
     where: { loanId, number: installmentNumber },
-    select: { id: true, amortization: true, openingBalance: true, reconciledTransactionId: true },
+    select: {
+      id: true, amortization: true, openingBalance: true, reconciledTransactionId: true,
+      // ⭐ 19/10 — `status` e `interest` entraram pelas duas travas abaixo
+      status: true, interest: true,
+    },
   })
   if (!target) throw new VinculoDeParcelaError('INSTALLMENT_NOT_FOUND', 'Parcela não encontrada')
-  // ⛔ a porta 1:1 e a N:1 na mesma parcela = juros contado 2× no DRE (o trigger do banco
-  // recusa, mas a mensagem daqui explica o que fazer).
-  if (target.reconciledTransactionId) {
-    throw new VinculoDeParcelaError('JA_VINCULADA_1_1',
-      'Esta parcela já tem vínculo 1:1 — desfaça antes de vincular pelo grupo')
-  }
+
+  const jaVinculados = await prisma.loanInstallmentPayment.findMany({
+    where: { installmentId: target.id },
+    select: { amount: true },
+  })
 
   const txs = await prisma.transaction.findMany({
     where: {
@@ -139,13 +143,36 @@ export async function vincularPagamentoDeParcela(input: VincularInput): Promise<
    * SOMA das baixas e o em aberto é DERIVADO — nunca status na mão"*. Coluna de valor pago
    * envelhece; soma de linhas, não.
    */
-  const jaVinculados = await prisma.loanInstallmentPayment.findMany({
-    where: { installmentId: target.id },
-    select: { amount: true },
-  })
   const paidTotal = arredondar2(
     jaVinculados.reduce((s, p) => s + p.amount, 0) + txs.reduce((s, t) => s + t.amount, 0),
   )
+
+  /**
+   * ⛔⛔⛔ AS TRÊS RECUSAS VÊM DA RÉGUA ÚNICA (`bloqueioDoVinculo`) — 19/10/2026.
+   *
+   * ⚠️ Elas viviam escritas AQUI, e o PREVIEW não as conhecia: o painel acendia o botão e o
+   * servidor dizia não. Agora a mesma função serve as duas pontas, então **a tela não tem como
+   * oferecer um vínculo que esta porta recusa** (item 4 do brief: *"porta única nos dois"*).
+   *
+   * ⚠️ A chamada é AQUI, depois do `paidTotal`, porque o `SOMA_ESTOUROU` precisa dos três
+   * fatos juntos (os vínculos que já existem + as tx deste gesto + o teto da parcela).
+   */
+  const bloqueio = bloqueioDoVinculo({
+    installmentNumber,
+    temVinculo11: target.reconciledTransactionId != null,
+    status: target.status,
+    jaVinculados: {
+      quantos: jaVinculados.length,
+      soma: jaVinculados.reduce((s, p) => s + p.amount, 0),
+    },
+    paidTotal,
+    amortization: target.amortization,
+    interest: target.interest,
+    openingBalance: target.openingBalance,
+    rateMonthly: loan.interestRateMonthly,
+  })
+  if (bloqueio) throw new VinculoDeParcelaError(bloqueio.code, bloqueio.mensagem)
+
   const split = computeLinkSplit({
     installment: { amortization: target.amortization, openingBalance: target.openingBalance },
     rateMonthly: loan.interestRateMonthly, paidTotal,

@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
-import { buildLinkGroup, computeLinkSplit, storedScheduleValid, shouldWriteSplit, pickTargetInstallment } from '@/lib/loans/link-payment'
+import { buildLinkGroup, computeLinkSplit, storedScheduleValid, shouldWriteSplit, pickTargetInstallment, bloqueioDoVinculo } from '@/lib/loans/link-payment'
 import { exigeContaDoEmprestimo, MutuoSemContaError } from '@/lib/loans/exige-conta'
 
 export const runtime = 'nodejs'
@@ -26,6 +26,9 @@ interface Params { params: Promise<{ id: string; loanId: string }> }
  * ⭐ A JANELA AGORA É RELATIVA AO VENCIMENTO DA PARCELA ALVO — que é a pergunta certa:
  * *"que débitos podem ter pago ESTA parcela?"*, não *"que débitos existem em julho?"*.
  */
+/** ⚠️ 2 casas, a mesma régua de dinheiro do resto do módulo */
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
 const DIAS_ANTES = 45
 const DIAS_DEPOIS = 15
 
@@ -55,8 +58,29 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const installments = await prisma.loanInstallment.findMany({
       where: { loanId }, orderBy: { number: 'asc' },
-      select: { number: true, dueDate: true, amortization: true, openingBalance: true, closingBalance: true, interest: true, correcao: true, payment: true, status: true, isEstimate: true },
+      select: { id: true, number: true, dueDate: true, amortization: true, openingBalance: true, closingBalance: true, interest: true, correcao: true, payment: true, status: true, isEstimate: true, reconciledTransactionId: true },
     })
+
+    /**
+     * ⭐⭐⭐ OS CONTRATOS DA EMPRESA — É ELES QUE TORNAM A EXCEÇÃO DA CONTA GARANTIDA
+     * ALCANÇÁVEL (19/10/2026).
+     *
+     * ⛔⛔ Sem este campo o `linhasDaContaGarantida` **nunca roda** (`buildLinkGroup` cai no
+     * `new Set()` vazio) e as duas linhas de 16/10 seguem barradas pelo guard Cancian — o
+     * motor estava em prod e **inalcançável**, que é a *"porta sem maçaneta"* desta casa pela
+     * enésima vez.
+     *
+     * ⚠️ A lista é a dos **cadastrados**, e é isso que mantém o guard mordendo: a exceção só
+     * vale pra número que **não** é de contrato nenhum (se é, o dinheiro tem dono — a família
+     * Cancian). Daí a pergunta ser *"quais contratos existem?"*, nunca *"este número parece
+     * auxiliar?"*.
+     */
+    const contratosCadastrados = (
+      await prisma.loan.findMany({
+        where: { companyId: empresaId },
+        select: { contractNumber: true },
+      })
+    ).map((l) => l.contractNumber)
     const startNumber = loan.installmentsPaidBefore + 1
     const openList = installments.filter((i) => i.number >= startNumber && i.status !== 'PAID')
 
@@ -106,13 +130,57 @@ export async function POST(request: NextRequest, { params }: Params) {
     const target = targetNumber != null ? installments.find((i) => i.number === targetNumber) : undefined
     if (!target) return NextResponse.json({ erro: 'Nenhuma parcela em aberto pra vincular' }, { status: 400 })
     const group = buildLinkGroup({
-      pend, contractNumber: loan.contractNumber, originTxId: body.originTxId, transactionIds: body.transactionIds,
+      pend, contractNumber: loan.contractNumber, originTxId: body.originTxId,
+      transactionIds: body.transactionIds, contratosCadastrados,
     })
     const paidTotal = group.paidTotal
 
+    /**
+     * ⭐⭐⭐ O PREVIEW MOSTRA A RECUSA ANTES DO CLIQUE — A MESMA FUNÇÃO DA PORTA (19/10/2026).
+     *
+     * ⛔⛔ **Item 4 do brief, literal:** *"preview mostra exatamente o que será gravado (porta
+     * única nos dois)"*. Antes as três travas viviam só no `vincularPagamentoDeParcela`: o
+     * painel acendia o botão, o dono clicava, e o servidor dizia não — *fazer o dono clicar
+     * pra levar um «não» é trabalho que dava pra poupar*.
+     *
+     * ⚠️ E reescrever a régua aqui seria pior que não ter: as duas divergiriam no primeiro
+     * degrau novo, e a tela passaria a **oferecer um vínculo que a gravação recusa** — a
+     * doença do *"preview e confirm discordando"* (17/08).
+     *
+     * ⛔⛔⛔ **E LIGAR A RÉGUA ÚNICA ACHOU UM DEFEITO PRÉ-EXISTENTE AQUI:** o `group.paidTotal`
+     * é só a Σ das **selecionadas** — o `CANDIDATO_WHERE` exclui transação já vinculada
+     * (`loanInstallmentPayments: { none: {} }`), então as mordidas ANTERIORES não estão em
+     * `pend` e **não entram nessa soma**. A porta, por sua vez, grava
+     * `jaVinculados + txs` (02/10). Numa parcela que já tem mordida, **o preview mostrava um
+     * split e a gravação fazia outro** — e é exatamente o caso real de 16/10, se o dono
+     * vincular as duas linhas em dois gestos.
+     *
+     * ⭐ Por isso há DOIS números com nomes diferentes, e cada um responde a sua pergunta:
+     * `paidTotal` = o que as linhas marcadas somam (o rótulo *"Pago (grupo)"*);
+     * `paidTotalGravado` = o que a porta vai escrever. O split e o bloqueio saem do SEGUNDO.
+     */
+    const jaVinculadosDaParcela = await prisma.loanInstallmentPayment.findMany({
+      where: { installmentId: target.id },
+      select: { amount: true },
+    })
+    const jaVinculado = round2(jaVinculadosDaParcela.reduce((s, p) => s + p.amount, 0))
+    const paidTotalGravado = round2(jaVinculado + paidTotal)
+
+    const bloqueio = bloqueioDoVinculo({
+      installmentNumber: target.number,
+      temVinculo11: target.reconciledTransactionId != null,
+      status: target.status,
+      jaVinculados: { quantos: jaVinculadosDaParcela.length, soma: jaVinculado },
+      paidTotal: paidTotalGravado,
+      amortization: target.amortization,
+      interest: target.interest,
+      openingBalance: target.openingBalance,
+      rateMonthly: loan.interestRateMonthly,
+    })
+
     const split = computeLinkSplit({
       installment: { amortization: target.amortization, openingBalance: target.openingBalance },
-      rateMonthly: loan.interestRateMonthly, paidTotal,
+      rateMonthly: loan.interestRateMonthly, paidTotal: paidTotalGravado,
     })
 
     // Agenda armazenada fecha? (decide se o split flui pro DRE — FASE 5.3)
@@ -126,10 +194,18 @@ export async function POST(request: NextRequest, { params }: Params) {
       openInstallments: openList.map((i) => ({ number: i.number, dueDate: i.dueDate, status: i.status })),
       candidates: group.candidates.map((t) => ({ id: t.id, description: t.description, amount: t.amount, date: t.date, selected: t.selected })),
       paidTotal,
+      /** ⭐ o que JÁ está vinculado nesta parcela, e o que a porta vai gravar no fim */
+      jaVinculado,
+      paidTotalGravado,
       split,
       saldoAntes: target.openingBalance,
       saldoDepois: split.closingBalance,
       agendaValida,
+      /**
+       * ⛔ `bloqueio` ≠ null → o Vincular **não pode acender**, e a frase já diz o porquê.
+       * É a MESMA mensagem que a porta lançaria, então não há como a tela explicar diferente.
+       */
+      bloqueio,
       // O split (juros) VAI ser gravado? IMPORTED confia no amort do banco mesmo
       // com juros=0 nas OPEN (dono único shouldWriteSplit — igual ao confirm).
       splitInjected: shouldWriteSplit({
