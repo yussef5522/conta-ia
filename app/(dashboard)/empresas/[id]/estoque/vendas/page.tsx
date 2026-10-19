@@ -97,6 +97,22 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   const [data, setData] = useState('')
   /** ⭐ a pergunta do dia que o servidor devolveu (409) — a tela só desenha */
   const [perguntaDia, setPerguntaDia] = useState<VeredictoDoDia | null>(null)
+  /**
+   * ⛔⛔⛔ A RESPOSTA DA PERGUNTA É ESTADO, NUNCA UM ARGUMENTO QUE EVAPORA (19/10/2026).
+   *
+   * Até hoje ela só existia como parâmetro do `abrirPreview`, e o `confirmar` — que é um
+   * gesto DEPOIS — montava o corpo sem ela: o servidor re-avaliava a lei, devolvia 409, e a
+   * linha do 409 fechava o modal e reabria a MESMA pergunta. **Laço: nada gravava nunca.**
+   * O dono tentou 6× o produtos de 17/10 (nginx: 409 · 409 · 200 · 409 …) e desistiu.
+   *
+   * ⚠️ `perguntaDia` guarda a PERGUNTA; este guarda a RESPOSTA — são duas coisas, e confundi-las
+   * foi o que deixou o `confirmar` sem memória.
+   *
+   * ⛔ E ele NÃO é um `force`: o servidor só o aceita se bater com uma das opções oferecidas
+   * (`exigirDiaDecidido`). Se não bater, a recusa continua valendo — é o FREIO do caminho de
+   * gravação, e ele fica intocado.
+   */
+  const [diaConfirmado, setDiaConfirmado] = useState<string | null>(null)
   const [erroProc, setErroProc] = useState<string | null>(null)
   const [plano, setPlano] = useState<Plano | null>(null)
   const [modoReprocesso, setModoReprocesso] = useState<string | null>(null) // data sendo reprocessada
@@ -136,7 +152,8 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       return r.data.revisao ?? null
     } catch (e) { setErro(fraseDoErro(e, { rede: 'Falha de conexão. Tentar de novo?', falhou: 'Não consegui ler o arquivo' })); return null } finally { setCarregando(false) }
   }
-  const onFile = (f: File) => { setNomeArquivo(f.name); const reader = new FileReader(); reader.onload = () => { const t = String(reader.result ?? ''); setHtml(t); enviar(t) }; reader.readAsText(f, 'utf-8') }
+  // ⚠️ arquivo NOVO apaga a resposta da pergunta: ela foi dada sobre o relatório anterior.
+  const onFile = (f: File) => { setNomeArquivo(f.name); setDiaConfirmado(null); const reader = new FileReader(); reader.onload = () => { const t = String(reader.result ?? ''); setHtml(t); enviar(t) }; reader.readAsText(f, 'utf-8') }
 
   const mapear = async (nomeSuitable: string, valor: string) => {
     if (valor === 'CRIAR_FICHA') { window.location.href = `/empresas/${id}/estoque/fichas/nova?nome=${encodeURIComponent(nomeSuitable)}&mapear=${encodeURIComponent(nomeSuitable)}&tipo=PRODUTO_FINAL&voltar=${encodeURIComponent(`/empresas/${id}/estoque/vendas`)}`; return }
@@ -157,6 +174,25 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   const abrirModal = (p: Plano, reprocessoDia: string | null, estorna: number) => { setPlano(p); setModoReprocesso(reprocessoDia); setEstornaItens(estorna); setVerLista(false); setErroModal(null) }
 
   /**
+   * ⭐⭐ A RESPOSTA QUE VIAJA NO CORPO — UMA função, os TRÊS gestos (REGRA 4). Três montagens
+   * à mão divergiriam, e foi justamente um dos três (o `confirmar`) que esqueceu o campo.
+   *
+   * ⚠️ Devolve `undefined`, NUNCA `null`: o zod da rota é `.optional()`, e `null` levaria 400
+   * — a tela diria "não consegui processar" num gesto perfeitamente válido.
+   *
+   * ⭐ O argumento EXPLÍCITO ganha do estado porque a resposta e o reenvio acontecem no MESMO
+   * tick (`setDiaConfirmado(dia); abrirPreview(dia)`): ali o estado ainda não chegou.
+   */
+  const respostaDoDia = (explicito?: string): string | undefined => explicito ?? diaConfirmado ?? undefined
+
+  /**
+   * ⭐ Trocar o dia NA MÃO apaga a resposta: ela é de um PAR de dias, não um passe livre.
+   * Sem isto, um 409 legítimo no dia novo sairia com a frase de "defeito nosso" e mandaria
+   * o dono caçar um erro que não existe.
+   */
+  const escolherData = (dia: string) => { setData(dia); setDiaConfirmado(null) }
+
+  /**
    * ⭐⭐ O PREVIEW JÁ PASSA PELA LEI DA DATA (16/10) — e perguntar AQUI, não só na gravação, é
    * o ponto: deixar o dono ver o plano do dia ERRADO e só então perguntar seria dar a ele um
    * motivo pra confiar no número antes de a dúvida aparecer.
@@ -166,14 +202,21 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
     if (!data) { setErroProc('Escolha a data das vendas antes de processar.'); return }
     setProcessando(true)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html, data, confirmar: false, incluir: null, confirmouDia }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html, data, confirmar: false, incluir: null, confirmouDia: respostaDoDia(confirmouDia) }) })
       const j = await r.json().catch(() => null)
       if (r.status === 409 && j?.code === 'CONFIRME_O_DIA') { setPerguntaDia(j.dia as VeredictoDoDia); return }
       if (!r.ok) { setErroProc(j?.erro ?? 'Não consegui montar o preview.'); return }
       setPerguntaDia(null)
-      // ⭐ o dia que a LEI decidiu passa a ser o da tela — perder a resposta aqui faria o
-      // confirmar perguntar de novo a mesma coisa
-      if (confirmouDia) setData(confirmouDia)
+      /**
+       * ⭐⭐ A RESPOSTA SÓ É GUARDADA DEPOIS QUE O SERVIDOR A ACEITOU — é isso que faz um 409
+       * no confirmar seguinte ser **defeito nosso**, e não a pergunta nascendo de novo.
+       *
+       * ⚠️ E o `setData` FICA: ele continua certo quando a resposta é o OUTRO dia (o que vai
+       * ser gravado tem que ser o que a tela mostra). O que ele deixou de ser é a ÚNICA
+       * memória da decisão — e era por isso que ele virava no-op justamente no caso
+       * "dias diferentes mesmo", em que a resposta é o dia que já estava no campo.
+       */
+      if (confirmouDia) { setDiaConfirmado(confirmouDia); setData(confirmouDia) }
       abrirModal(j.plano, null, 0)
     } catch (e) { setErroProc(fraseDoErro(e, { rede: 'Falha de conexão ao processar. Tentar de novo?', falhou: 'Não consegui montar o preview' })) } finally { setProcessando(false) }
   }
@@ -189,9 +232,20 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   const confirmar = async (confirmouSanidade = false) => {
     setProcessando(true); setErroModal(null)
     try {
+      /**
+       * ⛔⛔⛔ O CORPO SEM `confirmouDia` ERA O DEFEITO DE 17/10 — a linha inteira.
+       *
+       * O servidor re-avalia a lei no confirmar de propósito (é o FREIO: perguntar só no
+       * preview deixaria o caminho da gravação aberto pra quem chamasse a rota por outro
+       * lado). Sem o campo, ele 409ava e o dono nunca gravava o dia.
+       *
+       * ⚠️ O ramo do REPROCESSO não leva o campo, e é correto: lá a rota usa `data` direto
+       * (`reprocessar ? data : exigirDiaDecidido(…)`) — o dia já está no banco, não há o que
+       * decidir. Mandar o campo ali seria sugerir uma decisão que ninguém tomou.
+       */
       const body = modoReprocesso
         ? { data: modoReprocesso, reprocessar: true, confirmar: true, confirmouSanidade }
-        : { html, data, confirmar: true, incluir: null, confirmouSanidade, nomeArquivo: nomeArquivo || undefined }
+        : { html, data, confirmar: true, incluir: null, confirmouSanidade, nomeArquivo: nomeArquivo || undefined, confirmouDia: respostaDoDia() }
       // ⚠️ o confirmar grava: teto MAIOR (60 s), porque desistir cedo de uma gravação que
       // está acontecendo é pior que esperar — mas ele TERMINA, com erro visível.
       const rr = await fetchComTimeout<{ recibo: Recibo }>(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), timeoutMs: 60_000 })
@@ -220,11 +274,27 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         const c = rr.corpo as { code?: string; barrados?: { itemId: string; nome: string; motivo: string }[]; quantosSeguem?: number; dia?: VeredictoDoDia } | null
         if (c?.code === 'ITEM_BARRADO' && c.barrados?.length) setBarrados({ itens: c.barrados, seguem: c.quantosSeguem ?? 0 })
         /**
-         * ⭐⭐ A LEI DA DATA vale no CONFIRMAR também — e aqui ela fecha o modal e devolve a
-         * pergunta pro card. ⚠️ Perguntar só no preview deixaria o caminho da gravação aberto
-         * pra quem chamasse a rota por outro lado (a régua do FREIO da contagem, 23/08).
+         * ⭐⭐⭐ A LEI DA DATA vale no CONFIRMAR também (é o FREIO) — mas o 409 AQUI tem DOIS
+         * significados, e tratar os dois como um era o laço (19/10).
+         *
+         * ⛔ **COM resposta já aceita → é DEFEITO NOSSO.** O servidor acabou de aceitar aquele
+         * dia no preview; se ele recusa agora, o campo não chegou — e devolver a pergunta
+         * mandaria o dono responder o que ele JÁ respondeu, pra sempre. A tela diz isso, com o
+         * modal ABERTO: ele não perde o plano que estava lendo.
+         *
+         * ⭐ **SEM resposta → a pergunta é LEGÍTIMA** (o irmão do par pode ter sido importado
+         * entre o preview e o confirmar, mudando o veredicto). Aí sim fecha o modal e pergunta
+         * — e isto NÃO volta a ser laço, porque responder agora GUARDA a resposta.
          */
-        if (c?.code === 'CONFIRME_O_DIA' && c.dia) { setPlano(null); setPerguntaDia(c.dia); return }
+        if (c?.code === 'CONFIRME_O_DIA' && c.dia) {
+          if (diaConfirmado) {
+            setErroModal(
+              `Você já confirmou o dia ${fmtDia(diaConfirmado)} e o servidor recusou de novo — isto é defeito nosso, não seu. Me manda esta frase.`,
+            )
+            return
+          }
+          setPlano(null); setPerguntaDia(c.dia); return
+        }
         setErroModal(rr.erro ?? 'Não consegui processar.')
       }
     } catch (e) { setErroModal(fraseDoErro(e, { rede: 'Falha de conexão. Tentar de novo?', falhou: 'Não consegui gravar' })) } finally { setProcessando(false) }
@@ -235,9 +305,11 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
     if (!barrados) return
     setProcessando(true); setErroModal(null)
     try {
+      // ⛔ o MESMO campo do confirmar: este gesto também GRAVA o dia, então a lei roda nele
+      // igual. Era o 2º caminho sem a resposta — a REGRA 4 o achou antes de ele morder.
       const body = modoReprocesso
         ? { data: modoReprocesso, reprocessar: true, confirmar: true, confirmouSanidade: true, itensPendentes: barrados.itens.map((b) => b.itemId) }
-        : { html, data, confirmar: true, incluir: null, confirmouSanidade: true, itensPendentes: barrados.itens.map((b) => b.itemId), nomeArquivo: nomeArquivo || undefined }
+        : { html, data, confirmar: true, incluir: null, confirmouSanidade: true, itensPendentes: barrados.itens.map((b) => b.itemId), nomeArquivo: nomeArquivo || undefined, confirmouDia: respostaDoDia() }
       const rr = await fetchComTimeout<{ recibo: Recibo }>(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), timeoutMs: 60_000 })
       if (rr.ok && rr.data) {
         setRecibo(rr.data.recibo); setPlano(null); setModoReprocesso(null); setBarrados(null)
@@ -291,7 +363,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
           onImportar={(relatorio, dia) => {
             // ⚠️ a DATA viaja com o gesto: o arquivo do Suitable não traz período, e perder no
             // caminho o dia que a central acabou de mostrar é obrigar o dono a redigitar.
-            if (dia) setData(dia)
+            if (dia) escolherData(dia)
             setAba(relatorio === 'COMPLEMENTOS' ? 'complementos' : 'importar')
           }}
           onMapearProduto={(nome) => { setAba('importar'); setEditando((e) => new Set(e).add(nome)) }}
@@ -304,7 +376,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
            * leva ao gesto é o fluxo de upload com a data já posta — nunca uma 2ª porta de
            * gravação (a régua do `@@unique` do módulo).
            */
-          onSubstituirDia={(dia) => { setData(dia); setAba('importar') }}
+          onSubstituirDia={(dia) => { escolherData(dia); setAba('importar') }}
           /** ⭐ o gesto que mudou de casa com a aba "Processados" — estorna e refaz a baixa */
           onReprocessarDia={(dia) => { setAba('importar'); void reprocessar(dia) }}
         />
@@ -366,7 +438,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
               <Card className="border-[#185FA5]/30"><CardContent className="space-y-2 p-4">
                 <div className="flex flex-wrap items-end gap-3">
                   <label className="text-xs text-slate-500">Data das vendas
-                    <input ref={dateRef} type="date" value={data} onChange={(e) => { setData(e.target.value); setErroProc(null) }} onClick={() => { try { dateRef.current?.showPicker?.() } catch { /* fallback nativo */ } }}
+                    <input ref={dateRef} type="date" value={data} onChange={(e) => { escolherData(e.target.value); setErroProc(null) }} onClick={() => { try { dateRef.current?.showPicker?.() } catch { /* fallback nativo */ } }}
                       className="mt-1 block w-44 cursor-pointer rounded-lg border border-slate-300 py-2 px-3 text-sm" />
                   </label>
                   <p className="flex-1 text-[11px] text-slate-400">
