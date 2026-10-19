@@ -12192,11 +12192,205 @@ acima faz.
 (`git status --short scripts/` limpo depois) — a regra de 18/10: *sonda nunca dorme no workspace
 de build*.
 
-📋 **FICA PRO DONO (REGRA 2, o clique é dele):** o **18/10** segue sem import (medido: 0 imports
-daquele dia). Quando ele subir os dois relatórios dentro da janela de 10 min, a pergunta aparece
-**e agora a resposta viaja** — responder uma vez resolve, e o laço deixou de existir. ⚠️ Se mesmo
-assim vier 409, o modal **fica aberto** com a frase que pede pra ele me mandar o texto: ali o 409 é
-defeito nosso, não dele.
+⛔⛔⛔ **CORREÇÃO (19/10) — EU ESCREVI AQUI QUE "o 18/10 segue sem import (medido: 0 imports
+daquele dia)". É FALSO, E A CAUSA FOI A MINHA CONSULTA.** O 18/10 **entrou** (1 import · 107 linhas
+de produto / 783 un · 102 de complemento · 2 arquivos `…Agrupado (4).xls`, importados **04:01:46Z e
+04:02:02Z = 01:01 BRT**). O 16/10 também entrou (79 linhas / 363 un · 104 de complemento).
+
+⚠️⚠️ **A causa é a cicatriz de 14/09, cometida por mim NESTE arquivo:** comparei a data pelo
+**INSTANTE EXATO** (`@00:00Z`), e os writers deste módulo usam convenções diferentes —
+`stockVendaImport` e `stockVendaLinha` gravam **15:00Z**, `stockVendaComplementoLinha` **00:00Z** e
+`stockVendaArquivo` **12:00Z**. **Medido em prod, o contrafactual:**
+```
+por FAIXA do dia      17/10 → 1 import · 102 linhas    18/10 → 1 import · 107 linhas   ⭐
+por INSTANTE @00:00Z  17/10 → 0 imports · 0 linhas     18/10 → 0 imports · 0 linhas    ⛔
+```
+***Comparar timestamp exato acerta um writer e erra o outro, em silêncio*** — e foi assim que um
+relatório meu afirmou ausência de dado sobre um dia que estava inteiro no banco. **Leitura de data
+de venda é por FAIXA, sempre.**
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** nada a re-subir. Do laço em si, o caminho da
+pergunta segue como descrito acima — se um dia vier 409 depois de ele responder, o modal **fica
+aberto** com a frase que pede o texto: ali o 409 é defeito nosso, não dele.
+
+## ⛔⛔⛔ A BAIXA DOS COMPLEMENTOS ERA UM TERCEIRO CAMINHO — O CUSTO DA BAIXA GANHOU DONO (19/10/2026)
+
+**O caso, medido antes de uma linha de código:** a baixa dos complementos de 17/10 foi **barrada
+pelo guarda do estado impossível** na `porçao calabresa ralada 50 grama` — 49 UN, valor R$ 39,57, e
+a baixa calculada em **R$ 39,69** → final **0 UN / −R$ 0,12**.
+⛔ **Zero migration · ledger intocado · zero escrita em prod · deploy 4/4 (`878ccfda`) · Δ chunks +0 KB.**
+
+### ⭐⭐⭐ A CAUSA: TRÊS RÉGUAS PRA "QUANTO VALE ESTA BAIXA", E A TERCEIRA ERA A ANTIGA
+
+`baixa-complemento.ts` usava **`custoMedioPorItem`** — o custo **ARREDONDADO em 2 casas, que é
+número de TELA** — multiplicado pela quantidade, **sem nenhuma** das duas curas que a baixa de
+PRODUTOS já tinha: precisão cheia (19/09) e a lei do saldo ≤ 0 (15/10).
+
+```
+HOJE (complementos): custo 0,81          × 49 = R$ 39,69  →  final 0 / R$ −0,12  ⛔
+A LEI  (produtos):   custo 0,8075510204… × 49 = R$ 39,57  →  final 0 / R$   0,00  ⭐
+```
+
+⭐⭐ **E com precisão cheia o resíduo NÃO É ABSORVIDO — ELE NÃO NASCE:** zerar a quantidade dá
+`saldo × (valor/saldo) = valor` **exato**. ***As duas causas que o dono pré-aprovou (resíduo de
+centavos · caminho usando vigente com saldo>0) eram, no fim, a MESMA raiz*** — por isso não houve
+o que parar pra aprovar.
+
+⚠️⚠️ **E ERA A REGRA 4 COBRANDO:** as duas curas foram escritas **só no `baixa-venda.ts`**, e o
+`baixa-complemento.ts` — que **compartilha o motor de explosão com ele desde 03/09** — ficou com a
+aritmética antiga. *Duas réguas pro mesmo dinheiro, uma corrigida e a outra não* — a doença que
+custou 7 detectores de par a este projeto.
+
+### ⭐⭐ A CURA — `lib/stock/vendas/custo-da-baixa.ts`, A PORTA ÚNICA
+
+`estadoParaBaixa` (2 consultas, **fora do laço** e **DEPOIS dos estornos** — num reprocesso o
+estado que importa é o de depois de desfazer) + `custoDaBaixa` (puro) + `valorPrevistoDaBaixa`.
+**Os dois relatórios chamam ELA, na GRAVAÇÃO e no PREVIEW.**
+
+⛔⛔ **O PREVIEW ENTROU NO MESMO GESTO, e não é escopo a mais:** portar só a gravação faria o modal
+prometer **R$ 39,69** enquanto o ledger escreve **R$ 39,57**, com o recibo do dia mentindo 12
+centavos. ***Preview e confirm discordando é a doença mais cara deste módulo*** (custou o import de
+OFX inteiro em 17/08), e a cura de lá é a mesma: **uma função, as duas pontas**.
+
+⛔ **`saldoAtualPorItem` APAGADA, não deixada órfã:** era a **4ª cópia** de *"saldo de prateleira"*,
+e ela excluía apenas `PRODUCAO_CONSUMO` — **não conhecia o `idsDeEstornoInterno`** (a régua de
+09/09). *Enquanto a função existe no arquivo, alguém religa.* No lugar ficou o comentário dizendo
+por que ela foi apagada.
+
+⛔⛔ **O GUARDA FICOU COMO ESTÁ, e isso é o ponto.** `assertSaldoNaoFicaImpossivel` (11/09) pegou
+exatamente o estado que não existe — saldo zero com dinheiro negativo — e **estava certo**. A cura é
+no CUSTO; mexer no guarda trocaria um alarme verdadeiro por um estoque bonito e falso.
+⚠️ E os itens com saldo **NEGATIVO** depois da baixa (`porcao de calabresa 100 grama` −8,
+`porcao coxao 80 grama` −34) **nunca foram barrados por ele**: saldo negativo com valor negativo é
+coerente (*"vendeu sem produzir"*).
+
+### ⛔⛔⛔ E A REGRA 11 PROVOU QUE UMA TRAVA QUE EU ESCREVI ERA INALCANÇÁVEL
+
+A 1ª versão de `custoDaBaixa` chamava `avaliarResiduo` e, no ramo `AJUSTA_RESIDUO`, **derivava o
+unitário do total** (pro CHECK do ledger fechar, já que o teto do resíduo é `qtd × 0,005` e numa
+baixa de 2.000 unidades chega a R$ 10). **Repondo o defeito, 0 vermelhos** — e a varredura numérica
+explica:
+
+```
+AJUSTA_RESIDUO exige  valorDepois < −0,01
+com precisão cheia    valorDepois = round2(valor − round2(saldo × valor/saldo)) ≥ −0,005
+→ em 8 estados reais (49/39,57 · 2000/1108 · 3/10 · 1000/555,555 · 22864/248,56 …): decisao=OK em TODOS
+```
+
+⭐ ***É o próprio ponto do arquivo se provando:*** sem resíduo nascendo, não há o que absorver.
+**Linha que não pode falhar é linha que finge ser trava** (a lição do `ehVizinho`, 17/10) → o ramo
+**saiu**, e no lugar entrou uma **VARREDURA** que fica vermelha se o custo voltar a arredondar —
+morde na **causa**, não no paliativo. ⚠️ O ramo segue vivo onde é alcançável de verdade:
+`encerrar-item` absorve resíduo de item **já zerado**, estado que baixa nenhuma produz.
+
+⚠️ **E eu inverti a assinatura no caminho** (`custoParaBaixar(VALOR, SALDO, vigente)`) — a cicatriz
+de chutar ordem de argumento. Virou **defeito reposto próprio (D4b)**, com 8 vermelhos: *inverter dá
+custo plausível e errado*.
+
+### ⚠️ REGRA 11 — 6 DEFEITOS REPOSTOS, 6 MORDERAM (baseline 0 · restaurado 0)
+
+| defeito reposto | vermelhos |
+|---|---|
+| **a GRAVAÇÃO de complementos volta ao custo arredondado** (o defeito de 17/10) | **5** |
+| a gravação de PRODUTOS volta ao arredondado | 1 |
+| **o PREVIEW de complementos volta ao arredondado** (preview × gravação) | **4** |
+| **a porta volta a ARREDONDAR o custo unitário** (a causa do resíduo) | **9** |
+| a assinatura `custoParaBaixar` invertida (valor↔saldo) | 8 |
+| um caminho de baixa volta a chamar a LEI por si (2ª régua) | 1 |
+
+⚠️ A sonda guarda backup pela **chave do caminho inteiro**, **ASSERTA por md5 que a substituição
+aplicou** e **conta suíte que NÃO COLETOU como vermelho** — as três cicatrizes de sonda desta casa.
+⭐ **E o assert de âncora se pagou:** o D3 abortou com *"ÂNCORA NÃO ENCONTRADA"* por 4 espaços de
+indentação, em vez de devolver um verde de graça.
+
+### ⛔ O GUARD ESTRUTURAL — e ele é de DOIS LADOS
+
+`__tests__/regras-estoque/um-dono-pro-custo-da-baixa.test.ts`: nenhum arquivo de vendas chama
+`custoParaBaixar`/`avaliarResiduo` fora da porta · nenhum multiplica custo de LEITURA por
+quantidade · **nenhum caminho de baixa importa `custoMedioPorItem`** · e — a outra metade — **os
+dois caminhos CONSOMEM a porta**, na gravação e no preview (*guard que só proíbe aprovaria o dia em
+que ninguém calcula custo e a baixa grava R$ 0,00*).
+
+⚠️⚠️ **A LISTA É ESTREITA DE PROPÓSITO: `custoMedioPorItem` NÃO é proibido no sistema.** Ele é o
+custo de LEITURA (Posição, cardápio, margem), e é **de propósito** que o quarteto da produção
+(separação · consumo · devolução · geração) use ele — os quatro usam o MESMO número arredondado, e é
+isso que faz o valor do armazém virtual **zerar** quando a ordem fecha (decisão de 15/10). O que tem
+dono único é **o custo de uma BAIXA DE VENDA**.
+
+⭐ **AUTO-TESTE DO DETECTOR, e ele achou um furo real:** `custoDeLeitura(itemId)! * qtd` **não
+casava** (sufixo de chamada entre o identificador e o `*`) — e `baixa-venda.ts` tem exatamente essa
+função. ⚠️⚠️ **E o que ele NÃO alcança está DITO, não disfarçado:** a cópia real de 17/10 estava em
+**DUAS linhas** (`const custo = custoMap.get(…) ?? 0` e, abaixo, `round2(-a.qtd * custo)`), e `custo`
+solto é genérico demais pra proibir sem alarme falso. ***Quem mata a classe é o teste do IMPORT*** —
+sem `custoMedioPorItem` no arquivo, não existe custo de leitura pra multiplicar.
+
+⚠️ **1 GUARD REAPONTADO, pela 3ª vez, e ele quebrou COM O CÓDIGO CERTO:** o
+`baixa-nomeia-o-reu` ancorava em `baixa-venda.ts` chamando `custoParaBaixar` **direto**, e a régua
+mudou de casa pra a porta. ***Grep não distingue "refatorei" de "quebrei"*** — a razão de existir da
+REGRA 3. A pergunta nunca mudou (*"a baixa move dinheiro com o custo CHEIO e com a memória do
+item?"*); ele ficou **MAIS FORTE**, cobrando as três metades (a baixa consome a porta · a porta passa
+o 3º argumento · nenhum dos dois volta a arredondar). ⚠️ E o **guard de CNPJ de teste** pegou uma
+colisão minha (`83838383000183`, do `so-espaco-nao-passa`) — trocado por um **medido**, não chutado.
+
+### A PROVA EM PROD — PELAS FUNÇÕES QUE A TELA CHAMA, 2 VIEWPORTS, ZERO ESCRITA
+
+```
+⭐ A CONTA, reproduzida ao centavo
+   «porçao calabresa ralada 50 grama»  saldo 49 · valor R$ 39,57 · custoMedio(leitura) 0,81 · vigente 0,81
+   A LEI   unit 0,8075510204081633 · total R$ 39,57 · sobra R$ 0,00
+   ANTIGA  unit 0,81               · total R$ 39,69 · sobra R$ −0,12   ⛔ o guarda BARRA
+
+⭐⭐ O PLANO DE 17/10 (54 complementos · 610 ocorrências · 30 itens · 46 pendentes)
+   itens que BARRAM — régua ANTIGA: 1  ·  ⭐ LEI: 0
+   ⛔ ANTIGA barrava: calabresa ralada · 49 un · final 0/R$ −0,12  ⭐ LEI: 0/R$ 0,00
+
+⭐⭐⭐ A BAIXA DE VERDADE, com ROLLBACK FORÇADO (o Proxy cujo $transaction devolve o mesmo tx)
+   ⭐ GRAVOU · 610 ocorrências · 30 itens · R$ 2.807,49 · estornou 0
+      a calabresa depois: saldo 0 · valor R$ 0,00
+   movimentos 9177 → 9177  ⭐ ZERO ESCRITA
+
+REGRA 12   celular: vendas 200/375ms · posição 200/69ms    desktop: 200/49ms · 200/45ms
+```
+
+### 📋 O ITEM 0 — A FAMÍLIA DA DATA, LISTADA (não o caso)
+
+O `estornou 0` da prova respondeu a última pergunta: **os PRODUTOS de 17/10 baixaram** (63
+movimentos vivos, R$ 8.163,12) e **os COMPLEMENTOS nunca baixaram** — é exatamente o estado que o
+guarda produziu, e **o REPROCESSAR é clique do dono**.
+
+**A varredura que o item 0 pediu — e o achado é estrutural, não o caso:**
+```
+⛔⛔ TRÊS implementações de "a faixa do dia", cada uma correta hoje:
+   revisao-do-import.ts:35  faixaDoDia(data)   ← a única com nome de dono… e com ZERO consumidor externo
+   detalhe-do-dia.ts:104    noDia = { gte, lt }   (local)
+   total-do-pdv.ts:103      faixa = { gte, lt }   (local)
+⭐ leitura por INSTANTE EXATO sobrevive só onde é SELF-CONSISTENTE (writer e reader no mesmo 00:00Z):
+   baixa-complemento.ts:100 · import-complementos.ts:117/235/236 · dia-dispensado.ts:94/115
+   + stockVendaImport.findUnique({companyId_data}) — chave única, mesma convenção
+```
+⚠️ ***"Dono declarado sem consumidor é dono que ninguém obedece"*** — a mesma classe do
+`janela-mes.ts` de 11/10, que escondeu R$ 43.106,03 e produziu 111 alarmes falsos **pela MESMA causa:
+um leitor corrigido, o outro não**. **Registrado, NÃO atacado** (o brief pediu pra listar).
+
+**1004 arquivos · 13.535 verdes · 2 todo · TS 0 · migration NENHUMA · deploy 4/4
+(`Lp5lJKV8gSv2797A7Ps1Z`, SHA `878ccfda`).**
+
+### ⭐⭐ E O DIA 17/10 É O ÚNICO PENDENTE — O QUE CONFIRMA O DIAGNÓSTICO POR UM 3º CAMINHO
+
+⚠️ **Eu ia escrever que 16 e 18/10 também estavam esperando. Medi antes, e estava errado:**
+```
+16/10  complementos baixados: 58 mov · R$ 3.375,76   ⭐ passou
+17/10  complementos baixados: ⛔ NENHUM              ← o dia que o guarda barrou
+18/10  complementos baixados: 42 mov · R$ 3.777,12   ⭐ passou
+```
+⭐ **Os três dias entraram na mesma madrugada e só UM barrou** — porque só o 17/10 tinha um item que
+**zerava a quantidade** com o resíduo nascendo (a calabresa, 49 de 49). *A régua antiga não falhava
+sempre: ela falhava exatamente onde a baixa zera o item* — e é por isso que o defeito sobreviveu
+desde 03/09 sem ninguém ver.
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** **REPROCESSAR os complementos de 17/10 na tela** —
+o plano promete 610 ocorrências · 30 itens · R$ 2.807,49, e com a cura **nenhum item barra**. ⛔ **Eu
+NÃO reprocessei nada**: a prova rodou a baixa de verdade e **desfez** (movimentos 9177 → 9177).
 
 ## Ordem de deploy (PJ + PF)
 
