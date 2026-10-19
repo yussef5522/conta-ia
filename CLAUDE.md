@@ -10945,6 +10945,213 @@ Nasceu do `FITID == YYMMDD`: a regra funcionou nos arquivos da época, **armou**
 
 **MEMÓRIA — leitura DURANTE o build de 26/08 (o gatilho (b) NÃO disparou):** memória disponível no pico **431 MB** de 3.915 · swap **68 MB** de 2.047 · **zero OOM kills**. O build come ~3,5 GB e sobrevive, mas com ~11% de folga. O gatilho (b) do upgrade 4→8 GB é *"swap usado em operação normal, FORA de build"* — swap está em 68 MB, bem abaixo dos 256 MB do N1. **Não disparou.** ⚠️ E com o deploy em diretório separado, um OOM durante o build passou a ser **inofensivo** (o symlink não move): a urgência do resize CAIU. O gatilho que continua valendo é o **(a)** — a rotina real começar.
 
+## 🛒⭐⭐⭐ A SEMANA DO COMPRADOR · A MESA RECOLHIDA · A CONFIG NA TELA (v3.2, 18/10/2026)
+
+**`docs/consumo-e-compras-referencia.html` v3.2 (aprovada pelo dono 18/10) é a LEI**, e as três
+leis que mudaram de FORMA são **C7** (a agenda em texto morreu e virou a ESTEIRA de 7 dias),
+**C8** (os cards nascem RECOLHIDOS, e o pill do prazo passou a sair do `pedirEmMin`) e **C5** (a
+config INTEIRA editável na tela). ⛔ **Lei C0 intocada · migration NENHUMA · a única escrita é a
+config, pela porta que já existia.**
+
+### ⚠️⚠️ NOTA DE BASE — O ARQUIVO v3.2 NASCEU SEM TRÊS LEIS, E O GUARD DE DOIS LADOS COBROU
+
+O arquivo que o dono baixou foi **editado a partir do v3, não do v3.1** — o cabeçalho interno
+dizia `REFERÊNCIA OFICIAL v3 (16/10/2026)` e as **três leis que ele aprovou em 17/10 estavam
+AUSENTES** (medido: 0 ocorrências de *"A LEI DO DIA FECHADO"*, de `COMPRAS_NA_MEDIA` e do
+subtítulo da janela; e o `"média das 4 últimas"` de volta 2×). ⭐ **O guard de dois lados
+(referência × motor) ficou VERMELHO em 4 testes** — ele pagou o aluguel do dia.
+
+⭐ **RE-APLIQUEI as três de `git show HEAD:docs/…`, com a razão escrita NO ARQUIVO**, porque:
+elas têm aprovação **datada e escrita** do dono (17/10) · estão **implementadas e EM PROD com
+prova** · o dono listou **só C5/C7/C8** como mudadas nesta volta · e descartá-las obrigaria a
+reverter código de produção aprovado. ⛔ **Declarado como divergência, nunca aceito em silêncio
+nem revertido por conta própria** — e o `<script>` (que é a especificação) foi corrigido junto,
+senão a tela copiaria a conta velha.
+
+### ⭐⭐⭐ C7 v3.2 — A ESTEIRA DE 7 DIAS
+
+Grid de **7 slots começando em HOJE** (`repeat(7,minmax(96px,1fr))`, rolando no eixo x no
+celular — 7 slots não cabem em 390px, e encolher o número mataria justamente o que a esteira
+existe pra mostrar), cada slot com o rótulo da lib (`HOJE · dom` · `amanhã · seg` · `TER`) e os
+mini-cards com **nome · QUANTIDADE grande · → chega DIA**.
+
+- ⛔⛔ **OS SLOTS VÊM DO SERVIDOR** (`montarSemanaDoComprador`, lib pura). Agrupar na tela seria
+  a **2ª resposta** pra *"quando eu peço isto?"*, e ela divergiria do pill do card no **1º pedido
+  ATRASADO** — o clamp traz pra HOJE e a tela não sabe disso. O guard proíbe a tela de filtrar
+  `pedirEm` por conta própria.
+- ⛔ **FRASE CORRIDA É PROIBIDA** (lei C7): a agenda velha escrevia *"pedir sáb FRANGO · chega
+  SEG · ~18 KG"* e obrigava a LER pra saber o que fazer hoje. O teto de **12 caracteres** no
+  rótulo está travado na lib, com o contrafactual (`em 3 dias — pedir SEG` fica vermelho).
+- ⛔ **Dia sem pedido é TRAÇO, nunca ZERO** — zero é uma *afirmação* sobre um dia que não tem
+  pedido (a lei C2). E **quantidade 0 não acende o coral**.
+- ⭐ **O atrasado cai no slot de HOJE** (clamp em 0) e o `pedirEm` **CRU sobrevive** — é ele que
+  faz o mini-card dizer *"⚠ atrasado"*.
+- ⭐ Tocar o mini-card **abre o item** (e, pela mesa, o card dele): esteira que não leva a lugar
+  nenhum é enfeite.
+
+### ⭐⭐⭐ C8 v3.2 — A MESA RECOLHIDA, E O PILL QUE AVISAVA TARDE
+
+Linha-resumo: **fornecedor · chega DIA · nº de itens · R$ total · pill do prazo · seta ▼/▲**. O
+toque do cabeçalho **inteiro** abre (não um chevron de 11px: no celular, alvo pequeno é alvo que
+se erra, e errar aqui abre o card errado), com `aria-expanded`.
+
+- ⛔⛔ **O CORPO NÃO RENDERIZA FECHADO.** Esconder por CSS deixaria **7 colunas × N itens** no DOM
+  de **cada** card, e a mesa tem um card por fornecedor pendente.
+- ⛔⛔⛔ **O PILL VEM DO `pedirEmMin`, NUNCA DE `chegaDia === hoje`** — e esta é a correção de
+  régua mais importante da volta. A pergunta do card é *"quando eu PEÇO?"*, e pedir é
+  **chegada − antecedência**; a régua antiga perguntava *"a mercadoria chega hoje?"*, que é outra
+  coisa. ***Com ela, o pedido de um fornecedor que entrega em 3 dias só acendia no dia da
+  entrega — tarde demais, sempre.*** Quem decide é o SERVIDOR (`card.urgente`/`card.pedirEmMin`),
+  e o `pedirEmMin` é o **MÍNIMO** das linhas: sem o mínimo o card diria *"pedir até AMANHÃ"* com
+  um item **pra pedir HOJE** dentro dele.
+- ⭐ **O card do item aberto na tela nasce ABERTO e com a borda de AÇÃO**, e o **toque do dono
+  GANHA do default** (mapa esparso: `undefined` = *"ele não tocou"*, então um `false` só existe
+  quando ele FECHOU — pré-popular apagaria o default no 1º render).
+- ⛔ **O copiar não propaga o clique do cabeçalho** — senão o gesto de copiar fecharia o card que
+  ele acabou de abrir pra conferir.
+
+### ⛔⛔⛔ O EMPTY-STATE HONESTO — TRÊS ESTADOS, E A MENSAGEM NUNCA MENTE
+
+**O caso real que pariu a lei (18/10):** queijo em peça **CONFIGURADO**, com **591 KG em estoque**
+(PEDIR 0) — e a mesa dizia *"nenhum item com dias de chegada configurados"*, **mandando o dono
+consertar o que já estava certo**. É a família do *"mensagem que acusa o campo errado faz o dono
+caçar um erro que não existe"*: ele abriria a config do queijo, veria tudo em ordem, e não teria
+o que fazer.
+
+⭐ **Zero a pedir e zero configurado são dois estados, e a tela diz qual:** `SEM_CONFIG` (a
+mensagem que manda configurar) · **`NADA_A_PEDIR`** (*"tudo abastecido — nada a pedir"* **+ quando
+é o próximo dia de pedido** — *"nada a pedir"* sem dizer quando voltar é um beco) · `TEM_PEDIDO`
+(os cards). ⛔ **Quem decide é o SERVIDOR** (`dados.estadoMesa`), nunca `mesa.length === 0`: a
+pergunta *"tem item configurado?"* não se responde olhando a lista de cards.
+
+### ⭐⭐ C5 v3.2 — A CONFIG INTEIRA NA TELA, E ZERO PORTA NOVA
+
+Fornecedor (texto) · antecedência (dias) · folga (%), ao lado dos chips de chegada, com **rótulo
+FIXO em cima** (*rótulo que some quando se digita não é rótulo* — a lei de 09/09; placeholder é
+exemplo, não nome de campo).
+
+- ⛔⛔ **ZERO PORTA NOVA:** os **quatro** campos gravam pela **MESMA rota** (`/config`,
+  `stock.manage`) que já era a única porta de escrita de `stock_compra_config`. `salvarConfig` é o
+  dono único e o `mexerNoDia` virou **casca fina** sobre ele. Uma rota por campo faria quatro
+  lugares gravando a mesma linha, e eles divergiriam no primeiro campo novo.
+- ⚠️ **Rascunho local, gravação no blur/Enter:** gravar a cada tecla seria um POST por caractere,
+  e cada POST recarrega a conta inteira — a tela piscaria no meio da digitação. E o rascunho é
+  **por `itemId`**: trocar de item com texto pendurado não pode levar o nome do frango pro queijo.
+- ⛔ **Fornecedor vazio vira `null` EXPLÍCITO**, nunca string vazia: `''` seria um **3º estado**
+  indistinguível de `null` na leitura e **DISTINTO na chave do card** (a mesa agrupa por
+  `(fornecedor, chegaDia)`).
+- ⛔ **Número torto NÃO vira zero** (o `|| 0` que esta casa pagou em quatro parses de quantidade):
+  ele é **recusado com a frase que ensina** (*"quantos dias antes da chegada você precisa
+  pedir?"*) e o campo volta pro gravado. **0 é legítimo** nos dois (*"peço e chega no mesmo dia"*,
+  *"peço o exato"*); o que não existe é negativo.
+
+### ⚠️⚠️ REGRA 11 — 23 DEFEITOS REPOSTOS, 23 MORDERAM. E DOIS VIERAM VERDES
+
+a esteira sumindo e a agenda em texto voltando (**3**) · o mini-card perdendo a quantidade (**1**)
+· e o *"chega DIA"* (**1**) · o slot vazio voltando a ZERO (**1**) · o mini-card parando de abrir o
+item (**1**) · o grid de 7 slots (**1**) · o card voltando a NASCER ABERTO (**1**) · o cabeçalho
+parando de alternar (**2**) · **o pill voltando a `chegaDia === hoje`** (**1**) · o resumo perdendo
+o total (**1**) · a borda de ação (**1**) · o toque deixando de ganhar do default (**1**) · o
+copiar propagando (**1**) · **o vazio voltando a `mesa.length === 0`** (**1**) · o `NADA_A_PEDIR`
+parando de dizer o próximo pedido (**1**) · o fornecedor vazio gravando `''` (**1**) · o número
+torto virando zero (**1**) · **uma 2ª porta de config** (**1**) · o clamp do atrasado caindo
+(**2**) · o rótulo virando frase corrida (**2**) · quantidade zero acendendo coral (**1**) · o
+`NADA_A_PEDIR` colapsando em `SEM_CONFIG` (**2**) · o `pedirEmMin` saindo da leitura (**1**).
+**baseline 0 · restaurado 0.**
+
+**⛔⛔ OS DOIS VERDES, e cada um ensina:**
+1. **o guard do `proximoPedido` media a MENÇÃO** — repus o defeito (troquei o gate por `{false`) e
+   ele passou **VERDE**, porque o símbolo sobrevive nas linhas que leem `.diaDaSemana` e `.emDias`
+   logo abaixo. ***"Menção, não uso"* pela 19ª vez nesta casa** — apertado pro **GATE que
+   renderiza**.
+2. **o `pedirEmMin` da leitura veio VERDE porque NENHUM dos dois alvos EXECUTAVA a `leitura.ts`.**
+   ⭐ Ganhou **teste de integração contra banco** com o caso que **ISOLA a régua**: dois itens do
+   MESMO fornecedor, MESMO dia de chegada, antecedências diferentes → `pedirEm` 1 e 0 no mesmo
+   card. Sem o mínimo, o pill mente no card que o dono acabou de ler. ***Guard que não roda contra
+   o defeito que o motivou é uma afirmação sobre o mundo bom.***
+
+**⚠️ E O TESTE ME CORRIGIU NUMA ASSERÇÃO:** eu esperava `proximoPedido.emDias === 0` com entrega
+diária; o certo é **AMANHÃ** (`emDias: 1`) — o pedido de hoje chega amanhã, o mesmo `chegaEm: 1`
+do encaixe. **O motor estava certo.** ⛔ E o dia é **DERIVADO** do `hojeSegPrimeiro`: número fixo
+ali seria bomba de calendário (verde hoje, vermelho na virada da semana).
+
+**⚠️ 2 GUARDS REAPONTADOS com o motivo escrito, nenhum afrouxado** — os títulos que o dono
+aprovou mudaram, a **pergunta** deles não (*"o módulo existe e está na ordem do arquivo?"*). ⭐ E o
+do *"falha ao gravar é ESTADO, nunca silêncio"* ficou **MAIS FORTE**: com a porta única a frase
+passou a ser montada com o QUE falhou, então ele exige o fallback **E** que cada chamador diga o
+nome do campo — senão a mensagem volta a ser genérica. ⚠️ **E uma asserção minha nasceu com janela
+de distância** (`/copiar[\s\S]{0,200}stopPropagation/`) e deu **falso vermelho contra a tela
+CERTA**: a palavra *"copiar"* aparece 4× no componente. Virou **estrutural** (o corpo do handler
+até o `copiar()`) — ***janela de distância já produziu falso vermelho E falso verde nesta casa***.
+
+### A PROVA EM PROD — NAVEGANDO, 2 VIEWPORTS (REGRA 12), ZERO ESCRITA
+
+```
+⭐⭐ A ESTEIRA COM OS PEDIDOS REAIS DO DONO (hoje DOM 18/10)
+  HOJE · dom     [hoje]   —
+  amanhã · seg            Acém 49,5 KG → chega TER
+  TER                     Coxão Mole 39,0 KG → chega QUA
+  QUA · QUI · SEX · SÁB   —
+  ⛔ Σ(slots) 2 == agenda 2 → ⭐ FECHA   ·   ⛔ rótulo que é frase corrida: 0 ✓
+
+A MESA (estadoMesa TEM_PEDIDO · 2 cards · proximoPedido SEG em 1 dia)
+  [sem fornecedor] chega TER · 1 item · R$ 1.695,72 · pedir até SEG · pedirEmMin=1
+  [sem fornecedor] chega QUA · 1 item · R$ 1.753,50 · pedir até TER · pedirEmMin=2
+  ⛔ pedirEmMin == min(linhas) nos dois → ⭐ BATE
+
+⭐⭐ O FORNECEDOR NO TEXTO DO WHATSAPP (rollback FORÇADO, pela porta única)
+  ANTES  "Pedido Caçula Mix (entrega TER): Acém 49,5 KG"
+  DEPOIS "Pedido Caçula Mix — Frigorífico Silva (entrega TER): Acém 49,5 KG"
+  ⭐ DEVOLVIDO: fornecedor do Acém = (não declarado) — como encontrou
+
+REGRA 12   celular 200 em 124ms · desktop 200 em 33ms · chunk DESTA tela 36 KB
+  ⭐ 14/14 peças nos DOIS · ⛔ hex cravado: 0 · ⛔ 2ª composição: 0
+  ⛔→✓ MORRERAM: "A AGENDA DO COMPRADOR" · "A MESA DE PEDIDO — UM PEDIDO POR FORNECEDOR"
+  ⭐ os 21 tokens (lidos de lib/compras/tokens.ts) nos DOIS mapas do CSS servido (2.704 regras)
+LEI C0     Produção 200 · Hoje ao vivo 200 · Radar 200 — nos dois viewports
+ESCRITA    movimentos 8.788 → 8.788 · configs 3 → 3 · fornecedor declarado 0  ⭐ ZERO ESCRITA
+```
+
+**995 arquivos · 13.469 verdes · 2 todo · TS 0 · migration NENHUMA · deploy 4/4
+(`g2y6P8xIY4C6DhXbSO2ot`, SHA `7e61dc94`) · Δ chunks +4 KB.**
+
+### 🧹 A LIMPEZA DAS SONDAS — E A REGRA QUE FECHA A FAMÍLIA
+
+> **⛔⛔ SONDA NUNCA MORA NO WORKSPACE DE BUILD.** Sonda nasce em pasta de scratch FORA do caminho
+> de deploy, roda, e morre. **Uma sonda no raiz do repo já derrubou um build** (17/10:
+> `scripts/medir-zero.ts` chamava um delegate que eu CHUTEI e o type-check do build reprovou — o
+> blue-green segurou, prod seguiu no build anterior). **Untracked em `scripts/` é a mesma
+> espécie:** ela compila *hoje* e é bomba armada pro dia em que um delegate que ela cita mudar de
+> nome.
+
+As **4 sondas de 12-13/09** foram removidas com **`saferm`** (que **recusa** git-tracked), depois
+de medir: **4/4 untracked** (`git ls-files --error-unmatch`) e **zero referência ao CAMINHO** no
+repo. ⚠️ O grep acusou `vinagres` num teste — conferido antes de apagar: é a **palavra** *"três
+vinagres"* na prosa do `editor-nao-perde-componente`, não o script. *Achado não atribuível não é
+achado.* **`git status` de `scripts/` limpo depois.**
+
+⭐ **E a prova desta volta obedeceu a regra:** as duas sondas rodaram de `scripts/` e foram
+**removidas na MESMA linha de comando** — sem janela de esquecimento pro próximo build. ⚠️ A
+primeira tentativa foi em `node_modules/` (fora do `tsconfig`) e **não resolve o alias `@/`**: o
+`tsx` resolve os `paths` a partir do arquivo, e lá fora o `@/lib/db` não existe.
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):**
+1. ⭐⭐ **DECLARAR O FORNECEDOR** dos itens caros — medido: **0 dos 9 têm fornecedor declarado**, e
+   é por isso que os dois cards dizem *"sem fornecedor"* e o texto do WhatsApp sai sem o nome. O
+   caminho está provado ponta a ponta (o rollback acima mostra o nome entrando no texto); **o nome
+   é decisão dele** — inventar fornecedor é o que esta casa proíbe.
+2. **Abrir a tela no celular e no notebook, nos dois temas** — ver a esteira com o Acém em SEG e o
+   Coxão em TER, tocar um mini-card e conferir que a mesa abre no card daquele pedido. ⚠️
+   **Screenshot indisponível** (extensão do Chrome desligada nesta sessão): a prova mede o que prod
+   serve (14/14 peças, 21/21 tokens nos dois mapas, zero hex no chunk); **o olho é dele**.
+3. ⚠️ **O `NADA_A_PEDIR` não dispara com o dado de hoje** — há 2 cards, então o estado é
+   `TEM_PEDIDO`. Ele está construído e travado em teste de integração **com os números do caso
+   real** (queijo configurado, 591 KG, PEDIR 0 → `NADA_A_PEDIR`), e acende sozinho no dia em que
+   os pedidos abertos zerarem.
+4. ⚠️ **6 dos 9 caros seguem sem dia de chegada** (`FILE DE PEITO DE FRANGO`, queijo fatiado,
+   `CALABRESA`, `Peito`, `Gordura`, `BACON`) — eles aparecem na lista com o aviso e ficam fora da
+   mesa, por desenho (lei C5). Cada config nova acende mais um slot da esteira.
+
 ## 🛒⭐⭐⭐ CONSUMO & COMPRAS — A TELA NOVA, E A PRODUÇÃO INTOCADA (16-17/10/2026)
 
 **`docs/consumo-e-compras-referencia.html` (v3, aprovada pelo dono) é a LEI** — do visual, do
