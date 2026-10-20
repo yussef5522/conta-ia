@@ -12553,6 +12553,165 @@ casa.
 ⚠️ **PENDENTE (REGRA 2, é do dono):** subir a fatura pela tela e confirmar — eu **não importei
 nada**; a prova roda o parser e o validador sobre o texto, sem gravar.
 
+## ⛔⛔⛔ O PAR QUE SE ANULA — PULAR POR NOME FAZIA O RESÍDUO EVAPORAR (20/10/2026, CURA B)
+
+**A fatura da Caixa que o dono subiu 5× e foi recusada 5×:** `lido 3.716,72 × declarado 8.823,71 ·
+diferença −5.106,99`. **Os 5.106,99 são EXATAMENTE a fatura anterior que ele NÃO pagou** — e é por
+isso que a mesma fatura traz juros de atraso 467,93 + multa 102,14 + mora 51,07 + juros de
+não-pagamento-mínimo 137,76 no mesmo bloco.
+
+⛔ **Zero migration · ledger intocado · zero escrita em prod · blue-green 4/4
+(`iAXYiVKm2bL8MhG3XY9Yi`) · Δ chunks +0 KB.**
+⚠️ **O PDF do dono fica FORA do repo** (ordem dele): o golden entra como **TEXTO extraído**,
+anonimizado nas descrições — e, como a fixture da Caixa é lida **por COLUNA**
+(`cut = indexOf('Demonstrativo') − 3`), **as trocas são do MESMO COMPRIMENTO**.
+
+### ⭐⭐⭐ A CAUSA: ERA PAREAMENTO, E O CÓDIGO TRATAVA COMO DOIS NOMES A IGNORAR
+
+A Caixa lança `TOTAL DA FATURA ANTERIOR` como **linha D** e `OBRIGADO PELO PAGAMENTO` como
+**linha C**, no MESMO bloco Demonstrativo — e o Demonstrativo entra no `Valor total desta fatura`.
+O parser **pulava os dois por NOME** (dois `continue`), o que funciona **enquanto Σ == 0**:
+
+```
+quitação TOTAL (o caso comum)   anterior 7.676,72 D + pagamento 7.676,72 C = 0  → pular dá no mesmo
+anterior NÃO paga (outubro)     anterior 5.106,99 D + pagamento      0,00   → ⛔ 5.106,99 EVAPORAM
+pagamento PARCIAL (o geral)     anterior 5.106,99 D + pagamento 3.000,00 C    → ⛔ 2.106,99 evaporam
+```
+
+⭐ **Agora é PAREAMENTO:** `Σ == 0` → os dois ficam fora e nada muda (**os dois goldens intactos ao
+centavo**); `Σ != 0` → o resíduo entra como **LINHA** *"dívida carregada da fatura anterior"*
+(`ENCARGO_FINANCEIRO`; pagamento a mais vira *"crédito carregado"*, `ESTORNO`).
+
+- ⛔⛔ **SEM PORTADOR, e isso foi MEDIDO no documento:** o Demonstrativo fica **fora de todo**
+  `Total final (cartão N)`. Somar o resíduo em `debitsByCard` **quebraria o `V cartão N` na hora** —
+  o defeito reposto dá 3 vermelhos.
+- ⛔ **A linha nasce ONDE a anterior estava** (`posicaoDoResiduo`), nunca no fim: a dívida anterior é
+  a 1ª coisa do bloco, e jogá-la pro fim faria a fatura contar a história fora de ordem.
+- ⛔ **Soma TODOS os pagamentos antes de parear** (`faturaAnterior`/`pagamentoAnterior` acumulam no
+  laço): o dono pode ter pagado em duas vezes, e parear com o primeiro deixaria o resto de fora.
+- ⚠️ **`CENTAVO = 0.02` é ruído de arredondamento, não folga** — o mesmo degrau `FECHA` da casa.
+  Com ele em 0, **toda quitação total viraria uma linha de resíduo** de um centavo.
+
+### ⛔⛔ O `V créditos` ESTAVA CERTO POR ACIDENTE — E NEM RODAVA NA FIXTURE RICA
+
+O `Total` do Demonstrativo é o **NET do bloco, ASSINADO pelo sufixo D/C** — não *"a soma dos
+créditos"*. O regex antigo era **solto sobre o texto inteiro e exigia `C`**, então:
+- na fixture de **agosto** ele batia por **duas coincidências somadas**: o par se anula (⇒ o net do
+  bloco **É** `−|créditos|`) **e** todos os créditos da fatura moram no Demonstrativo;
+- na fixture **rica** o Total é **`465,29 D`** ⇒ o regex devolvia `null` ⇒ **a checagem era
+  silenciosamente pulada**. *"A conta fecha" não prova classificação certa*, e aqui ela nem rodava.
+
+⭐ Agora é lido **ancorado na SEÇÃO, dentro do laço**, com o sinal do sufixo — e `V demonstrativo`
+é **estritamente mais forte**: ele mede o bloco contra o número que o próprio bloco declara, e é ele
+que **pega o resíduo** (pagamento parcial muda o net e a checagem morde).
+
+### ⭐⭐ REGRA 14 — O ESPELHO NOS IRMÃOS, COM A ESTRUTURA DE CADA UM MEDIDA
+
+A família foi varrida e **cada banco resolve a fatura anterior de um jeito diferente** — por isso o
+espelho **afirma a estrutura**, nunca copia a cura:
+
+| banco | como trata a anterior | veredito |
+|---|---|---|
+| **Caixa** | **linhas pareadas** no Demonstrativo | ⭐ **curado hoje** |
+| **Banrisul** | **declarados no resumo** (`(+) Total da fatura anterior` / `(−) Pagamentos`) | ⭐ a equação é CONFERIDA nas 3 fixtures (difs 18,00 · 2.749,91 · 210,92), e as 3 exercitam a anterior **> 0 e DESPAREADA** |
+| **Sicredi** | o total **EXCLUI** a anterior; o resíduo volta como **linha de ROTATIVO** | ⚠️ latente **registrado** (abaixo) |
+| **Mercado Pago** | declarados + check **informativo**, fora do julgamento | ⚠️ latente **registrado** (abaixo) |
+
+⛔ **E o guard da lei é executável:** *nenhuma fixture da Caixa pode ter só o par anulado* — apagar
+a fixture nova deixa **5 vermelhos**. ***Campo zerado passa verde com a régua certa E com a
+errada***, e foi assim que este buraco viveu desde 18/08.
+
+### ⚠️⚠️ OS DOIS LATENTES — REGISTRADOS, NÃO ATACADOS (ordem do dono)
+
+**SICREDI — ele DECLARA `Total da fatura anterior 2.304,8` e o parser NÃO lê. É a MESMA forma do
+buraco da Caixa, e aqui é SEGURO — por estrutura, não por sorte:** o próprio PDF diz
+`Rotativo: saldo remanescente da fatura anterior + encargos`, ou seja **o resíduo já volta como
+LINHA de rotativo, dentro do `Total cartão`**. ⛔ **Aplicar o pareamento ali contaria a dívida 2×.**
+O teste-espelho afirma as duas metades (o texto declara · o parser não lê · e isso é CORRETO), então
+o dia em que alguém "consertar" isso fica vermelho.
+
+**MERCADO PAGO — o check `quitação da fatura anterior (informativo)` tem `pass: true` CRAVADO** e é
+excluído do veredito por **filtro de NOME** (`julgaveis = checks.filter(c => c.name !== …)`).
+⚠️ Minha asserção original esperava `pass: false` ao forçar o diff — **errada: o `pass` é cravado por
+desenho** (*"pagar parcial é legítimo, não é erro de leitura"*). ⭐ E o contrafactual que **ISOLA** é
+mexer em **`totalFaturaAnterior`**, que só o informativo consome: mexer em `pagamentosCreditos`
+quebraria junto o check **julgável** `Σ pagamentos == "Pagamentos e créditos"` e o `ok` cairia por
+**outro motivo**. Medido: anterior +1.000 → diff **−1.000** e **`ok` segue true**. É o latente, com
+número.
+
+### ⭐ O GOLDEN NOVO (o que a REGRA 14 exige da Caixa)
+
+`caixa-fatura-residuo-anterior.txt`, gerado por `scripts/gerar-fixture-caixa-pj.ts` (**REGRA 4** —
+reusa o gerador que já existia, nunca um 2º anonimizador) a partir do texto real. Conferido:
+**0 ocorrência do nome · 0 padrão de cartão · `TOTAL DA FATURA ANTERIOR 5.106,99D` presente · ZERO
+`OBRIGADO`** ⇒ campo **> 0 e DESPAREADO**. ⚠️ O gerador **aborta** se qualquer número, o banco
+reconhecido ou o **comprimento de qualquer linha** mudar.
+
+⭐⭐ **E o congelador ganhou a continuidade que fecha a história:** a **anterior desta fatura
+(5.106,99) é EXATAMENTE o total da fatura RICA** — as duas são meses consecutivos do mesmo cartão.
+
+### ⚠️ REGRA 11 — 8 DEFEITOS REPOSTOS, 8 MORDERAM (baseline 0 · restaurado 0)
+
+| defeito reposto | vermelhos |
+|---|---|
+| **a ANTERIOR volta a ser pulada por NOME** (o defeito das 5 recusas) | **26** |
+| o PAGAMENTO volta a ser pulado por NOME | **17** |
+| `totalDemonstrativo` volta ao regex SOLTO só-`C` | 3 |
+| `V demonstrativo` volta a ser o `V créditos` antigo | 8 |
+| **o resíduo entra em `debitsByCard`** (com portador ⇒ `V cartão` quebra) | 3 |
+| `CENTAVO` vira 0 (toda quitação vira linha) | 1 |
+| **a fixture nova é APAGADA** (o guard da REGRA 14) | 5 |
+| o resíduo vai pro FIM da lista | 1 |
+
+⚠️ A sonda guarda backup pela **chave do caminho inteiro**, **ASSERTA por md5 que a substituição
+aplicou** e **conta suíte que NÃO COLETOU como vermelho** — as três cicatrizes de sonda desta casa.
+⭐ E o assert de âncora se pagou: um defeito abortou com *"ÂNCORA NÃO ENCONTRADA"* em vez de devolver
+um verde de graça.
+
+### A PROVA — LOCAL E NO SERVIDOR, PELO CÓDIGO QUE PROD SERVE
+
+```
+⭐ A FATURA DAS 5 RECUSAS   13 linhas · net 8.823,71 == declarado · ok=true
+   anterior 5.106,99 · pagamento 0,00 · RESÍDUO 5.106,99
+   as 6 checagens PASSAM: V cartão 2937 33,71 · V cartão 3883 2.936,61 · V COMPRAS 1.141,40
+                          V PARCELADAS 1.782,71 · V demonstrativo 5.853,39 · V total 8.823,71
+   A LINHA: pos 1 de 13 · 2026-08-28 · 5.106,99 · ENCARGO_FINANCEIRO · portador NENHUM
+   debitsByCard {"2937":33.71,"3883":2936.61}   ⭐ o resíduo NÃO entrou em cartão nenhum
+
+⛔ COM O DEFEITO REPOSTO: net 3.716,72 e DOIS checks acusam −5.106,99
+   — exatamente os dois vermelhos que o dono viu, com o mesmo número
+
+⭐ OS GOLDENS INTACTOS AO CENTAVO
+   agosto: 18 linhas · net 7.280,39 · resíduo 0 · V demonstrativo −12,58
+   rica:   15 linhas · net 5.106,99 · resíduo 0 · V demonstrativo  465,29  (antes NÃO RODAVA)
+⭐ CONGELADOR 13 fixtures / 7 parsers · REGRA 12: import 200 celular (528ms) e desktop (94ms)
+```
+
+**1013 arquivos · 13.668 verdes · 2 todo · TS 0 · migration NENHUMA ·
+`pg_dump pre-cura-b-caixa-20261020-025029.dump` (9.873.977 bytes, tamanho conferido).**
+
+### 📋 O ITEM 3 — AS ROTAS DE DINHEIRO SEM RASTRO (só LISTAR, e o número DEPENDE DA RÉGUA)
+
+⚠️⚠️ **CORREÇÃO DE UM NÚMERO MEU:** eu havia reportado *"94 rotas escrevem em `transaction`, 37 com
+rastro, 57 sem"*. **Re-medido com a régua ESCRITA, dá outro número** — e a lição é a do *"razão sem
+denominador escrito"*: contagem sem régua declarada é número que o próximo leitor refaz diferente.
+
+```
+régua ESTREITA (só prisma|tx|db . transaction . create|update|delete|upsert|*Many)
+   escrevem 69 · com rastro 35 · SEM 34
+régua LARGA (+ helpers que gravam tx: createContaPendente · applyTransferCandidate ·
+              createTransfer · runImportV2 · reconcileTransactions)
+   escrevem 84 · com rastro 42 · SEM 42
+(rastro = logAudit|gerenciadorAuditLog|auditLog na rota OU nas libs que ela importa, 2 níveis)
+```
+
+**As de DINHEIRO sem rastro (régua estreita, 16 — as que valem o olho):** `transacoes/lote` ·
+`transacoes/lote/status` · `conciliacao/bulk-dry-run` · `conciliacao/ofx-pendentes` ·
+`cartoes/[cardId]/importar-fatura/confirm` · `contas-bancarias/[id]/importar-ofx/apply-marks` ·
+`contas-bancarias/[id]/importar-ofx-multiplos` · `contas-bancarias/[id]/importar-pdf-extrato/confirm`
+· `pluggy/sincronizar` · `emprestimos/deteccao-pendentes` · `transferencias/aguardando-par` ·
+`transferencias/confirmar-em-lote`. ⛔ **Só listado, por ordem do dono — nada atacado.**
+
 ## ⛔⛔⛔ PARCELA PAGA EM PEDAÇOS — 2 LINHAS DO BANCO → 1 PARCELA (19/10/2026)
 
 **O CASO REAL (16/10, Sicredi, C41022227-1):** o banco debitou a parcela **25** em DUAS linhas por
