@@ -12551,6 +12551,61 @@ resultado"* deixou de ser teoria: é o caminho que ele usou.
 ```
 
 **deploy 4/4 (`QsodTvGqiVC-15wm95ek8`, SHA `6fbc950b`) · Δ chunks +0 KB · 3 builds guardados.**
+
+### ⛔⛔⛔ E A REGRA 12 ACHOU O MAIOR DEFEITO DO DIA: **O `LinkPaymentModal` É ÓRFÃO**
+
+Fui medir as peças do preview no bundle e deu **5 de 5 ⛔ nos dois viewports**. Primeiro medi a
+**superfície errada** (a LISTA de contratos; o modal vive na página do contrato — a cicatriz de
+20/09). Ao procurar o chamador certo, **não existe nenhum**, confirmado por três caminhos:
+
+```
+quem importa components/emprestimos/LinkPaymentModal → NINGUÉM (só o guard novo, por caminho)
+quem chama a rota vincular-parcela/preview          → só o próprio modal
+quem chama vincular-parcela/confirm                 → só o próprio modal
+```
+
+⚠️⚠️ **ELE JÁ ERA ÓRFÃO ANTES DESTE SPRINT** — o `git log` do arquivo mostra que o último toque
+funcional antes de hoje é de outro assunto. **Não fui eu que desliguei**; eu consertei um preview que
+está em prod e **inalcançável pela tela**. É a **12ª volta da "porta sem maçaneta"**, e a mesma
+espécie do `VincularTransferenciaModal` que esta casa já achou morto em 11/09.
+
+**⭐⭐ E AQUI A DECISÃO DE ARQUITETURA SE PAGOU: as 3 travas valem NO CAMINHO VIVO, de graça.** A
+régua foi extraída pra a **PORTA de gravação**, não pro preview — e o caminho que o dono usa de fato
+é o **chip 🏦 da caixa de entrada** (`resolver-linha.ts`, que chama `vincularPagamentoDeParcela` com
+uma linha por vez), mais o **import de OFX** (`aplicar-marcacao`) e a **devolução flexível**. Os
+quatro herdam `bloqueioDoVinculo` **sem uma linha a mais**. ⛔ *Se eu tivesse posto as travas no
+preview — a superfície "natural" —, elas estariam em prod protegendo um modal que ninguém abre, e o
+chip seguiria gravando sem teto.*
+
+**REGRA 12 na superfície VIVA (a caixa), nos dois viewports:**
+```
+CELULAR  /conciliacao 200 em 81ms · 21 chunks · 1.113 KB     DESKTOP 200 em 32ms · idem
+  ✓ a ação que grava pela porta única (PARCELA_EMPRESTIMO) · ✓ a recusa DESENHADA na linha
+  ✓ o seletor de contrato/parcela
+  no PAYLOAD (onde estes moram): chip "parcela de empréstimo" · pedeAlvo CONTRATO
+                                 botão "✓ Confirmar — marca a parcela paga"
+                                 vale pra SAÍDA ✓ · pra ENTRADA ✗ (parcela é dinheiro que SAI)
+```
+⚠️ **Os 2 ⛔ da 1ª passada eram da SONDA:** aqueles rótulos nascem em **libs do servidor** e chegam
+prontos no payload. ***No bundle se mede o que o CLIENTE desenha; o que o servidor manda se mede no
+PAYLOAD*** — a cicatriz de 20/09, re-paga hoje.
+
+📋 **DÉBITO NOMEADO, NÃO CONSERTADO (decisão do dono):** ou o `LinkPaymentModal` ganha maçaneta (a
+página do contrato oferecer *"vincular pedaços a esta parcela"*, que é o único lugar onde o preview
+do GRUPO faz sentido — o chip da caixa manda uma linha por vez e não mostra a soma), **ou** ele e as
+duas rotas morrem com o motor realocado. ⛔ **Não escolhi por ele**, e enquanto não escolher o guard
+novo mantém o preview correto e provado — *capacidade guardada é dívida registrada, não lixo* (o selo
+de 15/09).
+
+### ⚠️⚠️ QUATRO ERROS DE SONDA MEUS HOJE, TODOS DA MESMA FAMÍLIA
+
+`reconciledInstallment` (o campo é **`loanInstallmentPaid`**) · `saldoDevedorAtual(prisma, loanId)`
+quando ela é **PURA `(loan, installments)`** — devolveu **NaN**, saldo plausível e falso ·
+`/empresas/:id/conciliacao` quando a rota é **`/conciliacao`** (404, a 4ª vez desta cicatriz no doc)
+· `ACOES_DA_SAIDA`/`rotuloDoPalpite` quando os exports são **`acoesDoSentido`/`rotuloDoBotao`**.
+***Nome de campo, assinatura, URL e export se LEEM do repo — nunca se chutam***, e cada chute produz
+um vermelho tão convincente quanto um defeito real.
+
 ⚠️ **E prod estava no commit de ONTEM** (`878ccfda`) — confirmado no PASSO 1: **nenhum deploy havia
 acontecido** depois da sessão que caiu, zero processo órfão (`tsx`/`vitest`), swap em 81 MB (abaixo
 do N1) e 2.974 MB disponíveis (acima do gate de 2.200).
