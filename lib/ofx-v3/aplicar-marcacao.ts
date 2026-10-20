@@ -28,7 +28,16 @@ export const markParamsSchema = z.object({
   installmentNumber: z.number().int().positive().nullable().optional(),
 }).partial()
 
-type AppliedResult = 'applied' | 'skipped'
+/**
+ * ⭐ TRÊS DESFECHOS, NÃO DOIS (20/10/2026).
+ *
+ * `'sem-competencia'` nasceu porque **colapsá-lo em `'skipped'` faria o log MENTIR**: o
+ * orquestrador escreve *"motivo: já estava aplicada (idempotente)"* no ramo do skip, e aqui
+ * nada estava aplicado — a marcação foi **RECUSADA** por não dar pra dizer qual fatura o
+ * pagamento quita. ⚠️ *"Pulada" e "recusada" são fatos diferentes, e foi marcação pulada em
+ * silêncio que fez um vínculo desaparecer em 10/09.*
+ */
+type AppliedResult = 'applied' | 'skipped' | 'sem-competencia'
 
 export async function aplicarMarcacao(
   tx: {
@@ -122,6 +131,19 @@ export async function aplicarMarcacao(
       // agosto). Agora casa a competência pela MESMA fn da tela (resolvePaidInvoiceMonth
       // — por VALOR, não "a mais recente"). REGRA 4/5: um caminho só.
       const paidInvoiceMonth = await resolvePaidInvoiceMonth(db as PrismaClient, params.cardId, tx.amount)
+      /**
+       * ⛔⛔⛔ SEM COMPETÊNCIA, NÃO GRAVA MEIA-MARCA (20/10/2026).
+       *
+       * Escrever cartão com `paidInvoiceMonth` NULO é **pior que não escrever**: o
+       * `faturaVinculada` olha só o `businessCreditCardId`, então a linha sai pro ARQUIVO
+       * com o selo *"pagamento de fatura de cartão"* e a fatura fica **OPEN pra sempre** —
+       * é o bug do Carter (20/09) sendo gravado de novo, agora pelo import.
+       *
+       * ⭐ A linha FICA NA CAIXA, onde o palpite de fatura (`mesQueBateOValor`) ou o gesto
+       * 💳 do dono a alcançam depois que a fatura entrar. Marcação recusada não derruba o
+       * import — ela volta como desfecho e o orquestrador DIZ o motivo.
+       */
+      if (!paidInvoiceMonth) return 'sem-competencia'
       await db.transaction.update({
         where: { id: tx.id },
         data: {

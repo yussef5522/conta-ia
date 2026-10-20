@@ -14,6 +14,7 @@ import { suggestCategoriesForInvoiceLines } from '@/lib/credit-card-pj/suggest-c
 import { getOrCreateCardWithdrawalCategory } from '@/lib/credit-card-pj/card-withdrawal-category'
 import { identidadeDaLinha } from '@/lib/credit-card-pj/identidade-da-linha'
 import { findCardPaymentCandidatesInBank } from '@/lib/credit-card-pj/queries'
+import { competenciaDaFatura } from '@/lib/credit-card-pj/faturas-pra-quitar'
 import { guardarNaQuarentena, numerosDaQuarentena } from '@/lib/credit-card/quarentena-fatura'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
@@ -259,6 +260,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     socioNome, // nome do sócio dono (pro banner)
     extraction: {
       dueDate: extraction.dueDate,
+      /**
+       * ⭐⭐ A COMPETÊNCIA DO DOCUMENTO, PELA PORTA ÚNICA (20/10/2026).
+       *
+       * A prévia **SABE** de que mês é esta fatura — é o vencimento impresso no PDF. Sem
+       * mandá-la, o banner azul casava o pagamento com `{txId}` seco e o servidor tinha que
+       * ADIVINHAR a competência por valor; como o banner casa *"sem esperar o confirm"*, a
+       * fatura do mês ainda não existe e o resolvedor caía no fallback silencioso — foi assim
+       * que os R$ 12.696,23 foram pra 2026-09 em 20/10.
+       *
+       * ⛔ Derivada aqui, nunca recortada na TELA: a conta é a MESMA que o confirm usa pra
+       * gravar o `invoiceMonth` das linhas, então o pagamento e as compras **não têm como
+       * cair em competências diferentes**.
+       */
+      invoiceMonth: competenciaDaFatura(extraction.dueDate),
       closingDate: extraction.closingDate,
       totalDeclared: extraction.totalDeclared,
       totalToPay: extraction.totalToPay,

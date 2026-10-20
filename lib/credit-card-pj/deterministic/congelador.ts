@@ -131,6 +131,33 @@ export const GOLDENS: readonly GoldenDeFatura[] = [
     motivo: 'a fatura com estorno que provou o banner e o rodapé discordando (12,54)',
   },
   {
+    /**
+     * ⭐⭐⭐ A FATURA COM **DÍVIDA CARREGADA** DA ANTERIOR (20/10/2026) — o texto REAL do
+     * documento que o dono subiu 5× e foi recusado 5×, anonimizado nas descrições (o PDF
+     * dele fica fora do repo, ordem dele).
+     *
+     * ⛔ O que ela trava: a anterior de **5.106,99 NÃO foi paga** (daí juros de atraso,
+     * multa, mora e juros por não-pagamento-do-mínimo no mesmo bloco), então **não existe
+     * `OBRIGADO PELO PAGAMENTO` pra anular o `TOTAL DA FATURA ANTERIOR`**. Pulando os dois
+     * por NOME o resíduo evaporava: a leitura dava **3.716,72 contra 8.823,71** declarados
+     * e a conferência recusava **pelos 5.106,99 exatos**.
+     *
+     * ⚠️⚠️ E ela é a variante **com o campo > 0 e DESPAREADO** — as duas fixtures antigas da
+     * Caixa têm o par se anulando (7.676,72 e 7.280,39 dos dois lados), e **par que anula
+     * passa verde com a régua certa E com a errada**. Foi assim que o buraco viveu desde
+     * 18/08. É a REGRA 14 em forma de fixture.
+     *
+     * ⭐ Nota de continuidade que ela sozinha conta: a anterior dela (5.106,99) é
+     * **exatamente o total da fatura RICA** — as duas são o mesmo cartão, meses seguidos.
+     */
+    nome: 'Caixa PJ · outubro/2026 — DÍVIDA CARREGADA da fatura anterior',
+    fixture: 'lib/credit-card-pj/deterministic/__tests__/fixtures/caixa-fatura-residuo-anterior.txt',
+    parser: 'lib/credit-card-pj/deterministic/caixa-fatura-parser.ts',
+    /** ⚠️ 13 = 12 transações + a LINHA do resíduo que a cura materializa */
+    esperado: { linhas: 13, declarado: 8823.71 },
+    motivo: 'anterior NÃO paga — o resíduo de 5.106,99 evaporava e a fatura era recusada',
+  },
+  {
     nome: 'Mercado Pago PJ · agosto/2026',
     fixture: 'lib/credit-card-pj/deterministic/__tests__/fixtures/mercadopago-fatura-2026-08.txt',
     parser: 'lib/credit-card-pj/deterministic/mercadopago-fatura-parser.ts',

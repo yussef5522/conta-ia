@@ -52,8 +52,33 @@ describe('pickInvoiceMonthByValue — o mês pelo VALOR, não "o mais recente"',
     ])
     expect(pickInvoiceMonthByValue(net, 7896.32)).toBe('2026-08')
   })
-  it('sem match por valor → cai na mais recente (fallback)', () => {
+  /**
+   * ⚠️⚠️ TESTE INVERTIDO COM O MOTIVO ESCRITO (20/10/2026) — ele afirmava
+   * `expect(pickInvoiceMonthByValue(net, 9999)).toBe('2026-07')`, ou seja **"sem match por
+   * valor → cai na mais recente (fallback)"**.
+   *
+   * ⛔⛔ Era o fallback que mandou o pagamento de R$ 12.696,23 pra **2026-09** em 20/10: o
+   * banner da prévia do import casa *"sem esperar o confirm"*, então a fatura de outubro ainda
+   * não existia, nada batia, e o `sort().pop()` escolheu setembro **em silêncio**. Setembro
+   * passou a constar PAGO com dois pagamentos e outubro ficou ABERTA.
+   *
+   * ⭐ A régua que fica: **competência irresolvível é `null`**, e quem recebe `null` RECUSA
+   * ensinando. *Melhor um gesto recusado com a saída escrita que um vínculo plausível no mês
+   * errado, que ninguém percebe até o juiz rodar.*
+   */
+  it('sem match por valor → NULL (o fallback "a mais recente" morreu em 20/10)', () => {
     const net = new Map<string, number>([['2026-06', 100], ['2026-07', 200]])
-    expect(pickInvoiceMonthByValue(net, 9999)).toBe('2026-07')
+    expect(pickInvoiceMonthByValue(net, 9999)).toBeNull()
+  })
+  it('o caso REAL de 20/10: a fatura do mês ainda não existe → NULL, nunca o mês anterior', () => {
+    // só setembro está no banco (net 8.626,98); o pagamento é da fatura de OUTUBRO,
+    // cujas 36 linhas só nasceram 3 minutos depois do gesto.
+    const net = new Map<string, number>([['2026-08', 7305.55], ['2026-09', 8626.98]])
+    expect(pickInvoiceMonthByValue(net, 12696.23)).toBeNull()
+  })
+  it('a folga de DEPOIS continua valendo: juros/encargo dentro de 2% ainda casa', () => {
+    const net = new Map<string, number>([['2026-09', 8626.98]])
+    // 8.700,00 = 8.626,98 + 73,02 (0,85%) — pagamento com juros, caso legítimo
+    expect(pickInvoiceMonthByValue(net, 8700)).toBe('2026-09')
   })
 })

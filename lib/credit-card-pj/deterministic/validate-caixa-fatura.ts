@@ -6,9 +6,20 @@
 //   V(cartão N)  Σ débitos do cartão N = "Total final (cartão N)"
 //   V compras    Σ COMPRAS             = "Total COMPRAS"
 //   V parceladas Σ COMPRAS PARCELADAS  = "Total COMPRAS PARCELADAS"
-//   V créditos   |Σ créditos (C)|      = "Total" do Demonstrativo
-//   V total      net (débitos − créd.) = "Valor total desta fatura"
+//   V demonstr.  net do bloco Demonstr. = "Total" do Demonstrativo (assinado D/C)
+//   V total      net (débitos − créd.)  = "Valor total desta fatura"
 // Sem o total-âncora ("Valor total desta fatura") → FALHA (não dá pra julgar).
+//
+// ⚠️⚠️ O `V demonstrativo` SUBSTITUI o antigo `V créditos = Total Demonstrativo`, e é
+// ESTRITAMENTE MAIS FORTE — não é afrouxamento:
+//   · o antigo comparava `|Σ créditos de TODA a fatura|` com um número que é o net de
+//     UM bloco. Batia na fixture de agosto por **duas coincidências somadas**: o par
+//     anterior×pagamento se anula (então o net do bloco É −|créditos|) e todos os
+//     créditos da fatura moram no Demonstrativo.
+//   · e na fatura RICA ele nem rodava (o `totalDemonstrativo` vinha null, porque o
+//     regex exigia sufixo C e lá o Total é `465,29 D`).
+// O novo mede o bloco contra o número que o próprio bloco declara, com sinal — e é ele
+// que pega o resíduo do par: pagamento parcial muda o net e a checagem morde.
 
 import type { CaixaFaturaParsed } from './caixa-fatura-parser'
 import type { FaturaValidation, FaturaCheck } from './validate-fatura'
@@ -31,7 +42,7 @@ export function validateCaixaFatura(parsed: CaixaFaturaParsed): FaturaValidation
   }
   mk('V COMPRAS = Total COMPRAS', declared.totalCompras, computed.comprasSum)
   mk('V PARCELADAS = Total COMPRAS PARCELADAS', declared.totalParceladas, computed.parceladasSum)
-  mk('V créditos = Total Demonstrativo', declared.totalDemonstrativo, Math.abs(computed.sumCredits))
+  mk('V demonstrativo = Total do Demonstrativo', declared.totalDemonstrativo, computed.demonstrativoNet)
   mk('V total = Valor total desta fatura', declared.valorTotalFatura, computed.net)
 
   if (declared.valorTotalFatura == null) {

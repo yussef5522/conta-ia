@@ -74,6 +74,8 @@ interface PreviewResponse {
   socioNome: string | null
   extraction: {
     dueDate: string | null
+    /** ⭐ a competência derivada pelo SERVIDOR (`competenciaDaFatura`) — a tela não recorta data */
+    invoiceMonth: string | null
     closingDate: string | null
     totalDeclared: number | null
     totalToPay: number | null
@@ -236,6 +238,22 @@ export default function ImportarFaturaPage() {
    * Sprint Cartao R3 — casa pagamento IMEDIATO pelo banner azul (sem
    * esperar o confirm do import). Chama o endpoint casar-pagamento e
    * remove o candidato da lista.
+   *
+   * ⛔⛔⛔ **O `invoiceMonth` VAI NO GESTO (20/10/2026) — e ele é o conserto do caso real.**
+   *
+   * Este banner casa *"sem esperar o confirm"*, ou seja **ANTES de a fatura existir no
+   * banco**. Mandando só `{ txId }`, o servidor tinha que adivinhar a competência pelo VALOR
+   * — e em 20/10, às 04:35, nenhum mês batia os R$ 12.696,23 (as 36 linhas de outubro só
+   * nasceram às 04:38). O fallback silencioso escolheu **2026-09**: setembro passou a constar
+   * PAGO com DOIS pagamentos e outubro ficou ABERTA.
+   *
+   * ⭐ E a prévia **SABE** a competência — é o vencimento impresso no PDF que o dono acabou
+   * de subir. Ela vem derivada do servidor (`extraction.invoiceMonth`), pela MESMA função que
+   * o confirm usa pra gravar as linhas: *o pagamento e as compras não têm como cair em
+   * competências diferentes.*
+   *
+   * ⚠️ `undefined` quando o PDF não traz vencimento legível — aí o servidor **recusa
+   * ensinando** em vez de chutar (o zod é `.optional()`, e `JSON.stringify` descarta a chave).
    */
   async function casarAgora(txId: string) {
     setCasandoAgora(true)
@@ -246,7 +264,10 @@ export default function ImportarFaturaPage() {
           method: 'POST',
           credentials: 'include',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ txId }),
+          body: JSON.stringify({
+            txId,
+            invoiceMonth: previewData?.extraction.invoiceMonth ?? undefined,
+          }),
         },
       )
       const { ok, data, message } = await readJsonResponse<{

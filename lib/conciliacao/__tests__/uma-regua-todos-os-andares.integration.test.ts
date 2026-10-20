@@ -64,6 +64,28 @@ beforeAll(async () => {
   })
   cardId = card.id
 
+  /**
+   * ⚠️⚠️ FIXTURE PASSOU A DECLARAR A FATURA (20/10/2026) — e o pressuposto implícito que ela
+   * tinha ERA O DEFEITO.
+   *
+   * Até hoje este cenário casava o pagamento de R$ 3.194,35 num cartão **sem fatura nenhuma
+   * no banco**: `resolvePaidInvoiceMonth` devolvia `null` e o gesto gravava **cartão com
+   * `paidInvoiceMonth` NULO**. Os três andares concordavam — e a fatura ficava **OPEN pra
+   * sempre**, que é o bug do Carter (20/09): *"a flag diz 'parece', o vínculo diz 'é'"*.
+   *
+   * ⭐ O assunto do teste não mudou (*os três andares concordam*); o que mudou é que o
+   * pressuposto está **escrito**: pagamento de fatura só existe se a fatura existir. A linha
+   * abaixo é a compra que forma a competência 2026-09 com net exatamente igual ao pagamento.
+   */
+  await db.transaction.create({
+    data: {
+      businessCreditCardId: cardId, invoiceMonth: '2026-09', isCardPayment: false,
+      type: 'DEBIT', amount: 3194.35, date: new Date('2026-08-20T12:00:00Z'),
+      description: 'COMPRA DA FATURA DE SETEMBRO', lifecycle: 'EFFECTED', status: 'PENDING',
+      origin: 'PDF_FATURA',
+    },
+  })
+
   const ct = await db.investmentContract.create({
     data: { companyId, nome: 'Consórcio Teste', tipo: 'CONSORCIO', valorParcela: 1478.51, diaDoMes: 9 },
   })

@@ -631,6 +631,19 @@ export async function runImportV2(
       if (r === 'applied') {
         marcacoesAplicadas.aplicadas += 1
         console.log(`[MARCACAO] APLICADA · kind=${mark.kind} · tx=${txId}`)
+      } else if (r === 'sem-competencia') {
+        /**
+         * ⛔ RECUSADA ≠ PULADA (20/10/2026). A marcação chegou, a linha existe, e o
+         * `aplicarMarcacao` se RECUSOU a gravar meia-marca (cartão sem competência deixaria
+         * a fatura OPEN pra sempre). Contar isto como "idempotente" escreveria no log o
+         * contrário do que houve — e o log é o único rastro que a marcação deixa.
+         */
+        marcacoesAplicadas.puladas += 1
+        console.warn(
+          `[MARCACAO] RECUSADA · kind=${mark.kind} · tx=${txId}`
+          + ` · motivo: nenhuma fatura deste cartão bate o valor pago — a linha fica na CAIXA`
+          + ` pra casar depois que a fatura entrar (NADA foi gravado)`,
+        )
       } else {
         marcacoesAplicadas.puladas += 1
         // ⚠️ `skipped` do `aplicarMarcacao` = o fato JÁ estava gravado (idempotência).

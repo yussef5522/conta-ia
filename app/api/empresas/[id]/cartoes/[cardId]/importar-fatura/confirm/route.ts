@@ -12,6 +12,7 @@ import { prisma } from '@/lib/db'
 import { createOfxImportRecord } from '@/lib/ofx/persist-import'
 import { checkCreditCardPjFlag } from '@/lib/credit-card-pj/feature-flag'
 import { identidadeDaLinha, tipoDaLinha } from '@/lib/credit-card-pj/identidade-da-linha'
+import { competenciaDaFatura } from '@/lib/credit-card-pj/faturas-pra-quitar'
 import { fecharImport } from '@/lib/credit-card-pj/fechamento-do-import'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
@@ -185,10 +186,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   })
 
   // ⭐ a competência sobe pra CÁ: a conferência precisa dela pra achar o que já está gravado
-  const invoiceMonth =
-    body.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.dueDate)
-      ? body.dueDate.slice(0, 7)
-      : null
+  // ⭐ e sai da PORTA ÚNICA (`competenciaDaFatura`) — a mesma que o banner da prévia consome
+  // pra casar o pagamento. Recortar `slice(0, 7)` aqui de novo seria a 2ª derivação da data.
+  const invoiceMonth = competenciaDaFatura(body.dueDate)
 
   /**
    * ⭐⭐⭐ IMPORT MISTO FECHA POR `Σ(novas) + Σ(já no sistema)` (17/09/2026).

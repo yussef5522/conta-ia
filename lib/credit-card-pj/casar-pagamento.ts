@@ -8,6 +8,7 @@
 // ⚠️ A rota continua viva como CASCA FINA sobre esta função (REGRA 4: uma lógica, N chamadores).
 
 import type { PrismaClient } from '@prisma/client'
+import { formatBRL } from '@/lib/format/money'
 import { resolvePaidInvoiceMonth } from './resolve-paid-month'
 
 export class CasarPagamentoError extends Error {}
@@ -36,10 +37,30 @@ export async function casarPagamentoDeCartao(
 
   /**
    * ⚠️ A competência que o pagamento quita sai da fn ÚNICA (`resolvePaidInvoiceMonth`), a
-   * MESMA que o import usa — e ela casa por **VALOR**, nunca por "a mais recente": esse era
-   * o bug sistêmico que mandou o 7.896,32 pra julho porque agosto ainda não existia.
+   * MESMA que o import usa — e ela casa por **VALOR**, nunca por "a mais recente".
+   *
+   * ⛔⛔⛔ **COMPETÊNCIA IRRESOLVÍVEL RECUSA ENSINANDO (20/10/2026).** Até hoje o resolvedor
+   * terminava num `sort().pop()` silencioso e esta linha gravava **o que viesse** — foi assim
+   * que o pagamento de R$ 12.696,23 (banner da prévia do import, que casa ANTES de a fatura
+   * existir) foi pra **2026-09** e deixou setembro com DOIS pagamentos e outubro ABERTA.
+   *
+   * ⛔ E a recusa é obrigatória por um motivo estrutural, não de gosto: `faturaVinculada` olha
+   * **só o `businessCreditCardId`** (régua de 20/09 — *"a flag diz 'parece', o vínculo diz
+   * 'é'"*). Gravar cartão com `paidInvoiceMonth` NULO manda a linha pro ARQUIVO com selo de
+   * "fatura paga" e **deixa a fatura OPEN pra sempre** — o bug do Carter, pior que o mês
+   * errado, porque nem o K2 do juiz acusa.
+   *
+   * ⭐ Quem passa `input.invoiceMonth` (a tela, o banner da prévia, a conciliação) **manda**:
+   * ali o dono — ou o PDF que ele acabou de subir — já disse a competência.
    */
   const paidInvoiceMonth = input.invoiceMonth ?? await resolvePaidInvoiceMonth(db, input.cardId, tx.amount)
+  if (!paidInvoiceMonth) {
+    throw new CasarPagamentoError(
+      `Não achei fatura de ${formatBRL(tx.amount)} neste cartão — confirme o import da fatura primeiro, ` +
+      `ou escolha a competência na mão. Marcar o pagamento sem dizer QUAL fatura ele quita deixaria ` +
+      `a fatura aberta pra sempre.`,
+    )
+  }
 
   const updated = await db.transaction.update({
     where: { id: tx.id },

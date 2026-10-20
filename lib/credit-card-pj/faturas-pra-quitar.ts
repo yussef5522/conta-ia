@@ -58,6 +58,28 @@ export function vencimentoDaCompetencia(invoiceMonth: string, dueDay: number): s
 }
 
 /**
+ * ⭐⭐ O INVERSO — A COMPETÊNCIA A PARTIR DO VENCIMENTO DO DOCUMENTO (20/10/2026).
+ *
+ * `invoiceMonth` **É** o mês do vencimento (a definição do módulo desde a Fase 2), então a
+ * conta é um recorte — e é justamente por ser trivial que ela precisa de **um dono**: ela
+ * vivia escrita à mão dentro do confirm do import (`body.dueDate.slice(0, 7)`), e copiá-la
+ * pro banner da prévia criaria a **2ª derivação** da mesma data. *Duas réguas pra "de que mês
+ * é esta fatura?" divergem no primeiro formato novo de data, e aí o banner casa o pagamento
+ * numa competência e o import grava as linhas em outra* — que é exatamente o estrago de
+ * 20/10 por outro caminho.
+ *
+ * ⛔ **Recorte, nunca `new Date()`:** parsear pra objeto e reformatar passa pelo fuso do
+ * processo e pode puxar o dia 1º pro mês anterior. O formato é fechado (`YYYY-MM-DD`), então
+ * o que não casa devolve `null` — **a competência não se adivinha**.
+ */
+export function competenciaDaFatura(dueDate: string | null | undefined): string | null {
+  if (!dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return null
+  const mes = Number(dueDate.slice(5, 7))
+  if (mes < 1 || mes > 12) return null
+  return dueDate.slice(0, 7)
+}
+
+/**
  * ⭐⭐ O FECHAMENTO DA COMPETÊNCIA — o irmão do `vencimentoDaCompetencia`, e ele mora AQUI
  * de propósito: *derivar as datas da fatura VIRTUAL do PJ a partir dos dias do cartão* é UMA
  * pergunta, e ela tem um endereço só. Escrever a conta do fechamento noutro arquivo faria as

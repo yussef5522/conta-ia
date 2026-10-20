@@ -3,8 +3,17 @@
 // setar paidInvoiceMonth e o outro não (REGRA 4/5). Era o bug: o import auto-flagava
 // isCardPayment mas nunca setava o mês → a fatura ficava OPEN pra sempre.
 //
-// A competência = a fatura cujo NET bate o valor pago. NUNCA "a mais recente" — esse
-// era o bug sistêmico (o 7.896,32 caiu em julho porque agosto ainda não existia).
+// A competência = a fatura cujo NET bate o valor pago. **Nenhuma bate → `null`.**
+//
+// ⚠️⚠️ ESTE COMENTÁRIO JÁ MENTIU: ele dizia "NUNCA 'a mais recente'" enquanto o
+// `pickInvoiceMonthByValue` terminava num `sort().pop()` — e foi esse fallback que mandou o
+// pagamento de 12.696,23 pra 2026-09 em 20/10, porque o banner da prévia do import casa
+// ANTES de a fatura existir. O fallback morreu; agora a promessa e o código concordam.
+//
+// ⛔ Quem recebe `null` **recusa ensinando** — ver `casarPagamentoDeCartao` (tela) e o ramo
+// PAGAMENTO_CARTAO do `aplicar-marcacao` (import), que NÃO grava meia-marca: cartão com
+// `paidInvoiceMonth` nulo deixa a linha com selo de "fatura paga" e a fatura OPEN pra
+// sempre (o bug do Carter, 20/09 — `faturaVinculada` olha só o `businessCreditCardId`).
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { signedFaturaAmount, pickInvoiceMonthByValue } from './fatura-net-total'

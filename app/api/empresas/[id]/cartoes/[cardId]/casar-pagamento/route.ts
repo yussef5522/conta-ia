@@ -7,10 +7,51 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
+import { getAuthContext } from '@/lib/auth/rbac'
+import { logAudit } from '@/lib/audit'
 import { prisma } from '@/lib/db'
 import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-pj/casar-pagamento'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
+
+/**
+ * ⭐⭐⭐ O RASTRO DO GESTO (20/10/2026) — e ele nasceu de uma perícia que NÃO pôde concluir.
+ *
+ * ⛔⛔ Esta rota move dinheiro (manda uma linha do extrato quitar uma fatura, e tira a despesa
+ * do DRE) e **não deixava rastro nenhum**. Quando a fatura de outubro apareceu paga em
+ * setembro, o `AuditLog` da transação tinha **ZERO** eventos: deu pra provar que NÃO veio da
+ * conciliação (lá o `resolverLinha` grava com o id da linha desde 24/09) e **não deu pra
+ * provar por onde veio** — a porta foi deduzida pela hora e pela frase do banner.
+ *
+ * ⚠️ **FAIL-SOFT, e a razão está escrita na casa desde 24/09:** *rastro que derruba o gesto
+ * seria pior que rastro nenhum.* A gravação já aconteceu quando isto roda; falhar aqui só
+ * perderia o diagnóstico — derrubar perderia o trabalho do dono.
+ *
+ * ⚠️ E ele **não mexe no controle de acesso**: quem autoriza continua sendo o `ensureAccess`
+ * acima (`UserCompany`). O `getAuthContext` entra só porque o `logAudit` exige o `ctx.company`
+ * pra escrever a linha — misturar as duas coisas num gesto de diagnóstico mudaria quem passa
+ * pela porta.
+ */
+async function rastro(
+  request: NextRequest,
+  companyId: string,
+  txId: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const ctx = await getAuthContext(request, companyId)
+    await logAudit(ctx, {
+      action: 'UPDATE',
+      entityType: 'Transaction',
+      entityId: txId,
+      metadata,
+      request,
+    })
+  } catch (e) {
+    // ⚠️ nunca silencioso: o log do servidor é o último lugar onde a falha de rastro aparece.
+    console.warn(`[CASAR-PAGAMENTO] rastro NÃO gravado · tx=${txId} · ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
 
 async function ensureAccess(userId: string, companyId: string, cardId: string) {
   const acesso = await prisma.userCompany.findFirst({
@@ -25,9 +66,13 @@ async function ensureAccess(userId: string, companyId: string, cardId: string) {
 
 const casarSchema = z.object({
   txId: z.string().cuid(),
-  // Fatura-Paga-Por-Competencia (14/08/2026): QUAL fatura este pagamento quita
-  // (YYYY-MM). A tela manda a competência que o usuário está vendo. Ausente →
-  // usa a fatura mais recente do cartão (default seguro).
+  // Fatura-Paga-Por-Competencia (14/08/2026): QUAL fatura este pagamento quita (YYYY-MM).
+  // A tela manda a competência que o dono está vendo — o banner da prévia manda a do PDF.
+  //
+  // ⛔⛔ AUSENTE → o servidor resolve por VALOR, e **nenhuma fatura batendo RECUSA ENSINANDO**.
+  // ⚠️ Este comentário dizia *"usa a fatura mais recente do cartão (default seguro)"*. Não era
+  // seguro e não era default: era o `sort().pop()` que mandou R$ 12.696,23 pra a competência
+  // ERRADA em 20/10, e ele morreu junto com a frase.
   invoiceMonth: z
     .string()
     .regex(/^\d{4}-\d{2}$/, 'competência inválida (YYYY-MM)')
@@ -100,6 +145,24 @@ export async function POST(request: NextRequest, { params }: Params) {
       { companyId, cardId, txId: targetTx.id, invoiceMonth: body.invoiceMonth ?? null },
       prisma,
     )
+    /**
+     * ⭐ O rastro diz **de onde veio a competência** — `tela` (o dono/banner mandou) ou
+     * `resolvida-por-valor` (o servidor casou). Era exatamente esta distinção que faltava pra
+     * perícia de 20/10 saber se o 2026-09 foi escolha de alguém ou chute do resolvedor.
+     */
+    await rastro(request, companyId, targetTx.id, {
+      gesto: 'casar-pagamento-de-cartao',
+      cardId,
+      cardName: card.name,
+      paidInvoiceMonth: r.paidInvoiceMonth,
+      competenciaVeioDe: body.invoiceMonth ? 'tela' : 'resolvida-por-valor',
+      amount: targetTx.amount,
+      txDate: targetTx.date.toISOString(),
+      txDescription: targetTx.description,
+      previousCategoryId: r.previousCategoryId,
+      previousCategoryName: targetTx.category?.name ?? null,
+      deltaDespesaRemovidoDoDRE: r.deltaDespesaRemovidoDoDRE,
+    })
     return NextResponse.json({
       casado: true,
       transactionId: r.transactionId,
@@ -140,7 +203,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       bankAccount: { companyId },
       businessCreditCardId: cardId,
     },
-    select: { id: true, isCardPayment: true },
+    select: { id: true, isCardPayment: true, amount: true, paidInvoiceMonth: true, description: true },
   })
   if (!targetTx) {
     return NextResponse.json(
@@ -157,6 +220,21 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     where: { id: targetTx.id },
     data: { businessCreditCardId: null, paidInvoiceMonth: null },
     select: { id: true, isCardPayment: true, businessCreditCardId: true },
+  })
+
+  /**
+   * ⭐⭐ O DESFAZER TAMBÉM DEIXA RASTRO — e ele é o gesto que o dono vai dar HOJE pra
+   * desmanchar o vínculo errado de 2026-09. Sem isto, a correção do estrago seria ela própria
+   * invisível, e a próxima perícia leria *"a fatura de setembro deixou de constar paga"* sem
+   * saber que foi um gesto do dono, não um defeito novo.
+   */
+  await rastro(request, companyId, targetTx.id, {
+    gesto: 'desfazer-casamento-de-cartao',
+    cardId,
+    cardName: card.name,
+    paidInvoiceMonthAnterior: targetTx.paidInvoiceMonth,
+    amount: targetTx.amount,
+    txDescription: targetTx.description,
   })
 
   return NextResponse.json({ desfeito: true, transactionId: updated.id, state: updated })

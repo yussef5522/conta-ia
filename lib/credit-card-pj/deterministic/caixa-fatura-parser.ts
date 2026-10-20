@@ -17,8 +17,15 @@
 //     "(Cartão XXXX)" corrente. Guarda o final por linha (V1/V2 são por cartão).
 //  4) 6 linhas "Total" (Total, Total OUTROS, Total final×2, Total COMPRAS, Total
 //     COMPRAS PARCELADAS) — NÃO são transação; são os totais declarados (validação).
-//  5) TOTAL DA FATURA ANTERIOR (D) = informativo, OBRIGADO PELO PAGAMENTO (C) =
-//     pagamento anterior — NENHUM importa.
+//  5) ⭐⭐ O PAR QUE SE ANULA — TOTAL DA FATURA ANTERIOR (D) × OBRIGADO PELO PAGAMENTO
+//     (C), no MESMO bloco Demonstrativo. **Isto é PAREAMENTO, nunca "pular por nome".**
+//     Σ == 0 (quitação total, o caso comum) → os dois ficam FORA e nada muda.
+//     Σ != 0 (PAGAMENTO PARCIAL, ou nenhum) → o resíduo é **dívida carregada** que o
+//     banco cobra NESTA fatura, e entra como LINHA (sem portador).
+//     ⛔ Pular por NOME fazia o resíduo EVAPORAR: na fatura de outubro/2026 do dono
+//     (anterior 5.106,99 NÃO paga — daí juros de atraso, multa e mora no mesmo bloco)
+//     a leitura dava 3.716,72 contra 8.823,71 declarados, e a conferência RECUSAVA a
+//     fatura **pelos 5.106,99 exatos**. 5 tentativas do dono, 5 recusas.
 //  6) parcela "08 DE 10" (não "08/10"); a DATA (10/12) é da compra original (ano-1).
 //  7) "7.280,39" aparece 8× no PDF — ancora em "Valor total desta fatura".
 //
@@ -28,6 +35,16 @@
 import type { InvoiceExtraction, InvoiceLine, InvoiceLineKind } from '../types'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+
+/**
+ * ⛔ NÃO É FOLGA, É RUÍDO DE ARREDONDAMENTO (o mesmo degrau `FECHA` de 24/09 e a
+ * tolerância do validador). Um par que difere de dois centavos é quitação total com
+ * arredondamento do banco; acima disso é **pagamento parcial**, e aí o resíduo é uma
+ * dívida de verdade que tem que aparecer.
+ */
+const CENTAVO = 0.02
+
+const fmt = (n: number) => `R$ ${n.toFixed(2).replace('.', ',')}`
 
 export function parseBRNumber(raw: string): number | null {
   const m = raw.match(/(-?)\s*([\d.]+),(\d{2})/)
@@ -64,7 +81,20 @@ export interface CaixaFaturaParsed {
     totalFinalByCard: Record<string, number> // "Total final (cartão XXXX) X D"
     totalCompras: number | null // "Total COMPRAS"
     totalParceladas: number | null // "Total COMPRAS PARCELADAS"
-    totalDemonstrativo: number | null // "Total ... C" (créditos do Demonstrativo)
+    /**
+     * O "Total" do bloco Demonstrativo — e ele é o **NET do bloco**, ASSINADO pelo
+     * sufixo (D positivo, C negativo), não "a soma dos créditos".
+     *
+     * ⚠️⚠️ ERA `/Total\s+(num)\s*C/` — e isso estava **certo por ACIDENTE** na fixture
+     * de agosto: lá o par anterior×pagamento se anula e o bloco só tem crédito, então
+     * o net É `−|créditos|`. Na fatura RICA o Total é `465,29 D` e o regex (que exige
+     * C) devolvia **null** — a checagem simplesmente não rodava. Lido como net, ele
+     * morde nos dois.
+     *
+     * ⛔ E é lido **ANCORADO NA SEÇÃO**, nunca por regex solto: "Total" é o rótulo mais
+     * genérico que existe num PDF de banco (a lição de 31/08).
+     */
+    totalDemonstrativo: number | null
   }
   computed: {
     debitsByCard: Record<string, number>
@@ -74,6 +104,14 @@ export interface CaixaFaturaParsed {
     parceladasSum: number
     net: number // sumDebits + sumCredits = Valor total desta fatura
     count: number
+    /** net do bloco Demonstrativo (inclui o resíduo do par) — bate `totalDemonstrativo` */
+    demonstrativoNet: number
+    /** Σ dos "TOTAL DA FATURA ANTERIOR" (D ⇒ positivo) */
+    faturaAnterior: number
+    /** Σ dos "OBRIGADO PELO PAGAMENTO" (C ⇒ negativo) */
+    pagamentoAnterior: number
+    /** o que SOBRA do par: > 0 dívida carregada · < 0 crédito · ~0 quitação total */
+    residuoAnterior: number
   }
 }
 
@@ -129,7 +167,8 @@ function readDeclared(text: string): CaixaFaturaParsed['declared'] {
     totalFinalByCard,
     totalCompras: grab(/Total COMPRAS\s+([\d.]+,\d{2})\s*D/i),
     totalParceladas: grab(/Total COMPRAS PARCELADAS\s+([\d.]+,\d{2})\s*D/i),
-    totalDemonstrativo: grab(/Total\s+([\d.]+,\d{2})\s*C\b/i),
+    // ⛔ o `totalDemonstrativo` NÃO é lido aqui: ele é ancorado na SEÇÃO, dentro do laço.
+    totalDemonstrativo: null,
   }
 }
 
@@ -148,7 +187,14 @@ export function parseCaixaFatura(text: string): CaixaFaturaParsed {
 
   const lines: InvoiceLine[] = []
   const debitsByCard: Record<string, number> = {}
-  let sumDebits = 0, sumCredits = 0, comprasSum = 0, parceladasSum = 0, sumPayments = 0
+  let sumDebits = 0, sumCredits = 0, comprasSum = 0, parceladasSum = 0
+
+  // o PAR do Demonstrativo (trap 5) — acumulado, nunca pulado por nome
+  let faturaAnterior = 0, pagamentoAnterior = 0
+  let dataFaturaAnterior: string | null = null
+  let posicaoDoResiduo: number | null = null
+  // net do Demonstrativo FORA do par (o par entra depois, como resíduo)
+  let demonstrativoOutros = 0
 
   const setCardFrom = (s: string) => {
     const m = s.match(/cart[ãa]o\s*(\d{4})/i)
@@ -170,7 +216,17 @@ export function parseCaixaFatura(text: string): CaixaFaturaParsed {
     if (/\(cart[ãa]o\s*\d{4}\)/i.test(t) && !lastValueSuffix(t)) { setCardFrom(t); continue } // "TITULAR (Cartão XXXX)"
 
     // linhas "Total ..." — totais declarados, NÃO transação
-    if (/^Total\b/i.test(t)) continue
+    if (/^Total\b/i.test(t)) {
+      // ⭐ o Total do DEMONSTRATIVO, ancorado na seção e com o SINAL do sufixo
+      if (section === 'DEMONSTRATIVO' && declared.totalDemonstrativo == null) {
+        const m = t.match(/^Total\s+([\d.]+,\d{2})\s*([DC])\b/i)
+        const v = m ? parseBRNumber(m[1]) : null
+        if (m && v != null) {
+          declared.totalDemonstrativo = m[2].toUpperCase() === 'C' ? round2(-v) : v
+        }
+      }
+      continue
+    }
 
     const vs = lastValueSuffix(t)
     if (!vs) {
@@ -200,12 +256,25 @@ export function parseCaixaFatura(text: string): CaixaFaturaParsed {
       if (dateM) lastDate = date
     }
 
-    // trap 5: informativo / pagamento anterior — não importa
-    if (/TOTAL DA FATURA ANTERIOR/i.test(desc)) continue
-    if (/OBRIGADO PELO PAGAMENTO/i.test(desc)) { sumPayments += (vs.suffix === 'C' ? -vs.value : vs.value); continue }
+    const signed = vs.suffix === 'C' ? -vs.value : vs.value
+
+    // ⭐⭐ TRAP 5 — O PAR SE ANULA OU DEIXA RESÍDUO. Nenhum dos dois vira linha AQUI:
+    // só depois do bloco inteiro lido dá pra saber se sobrou algo (pode haver mais de
+    // um pagamento). Os dois CONTAM no net do Demonstrativo, via `residuoAnterior`.
+    if (/TOTAL DA FATURA ANTERIOR/i.test(desc)) {
+      faturaAnterior = round2(faturaAnterior + signed)
+      // a linha do resíduo nasce ONDE a anterior estava: ela é a 1ª coisa do bloco, e
+      // jogá-la pro fim faria a fatura contar a história fora de ordem.
+      if (posicaoDoResiduo == null) { posicaoDoResiduo = lines.length; dataFaturaAnterior = date }
+      continue
+    }
+    if (/OBRIGADO PELO PAGAMENTO/i.test(desc)) {
+      pagamentoAnterior = round2(pagamentoAnterior + signed)
+      continue
+    }
     if (/Valor total desta fatura/i.test(desc)) continue
 
-    const signed = vs.suffix === 'C' ? -vs.value : vs.value
+    if (section === 'DEMONSTRATIVO') demonstrativoOutros = round2(demonstrativoOutros + signed)
     const card = currentCard
 
     if (vs.suffix === 'C') {
@@ -233,6 +302,31 @@ export function parseCaixaFatura(text: string): CaixaFaturaParsed {
       ...(card ? { cardLastDigits: card } : {}),
       ...(vs.suffix === 'C' ? { note: 'crédito/estorno (sufixo C na fatura)' } : {}),
     })
+  }
+
+  /**
+   * ⭐⭐⭐ O RESÍDUO DO PAR — e ele cobre o caso GERAL, não um caso de borda:
+   * quitação total (Σ≈0, o comum) · **pagamento parcial** · **nenhum pagamento**
+   * (a fatura de outubro/2026 do dono) · pagamento a MAIS (crédito carregado).
+   *
+   * ⛔ SEM PORTADOR, de propósito: a dívida é da FATURA, não de um dos cartões —
+   * medido no documento real, o Demonstrativo fica FORA de todo `Total final
+   * (cartão N)`. Somá-la em `debitsByCard` quebraria o `V cartão N` na hora.
+   */
+  const residuoAnterior = round2(faturaAnterior + pagamentoAnterior)
+  if (Math.abs(residuoAnterior) > CENTAVO) {
+    const ehDivida = residuoAnterior > 0
+    lines.splice(posicaoDoResiduo ?? lines.length, 0, {
+      date: dataFaturaAnterior ?? lastDate,
+      description: ehDivida ? 'dívida carregada da fatura anterior' : 'crédito carregado da fatura anterior',
+      amount: round2(Math.abs(residuoAnterior)),
+      suggestedKind: ehDivida ? 'ENCARGO_FINANCEIRO' : 'ESTORNO',
+      note: ehDivida
+        ? `fatura anterior ${fmt(faturaAnterior)} − pagamento ${fmt(-pagamentoAnterior)} · sem portador (a dívida é da fatura, não de um cartão)`
+        : `pagamento ${fmt(-pagamentoAnterior)} acima da fatura anterior ${fmt(faturaAnterior)} · sem portador`,
+    })
+    if (ehDivida) sumDebits = round2(sumDebits + residuoAnterior)
+    else sumCredits = round2(sumCredits + residuoAnterior)
   }
 
   const net = round2(sumDebits + sumCredits)
@@ -263,6 +357,10 @@ export function parseCaixaFatura(text: string): CaixaFaturaParsed {
       parceladasSum: round2(parceladasSum),
       net,
       count: lines.length,
+      demonstrativoNet: round2(demonstrativoOutros + residuoAnterior),
+      faturaAnterior: round2(faturaAnterior),
+      pagamentoAnterior: round2(pagamentoAnterior),
+      residuoAnterior,
     },
   }
 }

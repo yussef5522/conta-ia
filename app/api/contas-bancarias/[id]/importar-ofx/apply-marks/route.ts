@@ -124,6 +124,19 @@ export async function POST(request: NextRequest, { params }: Params) {
     try {
       const r = await aplicarMarcacao(tx, mark.kind, mark.params ?? {}, conta.companyId, user.sub, prisma)
       if (r === 'applied') result.applied++
+      /**
+       * ⛔ RECUSA VAI EM `failed`, NUNCA EM `skipped` (20/10/2026). `skipped` desta rota
+       * significa *"já estava aplicada"* — e aqui NADA foi gravado, por recusa com motivo.
+       * Em `failed` a razão chega na TELA; em `skipped` ela morreria num contador, e o dono
+       * leria "ok" sobre uma marcação que não aconteceu (a família do sucesso-disfarçado).
+       */
+      else if (r === 'sem-competencia') {
+        result.failed.push({
+          transactionId: mark.transactionId,
+          kind: mark.kind,
+          error: 'não achei fatura deste cartão que bata o valor pago — confirme o import da fatura primeiro',
+        })
+      }
       else result.skipped++
     } catch (err) {
       result.failed.push({

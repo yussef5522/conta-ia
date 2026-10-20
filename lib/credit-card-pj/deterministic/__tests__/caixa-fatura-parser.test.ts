@@ -20,7 +20,19 @@ describe('parseCaixaFatura — golden agosto/2026', () => {
     expect(parsed.declared.totalFinalByCard['3883']).toBe(7285.42)
     expect(parsed.declared.totalCompras).toBe(5490.21)
     expect(parsed.declared.totalParceladas).toBe(1782.71)
-    expect(parsed.declared.totalDemonstrativo).toBe(12.58)
+    /**
+     * ⚠️ INVERTIDO EM 20/10 COM O MOTIVO ESCRITO (era `12.58`).
+     *
+     * O "Total" do Demonstrativo é o **NET do bloco, ASSINADO** pelo sufixo — e aqui ele
+     * é `12,58 C`, logo **−12,58**. O `+12,58` de antes vinha de um regex que só casava
+     * o sufixo C e era comparado com `|Σ créditos|`: batia nesta fixture por acidente
+     * (o par anterior×pagamento se anula, então o net do bloco É −|créditos|) e **nem
+     * rodava** na fatura rica, onde o Total é `465,29 D`.
+     *
+     * ⭐ A metade CERTA da asserção antiga — *os 3 créditos entram e somam 12,58* —
+     * continua travada no teste de baixo (`sumCredits === -12.58`).
+     */
+    expect(parsed.declared.totalDemonstrativo).toBe(-12.58)
   })
 
   it('recupera os 3 créditos quebrados no -layout (o que o Vision perdeu)', () => {
@@ -45,8 +57,17 @@ describe('parseCaixaFatura — golden agosto/2026', () => {
     expect(parsed.computed.net).toBe(7280.39) // 7.292,97 − 12,58
   })
 
-  it('exclui informativo (TOTAL FATURA ANTERIOR) e pagamento (OBRIGADO)', () => {
-    expect(parsed.extraction.lines.some((l) => /FATURA ANTERIOR|OBRIGADO/i.test(l.description))).toBe(false)
+  /**
+   * ⚠️ A PERGUNTA MUDOU EM 20/10, e o resultado é o MESMO porque o par SE ANULA aqui:
+   * `TOTAL DA FATURA ANTERIOR 7.676,72 D` × `OBRIGADO PELO PAGAMENTO 7.676,72 C` → Σ 0.
+   * Era *"os dois são pulados por nome"*; agora é *"os dois são PAREADOS, e quitação
+   * total não deixa resíduo"* — que é o que faz este golden continuar intacto ao centavo.
+   */
+  it('o par da fatura anterior se ANULA (quitação total) e nenhum dos dois vira linha', () => {
+    expect(parsed.computed.faturaAnterior).toBe(7676.72)
+    expect(parsed.computed.pagamentoAnterior).toBe(-7676.72)
+    expect(parsed.computed.residuoAnterior).toBe(0)
+    expect(parsed.extraction.lines.some((l) => /FATURA ANTERIOR|OBRIGADO|carregada/i.test(l.description))).toBe(false)
   })
 
   it('parcela "08 DE 10" (DUFRIO) vira 8/10, data da compra ano-1', () => {
@@ -70,6 +91,7 @@ describe('parseCaixaFatura — golden agosto/2026', () => {
     const v = validateCaixaFatura(parsed)
     expect(v.ok).toBe(true)
     expect(v.checks.every((c) => c.pass)).toBe(true)
-    expect(v.checks).toHaveLength(6) // 2 cartões + compras + parceladas + créditos + total
+    expect(v.checks).toHaveLength(6) // 2 cartões + compras + parceladas + demonstrativo + total
+    expect(v.checks.map((c) => c.name)).toContain('V demonstrativo = Total do Demonstrativo')
   })
 })

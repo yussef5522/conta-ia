@@ -39,9 +39,31 @@ export function signedFaturaAmount(item: FaturaItem): number {
 }
 
 /**
- * Qual competência um pagamento quita: a fatura cujo TOTAL LÍQUIDO bate o valor pago
- * (±2%). É o fix do bug sistêmico do casar (que usava "a mais recente" e mandava o
- * pagamento pro mês errado). Sem match por valor → cai na mais recente (fallback).
+ * Qual competência um pagamento quita: a fatura cujo TOTAL LÍQUIDO bate o valor pago,
+ * com a `folgaDepoisDeEscolherOCartao` (o dono JÁ disse que a linha é deste cartão, e o
+ * que sobra é juros/encargo). **Nenhuma bate → `null`.**
+ *
+ * ⛔⛔⛔ **O FALLBACK "A MAIS RECENTE" MORREU (20/10/2026), e ele era a última linha daqui:**
+ * ```
+ * return [...netByMonth.keys()].sort().pop() ?? null     // ← o veneno
+ * ```
+ * ⚠️⚠️ **E o comentário desta função dizia *"é o fix do bug sistêmico que usava a mais
+ * recente"* — descrevendo o ramo de CIMA e mentindo sobre o de BAIXO.** O `resolve-paid-month`
+ * repetia a mesma promessa (*"NUNCA a mais recente"*) e o zod da rota chamava o fallback de
+ * *"default seguro"*. **Três comentários afirmando o contrário do código, no mesmo caminho.**
+ *
+ * ⛔ **O CASO REAL QUE O MATOU (20/10):** o banner da PRÉVIA do import casa o pagamento
+ * *"sem esperar o confirm"* — então, às 04:35, a fatura de outubro **ainda não existia** e o
+ * pagamento de R$ 12.696,23 não batia com mês nenhum. O fallback escolheu **2026-09** em
+ * silêncio: setembro (net 8.626,98) passou a constar PAGA com DOIS pagamentos e outubro
+ * ficou ABERTA. O K2 do juiz acusou os dois sintomas.
+ *
+ * ⭐ **A régua que fica: competência irresolvível é `null`, e quem recebe `null` RECUSA
+ * ensinando** (`casarPagamentoDeCartao`) — *melhor um gesto recusado com a saída escrita que
+ * um vínculo plausível no mês errado, que ninguém percebe até o juiz rodar.*
+ *
+ * ⚠️ Isto NÃO afrouxa nem endurece a tolerância: a folga de DEPOIS continua idêntica (é o
+ * juros/encargo do caso legítimo). O que acabou foi **chutar quando nada bate**.
  */
 export function pickInvoiceMonthByValue(netByMonth: Map<string, number>, amount: number): string | null {
   let best: string | null = null
@@ -50,8 +72,7 @@ export function pickInvoiceMonthByValue(netByMonth: Map<string, number>, amount:
     const d = Math.abs(round2(net) - amount)
     if (d < bestDiff) { bestDiff = d; best = m }
   }
-  if (best && bestDiff <= folgaDepoisDeEscolherOCartao(amount)) return best
-  return [...netByMonth.keys()].sort().pop() ?? null
+  return best && bestDiff <= folgaDepoisDeEscolherOCartao(amount) ? best : null
 }
 
 /**
