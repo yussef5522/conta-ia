@@ -12712,6 +12712,129 @@ régua LARGA (+ helpers que gravam tx: createContaPendente · applyTransferCandi
 · `pluggy/sincronizar` · `emprestimos/deteccao-pendentes` · `transferencias/aguardando-par` ·
 `transferencias/confirmar-em-lote`. ⛔ **Só listado, por ordem do dono — nada atacado.**
 
+## ⛔⛔⛔ O SERVIDOR ESTAVA SÃO; A TELA DE COMPLEMENTOS É QUE MENTIA (20/10/2026)
+
+**A caça de 19/10 ~01h achou o confirmar FUNCIONANDO e a tela contando errado.** ⛔ **Zero
+migration · ledger intocado · Lei C0 (Produção intocada) · zero escrita em prod.**
+
+### ⭐⭐⭐ A CICATRIZ QUE FICA: ***TELA QUE SOME DURANTE A CARGA = TELA QUE PARECE TRAVADA***
+
+O card da lista de dias fazia `if (!dias.length) return null` — e `dias` nasce `[]`. Durante os
+**~12 s** da carga o card **DESAPARECIA**, e ***card ausente é indistinguível de card que não
+existe***: o dono abria, não via nada, e concluía que não havia dia importado. É a família do
+*"spinner eterno é a ausência fingindo progresso"* (14/09) e do *"erro disfarçado de vazio"*, na
+forma mais crua — **nem spinner havia**.
+
+⭐ `CargaDosDias` virou união fechada (**`CARREGANDO` · `FALHOU` · `OK`**): carregando desenha o
+card com esqueleto, falhou desenha a frase + *"tentar de novo"*. ⛔ **E o `return null` de
+"nenhum dia importado" FICA, de propósito** — ali o card não existe mesmo, e um bloco vazio
+dizendo *"nada aqui"* seria móvel permanente numa tela de trabalho.
+
+### ⛔⛔⛔ O N+1: UM PLANO COMPLETO POR DIA, 42 DIAS EM FILA, PRA APROVEITAR DOIS BOOLEANOS
+
+`listarDiasComplemento` chamava `montarPlanoComplementos(companyId, data, db)` **DENTRO DO LAÇO**.
+Cada plano relia o mapa de nomes, remontava o `ctx` das fichas e varria saldo+custo do ledger
+inteiro — **42×** — e a lista usava disso **`jaBaixado` e `precisaReprocessar`**.
+
+⭐⭐ **A sacada:** as três leituras caras são **por EMPRESA, não por dia** (mapa · `montarCtx` ·
+baixas ativas), e o `estadoParaBaixa` (saldo/custo) **nem é necessário** — ele serve ao
+`agregada` do plano, que a lista não desenha.
+
+⛔⛔ **E O GUARD MEDE CONTAGEM DE CONSULTAS, NUNCA MILISSEGUNDO** (o padrão de 28/09): *o que o
+N+1 custa é round-trip, e round-trip se CONTA, não se cronometra* — teste em ms passa ou falha
+pela máquina de quem roda. `lib/testing/espiao-de-consultas.ts` (Proxy duplo sobre o
+`PrismaClient`, `$`-métodos passam direto) virou **dono único do instrumento**: ele saiu de
+dentro do guard de 28/09 quando o 2º N+1 apareceu — *copiá-lo seria a 2ª régua de "o que conta
+como ida ao banco"*. O teste-coração exige **3 dias e 9 dias com a MESMA contagem**.
+
+⭐ **Uma régua, dois leitores:** `explodirLinhas` foi **EXTRAÍDA** de `planoDeLinhas` (não
+copiada), recebendo o `ctx` por parâmetro.
+
+### ⛔⛔ O 4º SILÊNCIO ERA NO SERVIDOR: UM DIA BAIXADO APARECIA COMO "PENDENTE"
+
+`.catch(() => false)` na medição do estado → a tela **AFIRMAVA que a baixa não rodou** sobre um
+dia que podia estar baixado. ⭐ ***Ausência de MEDIÇÃO não é ausência de BAIXA*** — virou campo
+**`apurado`**, desenhado **ANTES** de baixado/pendente (lido depois, o dia não-apurado
+continuaria dizendo *"pendente — não baixou"*, que é a afirmação falsa que o campo mata).
+
+⚠️⚠️ **MEDIÇÃO HONESTA: `apurado: false` é INALCANÇÁVEL hoje.** A cadeia dentro do `try`
+(`explodirReceita` → `comoConsome` → `confrontarMotorComLedger`) tem **ZERO `throw`** —
+`explodirReceita` acumula avisos (`FICHA_SEM_COMPONENTE`/`DOSE_ZERO`/`PROFUNDIDADE`) em vez de
+lançar. ⛔ O campo fica como **contrato preparado, com a medição escrita no código** — *o que não
+se pode é chamá-lo de trava em funcionamento* (a lição do `ehVizinho`, 17/10: **linha que não
+pode falhar é linha que finge ser trava**).
+
+### ⭐ OS OUTROS 3 SILÊNCIOS, E O IMPORT RENOVANDO A TELA
+
+o catch do `ImportComplementos` passou a usar **`fraseDoErro`** (frase de conexão **só** quando é
+rede de verdade — a allowlist de 18/10) · o **confirmar da baixa ganhou catch** + teto de
+**60 s** (*desistir cedo de uma escrita que está acontecendo é pior que esperar*) · a carga virou
+**falha-como-ESTADO**. ⚠️ `erro: null` com `ok: false` é **abort externo** (o componente
+desmontou) e **não** vira mensagem: gritar ali seria ruído numa tela que já não existe.
+
+⭐ E o import **bumpa o `recargaComp` junto do `onImportado`**: a linha do dia volta já dizendo
+*"baixado"*, sem depender de a revisão aplicar algo.
+
+### ⛔⛔ O 2º CONFIRMAR NÃO GANHA TRAVA — E O DESENHO DE 14/09 É INTENCIONAL
+
+Decisão já aprovada, registrada aqui pra não ser "consertada" depois: **o servidor é
+idempotente** (`processarComplementos` **estorna-e-refaz**), a medição deu **zero duplicação**, e
+travar **quebraria o reprocesso que corrige vínculo** — que é exatamente o gesto de 14/09
+(*"mapear depois acende o `precisaReprocessar` do dia"*). ⭐ *Idempotência bem feita dispensa
+trava; trava em cima dela só proíbe o caminho legítimo.*
+
+### ⚠️⚠️ REGRA 11 — 15 DEFEITOS REPOSTOS, 15 VERMELHOS (baseline 0 · restaurado 0)
+
+**No N+1 (5):** o laço de volta (**4**) · o `take` global no lote (**3**) · os estornos lidos um
+por baixa (**4**) · a 2ª régua de explosão (**1**) · o espião cego (**1**).
+**Na tela (10, 1-2 vermelhos cada):** o `return null` por ausência de DADO · o esqueleto do
+CARREGANDO · o *"tentar de novo"* do FALHOU · a carga voltando a `setDias([])` no catch · o
+confirmar sem catch · o teto de 60 s · a frase de conexão cravada no import · o `apurado`
+saindo da tela · o `apurado` lido DEPOIS de baixado · o import parando de bumpar a lista.
+
+**⛔⛔ E DOIS VIERAM VERDES, cada um com lição:**
+1. **os estornos lidos um por baixa** — nenhum teste tinha baixa, então `if (!baixas.length)
+   return out` **retornava ANTES do laço**. ***Guard que não roda contra o defeito que o motivou
+   é uma afirmação sobre o mundo bom.*** O caso que ISOLA é **9 dias TODOS baixados**.
+2. **o espião cego** — com ele devolvendo nada, `0 === 0`, `0 <= 10` e `porModelo()` vazio
+   satisfazem **toda** asserção. ***Instrumento cego aprova qualquer coisa*** → ganhou
+   **auto-teste** (ele DELEGA o resultado e registra `modelo.operação`).
+
+⚠️ **E a sonda me pegou 3×:** duas reposições deram *"NÃO COLETOU"* porque o meu `replace` gerou
+erro de sintaxe (***reposição que não compila não reproduz o defeito***) e **três abortaram com
+*"ÂNCORA NÃO ENCONTRADA"*** por eu não incluir os comentários no meio dos blocos — **o assert de
+âncora se pagou 3 vezes**, abortando em vez de devolver verde de graça.
+
+### A PROVA EM PROD — E ELA ACHOU UM N+1 QUE SOBROU, COM NÚMERO
+
+```
+⭐ A LISTA DE DIAS, pela função que a TELA chama
+   44 dias · 399 consultas · 408 ms   (era ~12 s)
+   {linha.findMany 1 · dispensado 1 · map 1 · ficha 1 · movement 2 · item 1
+    ⚠️ fichaVersao.findFirst 196 · fichaComponente.findMany 196}
+   ⭐ todo dia carrega `apurado`: SIM   ·   dias "não apurado": 0 (o campo é contrato, não trava)
+   estados: baixado 5 · reprocessar 38 · pendente 1 (⭐ o 17/10, o mesmo da seção de 19/10)
+   movimentos 9460→9460 · linhas 3744→3744 · mapas 139→139   ⭐ ZERO ESCRITA
+
+REGRA 12 — celular 200/191ms · desktop 200/46ms · 18 chunks · 910 KB nos dois
+   ⭐ 8/8 peças (esqueleto · tentar de novo · "não consegui apurar" + o porquê ·
+      as 4 frases do fraseDoErro)   ·   ⛔→✓ o card que SOME durante a carga: MORREU
+```
+
+**⭐ O N+1 QUE O DONO REPORTOU MORREU — e a prova é a contagem FIXA.** As 196+196 consultas do
+`montarCtx` acontecem **1×** em vez de 44× (pelo caminho antigo seriam ~8.600). ⚠️⚠️ **MAS sobra
+um N+1 PRÉ-EXISTENTE, e ele agora domina:** o `montarCtx` faz `findFirst` + `findMany` **por
+FICHA** (98 fichas × 2 = **392 de 399 consultas, 98%**) — é por EMPRESA, então **não cresce com
+os dias**, mas cresce com o cardápio. **Foi por isso que deu 408 ms e não os <300 do alvo.**
+⛔ **NÃO atacado:** é o MESMO motor que a baixa de venda executa, e mexer ali é sprint próprio.
+
+⚠️ **E a minha sonda imprimiu *"consultas POR DIA: 9,07"* — rótulo ENGANOSO, declarado aqui:**
+com contagem FIXA, dividir por N não significa nada (com 1 dia diria 399). ***Quem prova que não
+cresce com N é o guard (3 dias × 9 dias com a MESMA contagem)***, não essa razão — a mesma classe
+do *"razão sem denominador escrito"*.
+
+**1013 arquivos · 13.687 verdes · 2 todo · TS 0 · deploy 4/4 · Δ bundle +0 KB.**
+
 ## ⛔⛔⛔ PARCELA PAGA EM PEDAÇOS — 2 LINHAS DO BANCO → 1 PARCELA (19/10/2026)
 
 **O CASO REAL (16/10, Sicredi, C41022227-1):** o banco debitou a parcela **25** em DUAS linhas por
