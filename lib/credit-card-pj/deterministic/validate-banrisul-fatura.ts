@@ -31,9 +31,21 @@ export function validateBanrisulFatura(parsed: BanrisulFaturaParsed): FaturaVali
   mk('V3 Σ IOF = IOF sobre transações no exterior', declared.iof, computed.sumIof)
   mk('V4 Σ débitos = TOTAL DE GASTOS', declared.totalGastos, computed.sumPositives)
   mk('V5 net = Saldo da fatura atual', declared.saldoAtual, computed.net)
-  // consistência dos totais declarados entre si (não usa as linhas).
+  /**
+   * Consistência dos totais declarados entre si (não usa as linhas).
+   *
+   * ⚠️ 20/10/2026: esta conta também **ignorava os encargos do resumo** e acusava a
+   * fatura de 15-20/10 junto com o V5 — dois checks vermelhos, uma causa. O bloco do
+   * PDF é `anterior − pag/créd + Brasil + Exterior + encargos + IOF-exterior = Saldo`,
+   * e os encargos estavam fora da soma. Com eles: 8.626,98 − 8.837,90 + 12.796,76 +
+   * 110,39 = 12.696,23.
+   */
   if (declared.anterior != null && declared.pagamentosCreditos != null && declared.brasil != null && declared.exterior != null && declared.iof != null) {
-    mk('Resumo declarado = Saldo atual', declared.saldoAtual, round2(declared.anterior - declared.pagamentosCreditos + declared.brasil + declared.exterior + declared.iof))
+    mk(
+      'Resumo declarado = Saldo atual',
+      declared.saldoAtual,
+      round2(declared.anterior - declared.pagamentosCreditos + declared.brasil + declared.exterior + declared.iof + (declared.encargosResumo ?? 0)),
+    )
   }
 
   // âncoras mínimas pra julgar: sem elas não grava.

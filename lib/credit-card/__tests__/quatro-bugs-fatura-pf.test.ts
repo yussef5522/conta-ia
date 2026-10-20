@@ -19,17 +19,32 @@ const VENCEU = new Date(Date.UTC(2026, 7, 10))
 const TOTAL = 18348.72
 
 describe('BUG 1 — faltavam R$ 0,62 (encargos sobre rotativo)', () => {
-  it('o encargo está declarado no resumo e NÃO é linha de transação', () => {
+  /**
+   * ⚠️⚠️ INVERTIDO EM 20/10/2026, COM O MOTIVO ESCRITO — este teste afirmava
+   * `expect(rotativo).toHaveLength(0)`, ou seja **o mundo em que o parser NÃO
+   * materializava o encargo** e quem criava a linha era só o confirm.
+   *
+   * ⭐ A METADE CERTA dele continua travada aqui e é a razão de o bug existir: o encargo
+   * de rotativo **não é transação do bloco de lançamentos** — ele vem do RESUMO, sem data
+   * e sem portador. O que mudou é que o parser passou a materializá-lo como linha (a cura
+   * da família, ver `readEncargosDoResumo`), porque sem isso o K1/KP1 do juiz fica
+   * vermelho na diferença e o dono não vê a cobrança na lista.
+   */
+  it('o encargo vem do RESUMO (não do bloco de transações) e é materializado como linha', () => {
     const m = TXT.match(/Encargos sobre rotativo\s+([\d.]+,\d{2})/i)
     expect(m?.[1]).toBe('0,62')
-    // ⚠️ EXISTE uma linha de 0,62 na fatura, mas é IOF de uma compra pequena (uma das
-    // 60 que somam 271,63) — coincidência de valor. O ENCARGO DE ROTATIVO não é linha
-    // de transação nenhuma, e é por isso que a Σ ficava 0,62 curta.
     const rotativo = (r.extraction.lines ?? []).filter((l) => /rotativo/i.test(l.description))
-    expect(rotativo).toHaveLength(0)
-    const iof062 = (r.extraction.lines ?? []).filter((l) => Math.abs(l.amount - 0.62) < 0.001)
-    expect(iof062).toHaveLength(1)
-    expect(iof062[0].description).toMatch(/IOF/i) // é IOF, não encargo de rotativo
+    expect(rotativo).toHaveLength(1)
+    // ⭐ marcada como vinda do resumo, e SEM portador — é a prova de que ela não saiu do
+    // bloco de lançamentos de nenhum dos dois cartões.
+    expect(rotativo[0].note).toMatch(/declarado no resumo/i)
+    expect((rotativo[0] as { cardLastDigits?: string }).cardLastDigits).toBeUndefined()
+    // ⚠️ EXISTE uma linha de 0,62 na fatura que é IOF de uma compra pequena (uma das 60
+    // que somam 271,63) — coincidência de valor. Agora são DUAS linhas de 0,62, e elas
+    // são coisas diferentes: uma é IOF de exterior, a outra é o encargo do resumo.
+    const todas062 = (r.extraction.lines ?? []).filter((l) => Math.abs(l.amount - 0.62) < 0.001)
+    expect(todas062).toHaveLength(2)
+    expect(todas062.filter((l) => /IOF/i.test(l.description))).toHaveLength(1)
   })
 
   it('⭐ Σ das linhas + encargo = o que o BOLETO cobra, ao centavo', () => {

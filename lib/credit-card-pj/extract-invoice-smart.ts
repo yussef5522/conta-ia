@@ -137,7 +137,15 @@ export async function extractInvoiceSmart(
       if (!validation.ok) {
         // NÃO cai pro Vision: o Yussef mandou FALHAR quando não fecha (impossibilidade).
         // ⭐ A RECUSA LEVA O TEXTO JUNTO (16/09) — ver `CreditCardPjExtractError.texto`.
-        throw new CreditCardPjExtractError('VALIDATION_FAILED', validation.message ?? 'Fatura não fecha.', validation.checks, text)
+        // ⭐ e a CONTAGEM vai junto: só aqui ela existe (o `parsed` está na mão). Sem isso a
+        // quarentena grava `linhas: 0`, que se lê como "não achou lançamento nenhum".
+        throw new CreditCardPjExtractError(
+          'VALIDATION_FAILED',
+          validation.message ?? 'Fatura não fecha.',
+          validation.checks,
+          text,
+          parsed.extraction.lines?.length ?? 0,
+        )
       }
       return {
         extraction: parsed.extraction,

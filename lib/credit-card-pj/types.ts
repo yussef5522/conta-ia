@@ -92,6 +92,16 @@ export class CreditCardPjExtractError extends Error {
      * *"N caminhos, 1 esquecido"*, a doença de sempre, agora entre dois imports de fatura.
      */
     public texto?: string,
+    /**
+     * ⭐ QUANTAS LINHAS O MOTOR ACHOU — carregado pela recusa (20/10/2026).
+     *
+     * ⛔ A quarentena do caminho PJ gravava `linhas: 0` na recusa, e **zero é uma
+     * afirmação**: lido na tabela, ele diz *"o parser não achou lançamento nenhum"* — que é
+     * um diagnóstico COMPLETAMENTE diferente de *"achou 34 e a soma não fechou"*. Quem sabe
+     * a contagem é o ponto do `throw` (ele tem o `parsed` na mão); a rota, que só pega o
+     * erro, não tem de onde tirar.
+     */
+    public linhas?: number,
   ) {
     super(message)
     this.name = 'CreditCardPjExtractError'

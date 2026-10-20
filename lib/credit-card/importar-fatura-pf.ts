@@ -60,6 +60,8 @@ export interface PreviewFaturaPF {
     encargosDeclarados: number
     /** ⭐ como o BANCO chama esse encargo — vira a descrição da linha no confirm */
     encargosRotulo: string
+    /** o parser já devolveu o encargo como linha? (então o confirm não cria a dele) */
+    encargoJaEhLinha: boolean
   }
   portadores: string[]
   linhas: LinhaFaturaPF[]
@@ -95,7 +97,7 @@ function semLeitura(
     conferencia: {
       despesasCalculado: 0, despesasDeclarado: null,
       saldoCalculado: 0, saldoDeclarado: null, fecha: false,
-      encargosDeclarados: 0, encargosRotulo: 'Encargos',
+      encargosDeclarados: 0, encargosRotulo: 'Encargos', encargoJaEhLinha: false,
     },
     portadores: [], linhas: [], novas: 0, jaExistem: 0,
     proximasFaturas: {
@@ -313,6 +315,7 @@ export async function previewFaturaPF(input: {
       fecha,
       encargosDeclarados: enc,
       encargosRotulo: lida.conferencia.encargosRotulo,
+      encargoJaEhLinha: lida.conferencia.encargoJaEhLinha,
     },
     portadores: lida.portadores,
     linhas,
@@ -403,7 +406,14 @@ export async function confirmarFaturaPF(input: {
     // ⭐ o NOME é o do banco (09/09): "Encargos sobre rotativo" é rótulo do Banrisul, e o
     // Itaú chama de "Encargos (financiamento + moratório)".
     const rotuloEnc = prev.conferencia.encargosRotulo
-    if (enc > 0) {
+    /**
+     * ⛔⛔ 20/10/2026 — A GUARDA CONTRA A DUPLA GRAVAÇÃO. Desde a cura dos encargos do
+     * resumo, o parser do Banrisul **já devolve cada encargo como LINHA** (com o rótulo
+     * real de cada um, melhor que este agregado). Criar a daqui também gravaria a
+     * cobrança 2× e deixaria o KP1 vermelho pelo lado oposto do bug de 26/08.
+     * ⚠️ Itaú e Nubank seguem passando por aqui — neles o encargo é só total declarado.
+     */
+    if (enc > 0 && !prev.conferencia.encargoJaEhLinha) {
       const hashEnc = hashLinha(input.cardId, {
         data: prev.vencimento!, valor: enc, descricao: rotuloEnc.toUpperCase(), parcelaNumero: null,
       })

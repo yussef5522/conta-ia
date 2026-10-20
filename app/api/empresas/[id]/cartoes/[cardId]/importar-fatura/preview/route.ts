@@ -14,7 +14,7 @@ import { suggestCategoriesForInvoiceLines } from '@/lib/credit-card-pj/suggest-c
 import { getOrCreateCardWithdrawalCategory } from '@/lib/credit-card-pj/card-withdrawal-category'
 import { identidadeDaLinha } from '@/lib/credit-card-pj/identidade-da-linha'
 import { findCardPaymentCandidatesInBank } from '@/lib/credit-card-pj/queries'
-import { guardarNaQuarentena } from '@/lib/credit-card/quarentena-fatura'
+import { guardarNaQuarentena, numerosDaQuarentena } from '@/lib/credit-card/quarentena-fatura'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
 
@@ -91,8 +91,11 @@ export async function POST(request: NextRequest, { params }: Params) {
       void guardarNaQuarentena({
         companyId, cardId, banco: card.name,
         desfecho: 'RECUSADA', motivo: err.message,
-        declarado: null, calculado: null,
-        texto: err.texto ?? '', linhas: 0, criadoPorId: user.sub,
+        // ⭐ os NÚMEROS da recusa, pelo resolvedor único (20/10) — ver `numerosDaQuarentena`.
+        // ⛔ Antes isto era `declarado: null, calculado: null, linhas: 0`: a medição por SQL
+        // via QUE recusou e nunca POR QUANTO.
+        ...numerosDaQuarentena({ checks: err.details, linhas: err.linhas }),
+        texto: err.texto ?? '', criadoPorId: user.sub,
       })
       const code = err.code
       // Mensagens ACIONÁVEIS (BUG B): timeout/truncamento/validação não são "erro
@@ -122,8 +125,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     void guardarNaQuarentena({
       companyId, cardId, banco: extraction.detectedBank ?? card.name,
       desfecho: 'OK', motivo: null,
-      declarado: extraction.totalDeclared ?? null, calculado: null,
-      texto: result.texto, linhas: extraction.lines?.length ?? 0, criadoPorId: user.sub,
+      // ⭐ o MESMO resolvedor da recusa (REGRA 4): o par vem da checagem que fechou, então a
+      // linha OK não aparece com divergência inventada. `calculado` era `null` aqui.
+      ...numerosDaQuarentena({
+        checks: result.validation?.checks,
+        linhas: extraction.lines?.length ?? 0,
+        totalDeclarado: extraction.totalDeclared ?? null,
+      }),
+      texto: result.texto, criadoPorId: user.sub,
     })
   }
 

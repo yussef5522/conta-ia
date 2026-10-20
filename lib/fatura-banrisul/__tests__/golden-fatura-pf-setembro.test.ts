@@ -122,7 +122,12 @@ describe('⛔⛔⛔ E A FATURA DE AGOSTO CONTINUA VERDE — o mês novo não pod
   it('⭐ e as 181 linhas dele continuam lá — nenhuma sumiu com a calha nova', () => {
     // ⚠️ foi aqui que a 1ª tentativa de aresta quebrou: ela cortava no PRIMEIRO valor da
     // linha, e numa compra internacional o primeiro é o US$ — 50 linhas sumiram.
-    expect(parseBanrisulFaturaPF(AGOSTO).extraction.lines?.length).toBe(181)
+    // ⚠️ 20/10/2026: 181 → 182. A linha nova é o **encargo do resumo** (R$ 0,62, o bug de
+    // 26/08) que o parser passou a materializar. As 181 do bloco de lançamentos continuam
+    // lá — é o que a 2ª asserção prova, e é ela que morde se a calha voltar a comer linha.
+    const linhasAgosto = parseBanrisulFaturaPF(AGOSTO).extraction.lines ?? []
+    expect(linhasAgosto.length).toBe(182)
+    expect(linhasAgosto.filter((l) => !/declarado no resumo/i.test(l.note ?? ''))).toHaveLength(181)
   })
 
   it('⭐ inclusive as internacionais, que trazem US$ e R$ na mesma linha', () => {

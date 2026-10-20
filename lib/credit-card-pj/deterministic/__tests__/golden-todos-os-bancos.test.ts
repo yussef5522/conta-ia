@@ -20,7 +20,7 @@ import { GOLDENS, parsersCobertos, goldensPara } from '../congelador'
 const raiz = process.cwd()
 
 /** ⭐ o parser de cada banco, resolvido pelo caminho que o congelador registra */
-async function lerComOParserCerto(g: (typeof GOLDENS)[number], texto: string): Promise<{ declarado: number | null; fecha?: number | null }> {
+async function lerComOParserCerto(g: (typeof GOLDENS)[number], texto: string): Promise<{ declarado: number | null; fecha?: number | null; linhas?: number | null }> {
   /**
    * ⚠️ CADA BANCO TEM O SEU CAMPO, e isso é o desenho, não desleixo: a composição que
    * fecha o Sicredi ("Total desta Fatura") não é a do Caixa ("Valor total desta fatura")
@@ -35,12 +35,12 @@ async function lerComOParserCerto(g: (typeof GOLDENS)[number], texto: string): P
   if (g.parser.includes('banrisul-fatura-parser')) {
     const { parseBanrisulFatura } = await import('../banrisul-fatura-parser')
     const r = parseBanrisulFatura(texto)
-    return { declarado: r.declared.totalGastos ?? null, fecha: r.declared.saldoAtual ?? null }
+    return { declarado: r.declared.totalGastos ?? null, fecha: r.declared.saldoAtual ?? null, linhas: r.extraction.lines?.length ?? null }
   }
   if (g.parser.includes('caixa-fatura-parser')) {
     const { parseCaixaFatura } = await import('../caixa-fatura-parser')
     const r = parseCaixaFatura(texto)
-    return { declarado: r.declared.valorTotalFatura ?? null }
+    return { declarado: r.declared.valorTotalFatura ?? null, linhas: r.extraction.lines?.length ?? null }
   }
   if (g.parser.includes('mercadopago-fatura-parser')) {
     const { parseMercadoPagoFatura } = await import('../mercadopago-fatura-parser')
@@ -50,7 +50,7 @@ async function lerComOParserCerto(g: (typeof GOLDENS)[number], texto: string): P
   if (g.parser.includes('banrisul-fatura-pf')) {
     const { parseBanrisulFaturaPF } = await import('@/lib/fatura-banrisul/banrisul-fatura-pf')
     const r = parseBanrisulFaturaPF(texto)
-    return { declarado: r.declared.totalGastos ?? null, fecha: r.declared.saldoAtual ?? null }
+    return { declarado: r.declared.totalGastos ?? null, fecha: r.declared.saldoAtual ?? null, linhas: r.extraction.lines?.length ?? null }
   }
   if (g.parser.includes('fatura-itau')) {
     const { parseItauFaturaPF } = await import('@/lib/fatura-itau/parser')
@@ -85,6 +85,30 @@ describe('⛔⛔⛔ TODO golden de fatura, TODA rodada', () => {
         }
         if (g.esperado.fecha != null) {
           expect(lido.fecha, `${g.nome}: a conferência deixou de fechar`).toBeCloseTo(g.esperado.fecha, 2)
+        }
+        /**
+         * ⛔⛔ 20/10/2026 — ESTE CAMPO EXISTIA NO CONGELADOR E **NINGUÉM O LIA**. Duas entradas
+         * declaravam `linhas` desde 17/09 e o runner conferia só os totais: o congelador
+         * *prometia* travar a contagem de lançamentos e não travava — **campo que ninguém
+         * desenha é o que alguém religa por descuido**, e aqui era pior, porque ele dava a
+         * impressão de cobertura que não existia.
+         *
+         * ⭐ E ele morde JUSTO no que mudou hoje: a cura do encargo do resumo **cria linha**,
+         * então contagem é exatamente o sinal que diz *"o parser passou a ver mais/menos
+         * lançamento do que o documento tem"*.
+         *
+         * ⚠️⚠️ MEDIDO EM PAR (REGRA 11), porque desligar esta asserção **sozinha não produz
+         * vermelho nenhum** — nenhum teste alcança o próprio desligamento. O par que isola:
+         * fazer a contagem da Caixa rica divergir (15→14) dá **1 vermelho**; o MESMO desvio
+         * com esta asserção desligada dá **0** — ou seja, pro Caixa ela é a ÚNICA rede. Pro
+         * Banrisul ela é cinto sobre suspensório (o teste dedicado do encargo também morde),
+         * e isso está dito aqui em vez de prometido.
+         */
+        if (g.esperado.linhas != null) {
+          expect(
+            lido.linhas,
+            `${g.nome}: o parser achou ${lido.linhas} lançamentos e o congelado é ${g.esperado.linhas}.`,
+          ).toBe(g.esperado.linhas)
         }
       })
     })

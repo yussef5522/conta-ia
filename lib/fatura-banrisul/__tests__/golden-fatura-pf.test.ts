@@ -73,9 +73,19 @@ describe('os DOIS portadores da fatura', () => {
     expect(Math.round((soma('5349') - 20954.54) * 100) / 100).toBeCloseTo(23648.03, 2)
   })
 
-  it('nenhum lançamento fica sem portador', () => {
-    const semDono = (r.extraction.lines ?? []).filter((l) => !(l as { cardLastDigits?: string }).cardLastDigits)
+  /**
+   * ⚠️ REAPONTADO EM 20/10/2026 (o motivo, não o número): este guard prova que as BANDAS
+   * atribuíram cada transação ao portador certo. O **encargo do resumo não é transação de
+   * portador** — ele é da fatura inteira, e carimbar um dos dois cartões nele afirmaria um
+   * dono que o documento não declara. A pergunta segue a mesma; o universo dela é o bloco
+   * de lançamentos.
+   */
+  it('nenhum lançamento de portador fica sem portador', () => {
+    const doBloco = (r.extraction.lines ?? []).filter((l) => !/declarado no resumo/i.test(l.note ?? ''))
+    const semDono = doBloco.filter((l) => !(l as { cardLastDigits?: string }).cardLastDigits)
     expect(semDono).toHaveLength(0)
+    // ⭐ e o encargo do resumo está lá, de propósito sem portador
+    expect((r.extraction.lines ?? []).filter((l) => /declarado no resumo/i.test(l.note ?? ''))).toHaveLength(1)
   })
 })
 

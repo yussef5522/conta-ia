@@ -14,34 +14,29 @@ const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const TOL = 0.02
 const brl = (n: number) => `R$ ${n.toFixed(2)}`
 
-/**
- * ⚠️ ESTE ENCARGO É DO BANRISUL, e só dele — o rótulo "Encargos sobre rotativo" não existe
- * nas outras duas faturas. Ele mora aqui (e não no import) desde que o import passou a
- * falar UMA língua: era código de um banco rodando pra todos.
- */
-function encargosDeclaradosBanrisul(texto: string): number {
-  let soma = 0
-  for (const re of [
-    /Encargos sobre rotativo\s+([\d.]+,\d{2})/i,
-    /Encargos sobre saque\s+([\d.]+,\d{2})/i,
-    /Encargos sobre pagamento de contas\s+([\d.]+,\d{2})/i,
-    // ⭐ 10/09/2026: a fatura de SETEMBRO trouxe este rótulo e a de agosto não tinha.
-    // Sem ele o saldo ficava **1,45 curto** (18.591,71 × 18.593,16) e a fatura era
-    // recusada por um centavo e meio. ⚠️ Rótulo que aparece num mês e não no outro é
-    // exatamente o motivo de a segunda fixture existir.
-    /IOF sobre opera[çc][õo]es de cr[ée]dito\s+([\d.]+,\d{2})/i,
-  ]) {
-    const m = texto.match(re)
-    if (m) soma += Number(m[1].replace(/\./g, '').replace(',', '.'))
-  }
-  return round2(soma)
-}
-
 export function lerBanrisulPF(texto: string): FaturaPFLida {
   const r = parseBanrisulFaturaPF(texto)
-  const enc = encargosDeclaradosBanrisul(texto)
+  /**
+   * ⭐⭐ A LEITURA DO ENCARGO MUDOU DE CASA PRO NÚCLEO (20/10/2026) — e ela estava
+   * **frouxa de dois jeitos** aqui:
+   *
+   * ⛔ (a) era `texto.match(re)` **solto no documento inteiro**, não ancorado no bloco do
+   * resumo. Funcionava por COINCIDÊNCIA de layout: o mesmo PDF imprime *"encargos máximos
+   * de até R$ 2.328,04"* e uma tabela de taxas com *"Encargo máx. 21,00"* — nenhum dos
+   * dois é cobrança desta fatura, e bastava um rótulo nascer parecido pra a conferência
+   * passar a somar propaganda (a lição de 31/08).
+   *
+   * ⛔ (b) lia **4 dos 7** rótulos — faltavam os três de `parcelamento`. Zerados nos dois
+   * documentos de hoje, então o buraco era **latente**: a 1ª fatura com parcelamento de
+   * rotativo recusaria sem ninguém saber por quê.
+   *
+   * ⚠️ E o `enc` **não se soma mais aqui**: o núcleo já o inclui em `computed.net` e cria
+   * a LINHA. Somar de novo contaria o encargo **duas vezes** — foi o 1º risco que a cura
+   * de hoje criou, e é por isso que o `saldoCalculado` passou a ser o `net` direto.
+   */
+  const enc = r.declared.encargosResumo ?? 0
   const despesasCalculado = r.computed.sumPositives
-  const saldoCalculado = round2(r.computed.sumEstornos + despesasCalculado + enc)
+  const saldoCalculado = r.computed.net
   const despesasOk = r.declared.brasil != null
     && Math.abs(despesasCalculado - r.declared.brasil) <= TOL
   const saldoOk = r.declared.saldoAtual != null
@@ -76,6 +71,14 @@ export function lerBanrisulPF(texto: string): FaturaPFLida {
       saldoDeclarado: r.declared.saldoAtual,
       encargosDeclarados: enc,
       encargosRotulo: 'Encargos sobre rotativo',
+      /**
+       * ⭐⭐ O PARSER JÁ ENTREGA O ENCARGO COMO LINHA (20/10/2026) — então o confirm
+       * **não cria a dele**. Sem este campo o PF gravaria a cobrança DUAS vezes: a linha
+       * do núcleo (que flui em `linhas`) e a que o confirm cria desde 26/08.
+       * ⚠️ Itaú e Nubank seguem em `false` — lá o encargo continua vindo só como total
+       * declarado, e é o confirm que o materializa.
+       */
+      encargoJaEhLinha: true,
       fecha: despesasOk && saldoOk,
       // ⭐ o "Brasil" não depende do saldo declarado — dá pra conferir sem ele
       fechaSemOTotal: despesasOk,
@@ -120,6 +123,8 @@ export function lerNubankPF(texto: string): FaturaPFLida {
       // Nubank gravaria 327,29 a menos, que é o mesmo bug dos R$ 0,62 do Banrisul.
       encargosDeclarados: r.declared.outrosLancamentos ?? 0,
       encargosRotulo: 'Outros lançamentos',
+      // ⚠️ aqui o encargo vem só como TOTAL declarado — quem materializa é o confirm.
+      encargoJaEhLinha: false,
       fecha: c.fecha,
       fechaSemOTotal: r.declared.compras != null
         && Math.abs(r.computed.compras - r.declared.compras) <= TOL,
@@ -157,6 +162,8 @@ export function lerItauPF(texto: string): FaturaPFLida {
       saldoDeclarado: c.totalDeclarado,
       encargosDeclarados: r.declared.encargos ?? 0,
       encargosRotulo: 'Encargos (financiamento + moratório)',
+      // ⚠️ aqui o encargo vem só como TOTAL declarado — quem materializa é o confirm.
+      encargoJaEhLinha: false,
       // ⛔ as DUAS provas: os lançamentos fecham, cada cartão fecha com o próprio
       // subtotal, e o total do boleto fecha pela composição.
       fecha: c.fecha && c.cartoesFecham && c.totalFecha,

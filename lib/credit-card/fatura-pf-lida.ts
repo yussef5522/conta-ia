@@ -59,6 +59,18 @@ export interface ConferenciaLidaPF {
    * fatura que o dono tem na mão.
    */
   encargosRotulo: string
+  /**
+   * ⭐⭐ O PARSER JÁ DEVOLVEU O ENCARGO COMO LINHA? (20/10/2026)
+   *
+   * ⛔ Nasceu pra impedir uma DUPLA GRAVAÇÃO que a cura dos encargos do Banrisul criaria:
+   * o núcleo passou a materializar cada encargo do resumo como linha, e o confirm cria a
+   * dele desde 26/08 (os R$ 0,62). Sem este campo, a cobrança entraria 2× na fatura.
+   *
+   * ⚠️ `false` nos adaptadores em que o encargo continua vindo só como TOTAL declarado
+   * (Itaú, Nubank) — lá quem o materializa é o confirm, e tirar isso deixaria a fatura
+   * fechar curta, que é o bug de 26/08 ao contrário.
+   */
+  encargoJaEhLinha: boolean
   fecha: boolean
   /**
    * ⭐⭐ TUDO QUE DAVA PRA CONFERIR NESTE DOCUMENTO FECHOU — menos o total, que ele não

@@ -86,6 +86,28 @@ export const GOLDENS: readonly GoldenDeFatura[] = [
     motivo: 'portador ADICIONAL na coluna direita — o corte fixo o jogava fora (dif −18,00)',
   },
   {
+    /**
+     * ⭐⭐⭐ A FATURA DO ENCARGO DECLARADO **SÓ NO RESUMO** (20/10/2026) — o texto REAL do
+     * documento que recusou em 15 e 20/10, anonimizado nas descrições (o PDF do dono fica
+     * fora do repo, ordem dele).
+     *
+     * ⛔ O que ela trava: `(+) Encargos sobre rotativo 108,98` e `(+) IOF sobre operações de
+     * crédito 1,41` são cobrados no saldo e **não existem como linha de transação**. O `net`
+     * saía **110,39 curto** (12.585,84 × 12.696,23) e DOIS checks acusavam a mesma causa.
+     *
+     * ⚠️ E ela é a **variante com encargo > 0** do lado PJ: as duas fixtures PJ antigas têm
+     * esses campos em **0,00**, e é por isso que o buraco viveu desde 18/08 sem ninguém ver —
+     * *golden com campo zerado não protege.*
+     */
+    nome: 'Banrisul PJ · outubro/2026 — ENCARGO declarado só no RESUMO',
+    fixture: 'lib/credit-card-pj/deterministic/__tests__/fixtures/banrisul-pj-encargo-no-resumo.txt',
+    parser: 'lib/credit-card-pj/deterministic/banrisul-fatura-parser.ts',
+    /** ⚠️ 36 = 34 transações + as 2 LINHAS de encargo que a cura materializa */
+    esperado: { linhas: 36, declarado: 12796.76, fecha: 12696.23 },
+    layout: 'v1',
+    motivo: 'encargo cobrado no saldo e sem linha de transação — o net saía 110,39 curto',
+  },
+  {
     nome: 'Caixa PJ · agosto/2026',
     fixture: 'lib/credit-card-pj/deterministic/__tests__/fixtures/caixa-fatura-real.txt',
     parser: 'lib/credit-card-pj/deterministic/caixa-fatura-parser.ts',

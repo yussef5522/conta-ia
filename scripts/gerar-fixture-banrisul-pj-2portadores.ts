@@ -29,6 +29,12 @@ const PRESERVAR = new Set([
   'brasil', 'pagamentos', 'créditos', 'creditos', 'gastos', 'convertido', 'reais',
   'encargos', 'rotativo', 'saque', 'pagamento', 'contas', 'operações', 'operacoes',
   'crédito', 'credito', 'iof', 'sobre', 'transações', 'transacoes', 'exterior',
+  // ⭐ 20/10/2026 — os 3 rótulos de PARCELAMENTO do resumo. Eles são 0,00 nos documentos de
+  // hoje, então anonimizá-los **não mudaria número nenhum** e o auto-assert do script passaria
+  // VERDE — a fixture só deixaria de testar aqueles rótulos, calada. É a mesma classe do
+  // `"PAGAMENTO"` de 26/08 e dos meses de 31/08, com a diferença de que aqui o valor zero
+  // esconde o estrago. **Palavra que o parser LÊ pra decidir não se anonimiza, mesmo valendo 0.**
+  'parcelamento', 'emissor',
   'vencimento', 'período', 'periodo',
   // marcadores de estrutura
   'histórico', 'historico', 'titular',

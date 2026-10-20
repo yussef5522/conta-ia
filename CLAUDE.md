@@ -12392,6 +12392,167 @@ desde 03/09 sem ninguém ver.
 o plano promete 610 ocorrências · 30 itens · R$ 2.807,49, e com a cura **nenhum item barra**. ⛔ **Eu
 NÃO reprocessei nada**: a prova rodou a baixa de verdade e **desfez** (movimentos 9177 → 9177).
 
+## ⛔⛔⛔ ENCARGO DECLARADO SÓ NO RESUMO — A FAMÍLIA INTEIRA (20/10/2026)
+
+**A fatura que o dono subiu 5× e foi recusada:** `soma lida 12.585,84 × declarado 12.696,23 ·
+diferença −110,39`. Os R$ 110,39 são **duas linhas que o banco cobra no SALDO e que não
+existem no bloco de transações**:
+
+```
+(+) Encargos sobre rotativo             108,98
+(+) IOF sobre operações de crédito        1,41
+```
+
+⛔ **Zero migration · ledger intocado · zero escrita em prod · blue-green 4/4.**
+⚠️ **O PDF do dono fica FORA do repo** (ordem dele): o golden entra como **TEXTO extraído**,
+anonimizado nas descrições com trocas do MESMO comprimento — a geometria das colunas é o que o
+parser lê.
+
+### ⭐⭐ A CURA É ANCORADA NO BLOCO, E CADA ENCARGO VIRA **LINHA**
+
+`readEncargosDoResumo` lê os 7 rótulos `(+)` **dentro do recorte entre `(+) Total da fatura
+anterior` e `(=) Saldo da fatura atual`** — nunca por regex solto no documento inteiro (a lição
+de 31/08: o MESMO PDF imprime *"serão cobrados encargos máximos de até R$ 2.328,04 na próxima
+fatura"* fora do resumo, e **número de propaganda parece número de conferência**). O
+contrafactual está no teste: o regex ingênuo pega **999,99**.
+
+⛔⛔ **E O ENCARGO VIRA LINHA DE LANÇAMENTO, não uma soma "por fora"** — isto é o que mantém o
+**K1 do juiz** de pé: ele compara o `lastInvoiceTotalToPay` com a Σ das transações **GRAVADAS**.
+Somar por fora deixaria o K1 vermelho em 110,39 **toda noite, numa fatura correta**. É a mesma
+conclusão que o caminho PF escreveu em 26/08 (*"a correção é criar a LINHA do encargo"*).
+⚠️ A linha nasce **sem portador**: o encargo é da FATURA, não de um dos dois cartões.
+
+### ⛔⛔⛔ SÃO 7 RÓTULOS, NÃO 8 — E O ERRO NASCERIA **INVISÍVEL**
+
+`IOF sobre transações no exterior` é a 8ª linha `(+)` do bloco e **já entra no `net`** pelas
+linhas de IOF do bloco de transações (`sumIof` → `sumPositives`). Somá-la como encargo a
+contaria **DUAS VEZES**. ⚠️ **Nesta fatura ela é `0,00`** — então o erro não apareceria em
+teste nenhum feito com o documento real. Por isso a trava tem **contrafactual com ela
+diferente de zero**, e a decisão se prova com **aritmética do próprio resumo**:
+`1000 − 1000 + 500 + 0 + 2 + 16 = 518` fecha com 7 rótulos; com 8 daria **520** e o check
+acusaria `+2,00`. *A escolha "7, não 8" se prova com um VERMELHO, não com um argumento.*
+
+### ⛔⛔ E A AUTO-REVISÃO ACHOU UM BURACO NA PRÓPRIA CURA: A TRAVA ERA INALCANÇÁVEL
+
+A 1ª versão casava **rótulo + valor num regex só**. Com isso, *"rótulo PRESENTE e valor
+ILEGÍVEL"* (basta o banco imprimir `R$` entre os dois — `(+) Encargos sobre rotativo R$ 108,98`)
+**não casava nada** → `continue` → o encargo contribuía **0 em silêncio**, que é **somar pela
+metade**; e o guard `if (v == null) return null` logo abaixo era **inalcançável**. *Linha que
+não pode falhar é linha que finge ser trava* (a lição do `ehVizinho`, 17/10). ⭐ Agora a
+detecção do RÓTULO e a leitura do VALOR são **dois regexes derivados do MESMO `padrao`**, e
+rótulo presente com valor ilegível devolve **`null`** — a conferência **recusa** em vez de
+fechar curta.
+
+### ⭐⭐⭐ A LEI DE FAMÍLIA ENTRE IRMÃOS — AGORA EXECUTÁVEL (vira a REGRA 14)
+
+**A classe foi curada no caminho PF DUAS vezes** (26/08 os R$ 0,62; 10/09 o IOF de crédito) e o
+**PJ nunca aprendeu** — ficou latente até 15/10. ⭐ Hoje o `nucleo.ts` é compartilhado, então a
+cura serve os dois **por construção** — e é justamente isso que o teste-espelho
+(`espelho-entre-irmaos.test.ts`) **PROVA em vez de supor**: o MESMO texto pelos DOIS pontos de
+entrada dá `net`, itens e contagem de linhas idênticos, o **adaptador PF fecha**
+(`encargoJaEhLinha: true`, as 2 linhas sem portador, Σ das linhas = 12.696,23) e os **3 irmãos
+seguem fechando** (PF agosto 0,62/18.348,72 · PF setembro 115,76/18.593,16 · PJ agosto
+0/13.779,73).
+
+⛔⛔ **E O GUARD DA LEI É O QUE IMPEDE A REINCIDÊNCIA:** *cada caminho precisa de pelo menos UMA
+fixture com o campo DIFERENTE DE ZERO.* As duas fixtures PJ antigas têm os encargos em `0,00` —
+**campo zerado passa verde com a régua certa E com a errada**, e foi assim que o buraco viveu de
+18/08 a 15/10. Apagar a fixture nova do PJ deixa o teste **vermelho**.
+
+### ⛔⛔ A DUPLA GRAVAÇÃO, FECHADA NO ADAPTADOR
+
+O confirm do PF **cria a linha do encargo desde 26/08**. Com o parser passando a entregá-la,
+a cobrança entraria **2×**. `encargoJaEhLinha` (true Banrisul, false Itaú/Nubank) é o campo que
+o confirm lê pra não criar a dele, e `saldoCalculado` **não soma o encargo por fora** (ele já
+está dentro do `net`).
+
+### ⛔⛔ O CONGELADOR PROMETIA TRAVAR A CONTAGEM DE LINHAS — E NINGUÉM LIA O CAMPO
+
+Duas entradas declaravam `linhas` **desde 17/09** e o runner conferia **só os totais**: ele
+*dizia* congelar o número de lançamentos e não congelava. ⚠️ **Campo que ninguém desenha é o que
+alguém religa por descuido** — e aqui era pior, porque dava **impressão de cobertura que não
+existia**. ⭐ E ele morde justo no que mudou hoje: a cura **CRIA linha**, então a contagem é
+exatamente o sinal de *"o parser passou a ver mais/menos lançamento do que o documento tem"*.
+⚠️⚠️ **MEDIDO EM PAR (REGRA 11)**, porque desligar a asserção **sozinha não produz vermelho
+nenhum** — nenhum teste alcança o próprio desligamento. O par que isola: fazer a contagem da
+Caixa rica divergir (15→14) dá **1 vermelho**; o MESMO desvio com a asserção desligada dá
+**0** — pro Caixa ela é a ÚNICA rede; pro Banrisul é cinto sobre suspensório.
+
+### ⭐⭐ A QUARENTENA DO CAMINHO PJ GRAVAVA AS TRÊS COLUNAS VAZIAS (achado 4 da caça)
+
+A recusa gravava `declarado: null, calculado: null, linhas: 0` e o OK gravava `calculado: null`
+— então `recusadasParaDiagnosticar` devolvia linhas em que dava pra ver **QUE** recusou e nunca
+**POR QUANTO**. ⚠️ E `linhas: 0` é **pior que ausente**: lido na tabela, ele AFIRMA *"o parser
+não achou lançamento nenhum"*, que é diagnóstico oposto de *"achou 36 e a soma não fechou"*.
+
+⭐⭐ **`numerosDaQuarentena` é o resolvedor ÚNICO que os DOIS desfechos consomem** (REGRA 4), e a
+régua é **o par vem SEMPRE da MESMA checagem**: cada banco nomeia os checks à sua maneira
+(`Σ compras+encargos = Total cartão` no Sicredi, `V1 Σ Brasil` no Banrisul), então **re-derivar
+os números do TEXTO da mensagem seria adivinhação** — o `FaturaCheck` já carrega o par pronto
+(`expected` = o que o documento declara, `got` = o que a nossa soma produziu). A escolha, cada
+caso com o seu motivo: **alguma falhou** → a de maior `|diff|` (é o número na cara do dono) ·
+**nenhuma falhou e há total declarado** → a cuja `expected` mais se aproxima dele (pra a
+quarentena concordar com o que o congelador e a tela chamam de declarado) · **sem total** → a de
+maior `|expected|`.
+
+⛔⛔ **Misturar as fontes é exatamente o que a função existe pra impedir:** `declarado` do
+`totalDeclarado` + `calculado` do `got` de outra checagem faria uma linha **OK** nascer com
+divergência **inventada**. ⚠️ E a **contagem vem do ponto do `throw`**, que é quem tem o
+`parsed` na mão — a rota, que só pega o erro, não tem de onde tirar.
+
+⚠️ **O caminho PF NÃO foi mexido, e é decisão, não esquecimento:** ele já grava os três certos
+pela régua DELE (`despesasDeclarado`/`despesasCalculado` do adaptador) e **não produz
+`FaturaCheck[]`** — forçá-lo por este resolvedor exigiria **fabricar checagens**.
+
+### ⚠️⚠️ REGRA 11 — 11 DEFEITOS REPOSTOS, E DOIS PRECISARAM DO CASO QUE ISOLA
+
+a cotação/âncora solta pegando a propaganda (**1**) · `null` virando 0 sem âncora (**1**) · a 8ª
+linha somada, contando o IOF do exterior 2× (**1**) · `somarTodas` voltando a somar pela metade
+(**20**) · o rótulo presente com valor ilegível (**2**) · a linha do encargo deixando de nascer
+(**3**) · o adaptador somando por fora (**15**) · `encargoJaEhLinha` caindo (**1**) · o
+teste-espelho perdendo o adaptador (**3**) · a asserção de `linhas` do congelador (**medida em
+PAR**) · e, na quarentena: a recusa voltando a cravar `null/null/0` (**1**) · o `throw` deixando
+de passar a contagem (**1**) · o OK voltando a `calculado: null` (**5**) · a escolha ignorando os
+que falharam (**2**) · `lerChecks` deixando de desconfiar do `details` (**1**).
+**baseline 0 · restaurado 0.**
+
+⛔⛔ **O da mistura de fontes veio VERDE na 1ª medição** — nos documentos **reais** o total
+declarado É `expected` de alguma checagem, então a 2ª régua de escolha já alinha os dois sozinha
+e a mistura não aparece. ***Reposição que não reproduz o defeito é um verde de graça.*** O caso
+que **isola** é o total declarado **não ser** checagem nenhuma; com ele, **1 vermelho**.
+
+⚠️ **E O GUARD DO `throw` FICOU VERMELHO COM O CÓDIGO CERTO:** ele ancorava na chamada **numa
+linha só** e eu quebrei o `throw` em várias ao acrescentar a contagem. ***Âncora literal não
+distingue "refatorei" de "quebrei"*** (a razão de existir da REGRA 3) — virou **estrutural**.
+
+⚠️ A sonda guarda backup pela **chave do caminho inteiro**, **ASSERTA por md5 que a substituição
+aplicou** e **conta suíte que NÃO COLETOU como vermelho** — as três cicatrizes de sonda desta
+casa.
+
+### A PROVA
+
+```
+⭐ A FATURA DO DONO FECHA: net 12.696,23 == Saldo da fatura atual · as 6 checagens PASSAM
+   encargosResumo 110,39 = [Encargos sobre rotativo 108,98 · IOF sobre op. de crédito 1,41]
+   as 2 viram LINHA (sem portador) · 36 lançamentos = 34 transações + os 2 encargos
+
+⛔ COM O DEFEITO REPOSTO: net 12.585,84 e DOIS checks acusam −110,39 —
+   'V5 net = Saldo da fatura atual' e 'Resumo declarado = Saldo atual'
+   ⭐ exatamente os dois vermelhos que o dono viu, com o mesmo número
+
+⭐ O ESPELHO: os dois pontos de entrada (PJ e PF) dão o MESMO net, os MESMOS itens e a MESMA
+   contagem · o adaptador PF fecha em 12.696,23 · Σ das linhas gravadas = 12.696,23
+⭐ OS IRMÃOS: PF agosto 18.348,72 · PF setembro 18.593,16 · PJ agosto 13.779,73 — INTACTOS
+⭐ O CONGELADOR: 11 fixtures / 7 bancos verdes, agora com a contagem de linhas sendo LIDA
+
+⭐ A QUARENTENA, com o validador de VERDADE sobre a fixture:
+   RECUSA → declarado 12.696,23 · calculado 12.585,84 · linhas 36   (era null · null · 0)
+   OK     → declarado 12.796,76 · calculado 12.796,76 · linhas 36   (calculado era null)
+```
+
+⚠️ **PENDENTE (REGRA 2, é do dono):** subir a fatura pela tela e confirmar — eu **não importei
+nada**; a prova roda o parser e o validador sobre o texto, sem gravar.
+
 ## ⛔⛔⛔ PARCELA PAGA EM PEDAÇOS — 2 LINHAS DO BANCO → 1 PARCELA (19/10/2026)
 
 **O CASO REAL (16/10, Sicredi, C41022227-1):** o banco debitou a parcela **25** em DUAS linhas por
@@ -12762,6 +12923,7 @@ Eu rotulei o `producao P2` de pré-existente **por dias**, e o rótulo *"não é
 - **REGRA 12** (13/09/2026) — **TELA NOVA SE PROVA NOS DOIS VIEWPORTS, SEMPRE. Mock mobile sem composição desktop definida NÃO É SPEC COMPLETA.** Nasceu do dashboard PF: o mock aprovado era de 480px, eu implementei fiel, e no MacBook do dono virou *"uma coluna de 480px boiando no meio do monitor"*. ⭐ **A régua é DUAS COMPOSIÇÕES, UM CONJUNTO DE WIDGETS** — o app no celular e o COCKPIT no desktop (padrão Monarch/Mobills) usam **os mesmos componentes**; muda o LAYOUT, nunca o conteúdo. ⛔ Dois cards do mesmo dado, um por viewport, divergiriam no primeiro selo novo — e o dono veria um número no bolso e outro no monitor. **Breakpoints da casa:** `<768` app · `768–1024` duas colunas · `≥1024` grid de 12. **A prova é red-then-green NOS DOIS**, e o guard (`desktop-nao-e-celular-esticado.test.ts`) tem uma LISTA: tela nova entra nela **ou** registra a decisão de ser mobile-only (o tablet da cozinha é um aparelho só, e isso é escolha, não esquecimento). ⚠️ Vale retroativamente pra Conciliação, Relatórios de produção e as próximas.
 - **REGRA 13** (04/10/2026) — **CHECK COM COLUNA NULLABLE É LÓGICA DE TRÊS VALORES: TODO CHECK NOVO NASCE COM TESTE DE INSERT TORTO EM PROD.** Ditada pelo dono depois de o `chk_aviso_acao_completa` ser provado **FURADO em produção** — ele deveria barrar "botão pela metade" (rótulo sem destino) e **deixava passar**. **A causa, medida no próprio Postgres:** `(rótulo IS NULL AND href IS NULL) OR (length(trim(rótulo))>0 AND length(trim(href))>0)` com `rótulo='ir'` e `href=NULL` dá `false OR (true AND NULL)` = **NULL** — e ***CHECK com expressão NULL PASSA*** (conferido: `SELECT (false OR NULL) IS NULL` → `t`; `CASE WHEN (false OR NULL) THEN 1 ELSE 0 END` → `0`). **`length(trim(NULL))` não é 0, é NULL, e NULL contamina o `AND` inteiro.** ⚠️ É a MESMA doença do `?? 'CAIXA'` que sumiu com o CASPER (20/09) e do `'categoryId' in t` que era verdade com valor nulo (26/08): **tratar "desconhecido" como se fosse um valor**. ⭐ **A régua:** em CHECK que compara CONTEÚDO de coluna nullable, o `IS NOT NULL` vem **explícito e antes** (`(a IS NULL AND b IS NULL) OR (a IS NOT NULL AND b IS NOT NULL AND length(trim(a))>0 AND length(trim(b))>0)`). ⛔⛔ **E o teste NÃO PODE ser da suíte: CHECK não existe no schema Prisma** (mora no SQL da migration), e o `db push` do dev cria a tabela a partir do schema → **no SQLite o INSERT torto passa**, e isso não é o CHECK falhando, é ele não existir ali. **Todo CHECK novo ganha um script de prova contra Postgres** que tenta o INSERT torto e exige a recusa **pelo nome da constraint** — o padrão de `scripts/prova-check-aviso.ts` (6 INSERTs tortos + 4 pelo caminho da aplicação, zero escrita, confere a contagem antes/depois). ⚠️ E **migration já aplicada NÃO se reescreve** (o checksum do Prisma reprova o deploy): a correção é **migration nova**, com a medição escrita nela.
 
+- **REGRA 14** (20/10/2026) — **CURA DE FAMÍLIA NUM PARSER OBRIGA TESTE-ESPELHO NOS PARSERS IRMÃOS, COM O MESMO CASO. E GOLDEN COM O CAMPO EM 0,00 NÃO PROTEGE.** Ditada pelo dono na cura do *"encargo declarado só no resumo"*, e a prova de que ela é necessária está no histórico do próprio defeito: a classe foi curada **no caminho PF duas vezes** — em **26/08** (os R$ 0,62 de rotativo) e em **10/09** (o `IOF sobre operações de crédito` de 1,45) — e o **PJ nunca aprendeu**. Ficou latente até **15/10**, quando chegou uma fatura PJ com os campos **diferentes de zero** e a conferência recusou 5× seguidas. ⭐ **A régua tem duas metades, e a segunda é a que fecha o flanco:** (1) o caso que motivou a cura **roda nos parsers irmãos** (PF/PJ/outros bancos) — *provar, não supor*: o PJ é casca fina sobre o PF, mas é o teste-espelho que afirma isso em vez de prometer; (2) **os goldens dos irmãos ganham variante com o campo > 0.** ⛔⛔ **Campo zerado passa verde com a régua certa E com a errada** — as duas fixtures PJ antigas tinham os encargos em `0,00`, então o PJ tinha golden, tinha validador, tinha runner, e **nada daquilo exercitava o campo**. É a mesma anatomia do `linhas` do congelador, que ficou declarado e **sem leitor** por um mês. ⚠️ E o guard da lei é **executável, não uma nota**: um teste exige que cada caminho tenha **pelo menos uma fixture com o campo diferente de zero** — tirar a variante do PJ deixa vermelho.
 - **REGRA 8b** (02/09/2026) — **TODO SCRIPT DE INVESTIGAÇÃO PROVA EM QUAL BANCO ESTÁ ANTES DE MEDIR: resolve a empresa pelo ID e ABORTA se ela não existir ali.** ⛔ Nasceu de erro meu: rodei a reconciliação dos 195 produtos do PDV com o `companyId` **certo** da Caçula, mas via `npx tsx` no Mac, onde o `.env` aponta pro **SQLite de dev**. A empresa não existe lá; o Prisma devolveu **0 mapeamentos** e eu concluí **por escrito** que *"os 4 mapeamentos sumiram"*. O dono ia abrir investigação de PERDA DE DADO e adiar uma tarde de trabalho — os 4 estavam intactos em prod o tempo todo. ⭐ **A classe: zero silencioso é indistinguível de "não tem"** — `findMany` num banco que não conhece a empresa não erra, devolve lista vazia, que é resposta plausível (mesma família do empty state que mentiu na home PF e do `contains` case-sensitive). ⚠️ **E a trava que existia é ASSIMÉTRICA:** `guard-banco-de-teste` impede a SUÍTE de rodar contra prod (cicatriz de 08/08), e não havia nada no sentido inverso. **Resolver por ID não basta se o ID for lido no banco errado.** Helper: `lib/scripts/prova-banco.ts` (`exigirEmpresaNesteBanco`), que aborta e ainda imprime contra qual banco mediu — output sem essa linha é output do qual não dá pra concluir nada.
 - **REGRA 8** (15/08/2026) — **RESOLVER CONTA/EMPRESA POR ID, NUNCA POR NOME.** 3 empresas (caçula/profit/arafet) × os MESMOS bancos → `findFirst({where:{name:{contains:'banris'}}})` pega a conta de OUTRA empresa. **Custou um número de saldo FALSO de 26 mil** (li o Banrisul da profit, +3.984,64, e "descobri" um buraco na caçula que não existia) **+ um sprint inteiro de âncora inventada** — a caçula estava certa o tempo todo. Mesma classe da trava "OFX na conta errada" (`verify-account-match`), lado ANÁLISE. **Regra dura:** toda query/write de conta resolve por `bankAccountId` explícito (IDs no topo deste doc: caçula Banrisul `cmq17z90v00qxrndl02kfn4iz`, Stone `cmq182qfr0005aktn6q2ugpv2`, Sicredi `cmq180ksv0001aktni9wj64mq`) OU filtra por `companyId`; **`findFirst` por nome é PROIBIDO em qualquer caminho.** ⚠️ vale IGUAL pra `loan.findFirst({where:{contractNumber}})` sem `companyId` — ambíguo se 2 empresas têm o mesmo nº (auditado 15/08: os 7 contratos da caçula que gravei são únicos, **0 write vazou** — mas foi SORTE, não desenho). **Todo preview de gravação mostra `empresa + id da conta` antes de confirmar.** Duas fontes concordando não vira verdade, E ler a entidade errada não vira diagnóstico — confirmar o ID é a barreira.
 

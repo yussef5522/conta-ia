@@ -174,6 +174,13 @@ export interface BanrisulFaturaParsed {
     brasil: number | null // "Despesas / Débitos no Brasil"
     exterior: number | null // "Saldo Convertido em Reais (+)"
     iof: number | null // "IOF sobre transações no exterior"
+    /**
+     * ⭐ Σ dos encargos que o RESUMO declara e que não são lançamento — ver
+     * `readEncargosDoResumo`. `null` = não achei o bloco (≠ 0, que é "não cobrou").
+     */
+    encargosResumo: number | null
+    /** os encargos não-zero, um a um — cada um vira LINHA em `montarResultado`. */
+    encargosResumoItens: EncargoDoResumo[]
   }
   computed: {
     sumBrasil: number
@@ -182,7 +189,9 @@ export interface BanrisulFaturaParsed {
     sumPositives: number // brasil + exterior + iof (débitos)
     sumEstornos: number // créditos/estornos (negativo, não-pagamento)
     sumPayments: number // pagamento(s) da fatura anterior
-    net: number // sumPositives + sumEstornos = Saldo da fatura atual
+    /** Σ dos encargos do resumo que viraram linha (ver `readEncargosDoResumo`). */
+    sumEncargosResumo: number
+    net: number // sumPositives + sumEstornos + sumEncargosResumo = Saldo da fatura atual
     count: number // linhas importáveis (exclui pagamento)
   }
 }
@@ -215,12 +224,121 @@ function somarTodas(text: string, re: RegExp): number | null {
   return Math.round(soma * 100) / 100
 }
 
+/**
+ * ⭐⭐⭐ OS ENCARGOS QUE O RESUMO DECLARA E QUE NÃO SÃO LANÇAMENTO (20/10/2026).
+ *
+ * ⛔⛔ **O DEFEITO, medido na fatura que o dono subiu 5× (quarentena: 15/10 e 20/10):** o
+ * `net` do parser era `Σ positivos + Σ estornos`, e o saldo que o banco cobra inclui mais
+ * duas linhas que **não existem no bloco de transações** (sem data, fora de qualquer
+ * bucket):
+ *
+ * ```
+ * (+) Total da fatura anterior          8.626,98
+ * (-) Pagamentos / Créditos             8.837,90
+ * (+) Despesas / Débitos no Brasil     12.796,76
+ * (+) Encargos sobre rotativo             108,98   ⬅ não somado
+ * (+) IOF sobre operações de crédito        1,41   ⬅ não somado
+ * (=) Saldo da fatura atual            12.696,23
+ *       sem os dois: 12.585,84 = exatamente o que o parser lia · dif −110,39
+ * ```
+ *
+ * ⚠️⚠️ **E ISSO ERA DÉBITO REGISTRADO COBRANDO JUROS.** A MESMA classe foi curada **no
+ * caminho PF** em 26/08 (*"faltavam R$ 0,62 — encargos sobre rotativo declarados no
+ * RESUMO e não viram linha"*) e em 10/09 (*"`IOF sobre operações de crédito 1,45` — sem
+ * ele o saldo ficava 1,45 curto"*). O PJ **nunca aprendeu**, e ficou LATENTE porque o
+ * golden PJ de agosto tem esses campos em **0,00**: *golden com campo zerado não protege.*
+ *
+ * ⭐ Por isso a leitura mora **aqui, no núcleo** — o parser PJ é casca fina sobre o PF, e
+ * os dois chamam `readDeclared`/`montarResultado`. Uma régua, dois documentos.
+ *
+ * ⛔⛔ **ANCORADO NO BLOCO, NUNCA REGEX SOLTO** — a lição de 31/08 (*"número de propaganda
+ * parece número de conferência"*). O mesmo PDF imprime, FORA do resumo:
+ *   · `"serão cobrados encargos máximos de até R$ 2.328,04 na próxima fatura"` (aviso)
+ *   · uma tabela de taxas com `Rotativo … Encargo máx. 21,00` (teto contratual)
+ * Nenhum dos dois é cobrança desta fatura. O recorte entre `(+) Total da fatura anterior`
+ * e `(=) Saldo da fatura atual` é o que separa o que o banco SOMA do que ele ANUNCIA.
+ *
+ * ⚠️⚠️ **E `IOF sobre transações no exterior` FICA DE FORA, de propósito.** Ele é a 8ª
+ * linha `(+)` do bloco, mas **já é o `declared.iof`** e já entra no `net` pelas linhas de
+ * IOF do bloco de transações (`sumIof` → `sumPositives`). Somá-lo aqui o contaria **duas
+ * vezes** — e nesta fatura ele é `0,00`, então o erro nasceria **invisível**, exatamente a
+ * classe que este arquivo existe pra não repetir.
+ */
+const ENCARGOS_DO_RESUMO: ReadonlyArray<{ rotulo: string; padrao: string }> = [
+  { rotulo: 'Encargos sobre rotativo', padrao: 'Encargos sobre rotativo' },
+  { rotulo: 'Encargos sobre saque', padrao: 'Encargos sobre saque' },
+  { rotulo: 'Encargos sobre pagamento de contas', padrao: 'Encargos sobre pagamento de contas' },
+  { rotulo: 'Encargos sobre parcelamento emissor', padrao: 'Encargos sobre parcelamento emissor' },
+  { rotulo: 'Encargos sobre parcelamento de fatura', padrao: 'Encargos sobre parcelamento de fatura' },
+  { rotulo: 'Encargos sobre parcelamento de rotativo', padrao: 'Encargos sobre parcelamento de rotativo' },
+  { rotulo: 'IOF sobre operações de crédito', padrao: 'IOF sobre opera[çc][õo]es de cr[ée]dito' },
+]
+
+/**
+ * ⚠️⚠️ **O VALOR SE LÊ SEPARADO DO RÓTULO, e isso não é preciosismo — era o furo do
+ * `somarTodas` (20/10/2026).**
+ *
+ * A 1ª versão casava rótulo+valor num regex só, e aí *"rótulo presente com valor que a
+ * régua não lê"* **não casava nada** → caía no `continue` → **contribuía 0 em silêncio**,
+ * que é literalmente *somar pela metade*. E o guard do `v == null` logo abaixo era
+ * **inalcançável** (o regex já garantia vírgula + 2 casas), ou seja uma linha que finge ser
+ * trava — a lição do `ehVizinho` de 17/10.
+ *
+ * ⭐ O caso que ISOLA é plausível, não hipótese: basta o banco imprimir
+ * `(+) Encargos sobre rotativo    R$ 108,98` — o `R$` entre o rótulo e o número derruba o
+ * `\s+` e o encargo viraria 0 **sem uma palavra na tela**.
+ *
+ * ⛔ Os dois regexes nascem do MESMO `padrao` de propósito: duas escritas divergiriam no
+ * primeiro rótulo novo, e aí a detecção do rótulo deixaria de falar do mesmo campo que a
+ * leitura do valor.
+ */
+const VALOR_DO_ENCARGO = '\\s+([\\d.]+,\\d{2})'
+
+/**
+ * O recorte do resumo. `null` quando as duas âncoras não aparecem — e aí a leitura devolve
+ * `null` em vez de 0: *ausência de bloco não é ausência de encargo* (0 afirmaria que o
+ * banco não cobrou nada, e a conferência ficaria curta em silêncio).
+ */
+export function blocoDoResumo(text: string): string | null {
+  const ini = text.search(/\(\+\)\s*Total da fatura anterior/i)
+  if (ini < 0) return null
+  const resto = text.slice(ini)
+  const fim = resto.search(/\(=\)\s*Saldo da fatura atual/i)
+  if (fim < 0) return null
+  return resto.slice(0, fim)
+}
+
+export interface EncargoDoResumo { rotulo: string; valor: number }
+
+export function readEncargosDoResumo(text: string): { total: number | null; itens: EncargoDoResumo[] } {
+  const bloco = blocoDoResumo(text)
+  if (bloco == null) return { total: null, itens: [] }
+  const itens: EncargoDoResumo[] = []
+  let total = 0
+  for (const { rotulo, padrao } of ENCARGOS_DO_RESUMO) {
+    // o rótulo nem aparece neste documento → não há encargo desse tipo, segue
+    if (!new RegExp(padrao, 'i').test(bloco)) continue
+    const m = bloco.match(new RegExp(padrao + VALOR_DO_ENCARGO, 'i'))
+    // ⛔⛔ rótulo PRESENTE e valor ILEGÍVEL → devolve `null`, NUNCA soma pela metade.
+    // Tratar como 0 aqui faria a conferência fechar curta em silêncio — o bug de hoje.
+    if (!m) return { total: null, itens: [] }
+    const v = parseBRNumber(m[1]!)
+    if (v == null) return { total: null, itens: [] }
+    total = round2(total + v)
+    if (v > 0) itens.push({ rotulo, valor: v })
+  }
+  return { total, itens }
+}
+
 export function readDeclared(text: string): BanrisulFaturaParsed['declared'] {
   const grab = (re: RegExp): number | null => {
     const m = text.match(re)
     return m ? parseBRNumber(m[1]) : null
   }
+  const enc = readEncargosDoResumo(text)
   return {
+    encargosResumo: enc.total,
+    encargosResumoItens: enc.itens,
     totalGastos: somarTodas(text, /TOTAL DE GASTOS\s+([\d.]+,\d{2})/i),
     saldoAtual: grab(/Saldo da fatura atual\s+([\d.]+,\d{2})/i),
     anterior: grab(/Total da fatura anterior\s+([\d.]+,\d{2})/i),
@@ -400,8 +518,39 @@ export function montarResultado(
       ...(b.bucket === 'EXTERIOR' ? { note: 'compra internacional (R$ convertido)' } : {}),
     })
   }
+  /**
+   * ⭐⭐ O ENCARGO DO RESUMO VIRA **LINHA**, não uma soma "por fora" (20/10/2026).
+   *
+   * É a régua que o caminho PF já escreveu em 26/08, com o motivo: *"assim o invariante
+   * KP1 (`totalAmount == Σ das linhas`) continua valendo e o dono VÊ a cobrança na lista
+   * em vez de um total que não fecha com o que ele soma na mão"*.
+   *
+   * ⛔ No PJ isso não é escolha estética — é o **K1 do juiz** (`lastInvoiceTotalToPay ==
+   * faturaNetTotal recomputado das transações GRAVADAS`). Somando por fora, o total
+   * gravado seria 12.696,23 e a Σ das linhas 12.585,84: **K1 vermelho em 110,39 toda
+   * noite**, num cartão onde a fatura está correta.
+   *
+   * ⚠️ Uma linha POR RÓTULO, nunca um agregado: o dono precisa distinguir *"juros de
+   * rotativo"* de *"IOF de crédito"* — são cobranças diferentes, e é com o nome que o
+   * banco usa que ele vai conferir contra o PDF.
+   *
+   * ⚠️ A data é o VENCIMENTO: o encargo do resumo não tem data própria no documento, e
+   * inventar uma data de compra seria afirmar um dia que o banco não declarou.
+   */
+  let sumEncargosResumo = 0
+  for (const e of declared.encargosResumoItens) {
+    sumEncargosResumo = round2(sumEncargosResumo + e.valor)
+    invLines.push({
+      date: venc.dueDate ?? (bucketed.length > 0 ? bucketed[bucketed.length - 1]!.date : '1970-01-01'),
+      description: e.rotulo,
+      amount: round2(e.valor),
+      suggestedKind: 'ENCARGO_FINANCEIRO',
+      note: 'declarado no resumo da fatura (não é linha de transação)',
+    })
+  }
+
   const sumPositives = round2(sumBrasil + sumExterior + sumIof)
-  const net = round2(sumPositives + sumEstornos)
+  const net = round2(sumPositives + sumEstornos + sumEncargosResumo)
 
   const extraction: InvoiceExtraction = {
     dueDate: venc.dueDate,
@@ -426,6 +575,7 @@ export function montarResultado(
       sumPositives,
       sumEstornos: round2(sumEstornos),
       sumPayments: round2(sumPayments),
+      sumEncargosResumo,
       net,
       count: invLines.length,
     },
