@@ -386,7 +386,17 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
             id={id}
             data={data}
             setData={setData}
-            onImportado={(dia) => setRevisao({ data: dia, relatorio: 'COMPLEMENTOS', origem: 'IMPORT' })}
+            /**
+             * ⭐⭐ O IMPORT RENOVA A LISTA NO SUCESSO (a peça 2, 20/10).
+             *
+             * Era só `setRevisao(…)`: a revisão reabria igual e **a lista de dias não
+             * recarregava**, então a linha do dia que acabou de ser importado-e-baixado
+             * continuava dizendo *"pendente"* até o dono mexer em alguma coisa. ⛔ E a
+             * dependência era pior que o sintoma — ela só atualizava *"se a revisão aplicasse
+             * algo"* (`onMudou`), ou seja o estado da lista dependia de um gesto que o dono
+             * pode não dar. Agora o recibo e a lista contam a mesma história no mesmo instante.
+             */
+            onImportado={(dia) => { setRevisao({ data: dia, relatorio: 'COMPLEMENTOS', origem: 'IMPORT' }); setRecargaComp((n) => n + 1) }}
           />
           {revisao?.origem === 'IMPORT' && revisao.relatorio === 'COMPLEMENTOS' && (
             <BlocoRevisao id={id} data={revisao.data} relatorio="COMPLEMENTOS" onMudou={() => setRecargaComp((n) => n + 1)} onFechar={() => setRevisao(null)} />
@@ -718,7 +728,19 @@ function ImportComplementos({ id, onImportado, data, setData }: {
         if (modo !== 'PERIODO') onImportado(data)
       } else { setPrev(j); setOk(null) }
       return j
-    } catch { setErro('Não consegui falar com o servidor.'); return null } finally { setBusy(false) }
+    } catch (e) {
+      /**
+       * ⛔ A FRASE DE CONEXÃO SÓ SAI QUANDO É REDE DE VERDADE (o 1º silêncio, 20/10).
+       *
+       * Era `catch { setErro('Não consegui falar com o servidor.') }` — **qualquer** throw
+       * virava "problema de rede", inclusive um erro nosso de parse ou de contrato. O dono
+       * ficava caçando a internet enquanto a causa estava aqui dentro. ⚠️ É a cicatriz do
+       * `Não consegui gravar a contagem.` (16/09): *mensagem que acusa o campo errado faz o
+       * dono caçar um erro que não existe.*
+       */
+      setErro(fraseDoErro(e, { rede: 'Falha de conexão. Tentar de novo?', falhou: 'Não consegui ler o arquivo.' }))
+      return null
+    } finally { setBusy(false) }
   }
 
   const onFile = (f: File) => {
@@ -870,8 +892,26 @@ function ImportComplementos({ id, onImportado, data, setData }: {
  * ⚠️ O NEGATIVO APARECE ANTES DE GRAVAR e **não bloqueia**: `INTERMEDIARIO` baixa o pack
  * pronto, e negativo quer dizer *"vendeu sem produzir"* — o sinal que o dono quer ver.
  */
+interface DiaComp { data: string; ehPeriodo: boolean; linhas: number; ocorrencias: number; baixado: boolean; precisaReprocessar: boolean; apurado: boolean; dispensado: boolean; importadoEm: string }
+
+/**
+ * ⛔⛔ O ESTADO DA CARGA É **EXPLÍCITO** (20/10/2026).
+ *
+ * Antes era `dias: Dia[] | null`, e o `null` fazia TRÊS trabalhos: "ainda carregando",
+ * "a carga falhou" e "não tem dia". Com isso o card caía num `return null` e **desaparecia da
+ * tela durante os ~12 s da lista** — e *card que desaparece é indistinguível de card que não
+ * existe*: o dono abria a tela, não via nada, e concluía que não havia dia importado.
+ *
+ * ⚠️ É a lição de 20/09 na mesma forma: *enquanto "ausência de dado" servir de estado, o caso
+ * não previsto vira spinner eterno (ou, aqui, tela muda).*
+ */
+type CargaDosDias =
+  | { estado: 'CARREGANDO' }
+  | { estado: 'FALHOU'; frase: string }
+  | { estado: 'OK'; dias: DiaComp[] }
+
 function BaixaComplementos({ id, recarga, revisandoDia, onRevisar }: { id: string; recarga: number; revisandoDia: string | null; onRevisar: (dia: string) => void }) {
-  const [dias, setDias] = useState<{ data: string; ehPeriodo: boolean; linhas: number; ocorrencias: number; baixado: boolean; precisaReprocessar: boolean; dispensado: boolean; importadoEm: string }[] | null>(null)
+  const [carga, setCarga] = useState<CargaDosDias>({ estado: 'CARREGANDO' })
   const [plano, setPlano] = useState<null | {
     data: string; ehPeriodo: boolean; jaBaixado: boolean; precisaReprocessar: boolean
     totalOcorrencias: number; ocorrenciasBaixadas: number
@@ -884,9 +924,23 @@ function BaixaComplementos({ id, recarga, revisandoDia, onRevisar }: { id: strin
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  const carregar = () => fetch(`/api/empresas/${id}/estoque/vendas/complementos/baixa`)
-    .then((r) => r.json()).then((j) => setDias(j.dias ?? [])).catch(() => setDias([]))
-  useEffect(() => { carregar() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id, recarga])
+  /**
+   * ⛔ A FALHA NÃO VIRA LISTA VAZIA (o 3º silêncio, 20/10).
+   *
+   * Era `.catch(() => setDias([]))` — a rede caindo ficava **idêntica** a "não tem dia
+   * importado". A tela AFIRMAVA sobre a empresa a partir de uma falha de rede, que é a família
+   * do *"erro disfarçado de vazio"* desta casa. ⚠️ E o teto de tempo é o da casa
+   * (`fetchComTimeout`): sem ele, a lista de 12 s girava pra sempre sem dizer nada.
+   */
+  const carregar = async () => {
+    setCarga((c) => (c.estado === 'OK' ? c : { estado: 'CARREGANDO' }))
+    const r = await fetchComTimeout<{ dias?: DiaComp[] }>(`/api/empresas/${id}/estoque/vendas/complementos/baixa`)
+    // ⚠️ `erro: null` com `ok: false` = o componente desmontou (abort externo) — mostrar erro
+    // ali seria ruído numa tela que já não existe.
+    if (!r.ok) { if (r.erro) setCarga({ estado: 'FALHOU', frase: r.erro }); return }
+    setCarga({ estado: 'OK', dias: r.data?.dias ?? [] })
+  }
+  useEffect(() => { void carregar() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id, recarga])
 
   const abrir = async (data: string) => {
     setBusy(true); setErro(null); setRecibo(null)
@@ -917,20 +971,62 @@ function BaixaComplementos({ id, recarga, revisandoDia, onRevisar }: { id: strin
     } finally { setBusy(false) }
   }
 
+  /**
+   * ⛔ O CONFIRMAR GANHOU CATCH (o 2º silêncio, 20/10).
+   *
+   * Ele era `try { … } finally { setBusy(false) }` — **sem catch**. Rede caindo no meio da
+   * gravação lançava, o `finally` desligava o busy, e a tela voltava ao normal **sem dizer
+   * nada**: o dono não sabia se tinha baixado. ⚠️ E o teto é de **60 s**, como nos outros
+   * gestos que GRAVAM — desistir cedo de uma escrita que está acontecendo é pior que esperar.
+   */
   const confirmar = async () => {
     if (!plano) return
     setBusy(true); setErro(null)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/vendas/complementos/baixa`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: plano.data }),
-      })
-      const j = await r.json().catch(() => null)
-      if (!r.ok) { setErro(j?.erro ?? 'Não consegui baixar.'); return }
-      setRecibo(j); setPlano(null); await carregar()
+      const r = await fetchComTimeout<{ ocorrencias: number; itensBaixados: number; valorBaixado: number; pendentes: number; estornou: number }>(
+        `/api/empresas/${id}/estoque/vendas/complementos/baixa`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: plano.data }), timeoutMs: 60_000 },
+      )
+      if (!r.ok) { setErro(r.erro ?? 'Não consegui baixar.'); return }
+      setRecibo(r.data); setPlano(null); await carregar()
+    } catch (e) {
+      // ⛔ nunca mais silêncio: a frase de conexão só sai quando é rede DE VERDADE
+      setErro(fraseDoErro(e, { rede: 'Falha de conexão ao baixar. Tentar de novo?', falhou: 'Não consegui baixar.' }))
     } finally { setBusy(false) }
   }
 
-  if (dias === null || !dias.length) return null
+  /**
+   * ⭐⭐ ESTADO DE CARREGAMENTO PRÓPRIO, no lugar do `return null` (a peça 3, 20/10).
+   *
+   * ⚠️ **"sem dia importado" CONTINUA devolvendo `null`** de propósito: ali o card não existe
+   * mesmo, e um bloco vazio dizendo "nada aqui" seria móvel permanente. O que não pode é a
+   * tela SUMIR enquanto a lista carrega ou quando a carga falha.
+   */
+  if (carga.estado === 'CARREGANDO') {
+    return (
+      <Card><CardContent className="space-y-2 p-4">
+        <p className="text-sm font-semibold text-slate-900">Dias importados</p>
+        <p className="text-[11px] text-slate-400">lendo o estado de cada dia…</p>
+        <div className="space-y-1.5" aria-hidden>
+          {[0, 1, 2].map((i) => <div key={i} className="h-7 animate-pulse rounded bg-slate-100" />)}
+        </div>
+      </CardContent></Card>
+    )
+  }
+  if (carga.estado === 'FALHOU') {
+    return (
+      <Card><CardContent className="space-y-2 p-4">
+        <p className="text-sm font-semibold text-slate-900">Dias importados</p>
+        <p className="text-[13px] text-rose-600">{carga.frase}</p>
+        <button onClick={() => void carregar()}
+          className="inline-flex h-7 items-center rounded-lg border border-slate-300 px-2 text-[11px] font-medium text-slate-700 hover:bg-slate-50">
+          tentar de novo
+        </button>
+      </CardContent></Card>
+    )
+  }
+  const dias = carga.dias
+  if (!dias.length) return null
 
   return (
     <Card><CardContent className="space-y-3 p-4">
@@ -954,10 +1050,16 @@ function BaixaComplementos({ id, recarga, revisandoDia, onRevisar }: { id: strin
             <td className="px-3 py-0 text-[13px]">
               {/* ⛔ PERÍODO nunca baixa: ele existe pra montar a lista de sabores */}
               {d.ehPeriodo ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">período — não baixa</span>
-                : d.precisaReprocessar ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">precisa reprocessar</span>
-                  : d.baixado ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">baixado</span>
-                    : d.dispensado ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">não baixar — decisão</span>
-                      : <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">pendente — não baixou</span>}
+                /* ⛔⛔ "NÃO DEU PRA APURAR" é estado PRÓPRIO, e vem ANTES de tudo (20/10).
+                   Antes um erro na explosão da ficha caía num `.catch(() => false)` e o dia
+                   aparecia como **"pendente — não baixou"**: a tela AFIRMAVA que a baixa não
+                   rodou sobre um dia que podia estar baixado. *Ausência de MEDIÇÃO não é
+                   ausência de baixa* — a mesma régua do "sem contagem" do estoque. */
+                : !d.apurado ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600" title="a explosão da ficha deste dia falhou — não dá pra dizer se a baixa rodou">não consegui apurar</span>
+                  : d.precisaReprocessar ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">precisa reprocessar</span>
+                    : d.baixado ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">baixado</span>
+                      : d.dispensado ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">não baixar — decisão</span>
+                        : <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">pendente — não baixou</span>}
             </td>
             <td className="px-3 py-0 text-right">
               {!d.ehPeriodo && (

@@ -19,6 +19,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
+// ⭐ 20/10: o espião saiu daqui pra `lib/testing` quando o 2º N+1 apareceu (a lista de
+// dias de complementos). Copiá-lo seria a 2ª régua de "o que conta como ida ao banco".
+import { espiaoDeConsultas as espiao } from '@/lib/testing/espiao-de-consultas'
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { criarFicha, listFichas, getFicha } from '../fichas'
 import { criarOrdem, confirmarSeparacao, iniciarProducao } from '../ordens'
@@ -31,34 +34,6 @@ let companyId: string
 const INSUMOS = [{ nome: 'CARNE LOTE', custo: 40 }, { nome: 'PAO LOTE', custo: 2 }]
 let insumoIds: Record<string, string> = {}
 
-/**
- * ⭐ O ESPIÃO — conta as idas ao banco POR MODELO, delegando tudo pro Prisma real.
- *
- * ⚠️ É a única forma honesta de medir isto sem depender de tempo de parede: o que o N+1
- * custa é **round-trip**, e round-trip se conta, não se cronometra.
- */
-function espiao(real: PrismaClient) {
-  const chamadas: string[] = []
-  const proxy = new Proxy(real as unknown as Record<string, unknown>, {
-    get(alvo, modelo: string) {
-      const delegate = alvo[modelo]
-      if (typeof modelo !== 'string' || modelo.startsWith('$') || delegate == null || typeof delegate !== 'object') {
-        return delegate
-      }
-      return new Proxy(delegate as Record<string, unknown>, {
-        get(d, op: string) {
-          const fn = d[op]
-          if (typeof fn !== 'function') return fn
-          return (...args: unknown[]) => {
-            chamadas.push(`${modelo}.${op}`)
-            return (fn as (...a: unknown[]) => unknown).apply(d, args)
-          }
-        },
-      })
-    },
-  })
-  return { db: proxy as unknown as PrismaClient & Prisma.TransactionClient, chamadas }
-}
 
 async function criarFichaComPrefixo(n: number) {
   const f = await criarFicha({

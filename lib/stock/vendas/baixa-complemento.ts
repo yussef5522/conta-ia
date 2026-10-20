@@ -70,18 +70,44 @@ export interface PlanoComplementos {
 
 type Db = PrismaClient | Prisma.TransactionClient
 
-/** as BAIXA_VENDA ativas (não estornadas) de um dia de complementos */
-async function baixasAtivas(db: Db, companyId: string, importId: string) {
+interface BaixaAtiva { id: string; itemId: string; quantidade: number }
+
+/**
+ * ⭐⭐ As BAIXA_VENDA ativas (não estornadas) de N dias, em **2 consultas** — nunca 2 por dia.
+ *
+ * ⛔ Esta é a ÚNICA régua de *"o que está baixado e ainda vale"* (o estorno do estorna-e-refaz
+ * tira a linha de cena). `baixasAtivas` virou casca fina sobre ela: uma segunda implementação
+ * divergiria no 1º caso de borda, e aí a LISTA diria "pendente" sobre um dia que o PREVIEW
+ * mostra baixado — que é exatamente o tipo de contradição que esta tela já cometeu.
+ */
+async function baixasAtivasEmLote(
+  db: Db, companyId: string, importIds: string[],
+): Promise<Map<string, BaixaAtiva[]>> {
+  const out = new Map<string, BaixaAtiva[]>()
+  for (const i of importIds) out.set(i, [])
+  if (!importIds.length) return out
+
   const baixas = await db.stockMovement.findMany({
-    where: { companyId, receiptId: importId, tipo: TIPO_BAIXA },
-    select: { id: true, itemId: true, quantidade: true },
+    where: { companyId, receiptId: { in: importIds }, tipo: TIPO_BAIXA },
+    select: { id: true, itemId: true, quantidade: true, receiptId: true },
   })
-  if (!baixas.length) return []
+  if (!baixas.length) return out
+
   const estornadas = new Set((await db.stockMovement.findMany({
     where: { companyId, tipo: 'ESTORNO', estornoDeId: { in: baixas.map((b) => b.id) } },
     select: { estornoDeId: true },
   })).map((e) => e.estornoDeId))
-  return baixas.filter((b) => !estornadas.has(b.id))
+
+  for (const b of baixas) {
+    if (estornadas.has(b.id)) continue
+    out.get(b.receiptId ?? '')?.push({ id: b.id, itemId: b.itemId, quantidade: b.quantidade })
+  }
+  return out
+}
+
+/** casca fina sobre o lote — a régua mora num lugar só */
+async function baixasAtivas(db: Db, companyId: string, importId: string) {
+  return (await baixasAtivasEmLote(db, companyId, [importId])).get(importId) ?? []
 }
 
 /**
@@ -119,20 +145,26 @@ export async function preverBaixaDasLinhas(
   return planoDeLinhas(companyId, data, importId, linhas, db)
 }
 
-async function planoDeLinhas(
-  companyId: string, data: string, importId: string,
+type Ctx = Awaited<ReturnType<typeof montarCtx>>
+type MapaDoNome = Map<string, { alvoTipo: string; fichaId: string | null }>
+
+/**
+ * ⭐⭐ A EXPLOSÃO — PURA, e com **UM dono** (20/10/2026).
+ *
+ * O plano (que a tela de baixa desenha) e a LISTA DE DIAS (que só quer saber se o dia bate
+ * com o ledger) precisam do MESMO agregado. ⛔ Enquanto isso vivia dentro de `planoDeLinhas`,
+ * a lista tinha duas saídas: ou chamar o plano INTEIRO por dia (o N+1 de 12s que o dono
+ * cronometrou) ou escrever a 2ª cópia da explosão — e a 2ª cópia divergiria no 1º componente
+ * novo, com a tela dizendo "fecha" e a lista dizendo "pendente".
+ *
+ * ⚠️ Recebe o `ctx` por PARÂMETRO de propósito: é ele que custa consulta, e o lote monta um
+ * só pros N dias.
+ */
+function explodirLinhas(
   linhas: { nomeSuitable: string; ocorrencias: number }[],
-  db: PrismaClient,
-): Promise<PlanoComplementos> {
-  const ehPeriodo = ehLinhaDePeriodo(importId)
-
-  const maps = await db.stockVendaComplementoMap.findMany({
-    where: { companyId, nomeSuitable: { in: linhas.map((l) => l.nomeSuitable) } },
-    select: { nomeSuitable: true, alvoTipo: true, fichaId: true },
-  })
-  const porNome = new Map(maps.map((m) => [m.nomeSuitable, m]))
-
-  const ctx = await montarCtx(companyId, db as PrismaClient)
+  porNome: MapaDoNome,
+  ctx: Ctx,
+) {
   const agregado = new Map<string, number>()
   const fichasUsadas = new Set<string>()
   const complementos: PlanoComplementos['complementos'] = []
@@ -154,6 +186,34 @@ async function planoDeLinhas(
       baixa: [...acc.entries()].map(([itemId, qtd]) => ({ nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round2(qtd) })),
     })
   }
+  return { agregado, fichasUsadas: [...fichasUsadas], complementos, pendentes, ignorados }
+}
+
+/** a comparação motor × ledger de UM dia — a régua é a MESMA do plano e do juiz */
+function estadoDoDia(agregado: Map<string, number>, ativas: BaixaAtiva[]) {
+  const baixadoHoje = new Map<string, number>()
+  for (const b of ativas) baixadoHoje.set(b.itemId, round2((baixadoHoje.get(b.itemId) ?? 0) + Math.abs(b.quantidade)))
+  return {
+    jaBaixado: ativas.length > 0,
+    precisaReprocessar: ativas.length > 0 && !confrontarMotorComLedger(agregado, baixadoHoje).fecha,
+  }
+}
+
+async function planoDeLinhas(
+  companyId: string, data: string, importId: string,
+  linhas: { nomeSuitable: string; ocorrencias: number }[],
+  db: PrismaClient,
+): Promise<PlanoComplementos> {
+  const ehPeriodo = ehLinhaDePeriodo(importId)
+
+  const maps = await db.stockVendaComplementoMap.findMany({
+    where: { companyId, nomeSuitable: { in: linhas.map((l) => l.nomeSuitable) } },
+    select: { nomeSuitable: true, alvoTipo: true, fichaId: true },
+  })
+  const porNome = new Map(maps.map((m) => [m.nomeSuitable, m]))
+
+  const ctx = await montarCtx(companyId, db as PrismaClient)
+  const { agregado, fichasUsadas, complementos, pendentes, ignorados } = explodirLinhas(linhas, porNome, ctx)
 
   /**
    * ⭐⭐ O PREVIEW LÊ O MESMO ESTADO QUE A GRAVAÇÃO (19/10/2026) — e isto fechou **duas**
@@ -177,28 +237,26 @@ async function planoDeLinhas(
     saldoDepois: round2((estado.porItem.get(itemId)?.saldo ?? 0) - qtd),
   }))
 
-  const ativas = await baixasAtivas(db, companyId, importId)
-  const baixadoHoje = new Map<string, number>()
-  for (const b of ativas) baixadoHoje.set(b.itemId, round2((baixadoHoje.get(b.itemId) ?? 0) + Math.abs(b.quantidade)))
   /**
    * ⛔ A marca é DERIVADA (nunca gravada): compara o que ESTÁ baixado com o que as linhas de
    * hoje mandam baixar. Flag gravada envelhece e passa a mentir; esta se corrige sozinha.
    *
    * ⭐⭐ E A RÉGUA SAIU DAQUI (02/10/2026): quem responde *"o ledger bate com o motor?"* é
    * `confrontarMotorComLedger`, a MESMA função que o juiz noturno usa. Enquanto a comparação
-   * morava neste `some(...)`, o juiz teria que escrever a dele — e as duas divergiriam no 1º
-   * caso de borda, com a tela dizendo "fecha" e o e-mail dizendo "não fecha".
+   * morava num `some(...)` local, o juiz teria que escrever a dele — e as duas divergiriam no
+   * 1º caso de borda, com a tela dizendo "fecha" e o e-mail dizendo "não fecha".
+   * ⭐ 20/10: `estadoDoDia` é o mesmo que a LISTA DE DIAS consome, em lote.
    */
-  const precisaReprocessar =
-    ativas.length > 0 && !confrontarMotorComLedger(agregado, baixadoHoje).fecha
+  const { jaBaixado, precisaReprocessar } =
+    estadoDoDia(agregado, await baixasAtivas(db, companyId, importId))
 
   return {
     data, importId, ehPeriodo, complementos, pendentes, ignorados, agregada,
     totalOcorrencias: linhas.reduce((s, l) => s + l.ocorrencias, 0),
     ocorrenciasBaixadas: complementos.reduce((s, c) => s + c.ocorrencias, 0),
-    jaBaixado: ativas.length > 0,
+    jaBaixado,
     precisaReprocessar,
-    fichasUsadas: [...fichasUsadas],
+    fichasUsadas,
   }
 }
 
@@ -301,6 +359,23 @@ export interface DiaComplemento {
   /** quando o dia entrou (a idade que o aviso de 24h usa) */
   importadoEm: string
   precisaReprocessar: boolean
+  /**
+   * ⛔⛔ `false` = **não deu pra apurar o estado da baixa deste dia**. 20/10: antes isto caía
+   * num `.catch(() => false)` e o dia aparecia como **"pendente — não baixou"**, ou seja a
+   * tela AFIRMAVA que a baixa não rodou sobre um dia que podia estar baixado.
+   * ⭐ *Ausência de MEDIÇÃO não é ausência de baixa* — a mesma régua do "sem contagem" do
+   * estoque, e é por isso que o estado é PRÓPRIO em vez de colapsar em `baixado: false`.
+   *
+   * ⚠️⚠️ **MEDIDO em 20/10, e a honestidade importa: hoje ele é SEMPRE `true`.** A cadeia
+   * dentro do `try` (`explodirReceita` → `comoConsome` → `confrontarMotorComLedger`) tem
+   * **ZERO `throw`** — ela acumula AVISOS (`FICHA_SEM_COMPONENTE`, `DOSE_ZERO`,
+   * `PROFUNDIDADE`) em vez de lançar. ⭐ O campo e a rede ficam porque o CONTRATO é o certo e
+   * custam zero: no dia em que a porta da explosão ganhar um `throw` (ciclo, teto novo), o
+   * estado honesto já existe e a tela já o desenha. ⛔ O que NÃO se pode é chamá-lo de trava
+   * em funcionamento — *linha que não pode falhar é linha que finge ser trava* (a lição do
+   * `ehVizinho`, 17/10). Ele é **contrato preparado**, com a medição escrita.
+   */
+  apurado: boolean
 }
 
 /**
@@ -316,34 +391,69 @@ export async function listarDiasComplemento(
 ): Promise<DiaComplemento[]> {
   const [linhas, dispensados] = await Promise.all([
     db.stockVendaComplementoLinha.findMany({
-      where: { companyId }, select: { data: true, importId: true, ocorrencias: true, criadoEm: true },
+      where: { companyId },
+      select: { data: true, importId: true, nomeSuitable: true, ocorrencias: true, criadoEm: true },
     }),
     // ⭐ a régua ÚNICA da dispensa (05/09) — a tela, o aviso e o juiz leem a MESMA
     diasDispensados(db, companyId, 'COMPLEMENTO'),
   ])
-  const porDia = new Map<string, { importId: string; linhas: number; ocorrencias: number; importadoEm: Date }>()
+
+  interface Acc { importId: string; linhas: number; ocorrencias: number; importadoEm: Date; nomes: { nomeSuitable: string; ocorrencias: number }[] }
+  const porDia = new Map<string, Acc>()
   for (const l of linhas) {
     const k = l.data.toISOString().slice(0, 10)
-    const a = porDia.get(k) ?? { importId: l.importId, linhas: 0, ocorrencias: 0, importadoEm: l.criadoEm }
+    const a = porDia.get(k) ?? { importId: l.importId, linhas: 0, ocorrencias: 0, importadoEm: l.criadoEm, nomes: [] }
     a.linhas++; a.ocorrencias += l.ocorrencias
+    a.nomes.push({ nomeSuitable: l.nomeSuitable, ocorrencias: l.ocorrencias })
     // ⚠️ o mais ANTIGO manda: é quando o dia entrou, e é dele que sai a idade do aviso
     if (l.criadoEm < a.importadoEm) a.importadoEm = l.criadoEm
     porDia.set(k, a)
   }
+  const dias = [...porDia.entries()].sort((x, y) => y[0].localeCompare(x[0]))
+  if (!dias.length) return []
 
-  const out: DiaComplemento[] = []
-  for (const [data, a] of [...porDia.entries()].sort((x, y) => y[0].localeCompare(x[0]))) {
-    const plano = await montarPlanoComplementos(companyId, data, db).catch(() => null)
-    out.push({
+  /**
+   * ⭐⭐⭐ O LOTE (20/10/2026) — e a medição que o motivou: a lista levava **~12 s** com 42
+   * dias, porque montava um PLANO COMPLETO por dia (`montarPlanoComplementos` num `await`
+   * dentro do laço). Cada plano relia o mapa, remontava o `ctx` das fichas e varria saldo e
+   * custo do ledger inteiro — **42×** — pra a lista aproveitar DOIS booleanos.
+   *
+   * ⛔ As três leituras caras são **por EMPRESA, não por dia**, então saem do laço e são
+   * lidas UMA vez. E `estadoParaBaixa` (saldo/custo) **não entra**: ele serve ao `agregada` do
+   * plano, que esta lista não desenha. ⚠️ O guard mede **CONTAGEM DE CONSULTAS que não cresce
+   * com N** (o padrão de 28/09, das receitas) — nunca milissegundo, que passa ou falha pela
+   * máquina de quem roda.
+   */
+  const nomes = [...new Set(linhas.map((l) => l.nomeSuitable))]
+  const [maps, ctx, ativasPorImport] = await Promise.all([
+    db.stockVendaComplementoMap.findMany({
+      where: { companyId, nomeSuitable: { in: nomes } },
+      select: { nomeSuitable: true, alvoTipo: true, fichaId: true },
+    }),
+    montarCtx(companyId, db),
+    baixasAtivasEmLote(db, companyId, [...new Set(dias.map(([, a]) => a.importId))]),
+  ])
+  const porNome: MapaDoNome = new Map(maps.map((m) => [m.nomeSuitable, m]))
+
+  return dias.map(([data, a]) => {
+    let estado: { jaBaixado: boolean; precisaReprocessar: boolean } | null = null
+    try {
+      const { agregado } = explodirLinhas(a.nomes, porNome, ctx)
+      estado = estadoDoDia(agregado, ativasPorImport.get(a.importId) ?? [])
+    } catch {
+      // ⛔ não dá pra apurar: NUNCA cai em "pendente" (ver `apurado` acima)
+      estado = null
+    }
+    return {
       data, importId: a.importId, ehPeriodo: ehLinhaDePeriodo(a.importId),
       linhas: a.linhas, ocorrencias: a.ocorrencias,
-      baixado: plano?.jaBaixado ?? false,
-      precisaReprocessar: plano?.precisaReprocessar ?? false,
+      baixado: estado?.jaBaixado ?? false,
+      precisaReprocessar: estado?.precisaReprocessar ?? false,
+      apurado: estado !== null,
       dispensado: dispensados.has(data),
       importadoEm: a.importadoEm.toISOString(),
-    })
-  }
-  return out
+    }
+  })
 }
 
 /**
