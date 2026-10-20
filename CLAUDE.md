@@ -12431,8 +12431,14 @@ MEDIDO antes de eu propor evolução nenhuma.
    dono. *Invariante que falha no caso legítimo é pior que invariante nenhum* (REGRA 7).
 2. **TETO NA SOMA** — `capital + 2× o juros do mês` (o juros derivado do `openingBalance × taxa`,
    porque no POS amort-only a agenda traz `interest 0`). Estourar é **barrado com frase honesta** que
-   nomeia o teto e a saída. ⚠️ **A folga de 2× é escolha com número:** o caso real roda em **1,04×**
-   e o absurdo medido em **6,08×** — teto no nominal reprovaria o pagamento verdadeiro.
+   nomeia o teto e a saída. ⚠️ **A folga de 2× é escolha com número, e o denominador importa — é
+   `encargos ÷ juros do mês`:** `#23` 1,09× · `#24` 0,95× · **`#25` 1,04×** (2.669,79 ÷ 2.566,05)
+   contra **6,1×** no absurdo (15.614 ÷ 2.566,05, que é linha de outra parcela, não mora). Teto no
+   nominal reprovaria o pagamento verdadeiro. ⚠️⚠️ **E a 1ª redação desta nota dizia só *"1,04×"*
+   sem dizer de quê** — o que fez a minha própria sonda em prod medir outra razão (`pagamento ÷
+   payment` da agenda = **1,61×**, porque no POS amort-only o `payment` é só o capital) e eu
+   suspeitar de erro onde não havia. *Razão sem denominador escrito é número que o próximo leitor
+   calcula diferente.*
 3. **O "FALTAM Z" HONESTO NO PÓS-FIXADO** — `encargosSaoApurados` (`rateMonthly > 0 && interest <= 0`)
    faz o selo dizer ***"faltam R$ 128,50 de capital + encargos a apurar no pagamento"***. ⛔ Antes a
    tela prometia *"faltam R$ 128,50"* seco, e o banco ia levar ~2.670 — **número plausível e errado,
@@ -12522,6 +12528,33 @@ a cura entregue serve **ao painel e à próxima ocorrência** — e o *"em dois 
 resultado"* deixou de ser teoria: é o caminho que ele usou.
 
 **1005 arquivos · 13.568 verdes · 2 todo · TS 0 · migration NENHUMA · ledger intocado.**
+
+### A PROVA EM PROD, DEPOIS DO DEPLOY (só leitura — vínculos 56→56 · tx 10205→10205)
+
+```
+⭐ A PARCELA 25 — o resultado que o dono vê
+   PAID · conciliada em 16/10 · capital R$ 4.385,96 · encargos R$ 2.669,79
+   2 pagamentos: 16/10 4.257,46 "AMORTIZACAO CONTRATO-C61022527"
+                 16/10 2.798,29 "LIQUIDACAO  CONTRATO-C61022527"
+   ⛔ Σ das mordidas 7.055,75 == paidTotal → ⭐ FECHA   ·   saldo devedor R$ 144.736,96
+   selo "paga em 2 pagamentos" · oferece marcar paga: NÃO ⭐
+
+⭐ UM 3º PEDAÇO AGORA É BARRADO (o furo 1), com a frase que ENSINA:
+   JA_QUITADA — "…já está quitada por 2 pagamento(s) somando R$ 7.055,75. Somar outro
+   pedaço aqui viraria encargo que ninguém explica — se algum vínculo está errado,
+   desfaça primeiro."
+
+⭐ O TETO com os números reais: juros esperado 2.566,05 · teto 9.518,06 (capital + 2×)
+   o caso REAL 7.055,75 → PASSA, usando 74% do teto
+
+⭐⭐ A EXCEÇÃO, com a lista REAL de contratos (10 cadastrados): 2 de 2 RECONHECIDAS
+```
+
+**deploy 4/4 (`QsodTvGqiVC-15wm95ek8`, SHA `6fbc950b`) · Δ chunks +0 KB · 3 builds guardados.**
+⚠️ **E prod estava no commit de ONTEM** (`878ccfda`) — confirmado no PASSO 1: **nenhum deploy havia
+acontecido** depois da sessão que caiu, zero processo órfão (`tsx`/`vitest`), swap em 81 MB (abaixo
+do N1) e 2.974 MB disponíveis (acima do gate de 2.200).
+
 
 ### 📋 O RELATÓRIO DE JULHO (só leitura, pedido do dono — **JULHO NÃO FOI TOCADO**)
 
