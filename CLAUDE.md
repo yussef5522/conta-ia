@@ -12835,6 +12835,106 @@ do *"razão sem denominador escrito"*.
 
 **1013 arquivos · 13.687 verdes · 2 todo · TS 0 · deploy 4/4 · Δ bundle +0 KB.**
 
+## ⚡⭐⭐⭐ O N+1 POR FICHA DO `montarCtx` MORREU — 4 CONSULTAS FIXAS (21/10/2026)
+
+**O irmão pré-existente do N+1 da lista** (que morreu em 20/10). ⛔ **Zero migration · zero escrita
+em dado · ledger intocado · Lei C0 (Produção/Hoje/Radar intocadas) · blue-green 4/4.**
+
+### ⛔⛔ O RETRATO — ele não cresce com os DIAS, cresce com o CARDÁPIO
+
+`montarCtx` fazia **2 consultas POR FICHA** (`findFirst` da versão atual + `findMany` dos
+componentes dela). Medido em prod: **196 fichas ativas → 394 consultas / 261 ms**, e isso roda em
+**TODA baixa de venda**, em todo plano de complementos, no hub do Cardápio, na tela da margem e no
+montador. ⚠️ Na lista de dias ele era **392 de 399 consultas (98%)** — a parte que sobrou depois da
+cura de 20/10, e a razão de ela ter fechado em 408 ms em vez de <300.
+
+⭐ **A régua é a de 28/09:** *o que o N+1 custa é round-trip, e round-trip se **CONTA**, nunca se
+cronometra* — teste em ms passa ou falha pela máquina de quem roda.
+
+### ⭐⭐ A CURA — 4 fixas, e a ORDEM foi MEDIDA, não suposta
+
+Três consultas em lote (fichas · versões `IN` · componentes `IN`) + os itens = **4 fixas**;
+**2 quando o cardápio está vazio**. **Nenhuma linha de LÓGICA mudou.**
+
+- ⛔⛔ **`IN` + filtro de par em memória, nunca um `OR` de 196 cláusulas `(fichaId, versao)`:** o
+  `IN` usa o índice e não gera SQL gigante. O filtro `v.versao !== versaoAtual` roda sobre as
+  versões já carregadas.
+- ⛔⛔ **A ORDEM DAS CHAVES do Map é pré-inserida na ordem de `fichas`**, e a **forma do objeto do
+  componente é a MESMA do `select` antigo** (`itemId`, `qtdPlanejada`, nessa ordem) — ***a ordem em
+  que o `acc` da explosão é preenchido é o que serializa o plano***, então chave a mais ou ordem
+  diferente mudaria o byte.
+- ⚠️ **As bordas preservadas:** ficha **sem versão atual** fica com `[]` (o `v ? … : []` antigo) e
+  ficha com **duas versões do mesmo número** → a primeira vence, igual ao `findFirst`.
+
+### ⭐⭐⭐ A LEI DA EQUIVALÊNCIA — e a forma de provar é o que a torna forte
+
+**O "ANTIGO" é o `baixa-venda.ts` QUE ESTAVA EM PROD** (git-tracked, intocado no servidor); o
+"NOVO" é **o arquivo real que subiu**, copiado pra `lib/stock/vendas/_bv-novo.ts` (untracked, morto
+com `saferm` na mesma linha). ⛔ **Nenhuma cópia escrita à mão:** se eu reescrevesse o laço na
+sonda, a prova seria sobre o **meu** laço, não sobre o que estava rodando. E o `explodir` usado é
+**UM só** — a única variável do experimento é o CTX.
+
+```
+⭐ O CTX           196 × 196 fichas · 401 × 401 itens
+                   serializado IDÊNTICO ✓ 109.263 bytes · componentes idênticos 196 de 196
+                   (tempo: antigo 261 ms · novo 24 ms)
+⭐ COMPLEMENTOS    45 dias · 2.021 explosões · ⛔ plano idêntico byte a byte em 45 de 45
+⭐ VENDAS          266 linhas reais · 82 produtos distintos · 5 dias · 73 itens no plano
+                   plano serializado IDÊNTICO ✓
+⭐⭐ ZERO BYTE DIFERENTE
+```
+⚠️ **O que a prova NÃO compara, e está dito:** o plano **completo** (com `custoMedio`/saldo) entre
+dois runs **driftaria** — a cozinha opera entre as leituras. O que se prova byte a byte é a
+**QUANTIDADE por item**, que é o que vira movimento no ledger.
+
+### ⭐ A RÉGUA (contagem é LEI, ms é régua) — medida nos DOIS motores no mesmo run
+
+```
+ANTIGO   45 dias ·  399 consultas · 447 ms   [fichaVersao.findFirst 196 · fichaComponente.findMany 196 · …]
+NOVO     45 dias ·    9 consultas · 140 ms   [movement 2 · complementoLinha 1 · diaDispensado 1 · complementoMap 1 · …]
+⭐ consultas 399 → 9 (−390, 44,3×) · tempo 447 → 140 ms (3,2×) · os MESMOS 45 dias
+```
+⭐ **Em prod, depois do deploy: 45 dias em 174 ms.**
+
+### ⚠️ REGRA 11 — 5 DEFEITOS REPOSTOS, 5 VERMELHOS (baseline 0 · restaurado 0)
+
+o **laço por ficha de volta** (**3**) · a **ordem dos componentes** trocada por `orderBy` (**1**) ·
+o **filtro da versão atual caindo**, versão antiga vazando (**4**) · a **pré-inserção caindo**, a
+ordem das CHAVES mudando (**1**) · **o espião CEGO** (**4**).
+
+⛔⛔ **O último é a trava do instrumento:** com o espião devolvendo nada, **`0 === 0`, `0 < 9` e
+`{} toEqual {}` satisfazem TODA asserção de contagem** — ***instrumento cego aprova qualquer
+coisa***. Por isso `lib/testing/espiao-de-consultas.ts` é **dono único** do que conta como ida ao
+banco (copiá-lo seria a 2ª régua) e o guard tem **auto-teste** dele.
+
+**O GUARD** (`montar-ctx-em-lote.integration.test.ts`, 10 testes contra banco): a contagem **não
+cresce com N** (3 fichas × 9 fichas, **mesma** contagem) · nenhum modelo é chamado uma vez por
+ficha · a contagem é **exatamente 4** · o Ctx de 9 fichas é **idêntico ao do laço** (que vive
+`montarCtxPeloLaco` ali, declarado como a **referência histórica**, só pra comparar) · e o
+**CONSUMIDOR concorda** (explodir pelos dois grafos dá o mesmo `acc`).
+
+### ⚠️ TRÊS ERROS DE SONDA MEUS, e os três são de método
+
+1. **import RELATIVO quebra ao mudar de pasta** — `baixa-venda.ts` importa `./parse-suitable`, e
+   copiá-lo pra `scripts/` deu `MODULE_NOT_FOUND`. A cópia tem que morar **na mesma pasta**.
+2. **`import prisma from '@/lib/db'`** — é **`export const prisma`**, named. Deu
+   `Cannot read properties of undefined` com cara de banco fora do ar. ***Nome de export se LÊ do
+   repo, nunca se chuta*** (a regra de 18/10, por minha mão).
+3. **o `catch` da sonda imprimia `e.message` cru** — erro de conexão do Prisma **vaza a URI com a
+   senha** (a cicatriz de 07/10). Silenciado: a mensagem só sai se não contiver `://`/`postgres`.
+
+⚠️ E o `pg_dump` roda **fora do repo** (`/root`), com `stdio` silenciado, sem o `?schema=public` na
+URI, e **o tamanho é conferido** — *dump só conta depois de ver o tamanho do arquivo*.
+
+**1015 arquivos · 13.715 verdes · 2 todo · TS 0 · migration NENHUMA ·
+`pg_dump pre-montarctx-lote-20261021-011712.dump` (10.010.682 bytes, tamanho conferido) ·
+deploy 4/4 (`xOyP7ROGUES4jeeEjJvG2`, SHA `509b601d`) · Lei C0: Produção/Hoje/Radar 200 nos dois
+viewports · ZERO ESCRITA (movimentos 9.565→9.565 · linhas 3.897→3.897 · comp 3.822→3.822).**
+
+📋 **ACHADO À PARTE, NÃO ATACADO:** o `montarCtx` é chamado **uma vez por chamador** — então a
+cura vale pra todos de graça. O que sobra na lista de dias são **9 consultas fixas**, nenhuma
+delas por ficha ou por dia.
+
 ## 🏭⭐⭐⭐ EQUIPAMENTO É **DESTINO**, NÃO CATEGORIA — MÁQUINA NÃO É ESTOQUE (20-21/10/2026)
 
 **O caso real:** a NF da **BOLEADORA BOL600** (1 UN · R$ 21.000, emissão 14/10) parada no funil, porque
