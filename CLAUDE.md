@@ -12835,6 +12835,147 @@ do *"razão sem denominador escrito"*.
 
 **1013 arquivos · 13.687 verdes · 2 todo · TS 0 · deploy 4/4 · Δ bundle +0 KB.**
 
+## 🏭⭐⭐⭐ EQUIPAMENTO É **DESTINO**, NÃO CATEGORIA — MÁQUINA NÃO É ESTOQUE (20-21/10/2026)
+
+**O caso real:** a NF da **BOLEADORA BOL600** (1 UN · R$ 21.000, emissão 14/10) parada no funil, porque
+ele só oferecia **categorias de ESTOQUE** — e equipamento classificado ali **nasce com posição** e
+polui custo médio e Real vs Teórico.
+⛔ **Zero escrita em dado existente · a correção do legado é decisão à parte · Lei C0 intocada.**
+
+### ⭐⭐⭐ A DECISÃO QUE SEGURA O SPRINT: **DESTINO, NÃO CategoriaEstoque**
+
+O brief pedia *"categoria nova no funil"* com o guard *"essa categoria NUNCA gera posição"*. ⛔ **Dentro
+da enum, esse guard é um `if` que os ~10 leitores de estoque teriam que aprender a respeitar — e o
+primeiro que esquecesse criaria posição de uma máquina, EM SILÊNCIO.**
+
+⭐ Como **DESTINO**, o guard vira **impossibilidade por construção** (REGRA 5): as listas são partidas
+**no topo da transação** (`paraEstoque` / `paraEquipamento`) e o laço que cria item/movimento **só vê a
+de ESTOQUE**. ***Não existe `if` pra alguém remover num refactor.*** `destinoDaLinha` é o dono único, e
+`geraPosicaoDeEstoque` é o **NOME da regra**, explicitamente **não** a trava.
+
+⛔⛔ **E O DESTINO É FATO REGISTRADO, NUNCA INFERIDO DE `itemId == null`:** a linha de equipamento **TEM
+uma linha em `stock_equipamento` apontando pra ela** (`nfeItemId`). Inferir da ausência é a doença do
+`?? 'CAIXA'` que sumiu com o CASPER (20/09) e do `'categoryId' in t` (26/08) — ***default que resolve é
+default que esconde.***
+
+### ⭐⭐ A RÉGUA ÚNICA — E ELA EXISTE PRA O JUIZ NÃO GRITAR TODA NOITE
+
+`linhasDeEquipamento` é consultada **UMA vez** e lida pelo **E2** (conferência × movimentos) e pelo
+**E16** (Σ ENTRADA_NF × Σ vProd). ⚠️ Sem ela, uma linha **conferida e sem movimento** — que é o estado
+CERTO de um equipamento — deixaria a nota **vermelha toda noite sobre um recebimento correto**, e
+*alarme falso repetido é como um alarme morre*.
+
+### ⭐ O LADO FINANCEIRO — O `dreGroup` É A PARTE INVISÍVEL DA DECISÃO
+
+Categoria **"Equipamentos (investimento)"** com `dreGroup: INVESTIMENTOS` (**NÃO-DRE**: no Lucro Real
+imobilizado **não é despesa do mês**), criada **pelo SISTEMA**. ⛔ Categoria feita à mão nasceria com o
+grupo errado **em silêncio** e a máquina comeria o lucro do mês.
+⚠️ **E só quando a nota INTEIRA é equipamento:** nota mista (boleadora + caixas) ficaria sem a parte
+que **É** despesa real.
+📋 **DEPRECIAÇÃO fica REGISTRADA como fase 2 — NÃO construída** (ordem do brief).
+
+### ⛔⛔ A MIGRATION: CREATE-only, 6 CHECKs, e a REGRA 13 **MORDE DE VERDADE AQUI**
+
+`stock_equipamento` + `stock_supplier_equipamento` (porta única, aprendizado `BOLEADORA → equipamento`
+uma vez só), **zero ALTER** (o guard de CI reprova `ALTER` em migration `stock_`).
+
+⚠️⚠️ **Ao contrário da prova da estrela (12/10), em que o furo era TEÓRICO** (as colunas comparadas eram
+`NOT NULL`): aqui **`supplierCnpj` e `cProd` são NULLABLE comparados por CONTEÚDO** — a forma EXATA do
+`chk_aviso_acao_completa` (04/10), em que `length(trim(NULL)) > 0` avalia pra **NULL** e ***CHECK com
+expressão NULL PASSA***. Por isso o `IS NULL` vem **explícito e PRIMEIRO**, e o `btrim` leva a **classe
+escrita por extenso** (` \t\n\r\f\v`) — *o `btrim` do Postgres apara só o ESPAÇO por default* (medido
+em 14/10), e **caractere que não está na lista é caractere que passa**.
+
+**PROVA REGRA 13 em prod** (`scripts/prova-check-equipamento.ts`, `$executeRawUnsafe` **de propósito** —
+*a prova é do BANCO, ela não pode passar por nenhuma validação nossa*):
+```
+16 de 16 INSERTs tortos recusados pela constraint CERTA
+   (nome vazio · só espaço · só TAB · só NEWLINE · ⭐ CNPJ só ESPAÇO e só TAB · cProd só espaço · qtd 0 · valor < 0 …)
+ 8 de 8 legítimos aceitos — ⭐ CNPJ NULL (equipamento sem nota) · valor ZERO (bonificação) ·
+   DOIS com nfeItemId NULL (o unique tolera NULL) · cProd NULL (DANFE digitado)
+ 2 uniques mordem (23505): (companyId,nfeItemId) e (companyId,supplierCnpj,xProdNormalizado)
+ CONTRAFACTUAL medido no banco: a forma INGÊNUA sobre NULL → NULL ⇒ PASSARIA
+   a nossa → true ⇒ ACEITA (NULL é legítimo)   ·   '   ' ingênua → PASSARIA · nossa → RECUSA
+   TAB pelo trim SIMPLES → PASSARIA · pelo btrim com a CLASSE → RECUSA
+ is_nullable: supplierCnpj YES · cProd YES (⭐ o furo era REAL)   ·   escrita líquida ZERO
+```
+
+### ⭐⭐⭐ O ITEM 4 — O CONTRAFACTUAL É O CORAÇÃO DO TESTE
+
+`equipamento-nao-gera-posicao.integration.test.ts` (10 testes, contra banco). ⛔ Um teste que só
+afirmasse *"a boleadora não virou item"* fica **VERDE DE GRAÇA** no dia em que alguém trocar o destino
+por uma categoria de estoque — então o **MESMO arquivo** manda a MESMA nota pelo **caminho ANTIGO** e
+**exige a posição NASCER**:
+```
+pelo DESTINO     movimentos 0 · itens 0 · valorEntrada 0 · equipamentos 1 · valorEquipamentos 21.000
+                 Posição VAZIA · stockItem.count 0 · a linha fica na conferência com itemId NULL
+⛔ o VERMELHO DO DEFEITO (a mesma nota como ESTOQUE):
+                 movimentos 1 · itensCadastrados 1 · valorEntrada 21.000
+                 a máquina na Posição com saldo 1 e custo médio 21.000 · cadastro de equipamentos VAZIO
+```
+⭐ **E a Posição é provada pela `listPosicao`, que parte do CATÁLOGO** (11/09) — *item que nunca nasceu
+não tem como aparecer nem com saldo zero*, o que a torna prova mais forte de *"não poluiu a prateleira"*
+que o `saldosDaEmpresa`.
+
+⚠️ **A fixture tem UMA duplicata de propósito, com o motivo escrito:** `confirmarConferencia` **RECUSA**
+nota sem `stockNfeDup` pedindo o vencimento (a porta que fechou a fábrica das 21 notas invisíveis,
+13/09) — sem ela os 10 testes falhariam **por um motivo que não tem nada a ver com equipamento**,
+escondendo o que o arquivo existe pra medir.
+
+⚠️ **E o teste do 2º confirm tem NOME HONESTO** (*"a nota NÃO se confirma duas vezes"*): quem barra é o
+guard de **RE-CONFERÊNCIA**, não o upsert — chamá-lo de idempotência afirmaria algo que o fluxo **nem
+alcança**.
+
+### ⚠️⚠️ REGRA 11 — 6 DEFEITOS REPOSTOS, 6 VERMELHOS (baseline 0 · restaurado 0)
+
+a lista partida CAINDO (o laço de estoque volta a ver a linha de equipamento) **7** · `destinoDaLinha`
+ignorando o destino **7** · o bloco do cadastro deixando de gravar **5** · o equipamento gravando SEM
+`conferenceId` (a régua única perde o vínculo do E2) **2** · a recusa que ENSINA removida (linha de
+estoque sem item somindo em silêncio) **1** · o aprendizado do destino caindo **1**.
+
+⚠️ A sonda guarda backup pela **chave do caminho inteiro**, **ASSERTA por md5 que a substituição
+aplicou** e **conta suíte que NÃO COLETOU como vermelho** — as três cicatrizes de sonda desta casa.
+
+### A PROVA EM PROD — 2 VIEWPORTS (REGRA 12) · ZERO ESCRITA
+
+```
+REGRA 12  celular 359ms · desktop 43ms · chunk DESTA tela 8 KB
+  ⭐ 13/13 peças nos DOIS · ⛔ hex de cor cravado: 0
+  ⭐ os 21 tokens (lidos de lib/compras/tokens.ts) nos DOIS mapas do CSS servido (2.709 regras)
+LEI C0    Produção 200 · Hoje ao vivo 200 · Radar 200 — nos dois viewports, INTOCADAS
+A ROTA    GET /estoque/equipamentos → 200 · quantos 0 · totalInvestido 0 (o vazio DIZ como entra)
+A RÉGUA   linhasDeEquipamento → 0 (E2/E16 calados, correto: nada conferido ainda)
+O CASO    linha 301 · BOLEADORA BOL600 · 1 UN × 21.000 · nota AGUARDANDO_MERCADORIA · vNF 21.489,62
+          ⭐ virou item de estoque? NÃO   ·   no cadastro? NÃO — espera a conferência do dono
+ESCRITA   equipamentos 0→0 · movimentos 9.541→9.541 · itens 401→401  ⭐ ZERO
+```
+
+### 📋 ITEM 3 — A CAÇA DO LEGADO (só leitura) · **NENHUM equipamento vivo no estoque**
+
+```
+posição 238 linhas · R$ 240.877,66
+por NOME de máquina: 1 → ⚠️ JAPONA NYLON PARA CÂMARA FRIA (2 UN · R$ 580,64) — é EPI, NÃO é equipamento
+pela FORMA (UN · saldo ≤ 5 · custo ≥ 300): 1 → ⚠️ "material de escritorio" · 1 UN · R$ 417,40 · USO_INTERNO
+os dois com ZERO saída desde que entraram   ·   0,41% da posição (o real: 0,17%)
+```
+⚠️⚠️ **E A MINHA PRIMEIRA RÉGUA DEU 7 FALSOS POSITIVOS:** eu escrevi `fatiad` pensando em *fatiadora* e
+ele casou **"FATIADO"** — presunto, queijo, cebola, cogumelo, azeitona. ***Régua por nome sem borda de
+palavra transforma insumo em máquina***, e 7 alarmes falsos no dia 1 é como a caça perde a credibilidade.
+Corrigida pra `fatiador|fatiadeir`, sobraram 2 — e **um deles (a JAPONA) ainda é falso** (casou *"câmara
+fria"*, que é o lugar onde a roupa é usada, não uma máquina). ⛔ **NADA foi alterado** — a correção do
+legado é decisão do dono, e o único candidato de verdade é o `material de escritorio` genérico, que **só
+ele sabe o que é**.
+
+**1014 arquivos · 13.705 verdes · 2 todo · TS 0 · migration CREATE-only (2 CREATE TABLE · 6 CHECKs ·
+2 uniques · 4 índices, zero ALTER) · `pg_dump pre-equipamento-20261021-003526.dump` (9.999.400 bytes,
+tamanho conferido) · deploy 4/4 (`wnCBAaXlgfHmZHBAWCuvo`, SHA `41b1543a`) · Δ chunks +20 KB.**
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** **conferir a NF da BOLEADORA pela tela**, escolhendo
+*"🏭 Equipamento (investimento)"* no funil — a prova mostra que ela **não é item de estoque** e que o
+cadastro **espera a conferência**. Depois: abrir `/estoque/equipamentos` no celular e no notebook, nos
+dois temas (a prova mede o que prod serve — 13 peças, 21 tokens nos dois mapas, zero hex; **o olho é
+dele**; screenshot indisponível, extensão do Chrome desligada). ⚠️ E decidir o `material de escritorio`.
+
 ## ⛔⛔⛔ PARCELA PAGA EM PEDAÇOS — 2 LINHAS DO BANCO → 1 PARCELA (19/10/2026)
 
 **O CASO REAL (16/10, Sicredi, C41022227-1):** o banco debitou a parcela **25** em DUAS linhas por
