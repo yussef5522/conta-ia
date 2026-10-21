@@ -50,14 +50,63 @@ export interface Ctx {
   nomeItem: Map<string, string>
 }
 
+/**
+ * ⭐⭐⭐ CONTAGEM FIXA DE CONSULTAS — 4, qualquer que seja o tamanho do cardápio (21/10/2026).
+ *
+ * ⛔ **Ele fazia 2 consultas POR FICHA** (`findFirst` da versão atual + `findMany` dos
+ * componentes dela). Medido em prod: **196 fichas ativas → 394 consultas em 258 ms**, e isso
+ * roda em TODA baixa de venda, em todo plano de complementos, no hub do Cardápio, na tela da
+ * margem e no montador. ⚠️ Ele **não** cresce com os dias (o N+1 da lista morreu em 20/10) —
+ * **cresce com o CARDÁPIO**, que é o que mais cresce neste módulo.
+ *
+ * ⭐ A régua é a de 28/09: **o que o N+1 custa é round-trip, e round-trip se CONTA** — por isso
+ * o guard mede CONTAGEM (`montar-ctx-em-lote.integration.test.ts`), nunca milissegundo: teste em
+ * ms passa ou falha pela máquina de quem roda.
+ *
+ * ⚠️ **A ORDEM foi MEDIDA antes de trocar, não suposta:** o lote devolve os componentes de
+ * **196 de 196 fichas idênticos byte a byte** ao laço — então nenhum consumidor muda, nem na
+ * ordem em que o `acc` da explosão é preenchido (que é o que serializa o plano).
+ *
+ * ⚠️ `versaoId: { in: ... }` em vez de um `OR` de 196 pares `(fichaId, versao)`: o IN usa índice
+ * e não gera SQL gigante — o par exato é filtrado em memória, onde é de graça.
+ *
+ * ⚠️ **Nenhuma linha de LÓGICA mudou.** Ficha sem versão atual continua com `[]` (era o
+ * `v ? … : []`) e, havendo duas versões com o mesmo número, **a primeira ganha** — o mesmo que
+ * o `findFirst` que isto substitui fazia.
+ */
 export async function montarCtx(companyId: string, db: PrismaClient): Promise<Ctx> {
   const fichas = await db.stockFicha.findMany({ where: { companyId, ativo: true }, select: { id: true, tipoProduto: true, itemProduzidoId: true, versaoAtual: true } })
   const componentesByFicha = new Map<string, { itemId: string; qtdPlanejada: number }[]>()
-  for (const f of fichas) {
-    const v = await db.stockFichaVersao.findFirst({ where: { companyId, fichaId: f.id, versao: f.versaoAtual }, select: { id: true } })
-    const comps = v ? await db.stockFichaComponente.findMany({ where: { companyId, versaoId: v.id }, select: { itemId: true, qtdPlanejada: true } }) : []
-    componentesByFicha.set(f.id, comps)
+  // ⚠️ pré-inserido na ordem de `fichas` — é o que mantém a ordem das CHAVES do Map igual à do laço
+  for (const f of fichas) componentesByFicha.set(f.id, [])
+
+  if (fichas.length) {
+    const versaoAtualDaFicha = new Map(fichas.map((f) => [f.id, f.versaoAtual]))
+    const versoes = await db.stockFichaVersao.findMany({
+      where: { companyId, fichaId: { in: fichas.map((f) => f.id) } },
+      select: { id: true, fichaId: true, versao: true },
+    })
+    const versaoIdDaFicha = new Map<string, string>()
+    for (const v of versoes) {
+      if (v.versao !== versaoAtualDaFicha.get(v.fichaId)) continue
+      if (!versaoIdDaFicha.has(v.fichaId)) versaoIdDaFicha.set(v.fichaId, v.id)
+    }
+    if (versaoIdDaFicha.size) {
+      const fichaDaVersao = new Map([...versaoIdDaFicha].map(([fichaId, versaoId]) => [versaoId, fichaId]))
+      const comps = await db.stockFichaComponente.findMany({
+        where: { companyId, versaoId: { in: [...versaoIdDaFicha.values()] } },
+        select: { versaoId: true, itemId: true, qtdPlanejada: true },
+      })
+      for (const c of comps) {
+        const fichaId = fichaDaVersao.get(c.versaoId)
+        if (!fichaId) continue
+        // ⚠️ a forma do objeto é a MESMA do `select` antigo (itemId, qtdPlanejada, nessa ordem):
+        // o plano serializado é comparado byte a byte, e chave a mais mudaria o byte.
+        componentesByFicha.get(fichaId)!.push({ itemId: c.itemId, qtdPlanejada: c.qtdPlanejada })
+      }
+    }
   }
+
   const itens = await db.stockItem.findMany({ where: { companyId }, select: { id: true, nome: true } })
   return {
     componentesByFicha,
