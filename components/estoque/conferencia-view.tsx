@@ -14,10 +14,23 @@ import { EditorParcelas, type ParcelaEditavel } from './editor-parcelas'
 import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, aceitaFracao } from '@/lib/stock/quantidade'
 import { filtrarPorBusca } from '@/lib/busca-texto'
 import { avaliarUnidadeDeEntrada, normalizarUnidade } from '@/lib/stock/unidade-de-entrada'
+import type { CategoriaEstoque } from '@/lib/stock/sugestoes'
+import {
+  OPCOES_DO_FUNIL, VALOR_EQUIPAMENTO_NO_FUNIL, escolhaDoFunil, ehEquipamento,
+  DESTINO_EQUIPAMENTO, type DestinoDaLinha,
+} from '@/lib/stock/destino-da-linha'
 
 export type Unidade = 'KG' | 'UN' | 'LT'
-export type Categoria = 'MATERIA_PRIMA' | 'REVENDA' | 'EMBALAGEM' | 'LIMPEZA' | 'USO_INTERNO'
-const CAT_LABEL: Record<Categoria, string> = { MATERIA_PRIMA: 'Matéria-prima', REVENDA: 'Revenda', EMBALAGEM: 'Embalagem', LIMPEZA: 'Limpeza', USO_INTERNO: 'Uso interno' }
+/**
+ * ⭐⭐ A CATEGORIA E O FUNIL VÊM DO DONO ÚNICO (`destino-da-linha.ts`), não de uma lista
+ * escrita aqui (20/10 — REGRA 4).
+ *
+ * ⛔ A lista desta tela era uma SEGUNDA cópia do vocabulário de categoria de estoque, e
+ * **ela é exatamente o lugar onde "🏭 Equipamento" ia nascer como se fosse uma categoria**.
+ * Com o funil vindo da porta única, `EQUIPAMENTO` entra como **DESTINO** e nenhum leitor
+ * de estoque precisa aprender a excluí-la.
+ */
+export type Categoria = CategoriaEstoque
 const MOTIVOS = ['FALTOU', 'SOBROU', 'AVARIA', 'RECUSADO'] as const
 type Motivo = (typeof MOTIVOS)[number]
 
@@ -28,6 +41,8 @@ export interface ConfItem {
   correcaoAnterior?: { unidadeNota: string; unidadeEntrada: string; em: string } | null
   /** ⭐ o que o sistema sugere sobre a unidade, com o motivo — sugere, não decide */
   sugestaoDeUnidade?: string | null
+  /** ⭐ destino APRENDIDO deste produto (ausente = ESTOQUE). Ver `destino-da-linha.ts`. */
+  destino?: DestinoDaLinha | null
   sugestao: { nome: string; unidade: Unidade | null; categoria: Categoria }
   uTrib?: string; fatorNota?: number | null // dupla unidade da NF-e (o fator vem da nota)
 }
@@ -64,6 +79,16 @@ export interface MapeadoSel { itemId: string; nome: string; unidadeControle: Uni
 
 interface Estado {
   mapeado: MapeadoSel | null
+  /**
+   * ⭐⭐ O DESTINO DA LINHA — `EQUIPAMENTO` significa *"isto NÃO é estoque"*.
+   *
+   * ⛔ Ele é campo PRÓPRIO, ao lado do `mapeado`, nunca um valor de categoria: a pergunta
+   * *"que item de estoque é este?"* e a pergunta *"isto é estoque?"* são diferentes, e
+   * colapsá-las obrigaria todo leitor de estoque a aprender a excluir um caso.
+   */
+  destino?: DestinoDaLinha | null
+  /** ⭐ o nome do EQUIPAMENTO como o dono escreveu (só existe quando o destino é equipamento) */
+  equipamentoNome?: string | null
   qtdRecebida: number
   /** ⭐ 05/09: a unidade que o dono conferiu, quando a nota veio errada (null = a da nota) */
   unidadeEntrada?: string | null
@@ -104,7 +129,8 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
   const [fornCadastrado, setFornCadastrado] = useState(data.fornecedor.jaCadastrado)
   const [estado, setEstado] = useState<Record<string, Estado>>(() => {
     const init: Record<string, Estado> = {}
-    for (const it of data.itens) init[it.nfeItemId] = { mapeado: it.mapeado ? { ...it.mapeado, novo: false } : null, qtdRecebida: it.qCom * (it.mapeado?.fatorConversao ?? 1), motivo: null, fotoBase64: null }
+    // ⭐ o destino aprendido entra PRÉ-PREENCHIDO (item 2 do brief) — e o dono pode trocar
+    for (const it of data.itens) init[it.nfeItemId] = { mapeado: it.mapeado ? { ...it.mapeado, novo: false } : null, destino: it.destino ?? null, qtdRecebida: it.qCom * (it.mapeado?.fatorConversao ?? 1), motivo: null, fotoBase64: null }
     return init
   })
   const [sheetItem, setSheetItem] = useState<ConfItem | null>(null)
@@ -142,7 +168,19 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
    */
   const [efeitoNoItem, setEfeitoNoItem] = useState<Record<string, EfeitoNoItem | null>>({})
 
-  const totalMapeado = useMemo(() => data.itens.length > 0 && data.itens.every((it) => estado[it.nfeItemId]?.mapeado), [data.itens, estado])
+  /**
+   * ⭐ LINHA DE EQUIPAMENTO JÁ ESTÁ RESPONDIDA — ela não espera item de estoque.
+   *
+   * ⛔ Sem esta isenção o dono ficaria travado: o funil diz *"isto não é estoque"* e o botão
+   * cobraria um mapeamento que, por definição, não existe — o beco que a casa proíbe.
+   */
+  const totalMapeado = useMemo(
+    () => data.itens.length > 0 && data.itens.every((it) => {
+      const e = estado[it.nfeItemId]
+      return ehEquipamento(e?.destino) || !!e?.mapeado
+    }),
+    [data.itens, estado],
+  )
 
   /**
    * ⭐⭐ O PAGAMENTO FOI RESPONDIDO? (13/09)
@@ -230,7 +268,10 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
     try {
       const itens = data.itens.map((it) => {
         const e = estado[it.nfeItemId]!
-        return { nfeItemId: it.nfeItemId, cProd: it.cProd, xProd: it.xProd, uCom: it.uCom, uTrib: it.uTrib, qtdNota: it.qCom, vUnCom: it.vUnCom, qtdRecebida: e.qtdRecebida, unidadeEntrada: e.unidadeEntrada ?? null, motivo: e.motivo, fotoBase64: e.fotoBase64, mapeado: e.mapeado }
+        // ⭐ o DESTINO viaja no gesto. ⛔ Sem ele no corpo, a escolha do funil ficaria só
+        // no estado da tela e o servidor criaria item de estoque pra uma máquina — é a
+        // cicatriz do "a resposta coletada que ninguém envia" (12/09).
+        return { nfeItemId: it.nfeItemId, cProd: it.cProd, xProd: it.xProd, uCom: it.uCom, uTrib: it.uTrib, qtdNota: it.qCom, vUnCom: it.vUnCom, qtdRecebida: e.qtdRecebida, unidadeEntrada: e.unidadeEntrada ?? null, motivo: e.motivo, fotoBase64: e.fotoBase64, mapeado: e.mapeado, destino: e.destino ?? null, equipamentoNome: e.equipamentoNome ?? null }
       })
       const r = await fetch(`/api/empresas/${companyId}/estoque/recebimentos/${nfeId}/confirmar`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -335,7 +376,7 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
               const setF = (nf: number) => { if (nf > 0 && e?.mapeado) setItem(it.nfeItemId, { mapeado: { ...e.mapeado, fatorConversao: nf }, qtdRecebida: it.qCom * nf }) }
               return (
                 <Fragment key={it.nfeItemId}>
-                  <tr className={`border-b border-slate-50 ${diverge ? 'bg-amber-50/40' : ''} ${!e?.mapeado ? 'bg-amber-50/60' : ''}`}>
+                  <tr className={`border-b border-slate-50 ${diverge ? 'bg-amber-50/40' : ''} ${!e?.mapeado && !ehEquipamento(e?.destino) ? 'bg-amber-50/60' : ''} ${ehEquipamento(e?.destino) ? 'bg-violet-50/40' : ''}`}>
                     <td className="px-3 py-1 text-[13px]">
                       <p className="font-medium text-slate-800">{it.xProd}</p>
                       <p className="text-[11px] text-slate-400">cód. {it.cProd} · {brl(it.vUnCom)}/{it.uCom}</p>
@@ -375,6 +416,15 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                             )
                           })()}
                         </div>
+                      ) : ehEquipamento(e?.destino) ? (
+                        /*
+                          ⭐⭐ A LINHA DE EQUIPAMENTO DIZ O QUE É E O QUE NÃO VAI ACONTECER.
+                          ⛔ Ela NÃO vira "mapear" nem fica âmbar de pendência: a pergunta
+                          está respondida — o que falta é nada.
+                        */
+                        <button onClick={() => setSheetItem(it)} className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[12px] font-medium text-violet-800 hover:bg-violet-200" title="não cria item de estoque, não gera movimento">
+                          🏭 {e?.equipamentoNome || it.xProd} <span className="font-normal text-violet-600">· equipamento</span>
+                        </button>
                       ) : (
                         <button onClick={() => setSheetItem(it)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[12px] font-medium text-amber-800 hover:bg-amber-100">
                           <Search className="h-3.5 w-3.5" /> Que produto é este?
@@ -382,7 +432,13 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                       )}
                     </td>
                     <td className="px-3 py-1 text-right">
-                      {e?.mapeado ? (
+                      {ehEquipamento(e?.destino) ? (
+                        /* ⛔ sem campo de quantidade/unidade: não há prateleira pra ajustar */
+                        <span className="text-[12px] text-violet-700">
+                          {it.qCom} {it.uCom} · {brl(it.qCom * it.vUnCom)}
+                          <span className="ml-1 block text-[10.5px] text-violet-500">fora do estoque</span>
+                        </span>
+                      ) : e?.mapeado ? (
                         <span className="inline-flex items-center gap-1.5">
                           {/* ⛔⛔ NUNCA `type="number"` AQUI: sem `step` o HTML assume 1 e o
                               navegador recusa 0,6 sozinho — sem erro, sem log, sem nada no
@@ -505,6 +561,17 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                       )
                     })()}
                   </div>
+                ) : ehEquipamento(e?.destino) ? (
+                  /* ⭐ a MESMA decisão da tabela, na composição do celular (REGRA 12) */
+                  <button onClick={() => setSheetItem(it)} className="mt-3 flex w-full items-center justify-between rounded-lg border border-violet-300 bg-violet-50 px-3 py-2.5 text-left text-sm font-medium text-violet-800 active:bg-violet-100">
+                    <span className="min-w-0">
+                      🏭 {e?.equipamentoNome || it.xProd}
+                      <span className="mt-0.5 block text-[11px] font-normal text-violet-600">
+                        equipamento (investimento) · {brl(it.qCom * it.vUnCom)} · não entra no estoque
+                      </span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0" />
+                  </button>
                 ) : (
                   <button onClick={() => setSheetItem(it)} className="mt-3 flex w-full items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-800 active:bg-amber-100">
                     <span className="flex items-center gap-2"><Search className="h-4 w-4" /> Que produto é este?</span><ChevronRight className="h-4 w-4" />
@@ -800,20 +867,39 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
       </div>
 
       {sheetItem && <MapearSheet item={sheetItem} existentes={itensExistentes} onClose={() => setSheetItem(null)}
-        onEscolher={(m) => { setItem(sheetItem.nfeItemId, { mapeado: m, qtdRecebida: sheetItem.qCom * m.fatorConversao }); setSheetItem(null) }} />}
+        onEscolher={(m) => { setItem(sheetItem.nfeItemId, { mapeado: m, destino: null, qtdRecebida: sheetItem.qCom * m.fatorConversao }); setSheetItem(null) }}
+        /*
+          ⭐⭐ EQUIPAMENTO LIMPA O MAPEAMENTO, e isso é a trava de estado: as duas respostas
+          são MUTUAMENTE EXCLUSIVAS. Deixar um `mapeado` pendurado numa linha de equipamento
+          guardaria no estado da tela a contradição que o servidor existe pra não ter.
+          ⚠️ E a quantidade volta pra a da NOTA (fator 1): fator é conversão de PRATELEIRA.
+        */
+        onEquipamento={(nome) => { setItem(sheetItem.nfeItemId, { mapeado: null, destino: DESTINO_EQUIPAMENTO, equipamentoNome: nome, qtdRecebida: sheetItem.qCom, unidadeEntrada: null, motivo: null }); setSheetItem(null) }} />}
     </div>
   )
 }
 
-function MapearSheet({ item, existentes, onClose, onEscolher }: {
+function MapearSheet({ item, existentes, onClose, onEscolher, onEquipamento }: {
   item: ConfItem; existentes: ItemExistente[]; onClose: () => void
   onEscolher: (m: MapeadoSel) => void
+  /** ⭐ gesto PRÓPRIO: a linha não vira item de estoque, vira equipamento (com o nome) */
+  onEquipamento: (nome: string) => void
 }) {
   const [busca, setBusca] = useState('')
   const [modo, setModo] = useState<'buscar' | 'criar'>(existentes.length > 0 ? 'buscar' : 'criar')
   const [nome, setNome] = useState(item.sugestao.nome)
   const [unidade, setUnidade] = useState<Unidade>(item.sugestao.unidade ?? 'UN')
-  const [categoria, setCategoria] = useState<Categoria>(item.sugestao.categoria)
+  /**
+   * ⭐⭐ UM ESTADO SÓ PRO FUNIL (o VALOR da opção), e a leitura dele é DERIVADA.
+   *
+   * ⛔ Guardar "categoria" e "é equipamento?" em dois estados abriria o 3º estado
+   * impossível (equipamento COM categoria de estoque) — `escolhaDoFunil` responde as duas
+   * perguntas a partir de um valor só, e quem decide é a porta única.
+   */
+  const [funil, setFunil] = useState<string>(
+    item.destino === DESTINO_EQUIPAMENTO ? VALOR_EQUIPAMENTO_NO_FUNIL : item.sugestao.categoria,
+  )
+  const escolha = escolhaDoFunil(funil)
   // ORDEM: qTrib/uTrib da nota → COMPOSTO ("2,27 KG CX/08 PC") → pack simples ("12UN") →
   // perguntar. A sugestão DEPENDE da unidade de controle: a mesma caixa de cheddar vale
   // 18,16 se o controle é KG e 8 se é UN — por isso ela é recalculada quando a unidade
@@ -905,12 +991,38 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
         ) : (
           <div className="space-y-3">
             <div><label className="text-xs font-medium text-slate-600">Nome do produto <span className="text-slate-400">(sugerido)</span></label><input value={nome} onChange={(e) => setNome(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs font-medium text-slate-600">Unidade de controle <span className="text-slate-400">~sugerido {item.sugestao.unidade ?? 'a definir'}</span></label>
-              <div className="mt-1 flex gap-2">{(['KG', 'UN', 'LT'] as Unidade[]).map((u) => <button key={u} onClick={() => setUnidade(u)} className={`flex-1 rounded-lg py-2 text-sm font-medium ${unidade === u ? 'bg-[#185FA5] text-white' : 'bg-slate-100 text-slate-600'}`}>{u}</button>)}</div>
-            </div>
-            <div><label className="text-xs font-medium text-slate-600">Categoria <span className="text-slate-400">~sugerido</span></label>
-              <select value={categoria} onChange={(e) => setCategoria(e.target.value as Categoria)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">{(Object.keys(CAT_LABEL) as Categoria[]).map((c) => <option key={c} value={c}>{CAT_LABEL[c]}</option>)}</select></div>
-            {difUnidade && (
+            {!ehEquipamento(escolha.destino) && (
+              <div><label className="text-xs font-medium text-slate-600">Unidade de controle <span className="text-slate-400">~sugerido {item.sugestao.unidade ?? 'a definir'}</span></label>
+                <div className="mt-1 flex gap-2">{(['KG', 'UN', 'LT'] as Unidade[]).map((u) => <button key={u} onClick={() => setUnidade(u)} className={`flex-1 rounded-lg py-2 text-sm font-medium ${unidade === u ? 'bg-[#185FA5] text-white' : 'bg-slate-100 text-slate-600'}`}>{u}</button>)}</div>
+              </div>
+            )}
+            {/*
+              ⭐⭐⭐ O FUNIL — as opções vêm do DONO ÚNICO (`OPCOES_DO_FUNIL`), e a última
+              delas NÃO é uma categoria de estoque: é o destino EQUIPAMENTO.
+            */}
+            <div><label className="text-xs font-medium text-slate-600">O que é este produto? <span className="text-slate-400">~sugerido</span></label>
+              <select value={funil} onChange={(e) => setFunil(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                {OPCOES_DO_FUNIL.map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
+              </select></div>
+            {/*
+              ⭐⭐ ESCOLHEU EQUIPAMENTO → a tela PARA de perguntar coisa de estoque.
+              Unidade de controle e fator de conversão são perguntas sobre PRATELEIRA; aqui
+              não há prateleira. Deixá-las na tela ensinaria que a máquina vira saldo.
+            */}
+            {ehEquipamento(escolha.destino) ? (
+              <div className="rounded-lg border border-violet-200 bg-violet-50 p-3">
+                <p className="text-xs font-medium text-violet-900">Isto NÃO entra no estoque.</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-violet-800">
+                  Vai pro <b>cadastro de equipamentos</b> como investimento — sem saldo, sem custo
+                  médio, fora de toda tela de estoque. O boleto desta nota segue o caminho normal
+                  do contas a pagar, na categoria <b>Equipamentos (investimento)</b>, que no DRE
+                  não come o lucro do mês.
+                </p>
+                <p className="mt-2 text-[11px] text-violet-700">
+                  vai ser registrado: <b>{nome || item.xProd}</b> · {item.qCom} {item.uCom} · {brl(item.qCom * item.vUnCom)}
+                </p>
+              </div>
+            ) : difUnidade && (
               <div className="rounded-lg bg-sky-50 p-3">
                 <label className="text-xs font-medium text-sky-800">A nota veio em <b>{item.uCom}</b>, você controla em <b>{unidade}</b>. Quantas {unidade} tem 1 {item.uCom}?</label>
                 <input type="number" inputMode="decimal" value={fator || ''} placeholder="12" aria-label={placeholderFator(unidade, item.uCom)} onChange={(e) => setFator(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-sky-300 px-3 py-2 text-base tabular-nums" />
@@ -918,7 +1030,17 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
                 <p className="mt-1 text-[11px] text-sky-600">1 {item.uCom} = {fator} {unidade} · {item.qCom} {item.uCom} = {item.qCom * fator} {unidade}</p>
               </div>
             )}
-            <button onClick={() => onEscolher({ itemId: `novo-${item.nfeItemId}`, nome, unidadeControle: unidade, categoria, fatorConversao: difUnidade ? fator : 1, novo: true })} className="w-full rounded-xl bg-[#185FA5] py-3 text-sm font-semibold text-white active:bg-[#0F4A8C]">Usar este produto</button>
+            {/*
+              ⛔⛔ DOIS GESTOS, DOIS DESFECHOS — e o rótulo DIZ qual é.
+              Em equipamento não existe item de estoque pra "usar": o que o botão faz é
+              registrar o investimento. Reusar o mesmo texto esconderia a diferença que o
+              sprint inteiro existe pra tornar visível.
+            */}
+            {ehEquipamento(escolha.destino) ? (
+              <button onClick={() => onEquipamento(nome.trim() || item.xProd)} className="w-full rounded-xl bg-violet-700 py-3 text-sm font-semibold text-white active:bg-violet-800">🏭 Registrar como equipamento</button>
+            ) : (
+              <button onClick={() => onEscolher({ itemId: `novo-${item.nfeItemId}`, nome, unidadeControle: unidade, categoria: escolha.categoria ?? 'USO_INTERNO', fatorConversao: difUnidade ? fator : 1, novo: true })} className="w-full rounded-xl bg-[#185FA5] py-3 text-sm font-semibold text-white active:bg-[#0F4A8C]">Usar este produto</button>
+            )}
           </div>
         )}
       </div>

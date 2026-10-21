@@ -4,6 +4,21 @@
 export type CategoriaEstoque = 'MATERIA_PRIMA' | 'REVENDA' | 'EMBALAGEM' | 'LIMPEZA' | 'USO_INTERNO'
 export type UnidadeControle = 'KG' | 'UN' | 'LT'
 
+/**
+ * ⭐ As categorias que o funil oferece, **na ordem da tela** — fonte única.
+ *
+ * Nasceu em 20/10 pro `destino-da-linha.ts` montar as opções do funil sem reescrever a lista:
+ * a tela desenhava os 5 `<option>` à mão, e categoria nova exigiria lembrar de acrescentar em
+ * dois lugares.
+ *
+ * ⛔⛔ **EQUIPAMENTO NÃO ENTRA AQUI, e isso é a regra, não esquecimento:** equipamento é
+ * **DESTINO**, não categoria de prateleira (ver o cabeçalho de `destino-da-linha.ts`). Pôr
+ * nesta lista faria todo leitor de estoque ter que aprender a excluí-lo.
+ */
+export const CATEGORIAS_ESTOQUE: readonly CategoriaEstoque[] = [
+  'MATERIA_PRIMA', 'REVENDA', 'EMBALAGEM', 'LIMPEZA', 'USO_INTERNO',
+]
+
 const norm = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toUpperCase()
 

@@ -18,6 +18,10 @@ import { recomputeSaldoCache } from './saldo'
 import { enviarEvento } from './sefaz/ciencia'
 import { TP_EVENTO } from './sefaz/evento'
 import { combinadoDaNota } from './ponte/combinado'
+import {
+  destinoDaLinha, DESTINO_ESTOQUE, DESTINO_EQUIPAMENTO, type DestinoDaLinha,
+} from './destino-da-linha'
+import { registrarEquipamento, esquecerDestinoEquipamento } from './equipamento'
 
 import { registrarVencimentoNoRecebimento, conferirPagamentoDoPapel } from './ponte/vencimento'
 
@@ -37,7 +41,30 @@ export interface ConfirmItemInput {
   uTrib?: string | null
   /** ⭐ 05/09: a unidade que o DONO conferiu, quando a nota veio errada. A nota fica como veio. */
   unidadeEntrada?: string | null
-  mapeado: { itemId: string; nome: string; unidadeControle: string; categoria?: string; fatorConversao: number; novo: boolean }
+  /**
+   * ⭐⭐⭐ PRA ONDE ESTA LINHA VAI (20/10) — ausente = `ESTOQUE`, o caminho de sempre.
+   *
+   * `EQUIPAMENTO` é **DESTINO, não categoria** (ver `destino-da-linha.ts`): a linha **NÃO**
+   * cria item, **NÃO** gera movimento, **NÃO** entra em `valorEntrada` nem em custo médio.
+   *
+   * ⛔⛔ E isso não é um `if` a lembrar: as listas são partidas no TOPO da transação e **o
+   * laço que cria item/movimento só vê a de estoque** (REGRA 5 — impossibilidade, não
+   * combinado). ⚠️ `mapeado` é IGNORADO quando o destino é equipamento — máquina não tem
+   * item de prateleira pra apontar.
+   */
+  destino?: DestinoDaLinha | null
+  /**
+   * ⭐ o nome com que o equipamento vai pro cadastro — o dono pode ajustar na tela.
+   * ⚠️ Vazio cai no `xProd` da nota: o nome que a SEFAZ carimbou é pior que o dele e
+   * melhor que um registro sem nome, que ele não reconheceria na lista.
+   */
+  equipamentoNome?: string | null
+  /**
+   * ⛔⛔ `null` quando o destino é EQUIPAMENTO — **máquina não tem item de prateleira**.
+   * As duas respostas são mutuamente exclusivas por desenho; a trava de verdade é a lista
+   * partida no topo da transação (o laço que cria item só vê `paraEstoque`).
+   */
+  mapeado: { itemId: string; nome: string; unidadeControle: string; categoria?: string; fatorConversao: number; novo: boolean } | null
 }
 export interface ConfirmInput {
   companyId: string
@@ -78,6 +105,14 @@ export interface ConfirmResult {
   payableSugeridas: number
   divergente: boolean
   sefaz: { ok: boolean; cStat: string; xMotivo: string; nProt?: string } | null
+  /** ⭐ 20/10 — quantas linhas foram pro cadastro de EQUIPAMENTO (fora do estoque) */
+  equipamentos: number
+  /**
+   * ⚠️ Valor dos equipamentos, **à parte de `valorEntrada`** de propósito: somar os dois
+   * faria o recibo dizer que R$ 21.000 de máquina "entraram no estoque". São duas coisas, e
+   * o recibo mostra as duas separadas.
+   */
+  valorEquipamentos: number
 }
 
 export async function confirmarConferencia(input: ConfirmInput): Promise<ConfirmResult> {
@@ -91,7 +126,7 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
     if (!c.ok) throw new Error(c.erros.join(' '))
   }
 
-  const nfe = await prisma.stockNfe.findFirst({ where: { id: nfeId, companyId }, select: { id: true, chave: true, status: true, temXmlCompleto: true, vNF: true } })
+  const nfe = await prisma.stockNfe.findFirst({ where: { id: nfeId, companyId }, select: { id: true, chave: true, status: true, temXmlCompleto: true, vNF: true, dataEmissao: true } })
   if (!nfe) throw new Error('Nota não encontrada.')
 
   // ⛔⛔ A PORTA QUE FECHA A FÁBRICA DAS 21 (13/09) — nota sem duplicata no XML NÃO confirma
@@ -124,6 +159,40 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
   const divergente = input.itens.some((i) => i.motivo)
   let itensCadastrados = 0
 
+  /**
+   * ⭐⭐⭐ AS DUAS LISTAS, PARTIDAS AQUI — e **é esta linha que cumpre o guard do brief**
+   * (*"essa categoria NUNCA gera posição"*), não um `if` lá embaixo.
+   *
+   * ⛔⛔ Daqui pra frente, **todo laço de estoque percorre `paraEstoque`**: criar item,
+   * aprender o mapa de (cnpj,cProd), reunitizar, gerar `ENTRADA_NF`, somar `valorEntrada`.
+   * Um laço que **não vê** a linha de equipamento não pode criar posição pra ela — não há o
+   * que lembrar de checar, e não há `if` pra alguém remover num refactor (REGRA 5).
+   *
+   * ⚠️ É o oposto de pôr `EQUIPAMENTO` dentro de `CategoriaEstoque`, onde cada um dos ~10
+   * leitores de estoque teria que **aprender a excluí-la** — e o primeiro que esquecesse
+   * criaria posição de uma máquina, em silêncio.
+   */
+  type LinhaDeEstoque = ConfirmItemInput & { mapeado: NonNullable<ConfirmItemInput['mapeado']> }
+  const paraEstoque = input.itens.filter((i): i is LinhaDeEstoque => destinoDaLinha(i) === DESTINO_ESTOQUE)
+  const paraEquipamento = input.itens.filter((i) => destinoDaLinha(i) === DESTINO_EQUIPAMENTO)
+
+  /**
+   * ⛔⛔ LINHA DE ESTOQUE SEM ITEM **RECUSA**, nunca some em silêncio.
+   *
+   * O `filter` acima estreita o TIPO; sem esta checagem, uma linha de estoque com `mapeado`
+   * nulo passaria pelo laço e estouraria no meio da transação (ou, pior, num `?.` futuro,
+   * **desapareceria**) — e a nota entraria com um item a menos sem nada dizer. É a classe
+   * do *"erro disfarçado de vazio"*: a tela já barra, mas a rota pode ser chamada por outro
+   * caminho, e aí a recusa que ENSINA é a única proteção que sobra.
+   */
+  const semItem = paraEstoque.filter((i) => !i.mapeado)
+  if (semItem.length) {
+    throw new Error(
+      `Falta dizer que item de estoque é: ${semItem.map((i) => i.xProd).join(' · ')}. `
+      + 'Se não é estoque, escolha "🏭 Equipamento (investimento)" no funil.',
+    )
+  }
+
   const conf = await prisma.$transaction(async (tx) => {
     // (a) fornecedor
     const cnpj = input.fornecedor.cnpj.replace(/\D/g, '')
@@ -143,7 +212,8 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
     // MOVIMENTOS no mesmo item, que é o certo: o saldo soma).
     const criadosNestaNota = new Map<string, string>() // nome normalizado → itemId
     const chaveNome = (n: string) => n.trim().toLowerCase().replace(/\s+/g, ' ')
-    for (const it of input.itens) {
+    // ⛔ `paraEstoque`, nunca `input.itens`: ver a separação das listas acima
+    for (const it of paraEstoque) {
       let itemId = it.mapeado.itemId
       if (it.mapeado.novo) {
         const k = chaveNome(it.mapeado.nome)
@@ -192,21 +262,79 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
           update: { itemId, fatorConversao: it.mapeado.fatorConversao, unidadeNota: it.uCom },
         })
       }
+
+      /**
+       * ⛔⛔ A OUTRA METADE DA EXCLUSÃO MÚTUA (20/10): esta linha é ESTOQUE, então o
+       * aprendizado de *"é equipamento"* daquela chave **morre**.
+       *
+       * ⚠️ Roda em TODA linha de estoque, mesmo quando não havia nada a apagar — custa um
+       * `deleteMany` que não acha nada e paga o dia em que o dono corrige uma classificação
+       * errada. Sem os dois sentidos, a exclusão mútua seria mútua só no papel.
+       */
+      if (cnpj) {
+        await esquecerDestinoEquipamento(tx, {
+          companyId, supplierCnpj: cnpj, cProd: it.cProd || null, xProd: it.xProd || null,
+        })
+      }
     }
 
     // (b) conferência
     const conference = await tx.stockReceiptConference.create({
       data: { companyId, nfeId, chave: nfe.chave, status: divergente ? 'DIVERGENTE_ACEITA' : 'CONFIRMADA', conferidoPorId: userId, confirmadoPorId: userId, confirmadoEm: new Date() },
     })
+    /**
+     * ⭐ TODAS as linhas entram na conferência — **inclusive as de equipamento**, com
+     * `itemId` NULL. O dono conferiu a boleadora; o rastro de que ela foi recebida é um
+     * fato, e apagá-lo pra "limpar" a conta do E2 seria trocar um alarme falso por um buraco.
+     *
+     * ⚠️ É exatamente por isso que o **E2 e o E16 precisam da régua única**
+     * (`linhasDeEquipamento`): a linha existe, foi conferida, e não tem movimento.
+     */
     for (const it of input.itens) {
       await tx.stockConferenceItem.create({
         data: { companyId, conferenceId: conference.id, nfeItemId: it.nfeItemId, itemId: itemIdReal.get(it.nfeItemId), xProd: it.xProd, cProd: it.cProd || null, qtdNota: it.qtdNota, unidadeNota: it.uCom, qtdRecebida: it.qtdRecebida, divergencia: !!it.motivo, motivo: it.motivo ?? null, fotoBase64: it.fotoBase64 ?? null },
       })
     }
 
+    /**
+     * ⭐⭐⭐ (b2) O CADASTRO DE EQUIPAMENTO — e o que ele **não** faz é o ponto:
+     * nenhum `stockItem`, nenhum `criarMovimento`, nada somado em `valorEntrada`.
+     *
+     * ⚠️ A DATA é a **emissão da nota** (o fato), com fallback no `confirmadoEm` quando a nota
+     * não declara — nunca `new Date()` cru, que faria a lista datar a compra pelo dia do
+     * conserto (a cicatriz do *"o relógio nunca entra em decisão"*).
+     *
+     * ⛔ E o valor é o da LINHA (`qtdRecebida × vUnCom`), não o total da nota: nota mista tem
+     * máquina E mercadoria, e o investido é só a parte da máquina.
+     */
+    let valorEquipamentos = 0
+    for (const it of paraEquipamento) {
+      const valor = round2(it.qtdRecebida * it.vUnCom)
+      await registrarEquipamento(tx, {
+        companyId,
+        // ⚠️ o nome do DONO manda; o `xProd` da SEFAZ é o fallback (nunca registro sem nome)
+        nome: it.equipamentoNome?.trim() || it.xProd,
+        valor,
+        quantidade: it.qtdRecebida,
+        unidade: normalizarUnidade(it.unidadeEntrada || it.uCom) || 'UN',
+        data: nfe.dataEmissao ?? new Date(),
+        supplierCnpj: cnpj || null,
+        supplierNome: input.fornecedor.nome,
+        chave: nfe.chave,
+        nfeId,
+        nfeItemId: it.nfeItemId,
+        conferenceId: conference.id,
+        cProd: it.cProd || null,
+        xProd: it.xProd,
+        userId,
+      })
+      valorEquipamentos = round2(valorEquipamentos + valor)
+    }
+
     // (c) movimentos ENTRADA_NF (qtd RECEBIDA; custo por unidade de controle = vUnCom/fator)
     let valorEntrada = 0
-    for (const it of input.itens) {
+    // ⛔ `paraEstoque`: a linha de equipamento NÃO chega aqui, por construção
+    for (const it of paraEstoque) {
       // ⚠️⚠️ CUSTO EM PRECISÃO CHEIA — arredondar AQUI perde dinheiro proporcional à
       // QUANTIDADE (29/08/2026). Caso real: BOX PAPER, 6.313 caixas de pizza. O custo
       // certo é 17.310,25 / 6.313 = 2,742145…; arredondado pra 2,74 e multiplicado dá
@@ -340,7 +468,12 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
     // (e) tira da fila
     await tx.stockNfe.update({ where: { id: nfeId }, data: { status: 'CONFIRMADA' } })
 
-    return { conferenceId: conference.id, valorEntrada, movimentos: input.itens.length, payableSugeridas: dups.length }
+    // ⚠️ `movimentos` conta o que de fato virou movimento — `input.itens.length` passaria a
+    // mentir na nota mista (diria 4 movimentos numa nota com 3 itens + 1 máquina).
+    return {
+      conferenceId: conference.id, valorEntrada, movimentos: paraEstoque.length,
+      payableSugeridas: dups.length, valorEquipamentos,
+    }
   })
 
   // fora da transação: saldo + Confirmação SEFAZ (falha não desfaz o recebimento físico)
@@ -353,5 +486,5 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
     sefaz = { ok: false, cStat: 'ERRO', xMotivo: (e as Error).message }
   }
 
-  return { ...conf, itensCadastrados, divergente, sefaz }
+  return { ...conf, itensCadastrados, divergente, sefaz, equipamentos: paraEquipamento.length }
 }

@@ -29,13 +29,16 @@ let userId: string
 const ctx = () => buildAuthContextForTest({ user: { id: userId }, company: { id: companyId }, permissions: ['*'] })
 
 async function contarFinanceiro() {
-  const [tx, forn] = await Promise.all([
+  const [tx, forn, cat] = await Promise.all([
     prisma.transaction.count({ where: { bankAccount: { companyId } } }),
     prisma.supplier.count({ where: { companyId } }),
+    // ⭐ a 3ª tabela da exceção (20/10) entra na contagem: sem isso o guard aprovaria o dia
+    // em que algum caminho do estoque passasse a criar categoria em silêncio.
+    prisma.category.count({ where: { companyId } }),
   ])
   // transações PAYABLE nascem sem bankAccount → conta por supplier/company também
   const txPorForn = await prisma.transaction.count({ where: { supplier: { companyId } } })
-  return { tx: tx + txPorForn, forn }
+  return { tx: tx + txPorForn, forn, cat }
 }
 
 beforeEach(async () => {
@@ -54,7 +57,8 @@ afterEach(async () => {
   await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_stock_movement_no_delete;`).catch(() => {})
   await prisma.transaction.deleteMany({ where: { supplier: { companyId } } })
   await prisma.supplier.deleteMany({ where: { companyId } })
-  for (const t of ['stockPayableLink', 'stockPayableSuggestion', 'stockEntradaManualItem', 'stockEntradaManual', 'stockContagemItem', 'stockContagem', 'stockSaida', 'stockMovement', 'stockSaldoCache', 'stockNfe', 'stockItem', 'stockSupplier'] as const) {
+  await prisma.category.deleteMany({ where: { companyId } })
+  for (const t of ['stockPayableLink', 'stockPayableSuggestion', 'stockEquipamento', 'stockNfeItem', 'stockEntradaManualItem', 'stockEntradaManual', 'stockContagemItem', 'stockContagem', 'stockSaida', 'stockMovement', 'stockSaldoCache', 'stockNfe', 'stockItem', 'stockSupplier'] as const) {
     // @ts-expect-error acesso dinâmico
     await prisma[t].deleteMany({ where: { companyId } })
   }
@@ -188,6 +192,109 @@ describe('⚠️ ISOLAMENTO — a exceção tem o TAMANHO que foi nomeado', () =
     const depois = await contarFinanceiro()
     expect(depois.tx).toBe(antes.tx + 1)
     expect(depois.forn).toBe(antes.forn + 1)
+    // ⛔⛔ nota de MERCADORIA não paga o preço da exceção nova: ZERO categoria criada.
+    // Criar a categoria "por garantia" em todo envio alargaria a fronteira sem motivo.
+    expect(depois.cat, 'a ponte criou categoria numa nota que não tem equipamento').toBe(antes.cat)
+  })
+})
+
+// ⭐⭐⭐ O LADO FINANCEIRO DA NOTA DE EQUIPAMENTO (20/10/2026)
+//
+// A regra do dono: *"o lado FINANCEIRO da nota segue o fluxo normal (conta a pagar/pagamento),
+// com categoria «Equipamentos (investimento)» — separada de despesa operacional: no DRE isso
+// não come o lucro do mês como despesa (Lucro Real: imobilizado não é despesa)."*
+describe('⭐⭐ nota de EQUIPAMENTO: a conta nasce com a categoria fora do DRE', () => {
+  /** marca a linha da nota como equipamento — o FATO GRAVADO que a ponte lê */
+  async function comEquipamento(opts: { linhas: number; equipamentos: number }) {
+    const itens: string[] = []
+    for (let i = 0; i < opts.linhas; i++) {
+      const it = await prisma.stockNfeItem.create({
+        data: { companyId, nfeId, chave: CHAVE, nItem: i + 1, cProd: `P${i}`, xProd: i === 0 ? 'BOLEADORA BOL600' : `MERCADORIA ${i}`, uCom: 'UN', qCom: 1, vUnCom: 100, vProd: 100 },
+      })
+      itens.push(it.id)
+    }
+    for (let i = 0; i < opts.equipamentos; i++) {
+      await prisma.stockEquipamento.create({
+        data: {
+          companyId, nome: 'BOLEADORA BOL600', valor: 21000, quantidade: 1, unidade: 'UN',
+          data: new Date('2026-10-20'), supplierNome: 'FRIGORIFICO SILVA',
+          nfeId, nfeItemId: itens[i], criadoPorId: userId,
+        },
+      })
+    }
+  }
+
+  it('⭐ nota INTEIRA de equipamento → conta a pagar com dreGroup INVESTIMENTOS (não-DRE)', async () => {
+    await comEquipamento({ linhas: 1, equipamentos: 1 })
+
+    const r = await enviarParaContasPagar({ companyId, suggestionIds: [sug1], cadastrarFornecedores: true, ctx: ctx(), userId }, prisma)
+    expect(r.criadas).toBe(1)
+
+    const conta = await prisma.transaction.findUniqueOrThrow({ where: { id: r.transactionIds[0] } })
+    expect(conta.lifecycle, 'o lado financeiro segue o fluxo NORMAL').toBe('PAYABLE')
+    expect(conta.categoryId, 'a conta nasceu sem a categoria do equipamento').toBeTruthy()
+
+    const cat = await prisma.category.findUniqueOrThrow({ where: { id: conta.categoryId! } })
+    expect(cat.name).toBe('Equipamentos (investimento)')
+    // ⭐⭐ é o dreGroup que cumpre a exigência: imobilizado NÃO come o lucro do mês
+    expect(cat.dreGroup, 'sem INVESTIMENTOS a máquina vira despesa operacional').toBe('INVESTIMENTOS')
+    expect(cat.type).toBe('EXPENSE')
+    expect(conta.notes).toContain('EQUIPAMENTO')
+  })
+
+  it('⛔⛔ nota MISTA (equipamento + mercadoria) fica SEM categoria — é o comportamento de hoje', async () => {
+    // ⚠️ atribuir "Equipamentos (investimento)" numa nota mista tiraria do DRE a parte que
+    // É despesa de verdade. Sem categoria, a fila de classificação cobra — que é o certo.
+    await comEquipamento({ linhas: 2, equipamentos: 1 })
+
+    const r = await enviarParaContasPagar({ companyId, suggestionIds: [sug1], cadastrarFornecedores: true, ctx: ctx(), userId }, prisma)
+    const conta = await prisma.transaction.findUniqueOrThrow({ where: { id: r.transactionIds[0] } })
+    expect(conta.categoryId, 'nota mista levou a categoria de equipamento').toBeNull()
+    expect(await prisma.category.count({ where: { companyId } }), 'criou a categoria numa nota mista').toBe(0)
+  })
+
+  it('⭐ as DUAS parcelas da mesma nota reusam UMA categoria (idempotente)', async () => {
+    await comEquipamento({ linhas: 1, equipamentos: 1 })
+    const r = await enviarParaContasPagar({ companyId, suggestionIds: [sug1, sug2], cadastrarFornecedores: true, ctx: ctx(), userId }, prisma)
+    expect(r.criadas).toBe(2)
+    expect(await prisma.category.count({ where: { companyId } })).toBe(1)
+    const contas = await prisma.transaction.findMany({ where: { id: { in: r.transactionIds } } })
+    expect(new Set(contas.map((c) => c.categoryId)).size, 'as parcelas foram pra categorias diferentes').toBe(1)
+  })
+
+  it('⭐ a categoria que o dono JÁ tem é REUSADA, nunca duplicada', async () => {
+    const minha = await prisma.category.create({
+      data: { companyId, name: 'Equipamentos (investimento)', type: 'EXPENSE', dreGroup: 'INVESTIMENTOS', color: '#000' },
+    })
+    await comEquipamento({ linhas: 1, equipamentos: 1 })
+    const r = await enviarParaContasPagar({ companyId, suggestionIds: [sug1], cadastrarFornecedores: true, ctx: ctx(), userId }, prisma)
+    const conta = await prisma.transaction.findUniqueOrThrow({ where: { id: r.transactionIds[0] } })
+    expect(conta.categoryId).toBe(minha.id)
+    expect(await prisma.category.count({ where: { companyId } })).toBe(1)
+  })
+
+  it('⛔⛔ categoria com o nome CERTO e o GRUPO errado NÃO é reusada', async () => {
+    // ⚠️ é o caso que protege o `dreGroup`: alguém pôs "Equipamentos (investimento)" em
+    // OUTRAS_DESPESAS. Reusar ali faria a máquina comer o lucro do mês em silêncio —
+    // pior que não ter categoria nenhuma, porque o nome diz o contrário do que ela faz.
+    const errada = await prisma.category.create({
+      data: { companyId, name: 'Equipamentos (investimento)', type: 'EXPENSE', dreGroup: 'OUTRAS_DESPESAS', color: '#000' },
+    })
+    await comEquipamento({ linhas: 1, equipamentos: 1 })
+    const r = await enviarParaContasPagar({ companyId, suggestionIds: [sug1], cadastrarFornecedores: true, ctx: ctx(), userId }, prisma)
+    const conta = await prisma.transaction.findUniqueOrThrow({ where: { id: r.transactionIds[0] } })
+    expect(conta.categoryId, 'reusou a categoria do grupo errado').not.toBe(errada.id)
+    const cat = await prisma.category.findUniqueOrThrow({ where: { id: conta.categoryId! } })
+    expect(cat.dreGroup).toBe('INVESTIMENTOS')
+  })
+
+  it('⛔ nota SEM linha parseada não é "nota de equipamento" — é nota sem item', async () => {
+    // ⚠️ `every` de lista vazia é `true`: sem a trava do `length > 0`, a nota só-resumo
+    // (ou a de DANFE não digitado) viraria equipamento por VACUIDADE.
+    const r = await enviarParaContasPagar({ companyId, suggestionIds: [sug1], cadastrarFornecedores: true, ctx: ctx(), userId }, prisma)
+    const conta = await prisma.transaction.findUniqueOrThrow({ where: { id: r.transactionIds[0] } })
+    expect(conta.categoryId).toBeNull()
+    expect(await prisma.category.count({ where: { companyId } })).toBe(0)
   })
 })
 

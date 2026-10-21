@@ -3409,6 +3409,58 @@ model StockSupplierProdutoNome {
   @@map("stock_supplier_produto_nome")
 }
 
+/// ⭐⭐⭐ EQUIPAMENTO (IMOBILIZADO) — máquina não é estoque (20/10/2026)
+///
+/// NÃO é um `StockItem`: não tem saldo, não tem custo médio, não se conta na câmara, não
+/// aparece em tela de estoque nenhuma. O brief: *"essa categoria NUNCA gera posição"*.
+///
+/// ⚠️ `nfeItemId` nullable + `@@unique([companyId, nfeItemId])` = idempotência por construção
+/// (a mesma linha da nota não vira dois equipamentos) **e** porta aberta pro equipamento sem
+/// nota, sem precisar de ALTER — que este módulo proíbe.
+model StockEquipamento {
+  id           String   @id @default(cuid())
+  companyId    String
+  nome         String
+  valor        Float
+  quantidade   Float    @default(1)
+  unidade      String   @default("UN")
+  data         DateTime
+  supplierCnpj String?
+  supplierNome String
+  chave        String?
+  nfeId        String?
+  nfeItemId    String?
+  conferenceId String?
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+
+  @@unique([companyId, nfeItemId])
+  @@index([companyId, data])
+  @@index([companyId, conferenceId])
+  @@index([companyId, chave])
+  @@map("stock_equipamento")
+}
+
+/// ⭐ O APRENDIZADO do destino: *"BOLEADORA → equipamento, uma vez só"* (item 2 do brief).
+///
+/// ⛔ Irmão de `StockSupplierProduct`/`StockSupplierProdutoNome` — e tabela PRÓPRIA porque
+/// aqueles têm `itemId` **required** (respondem "qual ITEM é"), e equipamento não tem item.
+/// A porta única mantém as duas famílias **mutuamente exclusivas na escrita**.
+model StockSupplierEquipamento {
+  id               String   @id @default(cuid())
+  companyId        String
+  supplierCnpj     String
+  cProd            String?
+  xProd            String
+  xProdNormalizado String
+  criadoPorId      String?
+  criadoEm         DateTime @default(now())
+
+  @@unique([companyId, supplierCnpj, xProdNormalizado])
+  @@index([companyId, supplierCnpj, cProd])
+  @@map("stock_supplier_equipamento")
+}
+
 // O LEDGER. IMUTÁVEL (trigger recusa UPDATE/DELETE). Correção = ESTORNO + novo.
 // CHECK (na migration): quantidade <> 0 e custoTotal == quantidade*custoUnitario (±0,01/linha).
 model StockMovement {

@@ -8,6 +8,8 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { normalizarBusca } from '@/lib/busca-texto'
 import { sugerirCategoria, sugerirUnidade, sugerirNome, type CategoriaEstoque, type UnidadeControle } from './sugestoes'
 import { combinadoDaNota } from './ponte/combinado'
+import { destinosEquipamentoAprendidos } from './equipamento'
+import { DESTINO_EQUIPAMENTO, type DestinoDaLinha } from './destino-da-linha'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -21,6 +23,13 @@ export interface ConfItem {
   vUnCom: number
   vProd: number
   mapeado: { itemId: string; nome: string; unidadeControle: UnidadeControle; fatorConversao: number } | null
+  /** ⭐⭐ O DESTINO DA LINHA — `EQUIPAMENTO` quando o dono já ensinou que este produto é
+   *  máquina (item 2 do brief: "BOLEADORA → equipamento, uma vez só").
+   *
+   *  ⛔ Ausente = ESTOQUE. O destino é FATO GRAVADO (há linha em `stock_supplier_equipamento`
+   *  apontando pra este produto), nunca inferido de `mapeado == null` — inferir da ausência
+   *  é a doença do `?? 'CAIXA'` que sumiu com o CASPER (20/09). */
+  destino?: DestinoDaLinha | null
   sugestao: { nome: string; unidade: UnidadeControle | null; categoria: CategoriaEstoque }
   uTrib: string // unidade de tributação da nota (às vezes já é a de controle: UN/KG)
   /** ⭐ 05/09: a última vez que o dono corrigiu a unidade DESTE (fornecedor, cProd) */
@@ -85,6 +94,13 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
     // sozinho não cobre (o XML traz um cProd que o manual nunca teve).
     cnpj ? db.stockSupplierProdutoNome.findMany({ where: { companyId, supplierCnpj: cnpj }, select: { xProdNormalizado: true, itemId: true, fatorConversao: true, origem: true } }) : Promise.resolve([]),
   ])
+  // ⭐⭐ O APRENDIZADO DO EQUIPAMENTO (item 2 do brief) — mesma anatomia do mapa de item:
+  // o dono aponta UMA vez e a próxima nota do mesmo fornecedor já vem com o destino.
+  // ⚠️ Lida em bloco (duas consultas pro fornecedor inteiro), nunca uma por linha.
+  const equip = cnpj
+    ? await destinosEquipamentoAprendidos(db, companyId, cnpj)
+    : { porCodigo: new Set<string>(), porNome: new Set<string>() }
+
   const mapaPorCProd = new Map(mapeamentos.map((m) => [m.cProd, m]))
   const mapaPorNome = new Map(porNome.map((m) => [m.xProdNormalizado, m]))
   const itemIds = [...new Set([...mapeamentos.map((m) => m.itemId), ...porNome.map((m) => m.itemId)])]
@@ -124,6 +140,11 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
       vUnCom: it.vUnCom ?? 0,
       vProd: it.vProd ?? r2((it.qCom ?? 0) * (it.vUnCom ?? 0)),
       mapeado: m && estoque ? { itemId: m.itemId, nome: estoque.nome, unidadeControle: estoque.unidadeControle as UnidadeControle, fatorConversao: m.fatorConversao } : null,
+      // ⭐ o destino aprendido: código PRIMEIRO (identificador do fornecedor), nome depois
+      // (texto que ele reescreve) — a MESMA ordem do mapa de item, logo acima.
+      destino: ((it.cProd && equip.porCodigo.has(it.cProd)) || equip.porNome.has(normalizarBusca(it.xProd ?? '')))
+        ? DESTINO_EQUIPAMENTO
+        : null,
       // ⛔ a unidade sugerida pro item NOVO segue a TRIBUTÁRIA quando as duas divergem —
       // senão o item nasce na unidade errada do fornecedor e a correção nunca dispara.
       sugestao: { nome: sugerirNome(it.xProd), unidade: sugerirUnidade(it.uCom, it.uTrib), categoria: sugerirCategoria(it.xProd, it.ncm) },

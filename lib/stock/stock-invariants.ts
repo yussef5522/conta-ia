@@ -18,6 +18,19 @@ import { checkContagemInvariants } from './contagem-invariants'
 import { checkNfeInvariants } from './nfe-invariants'
 import { checkPonteInvariants } from './ponte-invariants'
 import { checkBaseInvariants } from '@/lib/margem/base-invariants'
+/**
+ * ⭐⭐⭐ A RÉGUA ÚNICA DO EQUIPAMENTO (20/10) — o E2 **e** o E16 leem DAQUI.
+ *
+ * Linha de equipamento é CONFERIDA e **não gera movimento** — então sem desconto os dois
+ * ficariam vermelhos **todas as noites num recebimento CERTO**: o E2 por contar linha
+ * (*"6 itens vs 5 movimentos"*) e o E16 por somar valor (*"a nota declara R$ 21.000 a
+ * mais"*). É a anatomia de 27/08, escrita no próprio E2: ***invariante que conta LINHA em
+ * ledger imutável envelhece mal.***
+ *
+ * ⛔ E **uma** consulta pros dois, nunca dois `where` copiados: eles divergiriam no primeiro
+ * caso de borda e um ficaria verde com o outro vermelho sobre o MESMO fato.
+ */
+import { linhasDeEquipamento, equipamentosPorConferencia, valorDeEquipamentoPorChave } from './equipamento'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -64,6 +77,14 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
     }
   }
 
+  /**
+   * ⭐⭐ A RÉGUA ÚNICA, lida UMA vez e consumida pelos dois invariantes abaixo (E2 e E16).
+   * Ver o comentário do import.
+   */
+  const equipamentos = await linhasDeEquipamento(db)
+  const equipPorConf = equipamentosPorConferencia(equipamentos)
+  const equipPorChave = valorDeEquipamentoPorChave(equipamentos)
+
   // E2 — toda conferência CONFIRMADA/DIVERGENTE_ACEITA tem movimentos que somam os itens.
   const confs = await db.stockReceiptConference.findMany({ where: { status: { in: ['CONFIRMADA', 'DIVERGENTE_ACEITA'] } }, select: { id: true, companyId: true } })
   for (const conf of confs) {
@@ -81,7 +102,21 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
     ])
     const estornados = new Set(estornos.map((e) => e.estornoDeId).filter((x): x is string => !!x))
     const movs = entradas.filter((m) => !estornados.has(m.id)).length
-    if (movs !== nItens) F('E2', conf.companyId, `conferência ${conf.id}: ${nItens} itens conferidos vs ${movs} movimentos ENTRADA_NF vigentes (deveriam ser iguais).`)
+    /**
+     * ⭐⭐ E O EQUIPAMENTO DESCONTA — pela régua ÚNICA, nunca por um `where` próprio aqui.
+     *
+     * ⚠️ A pergunta é sobre o FATO GRAVADO (*"existe linha em `stock_equipamento` apontando
+     * pra esta conferência?"*), **nunca** *"a conferência ficou sem `itemId`?"* — inferir da
+     * ausência é a doença do `?? 'CAIXA'` que sumiu com o CASPER (20/09).
+     */
+    const nEquip = equipPorConf.get(conf.id) ?? 0
+    const esperados = nItens - nEquip
+    if (movs !== esperados) {
+      F('E2', conf.companyId,
+        `conferência ${conf.id}: ${nItens} itens conferidos`
+        + (nEquip ? ` (${nEquip} de equipamento, que não gera movimento)` : '')
+        + ` vs ${movs} movimentos ENTRADA_NF vigentes — eram esperados ${esperados}.`)
+    }
   }
 
   // E3 — toda nota CONFIRMADA com parcela tem contas a pagar sugerido.
@@ -145,8 +180,19 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
     const itens = await db.stockNfeItem.aggregate({
       where: { companyId: g.companyId, nfeId: nota.id }, _sum: { vProd: true }, _count: { _all: true },
     })
-    const declarado = round2(itens._sum.vProd ?? 0)
-    if (declarado <= 0) continue // nota sem itens parseados (só resumo) — nada a comparar
+    /**
+     * ⭐⭐ O EQUIPAMENTO SAI DO DECLARADO — pela MESMA régua que o E2 usa (20/10).
+     *
+     * A boleadora de R$ 21.000 está no `vProd` da nota e **não entrou no estoque** — é
+     * imobilizado. Sem o desconto, esta nota acusaria *"declara R$ 21.000 a mais"* toda
+     * noite, num recebimento correto.
+     *
+     * ⚠️ Nota **100% equipamento** nem chega aqui: ela não tem movimento, então não aparece
+     * no `groupBy` de cima. É o desfecho honesto — não há estoque pra comparar.
+     */
+    const equipDaNota = equipPorChave.get(g.nfeChave) ?? 0
+    const declarado = round2((itens._sum.vProd ?? 0) - equipDaNota)
+    if (declarado <= 0) continue // nota sem itens parseados (só resumo), ou só equipamento
     const entrou = round2(g._sum.custoTotal ?? 0)
     const qtds = await db.stockMovement.findMany({
       where: { companyId: g.companyId, nfeChave: g.nfeChave, tipo: { in: ['ENTRADA_NF', 'ESTORNO'] } },
@@ -159,7 +205,9 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
       F(
         'E16', g.companyId,
         `nota ${g.nfeChave.slice(25, 34)} (${nota.emitNome ?? 'fornecedor'}): entrou R$ ${entrou.toFixed(2)} no estoque, ` +
-        `mas a nota declara R$ ${declarado.toFixed(2)} nos itens — diferença de R$ ${Math.abs(dif).toFixed(2)} ` +
+        `mas a nota declara R$ ${declarado.toFixed(2)} nos itens` +
+        (equipDaNota > 0 ? ` (já fora os R$ ${equipDaNota.toFixed(2)} de equipamento)` : '') +
+        ` — diferença de R$ ${Math.abs(dif).toFixed(2)} ` +
         `${dif > 0 ? 'A MAIS' : 'A MENOS'}. Costuma ser quantidade convertida sem o custo acompanhar (o valor tem que ficar intacto).`,
       )
     }

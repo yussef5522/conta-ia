@@ -8,6 +8,8 @@ import { guardStock } from '@/lib/stock/require-stock'
 import { confirmarConferencia } from '@/lib/stock/confirmar-conferencia'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { enviarParaContasPagar } from '@/lib/stock/ponte-contas-pagar'
+import { DESTINOS, type DestinoDaLinha } from '@/lib/stock/destino-da-linha'
+import { CATEGORIAS_ESTOQUE, type CategoriaEstoque } from '@/lib/stock/sugestoes'
 
 interface Params { params: Promise<{ id: string; nfeId: string }> }
 
@@ -24,14 +26,33 @@ const itemSchema = z.object({
   qtdRecebida: z.coerce.number().positive('quantidade recebida tem que ser > 0'),
   motivo: z.string().nullable().optional(),
   fotoBase64: z.string().nullable().optional(),
+  /**
+   * ⭐⭐⭐ O DESTINO DA LINHA (20/10) — e a lista DERIVA do dono único (`DESTINOS`), nunca
+   * é digitada aqui.
+   *
+   * ⛔ Repetir os valores à mão é a cicatriz de 25/09, em que o `z.enum` escrito à mão
+   * deixou **dois gestos mortos por dias**: quem acrescenta destino na lib não sabe que
+   * existe uma 2ª lista na rota, e o campo passa a ser **recortado em silêncio** pelo zod.
+   */
+  destino: z.enum(DESTINOS as unknown as [DestinoDaLinha, ...DestinoDaLinha[]]).nullable().optional(),
+  /** o nome do equipamento (só vale quando o destino é EQUIPAMENTO) */
+  equipamentoNome: z.string().nullable().optional(),
+  /**
+   * ⛔ `null` quando a linha é EQUIPAMENTO — máquina não aponta pra item de prateleira.
+   * ⚠️ Linha de ESTOQUE sem mapeado é RECUSADA pelo `confirmarConferencia`, com a frase que
+   * ensina a saída — nunca ignorada.
+   */
   mapeado: z.object({
     itemId: z.string(),
     nome: z.string().min(1),
     unidadeControle: z.enum(['KG', 'UN', 'LT']),
-    categoria: z.enum(['MATERIA_PRIMA', 'REVENDA', 'EMBALAGEM', 'LIMPEZA', 'USO_INTERNO']).optional(),
+    categoria: z.enum(CATEGORIAS_ESTOQUE as unknown as [CategoriaEstoque, ...CategoriaEstoque[]]).optional(),
     fatorConversao: z.coerce.number().positive().default(1),
     novo: z.boolean(),
-  }),
+  // ⚠️ `.default(null)` e não `.optional()`: corpo sem o campo tem que chegar como `null`
+  // explícito, nunca `undefined` — "ausente" e "não é estoque" têm que ser a MESMA coisa
+  // aqui, senão o leitor seguinte precisa aprender um 3º estado.
+  }).nullable().default(null),
 })
 const bodySchema = z.object({
   fornecedor: z.object({ cnpj: z.string(), nome: z.string(), uf: z.string().nullable().optional() }),

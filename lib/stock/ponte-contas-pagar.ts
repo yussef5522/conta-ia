@@ -3,6 +3,12 @@
 // ⚠️ AQUI O ESTOQUE ATRAVESSA A FRONTEIRA. É a exceção DESENHADA, e ela tem tamanho:
 //   · escreve em `transactions` (a conta, lifecycle=PAYABLE, origin='ESTOQUE_NF')
 //   · escreve em `suppliers` SÓ quando o dono confirma (fonte='ESTOQUE_NF')
+//   · escreve em `category` UMA linha, e só quando há nota de EQUIPAMENTO (20/10):
+//     a categoria "Equipamentos (investimento)" com `dreGroup: INVESTIMENTOS`, por nome e
+//     grupo FIXOS, idempotente. ⛔ O motivo de o SISTEMA criar em vez de pedir pro dono:
+//     o que mantém a máquina fora do DRE é o `dreGroup`, e é justamente a parte invisível
+//     da decisão — categoria criada à mão nasce com o grupo errado em silêncio.
+//     Ver `lib/stock/categoria-equipamento.ts`.
 //   · nada mais. Guard de teste prova que nenhum outro caminho do estoque escreve lá.
 //
 // REGRA 4 — não existe um segundo jeito de criar conta a pagar: esta ponte chama
@@ -24,6 +30,9 @@ import { idsRecusados } from './recusa-nota'
 // ⚠️ leitura de função PURA da conciliação — o estoque continua sem ESCREVER lá fora;
 // a exceção desenhada (transactions/suppliers) é só a ponte, e ela não muda com isto.
 import { chaveDeIdentidadeDoFornecedor } from '@/lib/conciliacao/sugestao-de-vinculo'
+// ⭐ equipamento: a nota de máquina segue o fluxo financeiro NORMAL, só com categoria própria
+import { notasInteirasDeEquipamento } from './equipamento'
+import { getOrCreateCategoriaEquipamento } from './categoria-equipamento'
 
 export const ORIGEM_PONTE = 'ESTOQUE_NF'
 
@@ -223,6 +232,21 @@ export async function enviarParaContasPagar(
   })
   if (sugestoes.length !== input.suggestionIds.length) throw new PonteError('Alguma parcela não é desta empresa.')
 
+  // ⭐⭐ A CATEGORIA DO EQUIPAMENTO — e ela só vale quando a nota é INTEIRA de máquina.
+  // ⚠️ Nota MISTA (equipamento + mercadoria) fica SEM categoria, como toda nota fica hoje:
+  // atribuir "Equipamentos (investimento)" ali tiraria do DRE a parte que É despesa.
+  // ⛔ Lido do FATO GRAVADO (`stock_equipamento` → `nfeItemId`), nunca inferido de
+  // "a linha não gerou movimento" — e em UMA leitura em lote, nunca uma por nota.
+  const notasDeEquipamento = await notasInteirasDeEquipamento(
+    db, input.companyId, sugestoes.map((s) => s.nfeId),
+  )
+  // ⚠️ a categoria é resolvida UMA vez (idempotente), e só se houver nota de equipamento:
+  // criar a linha em `category` é a extensão declarada da fronteira — não se paga esse
+  // preço num envio que não tem equipamento nenhum.
+  const categoriaEquipamento = notasDeEquipamento.size
+    ? await getOrCreateCategoriaEquipamento(db, input.companyId)
+    : null
+
   for (const s of sugestoes) {
     try {
       // idempotência: o UNIQUE do banco é a garantia; esta checagem dá a contagem boa
@@ -242,6 +266,7 @@ export async function enviarParaContasPagar(
       if (criou) out.fornecedoresCadastrados++
 
       const nNF = nNFdaChave(s.chave)
+      const ehEquip = notasDeEquipamento.has(s.nfeId)
       const conta = await createContaPendente({
         companyId: input.companyId,
         lifecycle: 'PAYABLE',
@@ -249,8 +274,12 @@ export async function enviarParaContasPagar(
         amount: round2(s.valor),
         dueDate: s.dVenc,
         supplierId,
+        // ⭐ a categoria é a DECLARAÇÃO do dono no funil ("🏭 Equipamento"), repetida aqui —
+        // nunca um palpite sobre o nome do produto.
+        ...(ehEquip && categoriaEquipamento ? { categoryId: categoriaEquipamento } : {}),
         // rastro pro humano; o vínculo de máquina é o stock_payable_link
-        notes: `Gerada pelo estoque na conferência da NF-e ${s.chave}.`,
+        notes: `Gerada pelo estoque na conferência da NF-e ${s.chave}.`
+          + (ehEquip ? ' Nota de EQUIPAMENTO (imobilizado): não entra no DRE como despesa.' : ''),
         origin: ORIGEM_PONTE,
       }, input.ctx)
 

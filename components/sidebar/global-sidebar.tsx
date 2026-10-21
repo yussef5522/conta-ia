@@ -30,6 +30,7 @@ import {
   Boxes,
   UtensilsCrossed,
   Factory,
+  Wrench,
   ShoppingCart,
   ShoppingBasket,
   Package,
@@ -554,6 +555,21 @@ export function GlobalSidebar({ onNavigate, naGaveta }: GlobalSidebarProps) {
               label="Catálogo"
               href={`/empresas/${empresaAtiva}/estoque/itens`}
               isActive={/^\/empresas\/[^/]+\/estoque\/itens$/.test(pathname)}
+              onClick={onNavigate}
+            />
+            {/* ⭐⭐ 🏭 EQUIPAMENTOS (20/10) — depois do Catálogo porque os dois são CADASTRO,
+                e antes das telas de operação porque máquina não opera: ela só é registrada.
+                ⛔ NÃO é subitem de Posição nem de Catálogo: equipamento **não tem saldo** e
+                não aparece em tela de estoque nenhuma — pendurá-lo ali sugeriria que ele é
+                uma linha da prateleira, que é exatamente o que este sprint existe pra negar.
+                ⚠️ Ícone PRÓPRIO: `Factory` já é "Produção", então aqui vai `Wrench` — dois
+                itens com o mesmo ícone no mesmo grupo matam o reconhecimento. */}
+            <SidebarItem
+          perm="stock.view"
+              icon={Wrench}
+              label="Equipamentos"
+              href={`/empresas/${empresaAtiva}/estoque/equipamentos`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/equipamentos/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
