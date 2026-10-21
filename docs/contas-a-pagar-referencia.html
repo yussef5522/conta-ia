@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAIXAOS — CONTAS A PAGAR · PROPOSTA v2 (a tabela antiga é a lei + seleção com total)</title>
+<style>
+/* ============================================================================
+   CONTAS A PAGAR · PROPOSTA v2 (21/10/2026) — para veredito do dono.
+   v1 reprovada: "o modelo antigo é muito melhor, dá pra entender na hora".
+   v2 = A TABELA ATUAL É A LEI DA LISTA: as mesmas colunas de hoje
+   (Status · Vencimento · Pagamento · Favorecido · Descrição · Categoria ·
+   Valor), alinhadas, uma conta por linha, NF com link. O que entra por cima,
+   sem mexer na leitura:
+   P1. Coluna de SELEÇÃO (checkbox) + A BARRA: ao marcar 1+ contas, barra
+       fixa embaixo com o TOTAL gigante e a régua do caixa ("saldo hoje →
+       pagando fica X", verde cobre · coral estoura).
+   P2. FAIXAS DO TEMPO no topo, com DATA no rótulo (nada de "depois"):
+       VENCIDAS (até ontem) · HOJE · PRÓXIMOS 7 DIAS (22–28/10) · RESTO DO
+       MÊS (29–31/10). Clicável = filtro. Na tabela, linhas-cabeçalho de
+       seção com subtotal e checkbox que seleciona a seção inteira.
+   P3. Conta sem banco ganha selo ⚠ discreto na categoria (a família dos
+       R$ 66 mil invisíveis).
+   NÚMEROS DE AMOSTRA — as vencidas são as REAIS da tela do dono (21/10).
+   ☀/🌙 troca o tema.
+   ========================================================================= */
+:root{
+  --bg:#070A14; --mod:#0E1326; --mod-2:#131A33;
+  --linha:#1E2747; --linha-forte:#2C3764;
+  --tinta:#EBF0FF; --tinta-2:#93A0C8; --tinta-3:#596690;
+  --acao:#7C84FF; --acao-fundo:#1A2048; --acao-vivo:#4F46E5;
+  --verde:#2EE6A8; --verde-fundo:#0A2E22;
+  --coral:#FF6B61; --coral-fundo:#38150F;
+  --ambar:#FFB224; --ambar-fundo:#33230A;
+  --r:14px; --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+:root[data-theme="light"]{
+  --bg:#EEF1F8; --mod:#FFFFFF; --mod-2:#F4F6FC;
+  --linha:#DDE3F2; --linha-forte:#BCC7E4;
+  --tinta:#0A0F1E; --tinta-2:#46516B; --tinta-3:#8B94AD;
+  --acao:#4F46E5; --acao-fundo:#EEF0FE; --acao-vivo:#4F46E5;
+  --verde:#0E9F6E; --verde-fundo:#E4F7EF;
+  --coral:#D93B30; --coral-fundo:#FDECEA;
+  --ambar:#B45309; --ambar-fundo:#FCF0DC;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tinta);font-family:var(--font);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;padding-bottom:110px}
+.num{font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important;animation:none!important} }
+
+.topo{display:flex;align-items:center;gap:14px;padding:14px 26px;border-bottom:1px solid var(--linha-forte);flex-wrap:wrap}
+.marca{display:flex;align-items:center;gap:10px}
+.marca .m{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#4F46E5,#6D28D9);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px}
+.marca b{font-size:15px;font-weight:800}
+.titulo-tela{font-size:14px;font-weight:800;padding-left:12px;border-left:1px solid var(--linha-forte)}
+.lab{font-size:11px;color:var(--tinta-3);font-weight:700}
+.topo .dir{margin-left:auto;display:flex;gap:8px}
+.tbt{border:1px solid var(--linha-forte);background:var(--mod);color:var(--tinta-2);font:inherit;font-size:12.5px;font-weight:700;border-radius:9px;padding:7px 13px;cursor:pointer}
+
+.miolo{max-width:1440px;margin:0 auto;padding:14px 26px;width:100%}
+
+/* P2 · faixas do tempo */
+.faixas{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px;margin-bottom:12px}
+.fx{background:var(--mod);border:1px solid var(--linha);border-radius:12px;padding:10px 13px;cursor:pointer;text-align:left;font-family:inherit;color:var(--tinta)}
+.fx .l{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--tinta-3)}
+.fx .n{font-size:19px;font-weight:800;letter-spacing:-.02em;margin-top:2px}
+.fx .s{font-size:10.5px;color:var(--tinta-3);font-weight:700}
+.fx.on{border-color:var(--acao);background:var(--acao-fundo)}
+.fx.venc .n{color:var(--coral)} .fx.hoje .n{color:var(--ambar)}
+
+/* A TABELA — o modelo antigo é a lei */
+.mod{background:var(--mod);border:1px solid var(--linha);border-radius:var(--r);overflow:auto;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;min-width:980px}
+thead th{font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--tinta-3);text-align:left;padding:10px 12px;border-bottom:1px solid var(--linha-forte);white-space:nowrap}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--linha);font-size:13px;vertical-align:middle}
+tbody tr.conta{cursor:pointer}
+tbody tr.conta:hover{background:var(--mod-2)}
+tbody tr.conta.sel{background:var(--acao-fundo)}
+tr.sec td{background:var(--mod-2);font-size:10.5px;font-weight:800;letter-spacing:.07em;color:var(--tinta-3);padding:8px 12px}
+tr.sec.venc td{color:var(--coral)} tr.sec.hoje td{color:var(--ambar)}
+tr.sec .tot{float:right;font-size:12.5px;letter-spacing:0;color:var(--tinta)}
+tr.sec .tot small{color:var(--tinta-3);font-weight:700}
+.chk{width:16px;height:16px;accent-color:var(--acao-vivo);cursor:pointer;vertical-align:middle}
+.st{font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.st.v{background:var(--coral-fundo);color:var(--coral)}
+.st.h{background:var(--ambar-fundo);color:var(--ambar)}
+.st.a{background:var(--mod-2);color:var(--tinta-2);border:1px solid var(--linha)}
+td.dt{white-space:nowrap;font-weight:700;color:var(--tinta-2)}
+td.fav{font-weight:800;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+td.desc{color:var(--tinta-2);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+td.desc a{color:var(--acao);font-weight:800;text-decoration:none;white-space:nowrap}
+td.cat{color:var(--tinta-2);white-space:nowrap}
+.semb{font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:999px;background:var(--ambar-fundo);color:var(--ambar);margin-left:6px;white-space:nowrap}
+td.val{text-align:right;font-weight:800;white-space:nowrap;letter-spacing:-.01em}
+
+/* P1 · a barra da seleção */
+.barra{position:fixed;left:0;right:0;bottom:0;background:var(--mod);border-top:1.5px solid var(--acao);box-shadow:0 -8px 30px rgba(0,0,0,.35);transform:translateY(110%);transition:transform .18s ease}
+.barra.on{transform:none}
+.barra .in{max-width:1440px;margin:0 auto;padding:12px 26px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.barra .qt{font-size:12px;font-weight:800;color:var(--tinta-2)}
+.barra .tot{font-size:27px;font-weight:800;letter-spacing:-.02em;color:var(--acao)}
+.barra .caixa{font-size:12px;font-weight:800;padding:6px 12px;border-radius:10px}
+.barra .caixa.ok{background:var(--verde-fundo);color:var(--verde)}
+.barra .caixa.ruim{background:var(--coral-fundo);color:var(--coral)}
+.barra .dir{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--acao);background:var(--acao-fundo);color:var(--acao);font:inherit;font-size:12.5px;font-weight:800;border-radius:9px;padding:9px 15px;cursor:pointer}
+.btn.cheio{background:var(--acao-vivo);border-color:var(--acao-vivo);color:#fff}
+.btn.fant{border-color:var(--linha-forte);background:transparent;color:var(--tinta-2)}
+footer{max-width:1440px;margin:0 auto;padding:10px 26px 26px;font-size:11.5px;color:var(--tinta-3);text-align:center}
+</style>
+</head>
+<body>
+  <header class="topo">
+    <div class="marca"><div class="m">C</div><b>CAIXAOS</b><span class="lab" style="margin-left:2px">· caçula mix</span></div>
+    <span class="titulo-tela">💸 Contas a pagar</span>
+    <span class="lab num" id="resumo"></span>
+    <div class="dir"><button class="tbt" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='light'?'':'light'">☀ / 🌙</button></div>
+  </header>
+
+  <main class="miolo">
+    <div class="faixas num" id="faixas"></div>
+    <section class="mod">
+      <table class="num">
+        <thead><tr>
+          <th style="width:34px"></th><th>STATUS</th><th>VENCIMENTO</th><th>PAGAMENTO</th>
+          <th>FAVORECIDO</th><th>DESCRIÇÃO</th><th>CATEGORIA</th><th style="text-align:right">VALOR</th>
+        </tr></thead>
+        <tbody id="corpo"></tbody>
+      </table>
+    </section>
+    <div class="lab">números de amostra (as vencidas são as reais de 21/10) · saldo de hoje nos bancos (amostra): R$ 8.300,00 · faixa clica = filtro · linha clica = seleciona · NF ↗ abre a nota</div>
+  </main>
+
+  <div class="barra num" id="barra">
+    <div class="in">
+      <div><div class="qt" id="bQt"></div><div class="tot" id="bTot"></div></div>
+      <span class="caixa" id="bCaixa"></span>
+      <div class="dir">
+        <button class="btn fant" onclick="limpar()">limpar</button>
+        <button class="btn">agendar</button>
+        <button class="btn cheio">marcar pagas →</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>CONTAS A PAGAR · PROPOSTA v2 — a tabela de hoje é a lei da lista; por cima: seleção com total vivo + régua do caixa · faixas do tempo com data no rótulo · selo sem-banco · aprovação do dono pendente</footer>
+
+<script>
+/* ===== AMOSTRA — em prod: portas reais de contas a pagar + saldosDaEmpresa ===== */
+var SALDO_HOJE=8300.00; /* amostra, rotulada */
+var CONTAS=[
+ /* vencidas = as REAIS da tela do dono em 21/10 */
+ {id:1, fx:"VENC", venc:"19/10/2026", fav:"ALAN SALBEGO DA SILVA", desc:"NF 1800 (parcela R01)", nf:"NF 1800", cat:null, bco:"Sicredi", v:94.25},
+ {id:2, fx:"VENC", venc:"19/10/2026", fav:"ALAN SALBEGO DA SILVA", desc:"NF 1789 (parcela R01)", nf:"NF 1789", cat:null, bco:"Sicredi", v:65.46},
+ {id:3, fx:"VENC", venc:"19/10/2026", fav:"CIA DA FRUTA COM. DE FRUTAS E VERDURAS", desc:"NF 1085", nf:"NF 1085", cat:null, bco:null, v:751.28},
+ {id:4, fx:"VENC", venc:"19/10/2026", fav:"M. IVAN LUNARDI OURIQUE LTDA", desc:"NF 68", nf:"NF 68", cat:null, bco:"Banrisul", v:482.50},
+ {id:5, fx:"VENC", venc:"19/10/2026", fav:"ODISSEA CORREA DA SILVA", desc:"NF 787 (parcela R01)", nf:"NF 787", cat:null, bco:null, v:219.00},
+ {id:6, fx:"HOJE", venc:"21/10/2026", fav:"CELESC", desc:"Energia elétrica do salão", nf:null, cat:"Fixas", bco:"Banrisul", v:2310.45},
+ {id:7, fx:"HOJE", venc:"21/10/2026", fav:"FRIGORÍFICO SILVA", desc:"Carnes da semana — NF 8831", nf:"NF 8831", cat:"Insumos", bco:"Sicredi", v:3890.20},
+ {id:8, fx:"SETE", venc:"23/10/2026", fav:"SICREDI — C41022227-1", desc:"Parcela #26 do empréstimo", nf:null, cat:"Empréstimos", bco:"Sicredi", v:6903.45},
+ {id:9, fx:"SETE", venc:"24/10/2026", fav:"IMOBILIÁRIA CENTRO", desc:"Aluguel do salão", nf:null, cat:"Fixas", bco:"Banrisul", v:6500.00},
+ {id:10,fx:"SETE", venc:"25/10/2026", fav:"MOINHO SUL", desc:"Massas e farinhas — NF 2210", nf:"NF 2210", cat:"Insumos", bco:null, v:740.00},
+ {id:11,fx:"MES",  venc:"28/10/2026", fav:"VERO INTERNET", desc:"Fibra 600 MB", nf:null, cat:"Fixas", bco:"Banrisul", v:199.90},
+ {id:12,fx:"MES",  venc:"31/10/2026", fav:"RECEITA FEDERAL", desc:"DAS — impostos do mês", nf:null, cat:"Impostos", bco:"Banrisul", v:1890.33},
+ {id:13,fx:"MES",  venc:"31/10/2026", fav:"CASAN", desc:"Água e saneamento", nf:null, cat:"Fixas", bco:"Banrisul", v:310.12}
+];
+var FAIXAS=[
+ {k:"VENC", rot:"VENCIDAS", sub:"até ontem · 20/10", cls:"venc", st:'<span class="st v">VENCIDA</span>'},
+ {k:"HOJE", rot:"VENCE HOJE", sub:"ter · 21/10", cls:"hoje", st:'<span class="st h">HOJE</span>'},
+ {k:"SETE", rot:"PRÓXIMOS 7 DIAS", sub:"22 a 28/10", cls:"", st:'<span class="st a">A VENCER</span>'},
+ {k:"MES",  rot:"RESTO DO MÊS", sub:"29 a 31/10", cls:"", st:'<span class="st a">A VENCER</span>'}
+];
+var SEL={}, FILTRO=null;
+function brl(v){return "R$ "+v.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}
+function somaFx(k){return CONTAS.filter(function(c){return c.fx==k}).reduce(function(s,c){return s+c.v},0)}
+function tgl(id){SEL[id]=!SEL[id];draw()}
+function tglSec(k){var cs=CONTAS.filter(function(c){return c.fx==k});var all=cs.every(function(c){return SEL[c.id]});cs.forEach(function(c){SEL[c.id]=!all});draw()}
+function filtrar(k){FILTRO=(FILTRO==k?null:k);draw()}
+function limpar(){SEL={};draw()}
+function draw(){
+ var totAberto=CONTAS.reduce(function(s,c){return s+c.v},0), venc=somaFx("VENC");
+ document.getElementById("resumo").textContent="em aberto: "+brl(totAberto)+(venc>0?" · vencidas: "+brl(venc):"");
+ document.getElementById("faixas").innerHTML=FAIXAS.map(function(f){
+  var cs=CONTAS.filter(function(c){return c.fx==f.k});
+  return '<button class="fx '+f.cls+(FILTRO==f.k?" on":"")+'" onclick="filtrar(\''+f.k+'\')">'
+   +'<div class="l">'+f.rot+' · '+f.sub+'</div><div class="n">'+brl(somaFx(f.k))+'</div><div class="s">'+cs.length+' conta'+(cs.length!=1?"s":"")+'</div></button>';
+ }).join("");
+ document.getElementById("corpo").innerHTML=FAIXAS.filter(function(f){return !FILTRO||FILTRO==f.k}).map(function(f){
+  var cs=CONTAS.filter(function(c){return c.fx==f.k});
+  if(!cs.length)return "";
+  var all=cs.every(function(c){return SEL[c.id]});
+  return '<tr class="sec '+f.cls+'"><td><input type="checkbox" class="chk" '+(all?"checked":"")+' onclick="tglSec(\''+f.k+'\')"></td>'
+   +'<td colspan="7">'+f.rot+' · '+f.sub+'<span class="tot">'+brl(somaFx(f.k))+' <small>· '+cs.length+' conta'+(cs.length!=1?"s":"")+'</small></span></td></tr>'
+   +cs.map(function(c){
+    return '<tr class="conta'+(SEL[c.id]?" sel":"")+'" onclick="tgl('+c.id+')">'
+     +'<td><input type="checkbox" class="chk" '+(SEL[c.id]?"checked":"")+' onclick="event.stopPropagation();tgl('+c.id+')"></td>'
+     +'<td>'+f.st+'</td>'
+     +'<td class="dt">'+c.venc+'</td>'
+     +'<td class="dt">—</td>'
+     +'<td class="fav">'+c.fav+'</td>'
+     +'<td class="desc">'+c.desc+(c.nf?' <a href="#" onclick="event.stopPropagation()">'+c.nf+' ↗</a>':"")+'</td>'
+     +'<td class="cat">'+(c.cat||"—")+(c.bco?"":'<span class="semb">⚠ sem banco</span>')+'</td>'
+     +'<td class="val">− '+brl(c.v)+'</td></tr>';
+   }).join("");
+ }).join("");
+ var sel=CONTAS.filter(function(c){return SEL[c.id]});
+ var tot=sel.reduce(function(s,c){return s+c.v},0);
+ var barra=document.getElementById("barra");
+ if(sel.length){
+  barra.classList.add("on");
+  document.getElementById("bQt").textContent=sel.length+" conta"+(sel.length>1?"s":"")+" selecionada"+(sel.length>1?"s":"");
+  document.getElementById("bTot").textContent=brl(tot);
+  var depois=SALDO_HOJE-tot, ok=depois>=0;
+  var cx=document.getElementById("bCaixa");
+  cx.className="caixa "+(ok?"ok":"ruim");
+  cx.textContent="saldo hoje "+brl(SALDO_HOJE)+" → pagando fica "+brl(depois)+(ok?" ✓":" ⚠");
+ } else barra.classList.remove("on");
+}
+draw();
+</script>
+</body>
+</html>

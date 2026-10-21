@@ -10,7 +10,14 @@
 // Layout: tarja lateral colorida (cor = payableVisualStatus), 12 colunas,
 // linha hover, click → modal detalhe (placeholder), click no menu ⋯ → actions.
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Fragment } from 'react'
+import type { FaixaDoTempo } from '@/lib/contas-pagar/faixa-do-tempo'
+import {
+  secoesDasLinhas,
+  ordenadoPorVencimento,
+  type SecaoDaTabela,
+  type TotalDaFaixa,
+} from '@/lib/contas-pagar/secoes-da-tabela'
 import {
   useReactTable,
   getCoreRowModel,
@@ -125,6 +132,13 @@ function LinkNotaOrigem({ nota }: { nota: NonNullable<PayableRow['notaOrigem']> 
 interface Props {
   rows: PayableRow[]
   onRowClick?: (row: PayableRow) => void
+  /**
+   * ⭐⭐ 21/10 — OS TOTAIS POR FAIXA, pro cabeçalho de seção mostrar o subtotal da faixa
+   * INTEIRA (o MESMO número do chip do topo), nunca a soma das linhas da página.
+   *
+   * ⚠️ `undefined` desliga as seções — a lista fica plana, como antes.
+   */
+  totaisPorFaixa?: Partial<Record<FaixaDoTempo, TotalDaFaixa>>
   /** Efetivar pagamento COM banco (atualiza saldo) — Sprint 4.0.1.a */
   onEfetivar?: (row: PayableRow) => void
   /** Edit modal — Sprint 5.0.3.0a-fix */
@@ -174,6 +188,40 @@ function formatDate(d: string | null): string {
   return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
 }
 
+/**
+ * ⭐ P3 DA REFERÊNCIA — o selo `⚠ sem banco` na coluna de CATEGORIA.
+ *
+ * **O pedido do dono:** *"Selo «⚠ sem banco» discreto na coluna de categoria (a família
+ * dos R$ 66 mil invisíveis de 17/10)."* A pílula copia o `.semb` do arquivo versionado
+ * (9,5px · peso 800 · 2/7px · raio 999 · 6px de margem · nowrap), com o par de token da
+ * casa (`--fam-ambar-bg` / `--fam-ambar-ink`) **em vez do hex**, pra ele inverter nos dois
+ * temas de graça.
+ *
+ * ⚠️⚠️ **MEDIÇÃO QUE O DONO PRECISA SABER, e ela está escrita aqui de propósito:**
+ * **conta a pagar NASCE SEM `bankAccountId`** — a ponte do estoque (24/08) e o
+ * `createContaPendente` gravam `bankAccountId: null`, e o número já foi medido duas vezes
+ * neste projeto (*"110 PAYABLE da empresa, ZERO com conta bancária"* em 15/10 · *"115 em
+ * aberto, ZERO"* em 06/10). **Logo o selo tende a aparecer em TODA linha em aberto.**
+ *
+ * ⛔ Implementei a lei como ela está escrita, e **não afrouxei por conta própria** — mas
+ * fica dito: móvel fixo em 100% das linhas deixa de ser sinal. Se ele quiser que o selo
+ * marque só a EXCEÇÃO, a decisão é dele (a referência mostra 2 de 13 na amostra, o que
+ * sugere que o autor esperava exceção).
+ */
+function SeloSemBanco({ row }: { row: PayableRow }) {
+  if (row.bankAccount) return null
+  return (
+    <span
+      className="ml-1.5 whitespace-nowrap rounded-full px-[7px] py-[2px] text-[9.5px] font-extrabold"
+      style={{ background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}
+      title="esta conta não diz de qual banco ela sai — o pagamento dela não aparece em nenhum saldo"
+      data-testid="selo-sem-banco"
+    >
+      ⚠ sem banco
+    </span>
+  )
+}
+
 function favorecidoLabel(row: PayableRow): string {
   return (
     row.supplier?.nomeFantasia ??
@@ -213,6 +261,7 @@ export function PayableTable({
   editCell,
   onColumnOrderChange,
   disableDrag = false,
+  totaisPorFaixa,
 }: Props) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'dueDate', desc: false },
@@ -359,31 +408,39 @@ export function PayableTable({
         const r = row.original
         if (editCell) {
           return (
-            <CategoryComboboxCell
-              currentId={r.category?.id ?? null}
-              currentName={r.category?.name ?? null}
-              isEditing={editCell.isEditing(r.id, 'categoryId')}
-              isSaving={editCell.isSaving(r.id, 'categoryId')}
-              hasError={editCell.hasError(r.id, 'categoryId')}
-              options={categoryOptions}
-              onStartEdit={() => editCell.startEdit(r.id, 'categoryId')}
-              onSave={(v) =>
-                editCell.save(r.id, 'categoryId', v, r.category?.id ?? null)
-              }
-              onCancel={editCell.cancel}
-            />
+            <span className="inline-flex items-center">
+              <CategoryComboboxCell
+                currentId={r.category?.id ?? null}
+                currentName={r.category?.name ?? null}
+                isEditing={editCell.isEditing(r.id, 'categoryId')}
+                isSaving={editCell.isSaving(r.id, 'categoryId')}
+                hasError={editCell.hasError(r.id, 'categoryId')}
+                options={categoryOptions}
+                onStartEdit={() => editCell.startEdit(r.id, 'categoryId')}
+                onSave={(v) =>
+                  editCell.save(r.id, 'categoryId', v, r.category?.id ?? null)
+                }
+                onCancel={editCell.cancel}
+              />
+              <SeloSemBanco row={r} />
+            </span>
           )
         }
-        return r.category ? (
-          <span className="flex items-center gap-1.5 text-xs">
-            <span
-              className="inline-block h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: r.category.color }}
-            />
-            {r.category.name}
+        return (
+          <span className="inline-flex items-center">
+            {r.category ? (
+              <span className="flex items-center gap-1.5 text-xs">
+                <span
+                  className="inline-block h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: r.category.color }}
+                />
+                {r.category.name}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+            <SeloSemBanco row={r} />
           </span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
         )
       },
     },
@@ -588,6 +645,40 @@ export function PayableTable({
     enableRowSelection: true,
   })
 
+  /**
+   * ⭐⭐ AS SEÇÕES — montadas sobre as linhas **na ordem em que a tabela as desenha**.
+   *
+   * ⛔ Elas vivem AQUI e não no pai porque quem conhece a ordenação aplicada é este
+   * componente: o pai teria que adivinhar a ordem, e um cabeçalho de faixa no lugar errado
+   * é pior que nenhum. ⚠️ `ordenadoPorVencimento` é o que libera o agrupamento — fora da
+   * ordem de data as faixas se intercalam e o subtotal da seção viraria parcial (o porquê
+   * está escrito no dono da régua).
+   */
+  const linhasOrdenadas = table.getRowModel().rows
+  const secoes: SecaoDaTabela[] | null = useMemo(
+    () =>
+      totaisPorFaixa
+        ? secoesDasLinhas(
+            linhasOrdenadas.map((r) => r.original),
+            totaisPorFaixa,
+            { porVencimento: ordenadoPorVencimento(sorting) },
+          )
+        : null,
+    [linhasOrdenadas, totaisPorFaixa, sorting],
+  )
+  /** ⭐ indexado pelo id da 1ª linha da seção — nunca por posição */
+  const secaoQueComecaAqui = useMemo(() => {
+    const m = new Map<string, SecaoDaTabela>()
+    for (const s of secoes ?? []) if (s.ids[0]) m.set(s.ids[0], s)
+    return m
+  }, [secoes])
+  /**
+   * ⚠️ o `colSpan` do cabeçalho de seção é DERIVADO das colunas visíveis — número cravado
+   * quebraria no dia em que o dono esconder uma coluna (e a lista tem esse gesto desde
+   * 5.0.3.0c). O `-1` tira a célula da tarja, que tem `<td>` próprio.
+   */
+  const colunasVisiveis = table.getVisibleLeafColumns().length
+
   // Sprint 5.0.3.0d (d1) — Setup do drag column reorder
   const FIXED_COLUMNS = ['select', 'status', 'amount', 'actions']
   const sensors = useSensors(
@@ -662,13 +753,79 @@ export function PayableTable({
               paymentDate: row.original.paymentDate,
             })
             const stripeColor = PAYABLE_STATUS_COLOR[visual].stripe
+            /**
+             * ⭐⭐ A LINHA-CABEÇALHO DA FAIXA, injetada ANTES da 1ª linha de cada seção.
+             *
+             * ⚠️ Casada pelo **id da 1ª linha** da seção, não por índice: o índice muda com
+             * ordenação, paginação e coluna escondida, e aí o cabeçalho apareceria no meio
+             * da faixa anterior.
+             */
+            const secao = secaoQueComecaAqui.get(row.original.id)
             return (
+              <Fragment key={row.id}>
+                {secao && (
+                  <tr
+                    className="border-y bg-muted/50"
+                    data-testid={`secao-${secao.faixa}`}
+                  >
+                    <td className="w-1 p-0" aria-hidden="true" />
+                    <td colSpan={colunasVisiveis} className="px-3 py-1.5">
+                      <div className="flex items-center gap-2.5">
+                        {/**
+                          * ⭐ O CHECKBOX DA SEÇÃO — marca/desmarca as linhas DESTA faixa que
+                          * estão carregadas. ⚠️ É o que ele pode fazer; a parcialidade é
+                          * DITA ao lado quando a página corta a faixa.
+                          */}
+                        <Checkbox
+                          checked={secao.ids.every((id) => selection[id])}
+                          onCheckedChange={(v) => {
+                            const marcar = !!v
+                            const prox = { ...selection }
+                            for (const id of secao.ids) {
+                              if (marcar) prox[id] = true
+                              else delete prox[id]
+                            }
+                            onSelectionChange(prox)
+                          }}
+                          aria-label={`Selecionar a faixa ${secao.rotulo}`}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <span className="text-[11px] font-semibold uppercase tracking-wide">
+                          {secao.rotulo}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground tabular-nums">
+                          {secao.contagem} {secao.contagem === 1 ? 'conta' : 'contas'} ·{' '}
+                          {formatBRL(secao.subtotal)}
+                          {/* ⛔ truncagem NUNCA silenciosa (a cicatriz do `take: 50`) */}
+                          {secao.parcial && (
+                            <span className="ml-1 text-amber-700 dark:text-amber-400">
+                              · {secao.ids.length} nesta página
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               <tr
-                key={row.id}
                 className={`group border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer ${
                   row.getIsSelected() ? 'bg-primary/5' : ''
                 } ${i % 2 === 1 ? 'bg-muted/10' : ''}`}
-                onClick={() => onRowClick?.(row.original)}
+                /**
+                 * ⭐⭐ 21/10 — CLICAR NA LINHA SELECIONA.
+                 *
+                 * ⚠️ E isto **preenche um gesto morto, não rouba um existente**: medido, o
+                 * `onRowClick` não tinha UM chamador — a linha era `cursor-pointer` e não
+                 * fazia nada. O `onRowClick` segue respeitado pra quem passar um dia; sem
+                 * ele, o clique alterna a seleção.
+                 *
+                 * ⛔ O link **NF ↗**, o checkbox e o menu de ações já param a propagação
+                 * (desde a Fase 1, com o motivo escrito lá) — a nota continua abrindo.
+                 */
+                onClick={() => {
+                  if (onRowClick) return onRowClick(row.original)
+                  row.toggleSelected(!row.getIsSelected())
+                }}
                 data-testid={`payable-row-${row.original.id}`}
               >
                 {/* Tarja lateral */}
@@ -679,6 +836,7 @@ export function PayableTable({
                   </td>
                 ))}
               </tr>
+              </Fragment>
               )
             })}
           </tbody>

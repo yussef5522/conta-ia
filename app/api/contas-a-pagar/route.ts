@@ -17,6 +17,13 @@ import {
 } from '@/lib/contas-pagar/list-filters'
 import { notasDeOrigem, type NotaDeOrigem } from '@/lib/stock/ponte/nota-de-origem'
 import { whereDoStatus } from '@/lib/contas-pagar/escopo'
+import {
+  FAIXAS,
+  whereDaFaixa,
+  rotuloDaFaixa,
+  faixaTemIntervaloVazio,
+} from '@/lib/contas-pagar/faixa-do-tempo'
+import { saldoDeCaixaAgora } from '@/lib/balance/serie-de-saldo'
 import { mesCorrente } from '@/lib/periodo/mes-corrente'
 
 export async function POST(request: NextRequest) {
@@ -79,6 +86,15 @@ export async function GET(request: NextRequest) {
       status: undefined,
       vencidasOnly: false,
       q: undefined,
+      /**
+       * ⭐⭐ 21/10 — a FAIXA sai da base dos números do topo, **de propósito**.
+       *
+       * ⛔ Sem isto, clicar numa faixa zeraria os chips das OUTRAS (cada um mediria dentro
+       * do recorte da faixa escolhida) e o dono perderia o mapa justamente quando entrou
+       * nele. É a mesma régua do `status`/`q`: **o chip é o filtro, e filtro não pode
+       * apagar o painel que o oferece.**
+       */
+      faixa: undefined,
     } as typeof input
     const whereBase = buildPayableListWhere(kpiBaseInput, now)
     /**
@@ -95,8 +111,10 @@ export async function GET(request: NextRequest) {
      */
     const whereBasePagas = baseDosKpisDePagas(kpiBaseInput, now)
 
-    const [items, total, kpiPagas, kpiPendentes, kpiVencidas, kpiVenceHoje, kpiConciliadas, kpiSemVinculo] =
-      await Promise.all([
+    const [
+      items, total, kpiPagas, kpiPendentes, kpiVencidas, kpiVenceHoje,
+      kpiConciliadas, kpiSemVinculo, faixasMedidas, saldoCaixa,
+    ] = await Promise.all([
         prisma.transaction.findMany({
           where: whereList,
           orderBy,
@@ -182,6 +200,58 @@ export async function GET(request: NextRequest) {
           _sum: { amount: true },
           _count: { _all: true },
         }),
+        /**
+         * ⭐⭐⭐ 21/10 — AS FAIXAS DO TEMPO, pelo dono único (`whereDaFaixa`, que chama o
+         * `whereDoStatus` por recursão).
+         *
+         * ⛔ **Σ das faixas == total em aberto, por CONSTRUÇÃO**: `VENCIDAS` e `VENCE_HOJE`
+         * SÃO os cartões, e as quatro restantes particionam o `A_PAGAR` (as três de data
+         * mais a sem-vencimento, que o A_PAGAR carrega). Faixa nova fora dessa partição
+         * quebraria o invariante — e é isso que o guard afirma.
+         *
+         * ⚠️ `whereBase` (sem a faixa), igual aos cartões — o AND explícito, nunca spread.
+         *
+         * ⛔⛔ **O RÓTULO VEM DAQUI, NUNCA DA TELA — um relógio só manda.** O agregado é
+         * medido com o `now` do SERVIDOR; se o chip derivasse a data no cliente, um aparelho
+         * com a hora torta mostraria *"PRÓXIMOS 7 DIAS · 22 a 28/10"* sobre um número que o
+         * servidor contou de outra janela. É a cicatriz do cronômetro do tablet (08/09) e do
+         * mês default do PF (30/09), aplicada ao rótulo.
+         */
+        Promise.all(
+          FAIXAS.map(async (faixa) => {
+            const r = await prisma.transaction.aggregate({
+              where: { AND: [whereBase, whereDaFaixa(faixa, now)] },
+              _sum: { amount: true },
+              _count: { _all: true },
+            })
+            return [
+              faixa,
+              {
+                contagem: r._count._all,
+                total: r._sum.amount ?? 0,
+                rotulo: rotuloDaFaixa(faixa, now),
+                /** ⚠️ `true` quando o intervalo não tem dia nenhum (fim de mês) */
+                intervaloVazio: faixaTemIntervaloVazio(faixa, now),
+              },
+            ] as const
+          }),
+        ),
+        /**
+         * ⭐⭐ O SALDO DE CAIXA — **a MESMA porta da mesa ①** (`saldoDeCaixaAgora`, sobre a
+         * `regua-do-caixa`), pra a barra da seleção dizer *"pagando fica R$ Y"*.
+         *
+         * ⚠️ Vem **no payload da lista**, não numa 2ª chamada: duas requisições viriam de
+         * instantes diferentes e a régua poderia falar de um saldo que o topo não mostra
+         * (a lição de *"uma leitura, um instante"* da mesa ②).
+         *
+         * ⛔ **FAIL-SOFT pra `null`, nunca `0`:** *"não consegui ler"* ≠ *"não tem
+         * dinheiro"*, e diagnóstico não derruba a tela de dinheiro (a régua do selo de
+         * conferência). A barra DIZ *"saldo a apurar"*.
+         */
+        saldoDeCaixaAgora(empresaId, prisma).then(
+          (r) => r.saldoAgora as number | null,
+          () => null,
+        ),
       ])
 
     // ⭐ "VER NOTA DE ORIGEM" (30/08) — a seta de volta da ponte. Só as linhas desta
@@ -229,12 +299,24 @@ export async function GET(request: NextRequest) {
         countPagasConciliadas: kpiConciliadas._count._all,
         countPagasSemVinculo: kpiSemVinculo._count._all,
       },
+      /**
+       * ⭐⭐ AS FAIXAS DO TEMPO (21/10) — contagem e total de cada uma, medidos pelo mesmo
+       * `whereDoStatus` dos cartões. A tela ecoa; ela não soma nada por conta própria.
+       */
+      faixas: Object.fromEntries(faixasMedidas),
+      /**
+       * ⭐ O saldo de caixa de AGORA — a régua da barra da seleção.
+       * ⚠️ `null` quando a leitura falhou: a barra DIZ *"a apurar"* em vez de afirmar zero.
+       */
+      saldoCaixa,
       // Sprint 5.0.3.0a — Echo dos filtros parseados (UI sincroniza state)
       appliedFilters: {
         dataDe: input.dataDe,
         dataAte: input.dataAte,
         dataField: input.dataField,
         status: input.status,
+        // ⭐ a faixa volta ecoada, como todo filtro — a tela sincroniza o chip aceso
+        faixa: input.faixa,
         vencidasOnly: input.vencidasOnly,
         supplierIds: input.supplierIds,
         employeeIds: input.employeeIds,

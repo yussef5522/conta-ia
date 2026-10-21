@@ -6,6 +6,7 @@
 
 import { z } from 'zod'
 import { whereDoStatus } from './escopo'
+import { whereDaFaixa } from './faixa-do-tempo'
 
 /**
  * ⭐⭐⭐ A BASE DOS KPIs DE PAGAS TEM UM DONO SÓ (26/09/2026).
@@ -71,6 +72,18 @@ export const listPayableSchema = z.object({
    * quem quer o recorte escolhe no dropdown.
    */
   escopo: z.enum(['VENCIDA', 'VENCE_HOJE', 'A_PAGAR', 'PAGA', 'PAGA_CONCILIADA', 'PAGA_SEM_VINCULO']).optional(),
+  /**
+   * ⭐⭐ A FAIXA DO TEMPO (21/10) — o chip do topo clicável como filtro.
+   *
+   * ⛔ **Ela DERIVA do `escopo`, não concorre com ele** (`whereDaFaixa` chama
+   * `whereDoStatus` por recursão): `VENCIDAS` e `VENCE_HOJE` são o MESMO recorte dos
+   * cartões, e as três de data só subdividem o `A_PAGAR`. ⚠️ Faixa e escopo podem vir
+   * juntos sem se contradizer — os dois entram no `AND`, e o resultado é a interseção
+   * honesta (faixa de uma, escopo de outra → lista vazia, que é a verdade).
+   */
+  faixa: z
+    .enum(['VENCIDAS', 'VENCE_HOJE', 'SETE_DIAS', 'RESTO_DO_MES', 'DEPOIS_DO_MES', 'SEM_VENCIMENTO'])
+    .optional(),
   /**
    * ⭐⭐ O MÊS DO RECORTE DE FLUXO (`YYYY-MM`, 14/09) — padrão: o mês corrente.
    *
@@ -228,6 +241,14 @@ export function buildPayableListWhere(
     // ⚠️ o caminho velho segue vivo pra link antigo, mas lendo a MESMA régua — não dá
     // pra ele voltar a discordar do card
     ;(where.AND as Array<Record<string, unknown>>).push(whereDoStatus('VENCIDA', now))
+  }
+  /**
+   * ⭐ A FAIXA entra no MESMO `AND`, pelo dono dela (`whereDaFaixa`) — que por dentro chama
+   * `whereDoStatus`. ⚠️ Nunca por spread, pelo mesmo motivo do escopo: o fragmento das
+   * faixas de data tem `AND` próprio e o spread apagaria o OR multi-tenant.
+   */
+  if (input.faixa) {
+    ;(where.AND as Array<Record<string, unknown>>).push(whereDaFaixa(input.faixa, now))
   }
 
   // Período no campo escolhido

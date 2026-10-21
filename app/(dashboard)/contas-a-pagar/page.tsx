@@ -52,6 +52,13 @@ import { mesCorrente, rotuloDoMes } from '@/lib/periodo/mes-corrente'
  */
 import { ROTULO_PAGAS } from '@/lib/contas-pagar/rotulos'
 import {
+  ehFaixaDoTempo,
+  type FaixaDoTempo,
+  type FaixaMedida,
+} from '@/lib/contas-pagar/faixa-do-tempo'
+import { ChipsDasFaixas } from '@/components/contas-pagar/ChipsDasFaixas'
+import { reguaDoCaixaNaSelecao } from '@/lib/contas-pagar/regua-do-caixa-na-selecao'
+import {
   PayableFilters,
   EMPTY_FILTERS,
   isFilterActive,
@@ -157,6 +164,17 @@ const EMPTY_KPIS: KPIs = {
   countVencido: 0,
 }
 
+/**
+ * ⭐ A faixa que veio da URL — **validada pelo dono da pergunta**, nunca castada.
+ *
+ * ⛔ `as FaixaDoTempo` deixaria `?faixa=xpto` virar um filtro que o servidor recusa (400) ou,
+ * pior, uma lista vazia com cara de *"não tem conta nenhuma"*. Valor desconhecido cai em
+ * `undefined` = a lista inteira, que é o default honesto.
+ */
+function faixaDaUrl(v: string | null): FaixaDoTempo | undefined {
+  return v && ehFaixaDoTempo(v) ? v : undefined
+}
+
 // Sprint 5.0.3.2 — Feature flag pra esconder UI das tabs Saved Views.
 // Backend (model SavedView, endpoints, hooks, modais) continua INTOCADO.
 // Sprint 5.0.4.0 RELATÓRIOS vai reusar o componente em outra tela
@@ -220,6 +238,10 @@ function ContasAPagarInner() {
     dataAte: searchParams.get('dataAte') ?? '',
     status:
       (searchParams.get('status') as PayableFilterState['status']) ?? 'PENDING',
+    // ⭐ a faixa do chip sobrevive ao F5 e é compartilhável, como o resto dos filtros.
+    // ⚠️ VALIDADA pelo dono da pergunta (`ehFaixaDoTempo`), nunca castada cega: `?faixa=xpto`
+    // tem que cair na lista inteira, não numa tela vazia ("erro disfarçado de vazio").
+    faixa: faixaDaUrl(searchParams.get('faixa')),
     vencidasOnly: searchParams.get('vencidasOnly') === 'true',
   }))
   // Sprint 5.0.3.3 — Sincroniza state local com searchParams.empresaId.
@@ -247,6 +269,21 @@ function ContasAPagarInner() {
 
   const [items, setItems] = useState<PayableRow[]>([])
   const [kpis, setKpis] = useState<KPIs>(EMPTY_KPIS)
+  /**
+   * ⭐⭐ AS FAIXAS DO TEMPO — medidas pelo SERVIDOR, com rótulo e tudo (21/10).
+   *
+   * ⛔ A tela **ecoa**; ela não conta nem datifica nada. Contagem, total e rótulo saem do
+   * MESMO `whereDoStatus` dos cartões, no MESMO instante do relógio do servidor.
+   */
+  const [faixas, setFaixas] = useState<Partial<Record<FaixaDoTempo, FaixaMedida>>>({})
+  /**
+   * ⭐ O saldo de caixa de AGORA — a régua da barra da seleção.
+   *
+   * ⛔ `null` é *"não consegui ler"*, **nunca zero**: falhar em ler o caixa é ausência de
+   * MEDIÇÃO, não caixa vazio — e zero faria a barra dizer coral *"pagando fica −R$ X"*,
+   * mandando o dono não pagar uma conta que ele pode pagar.
+   */
+  const [saldoCaixa, setSaldoCaixa] = useState<number | null>(null)
   /**
    * ⭐⭐ O RECORTE DE FLUXO — padrão MÊS CORRENTE (14/09), nunca "desde sempre".
    *
@@ -507,6 +544,35 @@ function ContasAPagarInner() {
   )
   const selectedCount = selectedIds.length
 
+  /**
+   * ⭐⭐⭐ A RÉGUA DO CAIXA NA SELEÇÃO (item 4 do brief) — *"saldo hoje R$ X → pagando fica
+   * R$ Y"*, a MESMA régua da mesa ① (`saldoDeCaixaAgora` sobre a `regua-do-caixa`).
+   *
+   * ⛔⛔ **A SOMA É DAS LINHAS QUE ESTÃO NA PÁGINA, e a barra DIZ quando não alcança tudo.**
+   * A seleção sobrevive à troca de página (por desenho — o lote opera por id), então
+   * `selectedCount` pode ser 6 com 4 linhas carregadas. Somar só as 4 e imprimir *"6 contas
+   * selecionadas · TOTAL"* seria um total que não fecha com o rótulo ao lado dele — *número
+   * de dinheiro em tela sem régua é pior que ausência*. Por isso a barra recebe
+   * `foraDaPagina` e nomeia o que ficou de fora.
+   *
+   * ⚠️ E a aritmética mora na LIB (`reguaDoCaixaNaSelecao`), não aqui: quem decide
+   * verde/coral/a-apurar é ela, pros oito estados possíveis serem testáveis sem tela.
+   */
+  const selecaoNaPagina = useMemo(
+    () => items.filter((i) => selection[i.id]),
+    [items, selection],
+  )
+  const regua = useMemo(
+    () =>
+      reguaDoCaixaNaSelecao(
+        selecaoNaPagina.length,
+        selecaoNaPagina.reduce((acc, i) => acc + i.amount, 0),
+        saldoCaixa,
+      ),
+    [selecaoNaPagina, saldoCaixa],
+  )
+  const selecionadasForaDaPagina = selectedCount - selecaoNaPagina.length
+
   // Sprint 5.0.3.0b — Saved view derivado da URL
   const urlViewParam = searchParams.get('view')
   const { activeViewId, applyView } = useSavedView({
@@ -575,12 +641,18 @@ function ContasAPagarInner() {
       if (filters.status !== 'TODOS') qs.set('status', filters.status)
       // ⭐ o recorte dos três stats — é ele que faz o card e a lista mostrarem o MESMO
       if (filters.escopo) qs.set('escopo', filters.escopo)
+      // ⭐ o chip da faixa é o filtro — o MESMO `whereDaFaixa` que contou o chip recorta a lista
+      if (filters.faixa) qs.set('faixa', filters.faixa)
       qs.set('mes', mes)
       if (filters.vencidasOnly) qs.set('vencidasOnly', 'true')
 
-      const { ok, data, message } = await fetchJson<{ items: typeof items; kpis: typeof kpis; paginacao: typeof paginacao }>(
-        `/api/contas-a-pagar?${qs}`,
-      )
+      const { ok, data, message } = await fetchJson<{
+        items: typeof items
+        kpis: typeof kpis
+        paginacao: typeof paginacao
+        faixas: Partial<Record<FaixaDoTempo, FaixaMedida>>
+        saldoCaixa: number | null
+      }>(`/api/contas-a-pagar?${qs}`)
       if (!ok) {
         toast({ variant: 'destructive', title: 'Erro ao carregar contas a pagar', description: message ?? 'Tenta de novo.' })
         return // não deixa lista/KPIs stale passarem por atuais
@@ -588,6 +660,9 @@ function ContasAPagarInner() {
       setItems(data!.items)
       setKpis(data!.kpis)
       setPaginacao(data!.paginacao)
+      setFaixas(data!.faixas ?? {})
+      // ⚠️ `?? null` e nunca `?? 0`: payload sem o campo é "não medi", não "caixa zerado"
+      setSaldoCaixa(data!.saldoCaixa ?? null)
     } finally {
       setLoading(false)
     }
@@ -599,6 +674,7 @@ function ContasAPagarInner() {
     filters.dataAte,
     filters.status,
     filters.escopo,
+    filters.faixa,
     filters.vencidasOnly,
     mes,
   ])
@@ -616,6 +692,7 @@ function ContasAPagarInner() {
     if (filters.dataDe) sp.set('dataDe', filters.dataDe)
     if (filters.dataAte) sp.set('dataAte', filters.dataAte)
     if (filters.status !== 'PENDING') sp.set('status', filters.status)
+    if (filters.faixa) sp.set('faixa', filters.faixa)
     if (filters.vencidasOnly) sp.set('vencidasOnly', 'true')
     if (activeViewId) sp.set('view', activeViewId)
     router.replace(`?${sp}`, { scroll: false })
@@ -945,6 +1022,8 @@ function ContasAPagarInner() {
       {selectedCount > 0 && (
         <BulkActionsBar
           selectedCount={selectedCount}
+          regua={regua}
+          foraDaPagina={selecionadasForaDaPagina}
           onMarkPaid={() => setBulkMarkPaidOpen(true)}
           onDelete={() => setBulkDeleteOpen(true)}
           onClear={() => setSelection({})}
@@ -1041,6 +1120,25 @@ function ContasAPagarInner() {
             />
           </StatCardGrid>
 
+          {/* ⭐⭐⭐ AS FAIXAS DO TEMPO (21/10) — o chip É o filtro, e o rótulo SEMPRE leva a
+              data (*"rótulo adulto = nome + data"*, lei do dono). Contagem, total e rótulo
+              vêm MEDIDOS pelo servidor; a tela ecoa. */}
+          <ChipsDasFaixas
+            medidas={faixas}
+            faixaAtiva={filters.faixa}
+            totalEmAberto={kpis.totalVenceHoje + kpis.totalPendente + kpis.totalVencido}
+            onEscolher={(f) => {
+              /**
+               * ⚠️ A faixa recorta o que está EM ABERTO, então ela manda `status: 'TODOS'` e
+               * **zera o escopo do cartão** — deixar os dois ligados recortaria duas vezes,
+               * e o chip diria 25 com a lista mostrando 3 (a divergência que os cartões já
+               * pagaram em 13/09).
+               */
+              setFilters({ ...filters, faixa: f, status: 'TODOS', escopo: undefined })
+              setPage(1)
+            }}
+          />
+
           {/* Filtros */}
           <Card>
             <CardContent className="py-3">
@@ -1077,6 +1175,10 @@ function ContasAPagarInner() {
               rows={items}
               selection={selection}
               onSelectionChange={setSelection}
+              /* ⭐ o subtotal do cabeçalho de seção é o da FAIXA INTEIRA (o MESMO número do
+                 chip), nunca a soma das linhas da página — e quando a página corta a faixa,
+                 o cabeçalho DIZ. */
+              totaisPorFaixa={faixas}
               density={tablePrefs.effectiveDensity}
               hiddenColumns={
                 // Sprint 5.0.3.0d (d3) — Em mobile, esconde colunas secundárias

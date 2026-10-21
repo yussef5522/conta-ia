@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/select'
 import { ROTULO_PAGAS, ROTULO_TODOS, ROTULO_RECORTE } from '@/lib/contas-pagar/rotulos'
 import { ehFluxo, type EscopoDaLista } from '@/lib/contas-pagar/escopo'
+import type { FaixaDoTempo } from '@/lib/contas-pagar/faixa-do-tempo'
 
 export interface PayableFilterState {
   q: string
@@ -38,6 +39,13 @@ export interface PayableFilterState {
    * que deixou os campos mortos do «a vencer (3d)» vivos no tipo por 13 dias.
    */
   escopo?: EscopoDaLista
+  /**
+   * ⭐ a FAIXA DO TEMPO do chip do topo — `undefined` = todas (21/10).
+   *
+   * ⚠️ O tipo **DERIVA** de `FaixaDoTempo`, nunca reenumerado aqui: foi a lista escrita à
+   * mão que deixou os campos mortos do «a vencer (3d)» vivos no tipo por 13 dias.
+   */
+  faixa?: FaixaDoTempo
   vencidasOnly: boolean
 }
 
@@ -55,6 +63,9 @@ export function isFilterActive(f: PayableFilterState): boolean {
     !!f.dataDe ||
     !!f.dataAte ||
     f.status !== 'PENDING' ||
+    // ⚠️ a faixa conta como filtro ATIVO — senão o "limpar" não oferece saída de uma lista
+    // recortada por chip, e o dono fica sem caminho de volta (a porta sem maçaneta)
+    !!f.faixa ||
     f.vencidasOnly
   )
 }

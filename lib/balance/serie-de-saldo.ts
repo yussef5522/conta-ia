@@ -59,6 +59,47 @@ export interface OpcoesDaSerie {
 }
 
 /**
+ * ⭐⭐ AS CONTAS DE CAIXA COM O SALDO DELAS — a porta única de *"o que é caixa, e quanto tem"*.
+ *
+ * ⛔ Ela foi **EXTRAÍDA** de `serieDeSaldo`, nunca copiada: a régua do que conta como caixa
+ * (`ehContaDeCaixa`) e a soma (`totalDasContas`) já tinham dono, e escrever um `Σ balance` numa
+ * tela nova seria a SEGUNDA resposta pra *"quanto tem no caixa agora"* — ela divergiria da
+ * mesa ① no primeiro `accountType` novo.
+ */
+export async function contasDeCaixaComSaldo(
+  companyId: string,
+  db: PrismaClient = defaultPrisma,
+): Promise<{
+  contas: Array<{ id: string; accountType: string | null; balance: number }>
+  saldoAgora: number
+}> {
+  const contas = await db.bankAccount.findMany({
+    where: { companyId },
+    select: { id: true, accountType: true, balance: true },
+  })
+  const deCaixa = contas.filter(ehContaDeCaixa)
+  return {
+    contas: deCaixa,
+    saldoAgora: totalDasContas(deCaixa.map((c) => ({ contabil: c.balance }))),
+  }
+}
+
+/**
+ * ⭐ *"Quanto tem no caixa AGORA?"* — o MESMO número que a mesa ① mostra em NO CAIXA AGORA.
+ *
+ * ⛔ Quem chama trata a FALHA como `null`, nunca como `0`: *"não consegui ler"* e *"a empresa
+ * não tem dinheiro"* são coisas diferentes, e confundi-las faria a régua do caixa mandar o
+ * dono não pagar uma conta que ele pode pagar.
+ */
+export async function saldoDeCaixaAgora(
+  companyId: string,
+  db: PrismaClient = defaultPrisma,
+): Promise<{ saldoAgora: number; contas: number }> {
+  const r = await contasDeCaixaComSaldo(companyId, db)
+  return { saldoAgora: r.saldoAgora, contas: r.contas.length }
+}
+
+/**
  * ⚠️ `agora` é PARÂMETRO — o relógio só serve pra dizer que dia é hoje na TELA, nunca pra
  * decidir (a régua da casa desde 13/08). E o dia é o **dia do BRASIL**: às 23h de São Paulo o
  * servidor em UTC já diz amanhã, e a linha inteira deslizaria um dia (a cicatriz do card do
@@ -72,12 +113,7 @@ export async function serieDeSaldo(
 ): Promise<SerieDeSaldo> {
   const dias = Math.max(2, opts.dias ?? 30)
 
-  const contas = await db.bankAccount.findMany({
-    where: { companyId },
-    select: { id: true, accountType: true, balance: true },
-  })
-  const deCaixa = contas.filter(ehContaDeCaixa)
-  const saldoAgora = totalDasContas(deCaixa.map((c) => ({ contabil: c.balance })))
+  const { contas: deCaixa, saldoAgora } = await contasDeCaixaComSaldo(companyId, db)
 
   // ⭐ o dia do BRASIL (UTC−3), nunca o do servidor
   const hojeBr = new Date(agora.getTime() - 3 * 3600_000)
