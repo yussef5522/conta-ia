@@ -13339,6 +13339,215 @@ cicatriz de 07/10 cometida de novo. ***Nome de campo e assinatura se LEEM, nunca
 sonda rodou em `scripts/` e saiu com **`saferm` na MESMA linha de comando** (`git status --short
 scripts/` limpo depois) — a regra de 18/10.
 
+## 💸⭐⭐⭐ CONTAS A PAGAR — FATIA 1: SELEÇÃO + TOTAL + FAIXAS DO TEMPO (21/10/2026)
+
+**`docs/contas-a-pagar-referencia.html` (v2, aprovada pelo dono) virou a LEI desta tela** —
+versionada, e o guard `contas-a-pagar-bate-com-a-referencia` (34 asserções) **ABRE o arquivo**: as
+7 colunas saem dos `<th>` dele, as medidas do selo saem da própria regra `.semb{}` do CSS, e o
+`<script>` é a especificação do comportamento. ⛔ **ZERO ESCRITA na fatia inteira · migration
+NENHUMA · Lei C0 (as telas vizinhas intocadas).**
+
+### ⭐⭐⭐ AS FAIXAS SÃO REFINAMENTO DE `A_PAGAR`, NUNCA UMA RÉGUA NOVA
+
+`whereDaFaixa` **delega a `whereDoStatus` por RECURSÃO**: `VENCIDAS` e `VENCE_HOJE` são o **MESMO
+corte** dos cartões (os três de aberto são partição desde 26/09) e as três faixas de data só
+**subdividem `A_PAGAR`**. ⛔⛔ **Escrever "vencida" uma segunda vez aqui é exatamente o defeito de
+13/09**, em que o card dizia `34 · 48.502,57` e a tabela pintava `9 · 20.635,54` — duas réguas pra
+mesma palavra, e nenhuma das duas sabia da outra.
+
+- ⭐⭐ **`SEM_VENCIMENTO` é faixa PORQUE `A_PAGAR` carrega a conta sem data** — então
+  **Σ(faixas) == total em aberto FECHA POR CONSTRUÇÃO**, não por coincidência de dado. Deixá-la de
+  fora faria a soma dos chips mentir no dia em que uma conta entrasse sem vencimento.
+- ⛔⛔ **A fronteira dos 7 dias TRANSBORDA o mês**, e o rótulo **DERIVA do intervalo**:
+  `inicioDoDepois = max(fim dos sete, primeiro do próximo mês)`. Escrito à mão, o chip diria
+  *"DEPOIS DE 31/10"* sobre uma faixa que começa em 05/11 — e `RESTO DO MÊS` ficaria com intervalo
+  **vazio** sem a tela saber (`faixaTemIntervaloVazio` existe pra isso).
+- ⛔⛔ **UM RELÓGIO MANDA: o SERVIDOR é dono do rótulo** (`rotuloDaFaixa` computado na rota, ao lado
+  do agregado). Cliente com relógio torto **escreveria a data de uma janela sobre o número de
+  outra** — a cicatriz do tablet que mentiu zero por dois dias (08/09) e do card do cartão (09/09).
+- ⚠️ **Dia é CALENDÁRIO, no dia do BRASIL** (`inicioDoDiaBrasil`), nunca `agora + N horas`: às 23h
+  de São Paulo o servidor em UTC já diz amanhã, e a conta de hoje apareceria vencida com o dia
+  inteiro pra pagar.
+- ⛔ **Chip = FILTRO, e ele ZERA o escopo do card** (`faixa`, `status: 'TODOS'`, `escopo: undefined`):
+  manter os dois recortaria por **duas** réguas, que é como a lista passou a mostrar menos do que o
+  card dizia.
+
+### ⛔⛔ A RÉGUA DO CAIXA LÊ `lib/balance`, NUNCA `saldosDaEmpresa` — correção de premissa
+
+O brief dizia *"a régua do caixa via `saldosDaEmpresa`"*. ⛔ **`saldosDaEmpresa` é ESTOQUE** — ela
+somaria **mercadoria** e a barra diria *"pagando fica R$ Y"* sobre o valor da câmara fria. O dono do
+caixa é `lib/balance/` (`WHERE_CAIXA`/`ehContaDeCaixa`/`totalDasContas`), **a MESMA porta que a mesa
+① usa pra dizer NO CAIXA AGORA**.
+
+⭐ `contasDeCaixaComSaldo` foi **EXTRAÍDA** de `serieDeSaldo` (que passou a **consumi-la**), nunca
+copiada — um `Σ balance` escrito aqui seria a **2ª resposta** pra *"quanto tem no caixa agora"*, e
+ela divergiria da mesa ① no primeiro `accountType` novo. O guard exige que a mesa **consuma** a
+extração e **proíbe** o `findMany` voltar pra dentro dela; e a rota **não pode conter**
+`saldosDaEmpresa`.
+
+⛔⛔ **`saldoHoje: number | null`, NUNCA `?? 0`:** falhar em ler o caixa é **ausência de MEDIÇÃO**,
+não caixa vazio — e `0` pintaria **coral** dizendo ao dono pra não pagar uma conta que ele pode
+pagar. ⚠️ E a `frase` da régua **não carrega moeda de propósito**: `formatBRL` vive na tela, num
+lugar só.
+
+### ⭐⭐ AS LINHAS-SEÇÃO — O SUBTOTAL É O DO SERVIDOR, NUNCA A SOMA DA PÁGINA
+
+A lista pagina. Somar o visível faria a seção dizer `R$ 20 mil` e o chip do topo `R$ 69 mil` **pra a
+MESMA faixa, a dez centímetros um do outro**. O subtotal é o **agregado** (`secao.subtotal`), e a
+**parcialidade é DITA** (*"N nesta página"*) — truncagem silenciosa é a classe do `take: 50` que
+escondeu o fermento (16/09).
+
+- ⛔ **Seção só existe em ORDEM DE VENCIMENTO** (`ordenadoPorVencimento`, com sorting vazio = SIM,
+  que é o default da tela): ordenado por valor as faixas se intercalam e o invariante *"Σ das faixas
+  == Σ das linhas"* fica **visivelmente falso** na tela.
+- ⚠️ **Conta PAGA não abre seção** — e é por isso que a 1ª página crua (dueDate asc, mês corrente)
+  pode não mostrar seção nenhuma: ali estão as pagas. As seções aparecem no recorte do chip/card.
+- ⭐ **A seleção sobrevive à troca de página**, e `foraDaPagina` **NOMEIA** o que o total não alcança
+  (*"em outra página"*) — total que some sem explicação é pior que total parcial.
+
+### ⛔⛔ O SELO "⚠ sem banco" E A MEDIÇÃO QUE MUDA O QUE ELE SIGNIFICA
+
+Conta a pagar **NASCE SEM `bankAccountId`** (a ponte do estoque, 24/08) — medido em prod: **25 de
+200** linhas da página. ⭐ Então o selo não é exceção rara, é **o estado comum**, e as medidas dele
+saem da regra `.semb{}` da referência (`9.5px` · `font-extrabold` · `px-[7px]` · `py-[2px]` ·
+`rounded-full` · `ml-1.5` · `whitespace-nowrap`), nunca ajustadas no olho. Ele nasce de
+`row.bankAccount` e aparece nos **DOIS** ramos da categoria (o guard conta `usosDe >= 3`).
+
+### ⚠️⚠️ A BARRA JÁ TINHA BOTÕES DE AÇÃO — E A CONDIÇÃO DO BRIEF NÃO SE APLICOU
+
+O brief mandava **remover** os botões de ação da barra *"se o `BulkActionsBar` nasceu com eles"*.
+**Medido, não suposto** (`git log` + `git show HEAD:…`): `bulk-mark-paid` e `bulk-delete` nasceram no
+**Sprint 5.0.3.0b (commit `408e6faa`)**, estão **vivos em prod** e **não vieram desta fatia**. ⛔
+Removê-los seria **remoção sem realocação, que é perda** (a régua de 10/09). Ficaram — e o guard
+inverte a trava: ele **congela a fileira em `['clear','delete','mark-paid']`**, então o botão
+`agendar` que a referência desenha **não entra na fatia 1**. 📋 **Decisão do dono registrada abaixo.**
+
+### ⚠️⚠️ REGRA 11 — 14 DEFEITOS REPOSTOS, 14 VERMELHOS (baseline 0 · restaurado 0)
+
+o clique da linha deixando de selecionar · **o checkbox do grupo marcando nada** · o gesto da seção
+não devolvendo a seleção · a parcialidade calando · o subtotal voltando a ser a soma da página · o
+selo em um ramo só da categoria · a medida do selo ajustada no olho (9,5 → 10px) · a NF perdendo o
+`stopPropagation` · o chip não zerando o escopo (a divergência de 13/09) · o invariante da soma
+saindo da TELA · **o `?? 0` voltando na régua do caixa (2 vermelhos)** · o rótulo DERIVADO no
+cliente (dois relógios) · o botão `agendar` entrando na fatia 1 · **a 2ª cópia do Σ do caixa
+voltando pra dentro da mesa ①**.
+
+⛔⛔ **E DOIS VIERAM VERDES, os dois com lição:**
+1. **o checkbox da seção** — repus `for (const id of [] as string[])` e o guard passou, porque
+   `checked={secao.ids.every(…)}` mantém o símbolo no bloco. ***"Menção, não uso" pela 20ª vez nesta
+   casa*** — apertado pro **CORPO DO HANDLER** (`blocoEntre(sec, 'onCheckedChange={(v) => {',
+   'aria-label')` tem que conter `for (const id of secao.ids)` **e** `onSelectionChange`), mais um
+   defeito próprio (`onSelectionChange(prox)` → `void prox`).
+2. **a fileira de gestos** — o regex `data-testid="bulk-([a-z-]+)"` casava o **container** e o
+   **total**, devolvendo `['actions-bar','clear','delete','mark-paid','total']`. ***Guard que conta
+   ocorrência de atributo mede o tamanho do arquivo, não a doença*** — passou a casar só os testids
+   **dentro de `<Button`**.
+
+⚠️ **E o assert de âncora se pagou DUAS VEZES:** dois defeitos abortaram com *"ÂNCORA NÃO
+ENCONTRADA"* em vez de devolver verde de graça (a NF tem `title=` entre o `onClick` e o
+`className`; o selo do ramo de texto é indentado em 12 espaços). A sonda guarda backup pela **chave
+do caminho inteiro**, **ASSERTA por md5 que a substituição aplicou** e **conta suíte que NÃO COLETOU
+como vermelho** — as três cicatrizes de sonda desta casa.
+
+### ⛔⛔⛔ E EU APAGUEI TRABALHO COM `git checkout --` — A CICATRIZ DE 14/09, DE NOVO
+
+Pra desfazer uma reposição da REGRA 11 rodei `git checkout -- lib/balance/serie-de-saldo.ts` num
+arquivo **MODIFICADO E NÃO-COMMITADO** — e levei a extração `contasDeCaixaComSaldo` junto. O backup
+do probe **não cobria esse arquivo** (ele não estava na lista de defeitos, então nenhum `cp` o
+guardou). ⭐ Reconstruído do diff que eu havia medido, e **os 141 testes de `lib/balance` verdes
+provam que a extração não moveu número nenhum**. ***Reposição se desfaz com `cp` de backup, nunca
+com git*** — e **backup por lista de defeitos não cobre o arquivo que a reposição alcança de
+lado**.
+
+### A PROVA EM PROD — 2 VIEWPORTS (REGRA 12), ZERO ESCRITA
+
+```
+A ROTA (200 em 183ms)
+  cards de aberto: VENCE HOJE 10 R$ 23.279,32 · A PAGAR 89 R$ 152.419,55 · VENCIDAS 21 R$ 5.667,32
+  TOTAL EM ABERTO: 120 contas · R$ 181.366,19
+
+AS FAIXAS (o rótulo é do SERVIDOR, a data DERIVA do intervalo)
+  VENCIDAS · até 20/10              21 ·  R$  5.667,32
+  VENCE HOJE · qua · 21/10          10 ·  R$ 23.279,32
+  PRÓXIMOS 7 DIAS · 22 a 28/10      41 ·  R$ 69.127,75
+  RESTO DO MÊS · 29 a 31/10          7 ·  R$ 18.870,88
+  DEPOIS DE 31/10                   41 ·  R$ 64.420,92
+  SEM VENCIMENTO                     0 ·  R$      0,00
+  ⛔⛔ Σ das faixas R$ 181.366,19 == total em aberto R$ 181.366,19 → ⭐ FECHA AO CENTAVO
+  ⛔  Σ das contagens 120 == 120 → ⭐ FECHA
+  ⛔  faixa de data sem a data no rótulo: 0 ⭐
+
+AS LINHAS-SEÇÃO, pelo caminho do CHIP — card == lista em 3 de 3
+  VENCIDAS     card 20 · lista 20 ⭐ · seção 20 contas · R$  5.097,42 · subtotal==agregado ⭐
+  VENCE_HOJE   card  5 · lista  5 ⭐ · seção  5 contas · R$  5.536,01 · subtotal==agregado ⭐
+  SETE_DIAS    card 41 · lista 41 ⭐ · seção 41 contas · R$ 69.127,75 · subtotal==agregado ⭐
+  ⭐ o checkbox do grupo marca exatamente as linhas da faixa, e Σ da seleção == o subtotal
+
+A RÉGUA DO CAIXA (a MESMA porta da mesa ①) · saldoCaixa REAL: -R$ 74.334,44
+  ⚠️ o caixa está NEGATIVO hoje, então toda seleção real estoura — o VERDE se prova por
+     CONTRAFACTUAL, com os números da lib:
+  COBRE   R$ 1.200 sobre R$ 8.300 → cobre   · depois R$ 7.100,00
+  ESTOURA R$ 10.000 sobre R$ 8.300 → estoura · depois -R$ 1.700,00 · a frase diz NEGATIVO
+  EXATO   pagar o saldo inteiro    → cobre   · depois R$ 0,00 (zerar não é estourar)
+  com o saldo REAL de prod         → estoura ⭐ honesto
+  saldo NÃO lido (null)            → a-apurar · depois=null ⭐ nunca zero
+
+O SELO  25 de 200 linhas da página sem conta bancária
+        exemplo: R$ 500,00 · FERNANDA CHAVES RAMRES (FREELANCER)
+
+REGRA 12 — celular 200/444ms · desktop 200/54ms · chunk DESTA tela 126 KB
+  ⭐ 9/9 peças nos DOIS (chips-das-faixas · chip-faixa- · secao- · bulk-total · regua-do-caixa ·
+     bulk-clear · sem banco · em outra página · a apurar)
+  ⭐ os 8 tokens das famílias nos DOIS mapas do CSS servido
+  ⚠️ 3 hex no chunk — TODOS pré-existentes, atribuídos por linha e provados em HEAD~1:
+     #534AB7 ×2 (PayableTable 519/571, o roxo legado da ratchet) · #999999 e #888888
+     (page.tsx 359/366, cor de categoria placeholder). ZERO hex nas peças NOVAS da fatia.
+LEI C0  mesa ① · contas a receber · conciliação · fluxo de caixa · custos fixos
+        → 200 nos dois viewports, INTOCADAS
+ESCRITA transações 10.355 → 10.355 · categorias 714 → 714 ⭐ ZERO
+```
+
+⚠️⚠️ **E OS NÚMEROS MUDARAM ENTRE AS DUAS PROVAS — o dono estava operando ao vivo:** VENCIDAS 21 →
+20, VENCE_HOJE 10 → 5, transações **10.355 → 10.383** (28 linhas novas em minutos). ***Número de
+tela muda quando o dado muda — reportar sempre COM o instante, senão parece bug*** (a lição de
+26/08). O que **não** muda é o invariante: Σ das faixas fechou nas duas leituras.
+
+**1021 arquivos · 13.777 verdes · 2 todo · TS 0 · migration NENHUMA · deploy 4/4
+(`5d8f2775`) · `pg_dump` NENHUM (zero escrita, zero migration).**
+
+⚠️ **E o SSH caiu por timeout no meio do deploy (exit 255) — o `deploy.sh` NÃO falhou.** A conexão
+morreu, o build terminou no servidor, o symlink trocou e o SHA em prod é o meu. ⛔ **Mas eu não vi o
+gate**, então medi os 4 itens na mão antes de declarar: BUILD_ID servido presente no HTML ⭐ · pm2
+**mesmo PID** depois de 11s ⭐ · 2 de 2 CSS 200 ⭐ · `POST /api/auth/login` com credencial inválida →
+**401** (banco alcançável, nunca 500) ⭐. ***Deploy cujo gate eu não li é deploy não provado*** —
+daqui pra frente, `ServerAliveInterval` e log no servidor.
+
+⚠️ **TRÊS ERROS DE SONDA MEUS, e os três da mesma família:** chutei o testid dos chips
+(`faixa-chip-`, é **`chip-faixa-`**) e reportei *"peças 7/8"* **numa tela CERTA** · chutei o
+parâmetro de página (`pageSize`, é **`limit`**) · e procurei o BUILD_ID por um padrão de
+`_buildManifest` que não existe, declarando *"⛔ DIFEREM"* com o campo **vazio**. ***Nome de testid,
+de parâmetro e de padrão se LEEM do repo — nunca se chutam***, e cada chute produz um vermelho tão
+convincente quanto um defeito real.
+
+📋 **FICA PRO DONO (REGRA 2, o olho e o clique são dele):**
+1. ⛔⛔ **OS BOTÕES DE AÇÃO DA BARRA — a decisão é dele.** `marcar pagas` e `excluir` são do Sprint
+   5.0.3.0b, vivos em prod, **não vieram desta fatia**. O brief mandava removê-los *se* tivessem
+   nascido aqui; não nasceram. Se ele quiser a barra **só informativa** nesta fatia (contagem ·
+   total · régua · limpar), é uma linha — e o guard muda a fileira congelada junto.
+2. **Abrir a tela no celular e no notebook, nos dois temas** — a prova mede o que prod serve (9/9
+   peças, 8 tokens nos dois mapas, hex atribuído ao legado), **mas quem vê a cara é ele**.
+   ⚠️ Screenshot indisponível (extensão do Chrome desligada nesta sessão).
+3. ⚠️ **O selo vai aparecer em quase toda linha aberta** — conta a pagar **nasce sem banco** por
+   desenho (a ponte do estoque). Medido: 25 de 200 na página 1. Se isso virar ruído, a saída é o
+   selo só onde ele muda uma decisão, não um filtro novo.
+4. ⚠️ **A régua está CORAL em toda seleção real, porque o caixa está em −R$ 74.334,44** (a conta
+   garantida do Sicredi operando negativa, o estado documentado desde 25/08). O verde está provado
+   por contrafactual; ele aparece sozinho no dia em que o caixa virar positivo.
+5. ⚠️ **A 1ª página sem filtro pode não mostrar seção nenhuma** — ordenada por vencimento asc no mês
+   corrente, ela traz as **pagas** primeiro, e conta paga não abre seção (régua da lib). As
+   linhas-seção aparecem no recorte do chip/card. **Pré-existente** (a ordenação é de 26/09); fica
+   registrado, não mexido.
+
 ## Ordem de deploy (PJ + PF)
 
 **⚠️ SWAP DE 2GB É OBRIGATÓRIO NO SERVIDOR (25/08).** O `npm run build` do Next roda o type-check num worker que chega a **~1,9 GB de RSS**; o servidor tem 3,9 GB e estava **sem swap nenhum** → o OOM killer matava o worker (`signal: SIGKILL`) e o `.next` ficava **sem `BUILD_ID`**, deixando o pm2 em loop de erro. **Não adianta mexer no `--max-old-space-size`:** teto alto (2560) o kernel mata igual; teto baixo (1400) o próprio V8 aborta por heap insuficiente (`SIGABRT`) — o type-check PRECISA de ~2 GB. Criado em 25/08: `fallocate -l 2G /swapfile && chmod 600 && mkswap && swapon` + linha no `/etc/fstab` (persiste no reboot). Build voltou a passar de primeira. **Servidor novo nasce quebrado sem isso** — incluir no provisionamento junto com o poppler. Pra desfazer: `swapoff /swapfile && rm /swapfile` + tirar a linha do fstab.
