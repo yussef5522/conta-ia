@@ -17,9 +17,6 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  CalendarClock,
-  AlertCircle,
-  CheckCircle2,
   Clock,
   Upload,
 } from 'lucide-react'
@@ -34,8 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { StatsCard } from '@/components/contas-pagar/StatsCard'
-import { StatCardGrid } from '@/components/ui/stat-card'
 import { PayableSkeleton } from '@/components/contas-pagar/PayableSkeleton'
 import { PayableEmptyState } from '@/components/contas-pagar/PayableEmptyState'
 import { StickyFooter } from '@/components/contas-pagar/StickyFooter'
@@ -56,7 +51,7 @@ import {
   type FaixaDoTempo,
   type FaixaMedida,
 } from '@/lib/contas-pagar/faixa-do-tempo'
-import { ChipsDasFaixas } from '@/components/contas-pagar/ChipsDasFaixas'
+import { CartoesDoTempo } from '@/components/contas-pagar/CartoesDoTempo'
 import { reguaDoCaixaNaSelecao } from '@/lib/contas-pagar/regua-do-caixa-na-selecao'
 import {
   PayableFilters,
@@ -1018,18 +1013,6 @@ function ContasAPagarInner() {
         />
       )}
 
-      {/* Sprint 5.0.3.0b — Bulk actions bar (aparece quando ≥1 selecionada) */}
-      {selectedCount > 0 && (
-        <BulkActionsBar
-          selectedCount={selectedCount}
-          regua={regua}
-          foraDaPagina={selecionadasForaDaPagina}
-          onMarkPaid={() => setBulkMarkPaidOpen(true)}
-          onDelete={() => setBulkDeleteOpen(true)}
-          onClear={() => setSelection({})}
-        />
-      )}
-
       {/* ⛔⛔⛔ A TABELA DE AGING SAIU DA TELA (13/09/2026) — decisão do dono.
           *"Meu negócio paga em DIAS, não carrego dívida de 90 dias — 100% sempre vai estar
           no 0-30. O card VENCIDAS (9 · 20.635,54) já diz tudo que preciso, e clicar nele já
@@ -1060,82 +1043,41 @@ function ContasAPagarInner() {
             ⛔ E a RÉGUA continua igual: o mês corrente recorta as PAGAS; VENCE HOJE, A PAGAR
             e VENCIDAS mostram tudo que está em aberto. *Isso é comportamento, não legenda.*
           */}
-          {/* ⭐⭐⭐ TRÊS STATUS, COMO NO MUNDO REAL (13/09) — decisão do dono.
-              ⛔ "A VENCER (3D)" MORREU COMO CARD: era um SUBCONJUNTO de A PAGAR, então a
-              soma dos quatro contava a mesma conta 2× — e "vence em 2 dias" não é um
-              ESTADO, é informação da data (virou o "· em 2d" na coluna de vencimento).
-              ⭐ E cada card É o filtro: clicar recorta a lista no MESMO conjunto que ele
-              contou (`escopo`), pelo dono único `whereDoStatus`. */}
-          <StatCardGrid>
-            {/*
-              ⭐⭐⭐ 26/09 — **PAGAS · SETEMBRO: TODAS as pagas do mês** (decisão do dono).
-              ⛔ Antes o rótulo era *"Pagas (sem conciliar)"* e o número mostrava **40 de
-              236** em setembro — 8,7% do que ele pagou. *O card respondia "quanto eu paguei
-              sem o banco", que não é a pergunta que ele faz.*
-              ⭐ A RESSALVA não morreu: ela virou o **detalhe** da linha de baixo.
-            */}
-            <StatsCard
-              variant="paid"
-              // ⭐ o rótulo diz o RECORTE: card de fluxo sem o período é um número que não
-              // se sabe de quando
-              label={`Pagas · ${rotuloDoMes(mes)}`}
-              amount={kpis.totalPagas}
-              count={kpis.countPagas}
-              detalhe={`${kpis.countPagasConciliadas} conciliadas com o banco · ${kpis.countPagasSemVinculo} sem vínculo`}
-              icon={CheckCircle2}
-              onClick={() => applyFilterPreset('paid')}
-            />
-            {/*
-              ⭐⭐⭐ VENCE HOJE (26/09) — o 4º card, e ele é PARTIÇÃO, não subconjunto.
-              ⛔ O *"a vencer (3d)"* morreu em 13/09 porque era um pedaço de A PAGAR
-              escolhido a dedo — a mesma conta contada 2×. Aqui o `whereDoStatus('A_PAGAR')`
-              passou a começar em AMANHÃ, então **a Σ dos três de aberto continua sendo o
-              total em aberto** (travado em `escopo.test.ts`).
-              ⚠️ E "hoje" é o dia do BRASIL: às 23h o servidor em UTC já diz amanhã, e sem
-              isso a conta de hoje ficaria vermelha com o dia inteiro ainda pra pagar.
-            */}
-            <StatsCard
-              variant="warn"
-              label="Vence hoje"
-              amount={kpis.totalVenceHoje}
-              count={kpis.countVenceHoje}
-              icon={CalendarClock}
-              onClick={() => applyFilterPreset('today')}
-            />
-            <StatsCard
-              variant="pending"
-              label="A pagar"
-              amount={kpis.totalPendente}
-              count={kpis.countPendente}
-              icon={CalendarClock}
-              onClick={() => applyFilterPreset('pending')}
-            />
-            <StatsCard
-              variant="overdue"
-              label="Vencidas"
-              amount={kpis.totalVencido}
-              count={kpis.countVencido}
-              icon={AlertCircle}
-              onClick={() => applyFilterPreset('overdue')}
-            />
-          </StatCardGrid>
-
-          {/* ⭐⭐⭐ AS FAIXAS DO TEMPO (21/10) — o chip É o filtro, e o rótulo SEMPRE leva a
-              data (*"rótulo adulto = nome + data"*, lei do dono). Contagem, total e rótulo
-              vêm MEDIDOS pelo servidor; a tela ecoa. */}
-          <ChipsDasFaixas
+          {/* ⭐⭐⭐ UMA FAMÍLIA SÓ (21/10, fatia 1.1) — veredito do dono: *"cards repetidos,
+              mesma informação 2 vezes em 2 modelos"*. Morreram daqui os 4 cartões antigos
+              (VENCE HOJE e VENCIDAS apareciam EM DOBRO com os chips, com número IDÊNTICO —
+              são o MESMO corte por construção) e os 5 chips de faixa.
+              ⛔ O *"A pagar"* morreu como CARTÃO porque ele é a Σ das faixas seguintes:
+              mantê-lo ao lado delas seria a mesma conta contada 2× — o defeito que matou o
+              *"a vencer (3d)"* em 13/09. O total em aberto segue à vista (é a Σ dos cartões).
+              ⭐ O rótulo adulto (nome + data) vem MEDIDO do servidor; a tela ecoa. */}
+          <CartoesDoTempo
             medidas={faixas}
             faixaAtiva={filters.faixa}
             totalEmAberto={kpis.totalVenceHoje + kpis.totalPendente + kpis.totalVencido}
-            onEscolher={(f) => {
+            onEscolherFaixa={(f) => {
               /**
                * ⚠️ A faixa recorta o que está EM ABERTO, então ela manda `status: 'TODOS'` e
                * **zera o escopo do cartão** — deixar os dois ligados recortaria duas vezes,
-               * e o chip diria 25 com a lista mostrando 3 (a divergência que os cartões já
-               * pagaram em 13/09).
+               * e o cartão diria 25 com a lista mostrando 3 (a divergência de 13/09).
                */
               setFilters({ ...filters, faixa: f, status: 'TODOS', escopo: undefined })
               setPage(1)
+            }}
+            pagas={{
+              // ⭐ o rótulo diz o RECORTE: cartão de fluxo sem o período é um número que não
+              // se sabe de quando
+              label: `Pagas · ${rotuloDoMes(mes)}`,
+              total: kpis.totalPagas,
+              contagem: kpis.countPagas,
+              /**
+               * ⭐⭐ 26/09 — a RESSALVA como DETALHE, dentro do cartão (decisão do dono).
+               * ⛔ Ela é APENSADA à contagem, nunca substituta: deixar o detalhe tomar o
+               * lugar dela abriria a porta pros dois números divergirem.
+               */
+              detalhe: `${kpis.countPagasConciliadas} conciliadas com o banco · ${kpis.countPagasSemVinculo} sem vínculo`,
+              ativo: filters.escopo?.startsWith('PAGA') ?? false,
+              onEscolher: () => applyFilterPreset('paid'),
             }}
           />
 
@@ -1428,6 +1370,38 @@ function ContasAPagarInner() {
         variant="destructive"
         onConfirm={executeDeleteView}
       />
+
+      {/**
+       * ⭐⭐⭐ A BARRA DA SELEÇÃO FICA **EMBAIXO DA TELA** (21/10, fatia 1.1) — item 3 do dono:
+       * *"a barra é embaixo"*, e `docs/contas-a-pagar-referencia.html` é explícita
+       * (`.barra{position:fixed;left:0;right:0;bottom:0}`).
+       *
+       * ⛔⛔ **O DEFEITO ERA DE POSIÇÃO NO DOM, não de CSS.** Ela era `sticky bottom-0` e
+       * vivia **ANTES** do conteúdo — e `sticky` só cola no fim do container que o contém,
+       * então na prática ela aparecia **NO TOPO**. Por isso a cura é dupla: `fixed` (a lei da
+       * referência) **e** o render no FIM do conteúdo.
+       *
+       * ⚠️ **O ESPAÇADOR NÃO É ENFEITE:** barra `fixed` sai do fluxo e **cobre a última
+       * linha da tabela** — justamente a que o dono acabou de marcar. Os 110px são os da
+       * referência (`body{padding-bottom:110px}`), e ele só existe **enquanto a barra
+       * existe**.
+       *
+       * ⛔ **FUNÇÃO INTOCADA:** total gigante, régua do caixa e os 3 gestos (marcar pagas ·
+       * excluir · limpar) são os MESMOS — mudou o LUGAR, nunca o que ela faz.
+       */}
+      {selectedCount > 0 && (
+        <>
+          <div className="h-[110px]" aria-hidden />
+          <BulkActionsBar
+            selectedCount={selectedCount}
+            regua={regua}
+            foraDaPagina={selecionadasForaDaPagina}
+            onMarkPaid={() => setBulkMarkPaidOpen(true)}
+            onDelete={() => setBulkDeleteOpen(true)}
+            onClear={() => setSelection({})}
+          />
+        </>
+      )}
     </div>
   )
 }

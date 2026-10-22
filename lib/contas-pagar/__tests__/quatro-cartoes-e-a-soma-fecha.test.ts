@@ -102,29 +102,51 @@ describe('⛔⛔⛔ Σ DOS CARTÕES DE ABERTO == TOTAL EM ABERTO (o guard que o 
 describe('⭐⭐ O CARD EXISTE, NA ORDEM, E É O FILTRO', () => {
   const pagina = semComentario(ler(PAGINA))
 
-  it('⭐ o 4º card está na tela e manda o MESMO escopo que o servidor contou', () => {
-    expect(pagina, 'o card VENCE HOJE não está na tela').toContain('label="Vence hoje"')
+  it('⭐ o estado VENCE HOJE é ALCANÇÁVEL e manda o MESMO escopo que o servidor contou', () => {
+    /**
+     * ⚠️⚠️ **REAPONTADO em 21/10 (fatia 1.1), não afrouxado — e ele ficou VERMELHO COM A TELA
+     * CERTA.** Ele ancorava no literal `label="Vence hoje"` dos 4 `StatsCard`; a fatia 1.1
+     * substituiu os quatro por **UMA família só** (`CartoesDoTempo`), em que o rótulo vem
+     * **MEDIDO PELO SERVIDOR** (`m.rotulo` → *"VENCE HOJE (qua · 21/10)"*) — derivar a data no
+     * cliente faria um aparelho com a hora torta imprimir a janela de um dia sobre o número de
+     * outro. ***Grep não distingue "refatorei" de "quebrei"*** (a razão de existir da REGRA 3).
+     *
+     * ⭐ **A PERGUNTA NÃO MUDOU:** *o 4º estado está alcançável e manda o escopo que o servidor
+     * contou?* — e hoje ela é respondida por **DOIS caminhos**, os dois provados aqui: o
+     * **CARTÃO** (`cartao-faixa-VENCE_HOJE`, que filtra por faixa) e o **RODAPÉ** (que segue
+     * mandando `kind: 'today'` pelo `applyFilterPreset`).
+     */
+    const cartoes = semComentario(ler('components/contas-pagar/CartoesDoTempo.tsx'))
+    expect(cartoes, 'o cartão do VENCE HOJE sumiu da família').toContain('cartao-faixa-')
+    expect(cartoes, 'o rótulo voltou a ser derivado no cliente — dois relógios')
+      .toContain('label={m.rotulo}')
+    expect(pagina, 'a família de cartões saiu da tela').toContain('<CartoesDoTempo')
+    // ⭐ o preset segue vivo pelo RODAPÉ, e ele manda o ESCOPO, nunca um recorte na mão (13/09)
     expect(pagina).toContain('kpis.totalVenceHoje')
-    expect(pagina).toContain("applyFilterPreset('today')")
-    // ⭐ o preset manda o escopo, nunca um recorte montado na mão (a régua de 13/09)
     expect(pagina).toContain("'VENCE_HOJE'")
+    expect(pagina).toContain('onClickFilter={applyFilterPreset}')
   })
 
-  it('⭐⭐ a ORDEM é PAGAS · VENCE HOJE · A PAGAR · VENCIDAS', () => {
+  it('⭐⭐ PAGAS é o ÚLTIMO cartão — e não se confunde com faixa de aberto', () => {
     /**
-     * ⚠️ **REAPONTADO em 26/09 (fim do dia), não afrouxado.** O card deixou de se chamar
-     * `ROTULO_PAGAS` (*"Pagas (sem conciliar)"*) porque passou a contar **TODAS** as pagas do
-     * mês — manter a âncora antiga cobraria de volta um rótulo que hoje seria **mentira**.
-     * ⭐ A régua que este teste existe pra provar — **a ORDEM dos quatro** — não mudou.
+     * ⚠️⚠️ **INVERTIDO em 21/10 com o motivo escrito, não apagado.** A régua antiga era
+     * *"a ORDEM é PAGAS · VENCE HOJE · A PAGAR · VENCIDAS"*; o dono decidiu o contrário
+     * (fatia 1.1, item 1): a família passa a ser **cronológica** (VENCIDAS → VENCE HOJE →
+     * PRÓXIMOS 7 DIAS → RESTO DO MÊS → DEPOIS) e **PAGAS vira o ÚLTIMO, verde, com o detalhe
+     * das conciliadas** — ele é *contexto*, não faixa de aberto.
+     *
+     * ⭐ **A metade que continua valendo é a que importa**, e ela fica travada aqui: PAGAS
+     * **não pode voltar pra o meio das faixas de aberto** (ali ele se leria como uma delas e a
+     * Σ das faixas pararia de fechar com o total em aberto na frente do dono).
      */
-    const i = (s: string) => pagina.indexOf(s)
-    expect(i('label={`Pagas · ')).toBeGreaterThan(-1)
-    expect(i('label={`Pagas · ')).toBeLessThan(i('label="Vence hoje"'))
-    expect(i('label="Vence hoje"')).toBeLessThan(i('label="A pagar"'))
-    // ⛔ e o card NÃO pode voltar a se chamar "(sem conciliar)": ele conta as conciliadas
+    const cartoes = semComentario(ler('components/contas-pagar/CartoesDoTempo.tsx'))
+    expect(cartoes.indexOf('cartao-pagas'), 'o cartão das PAGAS sumiu').toBeGreaterThan(-1)
+    expect(cartoes.indexOf('cartao-pagas'), 'PAGAS deixou de ser o ÚLTIMO — virou faixa de aberto')
+      .toBeGreaterThan(cartoes.indexOf('cartao-faixa-'))
+    // ⛔ e o rótulo NÃO pode voltar a se chamar "(sem conciliar)": ele conta as conciliadas
     expect(pagina, 'o rótulo do card promete menos do que ele entrega')
       .not.toContain('label={`${ROTULO_PAGAS}')
-    expect(i('label="A pagar"')).toBeLessThan(i('label="Vencidas"'))
+    expect(pagina, 'o cartão das pagas perdeu o recorte do mês').toContain('Pagas · ')
   })
 
   it('⛔⛔ e o RODAPÉ soma os quatro — ele se declara fechado', () => {

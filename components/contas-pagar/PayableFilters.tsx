@@ -155,21 +155,17 @@ export function PayableFilters({ value, onChange, onClear, total }: Props) {
       </Select>
       )}
 
-      {/* Vencidas only */}
-      <label className="flex items-center gap-1.5 text-sm text-muted-foreground select-none px-2">
-        <Input
-          type="checkbox"
-          className="w-3.5 h-3.5"
-          checked={value.vencidasOnly}
-          onChange={(e) =>
-            onChange({ ...value, vencidasOnly: e.target.checked })
-          }
-          aria-label="Só vencidas"
-          data-testid="filter-vencidasOnly"
-        />
-        Só vencidas
-      </label>
-
+      {/**
+       * ⛔⛔ O CHECKBOX **"Só vencidas" MORREU** (21/10, item 2 do dono): *"o cartão VENCIDAS
+       * já filtra o mesmo"*. Eram **dois controles pra uma pergunta** — e o pior tipo, porque
+       * marcar o checkbox COM um cartão de faixa ligado recortava por duas réguas e a lista
+       * mostrava menos do que o cartão prometia (a divergência de 13/09).
+       *
+       * ⚠️ **O CAMPO `vencidasOnly` FICA** no tipo e no backend, de propósito: link antigo com
+       * `?vencidasOnly=true` (print, e-mail, histórico) continua funcionando e aparece como
+       * filtro ativo com o "limpar" ao lado. *Link velho não vira 404 silencioso* — o que
+       * morreu é o CONTROLE, nunca o caminho.
+       */}
       <div className="flex-1" />
 
       {/* Total + limpar */}

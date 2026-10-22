@@ -79,21 +79,30 @@ export function BulkActionsBar({
       role="region"
       aria-label="Ações em lote"
       className={`
-        sticky bottom-0 z-30
+        fixed bottom-0 left-0 right-0 z-40
         bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80
         border-t-2 ${tom.borda} shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.15)]
-        px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2
         animate-in slide-in-from-bottom-2 duration-200
       `}
       data-testid="bulk-actions-bar"
     >
+      {/**
+       * ⭐⭐ O MIOLO SEGUE O TETO DA TELA (`.barra .in{max-width:1440px;margin:0 auto;
+       * padding:12px 26px}` da referência) — sem ele, a barra `fixed` encosta nas bordas do
+       * monitor enquanto a tabela acima para em 1440px, e os dois deixam de se alinhar.
+       *
+       * ⚠️ As medidas vão **LITERAIS do arquivo** (26px/12px), nunca traduzidas pro `px-4`
+       * mais próximo — foi tradução mental que produziu as duas versões erradas da
+       * Conciliação (10/09).
+       */}
+      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-[18px] px-[26px] py-[12px]">
       {/* ⭐ bloco do NÚMERO: contagem em cima, TOTAL gigante embaixo */}
       <div className="min-w-0">
         <div className="text-[11px] uppercase tracking-wide text-muted-foreground whitespace-nowrap">
           {selectedCount} {selectedCount === 1 ? 'conta selecionada' : 'contas selecionadas'}
         </div>
         <div
-          className="text-2xl font-semibold tabular-nums leading-tight"
+          className="text-[27px] font-extrabold tabular-nums leading-tight tracking-[-0.02em]"
           data-testid="bulk-total"
         >
           {formatBRL(regua.total)}
@@ -171,6 +180,7 @@ export function BulkActionsBar({
           <X className="h-3.5 w-3.5 sm:mr-1" />
           <span className="hidden sm:inline">limpar</span>
         </Button>
+      </div>
       </div>
     </div>
   )

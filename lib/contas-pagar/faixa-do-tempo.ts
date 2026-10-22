@@ -281,3 +281,33 @@ export interface FaixaMedida {
   /** `true` quando o intervalo não tem dia nenhum (ex.: «resto do mês» no fim do mês) */
   intervaloVazio: boolean
 }
+
+/**
+ * ⭐ QUAIS FAIXAS APARECEM NA TELA — régua PURA, pra ser testável.
+ *
+ * ⚠️ Ela morava dentro do `ChipsDasFaixas.tsx` e veio pra cá quando os chips morreram
+ * (21/10, fatia 1.1). *Régua que mora num componente é régua que ninguém prova* — e o
+ * projeto roda em `environment: node`, sem jsdom.
+ *
+ * As três primeiras (`FAIXAS_SEMPRE_VISIVEIS`) ficam **mesmo zeradas**: *"vencidas · nada"*
+ * é notícia boa e o dono precisa vê-la (zero MEDIDO é fato, não ausência). As outras só
+ * aparecem com conta dentro — cartão permanente em zero ocupa a dobra e treina o dono a
+ * não olhar.
+ *
+ * ⚠️ E faixa com **intervalo vazio** não aparece nem com a trava de sempre-visível:
+ * *"PRÓXIMOS 7 DIAS"* sem nenhum dia dentro seria um recorte que não existe.
+ */
+export function faixasVisiveis(
+  medidas: Partial<Record<FaixaDoTempo, FaixaMedida>>,
+  faixaAtiva?: FaixaDoTempo,
+): FaixaDoTempo[] {
+  return FAIXAS.filter((f) => {
+    const m = medidas[f]
+    if (!m) return false
+    // ⭐ a faixa FILTRADA nunca desaparece — senão o dono perde o caminho de volta
+    if (f === faixaAtiva) return true
+    if (m.intervaloVazio) return false
+    if ((FAIXAS_SEMPRE_VISIVEIS as readonly string[]).includes(f)) return true
+    return m.contagem > 0
+  })
+}

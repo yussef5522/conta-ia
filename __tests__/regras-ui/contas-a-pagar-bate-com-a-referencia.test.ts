@@ -28,7 +28,7 @@
  *    mapa 1:1 vale pras **peças NOVAS**, e o guard cobra delas: zero hex cravado e os dois temas.
  */
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { semComentarios, usosDe, hexCravados, blocoEntre } from './_leitura-de-fonte'
 
@@ -39,7 +39,9 @@ const REF = ler('docs/contas-a-pagar-referencia.html')
 const PAGE = ler('app/(dashboard)/contas-a-pagar/page.tsx')
 const TABELA = ler('components/contas-pagar/PayableTable.tsx')
 const BARRA = ler('components/contas-pagar/BulkActionsBar.tsx')
-const CHIPS = ler('components/contas-pagar/ChipsDasFaixas.tsx')
+const CARTOES = ler('components/contas-pagar/CartoesDoTempo.tsx')
+const FILTROS = ler('components/contas-pagar/PayableFilters.tsx')
+const FAIXA_LIB = ler('lib/contas-pagar/faixa-do-tempo.ts')
 
 /** ⭐ o CSS e o `<script>` da referência, separados: um manda na FORMA, o outro no COMPORTAMENTO */
 const REF_CSS = blocoEntre(REF, '<style>', '</style>')
@@ -194,36 +196,177 @@ describe('P2 · FAIXAS DO TEMPO — o rótulo adulto é NOME + DATA', () => {
     expect(REF_SCRIPT).toMatch(/sub:"\d{2} a \d{2}\/\d{2}"/)
   })
 
-  it('os chips desenham o rótulo que o SERVIDOR mediu — a tela não deriva data', () => {
-    const limpo = semComentarios(CHIPS)
-    expect(limpo, 'o chip parou de desenhar o rótulo medido').toContain('m.rotulo')
+  it('os cartões desenham o rótulo que o SERVIDOR mediu — a tela não deriva data', () => {
+    const limpo = semComentarios(CARTOES)
+    expect(limpo, 'o cartão parou de desenhar o rótulo medido').toContain('m.rotulo')
     expect(limpo, 'a tela voltou a derivar o rótulo — um relógio só manda')
       .not.toMatch(/nomeDaFaixa|dataDaFaixa|rotuloDaFaixa|new Date\(\)/)
   })
 
-  it('⛔ o chip FILTRA, e o número não é morto', () => {
+  it('⛔ o cartão FILTRA, e o número não é morto', () => {
     expect(REF_SCRIPT).toContain('onclick="filtrar(')
-    const limpo = semComentarios(CHIPS)
-    expect(limpo).toContain('onEscolher')
-    expect(limpo).toContain('aria-pressed')
+    const limpo = semComentarios(CARTOES)
+    expect(limpo).toContain('onEscolherFaixa')
+    expect(limpo, 'o cartão da faixa perdeu o testid').toContain('cartao-faixa-')
     const pag = semComentarios(PAGE)
-    expect(pag, 'a tela parou de desenhar os chips').toContain('<ChipsDasFaixas')
-    // ⭐ o chip zera o escopo dos cards: senão a lista é recortada 2× e o número divergiria
-    const chamada = blocoEntre(pag, '<ChipsDasFaixas', '/>')
+    expect(pag, 'a tela parou de desenhar a família de cartões').toContain('<CartoesDoTempo')
+    // ⭐ o cartão zera o escopo dos cards: senão a lista é recortada 2× e o número divergiria
+    const chamada = blocoEntre(pag, '<CartoesDoTempo', '/>')
     expect(chamada).toContain('faixa: f')
-    expect(chamada, 'o chip deixou de zerar o escopo — a divergência de 13/09').toContain('escopo: undefined')
+    expect(chamada, 'o cartão deixou de zerar o escopo — a divergência de 13/09').toContain('escopo: undefined')
   })
 
   it('⭐ Σ DAS FAIXAS == TOTAL EM ABERTO, e a tela GRITA quando não fecha', () => {
-    const limpo = semComentarios(CHIPS)
+    const limpo = semComentarios(CARTOES)
     expect(limpo).toContain('somaDasFaixas')
     expect(limpo).toContain('totalEmAberto')
-    expect(limpo, 'o invariante deixou de ser VISÍVEL na tela').toMatch(/Math\.abs\(somaDasFaixas - totalEmAberto\)/)
+    expect(limpo, 'o alarme deixou de ser VISÍVEL na tela').toMatch(/Math\.abs\(somaDasFaixas - totalEmAberto\)/)
+    /**
+     * ⭐⭐ A LEGENDA PERMANENTE MORREU (item 5 do dono, 21/10): *"o invariante mora no TESTE,
+     * não precisa morar na frente do dono"*. ⛔ **O GRITO FICA** — esconder uma Σ que NÃO
+     * fecha trocaria a legenda por uma MENTIRA. O que o guard trava é a assimetria: a frase
+     * de sucesso sai, o alarme fica, e é ele que renderiza só no `!fecha`.
+     */
+    expect(limpo, 'a legenda permanente do Σ voltou pra tela').not.toContain('= o total em aberto')
+    expect(limpo, 'o grito deixou de ser condicional ao NÃO fechar').toContain('{!fecha && (')
   })
 
   it('a faixa FILTRADA nunca desaparece da fileira', () => {
-    const vis = blocoEntre(semComentarios(CHIPS), 'export function faixasVisiveis', '\n}')
+    /**
+     * ⚠️ A régua PURA mudou de casa: ela morava dentro do componente dos chips e veio pra lib
+     * quando eles morreram. ***Régua que mora num componente é régua que ninguém prova*** — o
+     * projeto roda em `environment: node`, sem jsdom.
+     */
+    const vis = blocoEntre(semComentarios(FAIXA_LIB), 'export function faixasVisiveis', '\n}')
     expect(vis).toContain('faixaAtiva')
+  })
+})
+
+describe('⭐⭐⭐ FATIA 1.1 — UMA FAMÍLIA SÓ DE CARTÕES DO TEMPO', () => {
+  /**
+   * **O veredito do dono (print de 21/10 20:22):** *"bagunça total, cards repetidos, mesma
+   * informação 2 vezes em 2 modelos"*. A mesma informação vivia em TRÊS formas — os 4 cartões
+   * antigos, os 5 chips de faixa e a régua do rodapé —, com VENCE HOJE e VENCIDAS em DOBRO.
+   *
+   * ⚠️⚠️ **DIVERGÊNCIA DECLARADA Nº 3:** a referência v2 desenha, no `.faixas`, **só as faixas
+   * de ABERTO**; o card **PAGAS** é acréscimo pedido por escrito no item 1 (*"PAGAS · OUTUBRO
+   * vira o último cartão, verde, com o detalhe das conciliadas"*). Ele entra como **contexto**,
+   * com tom próprio — e o guard cobra a POSIÇÃO (último) pra ele não disputar a leitura das
+   * faixas de aberto.
+   */
+  it('⛔ os 4 cartões antigos e os 5 chips MORRERAM da tela', () => {
+    const pag = semComentarios(PAGE)
+    expect(pag, 'os StatsCards antigos voltaram — a mesma informação 2×').not.toContain('<StatsCard')
+    expect(pag, 'o grid de 4 colunas voltou').not.toContain('<StatCardGrid')
+    expect(pag, 'os chips duplicados voltaram').not.toContain('<ChipsDasFaixas')
+    expect(pag, 'a família de cartões do tempo não é desenhada').toContain('<CartoesDoTempo')
+  })
+
+  it('⛔⛔ o COMPONENTE dos chips foi APAGADO, não deixado órfão', () => {
+    /**
+     * *Enquanto o componente existe no arquivo, alguém religa* (a cicatriz do
+     * `GruposSugeridos`, 23/09) — e aí a tela volta a mostrar VENCE HOJE duas vezes.
+     */
+    expect(existsSync(join(raiz, 'components/contas-pagar/ChipsDasFaixas.tsx')),
+      'o ChipsDasFaixas voltou a existir').toBe(false)
+  })
+
+  it('a grade é a da referência — medidas LITERAIS, nunca traduzidas no olho', () => {
+    const faixas = blocoEntre(REF_CSS, '.faixas{', '}')
+    expect(faixas).toContain('minmax(170px,1fr)')
+    expect(faixas).toContain('gap:9px')
+    const limpo = semComentarios(CARTOES)
+    expect(limpo, 'a medida da grade saiu da referência').toContain('minmax(170px,1fr)')
+    expect(limpo).toContain('gap-[9px]')
+  })
+
+  it('⭐ PAGAS é o ÚLTIMO cartão, verde, com o detalhe das conciliadas', () => {
+    const limpo = semComentarios(CARTOES)
+    expect(limpo).toContain('cartao-pagas')
+    expect(limpo, 'o cartão de contexto perdeu o tom distinto').toMatch(/tone="emerald"/)
+    const i = limpo.indexOf('cartao-faixa-')
+    const j = limpo.indexOf('cartao-pagas')
+    expect(i, 'os cartões de faixa sumiram').toBeGreaterThan(0)
+    expect(j, 'o cartão PAGAS sumiu').toBeGreaterThan(i)
+    const pag = semComentarios(PAGE)
+    const chamada = blocoEntre(pag, '<CartoesDoTempo', '/>')
+    expect(chamada, 'o detalhe das conciliadas saiu do cartão').toContain('countPagasConciliadas')
+    expect(chamada, 'a metade «sem vínculo» do detalhe sumiu').toContain('countPagasSemVinculo')
+  })
+
+  it('⛔ cada número aparece UMA vez — o IMPORT dos cartões antigos morreu', () => {
+    /**
+     * ⚠️ Proibir só a TAG (`<StatsCard`) deixaria o import vivo, e import vivo é o convite pra
+     * alguém redesenhar o cartão duplicado *"porque já estava pronto"* (a lição do bloco de
+     * avisos inline, 04/10). Sem o import, a mesma informação **não tem como** voltar 2×.
+     */
+    const pag = semComentarios(PAGE)
+    expect(pag, 'o import do StatsCard voltou').not.toMatch(/import .*StatsCard/)
+    expect(pag, 'o import do StatCardGrid voltou').not.toMatch(/import .*StatCardGrid/)
+    expect(pag, 'o import dos chips voltou').not.toMatch(/import .*ChipsDasFaixas/)
+    // ⭐ e o rótulo de faixa segue vindo MEDIDO do servidor, nunca escrito na tela
+    expect(semComentarios(CARTOES)).toContain('label={m.rotulo}')
+  })
+
+  it('⛔⛔ a BARRA desceu pra posição da LEI: fixa EMBAIXO', () => {
+    const barra = blocoEntre(semComentarios(BARRA), 'data-testid="bulk-actions-bar"', 'bulk-total')
+    expect(barra, 'a barra voltou a ser sticky — na prática ela aparecia NO TOPO')
+      .not.toContain('sticky')
+    const limpo = semComentarios(BARRA)
+    expect(limpo, 'a barra deixou de ser fixa embaixo').toContain('fixed bottom-0 left-0 right-0')
+    const refBarra = blocoEntre(REF_CSS, '.barra{', '}')
+    expect(refBarra).toContain('position:fixed')
+    expect(refBarra).toContain('bottom:0')
+    // ⭐ o miolo segue o teto da tela (`.barra .in`), com as medidas do arquivo
+    const refIn = blocoEntre(REF_CSS, '.barra .in{', '}')
+    expect(refIn).toContain('max-width:1440px')
+    expect(refIn).toContain('padding:12px 26px')
+    expect(limpo).toContain('max-w-[1440px]')
+    expect(limpo).toContain('px-[26px]')
+    expect(limpo).toContain('py-[12px]')
+    // ⭐ o total GIGANTE é o da referência (27px), não o 24px de antes
+    expect(blocoEntre(REF_CSS, '.barra .tot{', '}')).toContain('font-size:27px')
+    expect(limpo, 'o total deixou de ter o tamanho da referência').toContain('text-[27px]')
+  })
+
+  it('⛔ a barra é renderizada no FIM do conteúdo, com o espaçador da referência', () => {
+    const pag = semComentarios(PAGE)
+    /**
+     * ⚠️ Barra `fixed` sai do fluxo e **cobre a última linha da tabela** — justamente a que o
+     * dono acabou de marcar. Os 110px são os do `body{padding-bottom:110px}` da referência, e
+     * o espaçador só existe enquanto a barra existe.
+     */
+    expect(REF_CSS, 'o espaçador saiu da referência').toContain('padding-bottom:110px')
+    expect(pag, 'o espaçador da barra fixa sumiu — ela cobre a última linha').toContain('h-[110px]')
+    const bloco = blocoEntre(pag, 'selectedCount > 0 && (', '</>')
+    expect(bloco, 'o espaçador deixou de nascer junto da barra').toContain('h-[110px]')
+    expect(bloco).toContain('<BulkActionsBar')
+    // ⭐ e ela vem DEPOIS da tabela: era a posição no DOM que a jogava pro topo
+    expect(pag.indexOf('<PayableTable'), 'a tabela sumiu').toBeGreaterThan(0)
+    expect(pag.indexOf('<BulkActionsBar'), 'a barra voltou pra ANTES do conteúdo')
+      .toBeGreaterThan(pag.indexOf('<PayableTable'))
+  })
+
+  it('⛔ o checkbox «Só vencidas» morreu — mas o link antigo continua funcionando', () => {
+    const limpo = semComentarios(FILTROS)
+    expect(limpo, 'o checkbox duplicado voltou — o cartão VENCIDAS já filtra o mesmo')
+      .not.toContain('filter-vencidasOnly')
+    expect(limpo, 'o controle de «Só vencidas» voltou').not.toContain('Só vencidas')
+    /**
+     * ⚠️ O CAMPO fica: `?vencidasOnly=true` de print/e-mail/histórico continua valendo e
+     * aparece como filtro ativo. *Link velho não vira 404 silencioso.*
+     *
+     * ⛔⛔ A asserção é no CAMPO DO TIPO e no USO, nunca na menção: `toContain('vencidasOnly')`
+     * sobre o arquivo inteiro passa VERDE com o campo arrancado da interface, porque o nome
+     * sobrevive no `EMPTY_FILTERS` e no `isFilterActive` logo abaixo (medido na REGRA 11 —
+     * *"menção, não uso"*, a 21ª vez nesta casa).
+     */
+    const tipo = blocoEntre(limpo, 'export interface PayableFilterState {', '}')
+    expect(tipo, 'o campo saiu do TIPO — link antigo passa a ser ignorado em silêncio')
+      .toContain('vencidasOnly: boolean')
+    const ativo = blocoEntre(limpo, 'export function isFilterActive', '}')
+    expect(ativo, 'o campo deixou de contar como filtro ATIVO — o dono fica sem o "limpar"')
+      .toContain('f.vencidasOnly')
   })
 })
 
@@ -315,7 +458,7 @@ describe('⭐ A CARA NOVA — tokens por PAPEL, zero hex nas peças da fatia', (
   })
 
   it('⛔ nenhuma peça NOVA crava hex — e o legado da tela não cresceu', () => {
-    expect(hexCravados(CHIPS), 'hex cravado nos chips das faixas').toEqual([])
+    expect(hexCravados(CARTOES), 'hex cravado nos cartões do tempo').toEqual([])
     expect(hexCravados(BARRA), 'hex cravado na barra').toEqual([])
     const selo = blocoEntre(semComentarios(TABELA), 'function SeloSemBanco', '\n}')
     expect(hexCravados(selo), 'hex cravado no selo sem-banco').toEqual([])
@@ -327,7 +470,7 @@ describe('⭐ A CARA NOVA — tokens por PAPEL, zero hex nas peças da fatia', (
   })
 
   it('as peças novas respondem aos DOIS temas', () => {
-    expect(semComentarios(CHIPS), 'os chips não têm variante escura').toContain('dark:')
+    expect(semComentarios(CARTOES), 'os cartões não têm variante escura').toContain('dark:')
     expect(semComentarios(BARRA), 'a régua não tem variante escura').toContain('dark:')
     const selo = blocoEntre(semComentarios(TABELA), 'function SeloSemBanco', '\n}')
     expect(selo, 'o selo pinta por hex/classe fixa — ele lê token da família').toContain('--fam-ambar')
@@ -337,7 +480,7 @@ describe('⭐ A CARA NOVA — tokens por PAPEL, zero hex nas peças da fatia', (
 describe('⛔⛔ ZERO ESCRITA — a fatia 1 só LÊ', () => {
   it('nenhuma das peças novas grava nada', () => {
     for (const [nome, src] of [
-      ['ChipsDasFaixas', CHIPS],
+      ['CartoesDoTempo', CARTOES],
       ['BulkActionsBar', BARRA],
       ['faixa-do-tempo', ler('lib/contas-pagar/faixa-do-tempo.ts')],
       ['regua-do-caixa-na-selecao', ler('lib/contas-pagar/regua-do-caixa-na-selecao.ts')],
