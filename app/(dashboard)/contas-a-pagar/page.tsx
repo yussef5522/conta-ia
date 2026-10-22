@@ -33,7 +33,6 @@ import {
 } from '@/components/ui/select'
 import { PayableSkeleton } from '@/components/contas-pagar/PayableSkeleton'
 import { PayableEmptyState } from '@/components/contas-pagar/PayableEmptyState'
-import { StickyFooter } from '@/components/contas-pagar/StickyFooter'
 import { mesCorrente, rotuloDoMes } from '@/lib/periodo/mes-corrente'
 /**
  * ⚠️⚠️ 26/09 — a frase *"as já conciliadas estão em Movimentações →"* MORREU (decisão do
@@ -916,15 +915,25 @@ function ContasAPagarInner() {
    * "vencidas" usava `dueDate < now` (timestamp) enquanto o aging comparava por DIA.
    * Agora os três mandam o MESMO `escopo` que o servidor usou pra contar.
    */
-  function applyFilterPreset(kind: 'paid' | 'pending' | 'overdue' | 'today') {
-    const escopo = kind === 'paid' ? 'PAGA'
-      : kind === 'overdue' ? 'VENCIDA'
-        // ⭐ 26/09 — o 4º card manda o MESMO escopo que o servidor usou pra contar
-        : kind === 'today' ? 'VENCE_HOJE' : 'A_PAGAR'
-    // ⚠️ `status: 'TODOS'` de propósito: quem recorta agora é o ESCOPO, e deixar o filtro
-    // de status junto cortaria de novo por outra régua (foi assim que a lista mostrava
-    // "muito menos" do que o card dizia).
-    setFilters({ ...EMPTY_FILTERS, status: 'TODOS', escopo })
+  /**
+   * ⭐⭐ 21/10 (fatia 1.1) — **ESTREITADO DE 4 PRESETS PRA UM, e isso NÃO perde caminho.**
+   *
+   * ⛔⛔ Os kinds `overdue` · `today` · `pending` **morreram porque os CARTÕES DE FAIXA fazem
+   * exatamente o mesmo recorte, por construção**: `whereDaFaixa` delega a `whereDoStatus` por
+   * RECURSÃO, então clicar em VENCIDAS/VENCE HOJE/as três de data manda o MESMO corte que o
+   * preset mandava. Manter os três aqui seria **campo morto esperando alguém religar** — e o
+   * dia em que o escopo e a faixa divergissem, a tela teria duas réguas pro mesmo número (a
+   * doença de 13/09, em que o card dizia 34 e a tabela pintava 9).
+   *
+   * ⭐ **PAGAS fica, e é o único que não é faixa:** ele é um RECORTE DE FLUXO (o mês), não uma
+   * faixa de aberto — por isso continua passando pelo escopo.
+   *
+   * ⚠️ `status: 'TODOS'` de propósito: quem recorta é o ESCOPO, e deixar o filtro de status
+   * junto cortaria de novo por outra régua (foi assim que a lista mostrava "muito menos" do
+   * que o card dizia).
+   */
+  function filtrarPagasDoMes() {
+    setFilters({ ...EMPTY_FILTERS, status: 'TODOS', escopo: 'PAGA' })
     setPage(1)
   }
 
@@ -1077,7 +1086,7 @@ function ContasAPagarInner() {
                */
               detalhe: `${kpis.countPagasConciliadas} conciliadas com o banco · ${kpis.countPagasSemVinculo} sem vínculo`,
               ativo: filters.escopo?.startsWith('PAGA') ?? false,
-              onEscolher: () => applyFilterPreset('paid'),
+              onEscolher: filtrarPagasDoMes,
             }}
           />
 
@@ -1195,18 +1204,26 @@ function ContasAPagarInner() {
         </>
       )}
 
-      {/* Footer fixo com totalizadores */}
-      {empresaId && !loading && (kpis.countPagas + kpis.countPendente + kpis.countVenceHoje + kpis.countVencido) > 0 && (
-        <StickyFooter
-          totals={{
-            paid: kpis.totalPagas,
-            pending: kpis.totalPendente,
-            overdue: kpis.totalVencido,
-            today: kpis.totalVenceHoje,
-          }}
-          onClickFilter={applyFilterPreset}
-        />
-      )}
+      {/**
+        * ⛔⛔⛔ **A RÉGUA DO RODAPÉ MORREU (21/10, item 2 do dono) — e o arquivo foi APAGADO.**
+        *
+        * **Veredito, no print de 21/10 20:22:** *"a mesma informação vive em TRÊS formas — os 4
+        * cards, os 5 chips e a régua do rodapé"*. O `StickyFooter` era a TERCEIRA: ele imprimia
+        * **os MESMOS quatro totais** (Vencidas · Vence hoje · A pagar · Pagas) que a família de
+        * cartões mostra a dez centímetros acima, cada um clicando pro MESMO filtro.
+        *
+        * ⛔ **E ele disputava o lugar com a barra da seleção**, que agora é `fixed bottom-0` — os
+        * dois ocupariam o mesmo rodapé, um cobrindo o outro.
+        *
+        * ⭐ **NADA SE PERDEU, e isso foi MEDIDO antes de apagar:** VENCIDAS, VENCE HOJE e PAGAS
+        * são cartão (idênticos); *"A pagar"* é a Σ de SETE_DIAS + RESTO + DEPOIS + SEM_VENCIMENTO,
+        * à vista como as próprias faixas; e o TOTAL GERAL dele somava **pagas-do-mês com dívida
+        * aberta de sempre** — dois TEMPOS diferentes (a régua de 14/09), um número que ninguém
+        * defende. O total em aberto continua à vista: é a Σ dos cartões de faixa.
+        *
+        * ⚠️ O componente foi **APAGADO, não deixado órfão** — *enquanto o arquivo existe, alguém
+        * religa* (a cicatriz do `GruposSugeridos`, 23/09).
+        */}
 
       {/* Modal Efetivar (com banco) */}
       <EfetivarDialog

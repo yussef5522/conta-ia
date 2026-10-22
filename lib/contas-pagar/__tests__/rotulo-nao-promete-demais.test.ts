@@ -22,7 +22,14 @@ const ler = (p: string) => readFileSync(join(raiz, p), 'utf8')
 
 const PAGINA = 'app/(dashboard)/contas-a-pagar/page.tsx'
 const DROPDOWN = 'components/contas-pagar/PayableFilters.tsx'
-const RODAPE = 'components/contas-pagar/StickyFooter.tsx'
+/**
+ * ⚠️⚠️ **O `RODAPE` SAIU DAQUI em 21/10 (fatia 1.1, item 2 do dono), com o motivo escrito.**
+ *
+ * O `StickyFooter` era a TERCEIRA apresentação dos mesmos quatro totais (*"a mesma informação
+ * vive em TRÊS formas"*, veredito de 21/10 20:22) e foi **APAGADO** — então não há mais arquivo
+ * pra conferir. ⭐ **A pergunta deste teste NÃO mudou** (*os lugares que filtram a mesma coisa
+ * leem o MESMO rótulo?*): ela agora é feita aos DOIS que sobraram — a PÁGINA e o DROPDOWN.
+ */
 
 /** o FATO que os rótulos têm que refletir: a conciliada não está aqui, em filtro nenhum */
 function escopoEscondeAsConciliadas(status: 'RECONCILED' | 'TODOS') {
@@ -44,9 +51,12 @@ describe('⛔ o filtro esconde as conciliadas — então o rótulo TEM que dizer
   it('⭐⭐ o rótulo de PAGAS ressalva — "Pagas" seco promete as conciliadas que ele esconde', () => {
     expect(ROTULO_PAGAS.toLowerCase()).toMatch(/sem conciliar|aguardando concilia/)
     // os TRÊS lugares que filtram a mesma coisa leem o MESMO rótulo
-    for (const arq of [PAGINA, DROPDOWN, RODAPE]) {
+    for (const arq of [PAGINA, DROPDOWN]) {
       expect(ler(arq), `${arq} não usa o dono único do rótulo`).toContain('ROTULO_PAGAS')
     }
+    // ⛔ e o rodapé não pode RENASCER com um 3º texto do mesmo filtro
+    expect(ler(PAGINA), 'a régua do rodapé voltou — 3ª apresentação dos mesmos totais')
+      .not.toContain('<StickyFooter')
   })
 
   it('⛔ "Todos status" morreu — "todos" que não é todos é a família do "69 duplicatas"', () => {
@@ -57,8 +67,9 @@ describe('⛔ o filtro esconde as conciliadas — então o rótulo TEM que dizer
 
   it('⚠️ nenhum dos três escreve o rótulo NA MÃO — três textos divergem no 1º ajuste', () => {
     // o que morde: alguém "melhorar" o texto num lugar e a tela passar a dizer duas coisas
-    expect(ler(RODAPE)).not.toMatch(/label:\s*'Pagas'/)
     expect(ler(PAGINA)).not.toMatch(/label="Pagas"/)
+    // ⭐ o cartão das pagas diz o RECORTE (o mês), que é o que ele de fato entrega
+    expect(ler(PAGINA), 'o cartão das pagas perdeu o recorte do mês').toContain('Pagas · ')
   })
 
   it('⭐⭐ a RESSALVA continua dita — é ela que segura a promessa', () => {

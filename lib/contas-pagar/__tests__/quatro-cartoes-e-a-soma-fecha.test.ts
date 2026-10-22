@@ -15,13 +15,13 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { statusDaConta, whereDoStatus, ehFluxo, inicioDoDiaBrasil, inicioDoDiaSeguinteBrasil, type StatusDaConta } from '../escopo'
+import { FAIXAS } from '../faixa-do-tempo'
 
 const ler = (p: string) => readFileSync(join(process.cwd(), p), 'utf-8')
 /** ⚠️ sem comentário: o arquivo que DOCUMENTA a remoção não pode ser o que a reprova */
 const semComentario = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
 const PAGINA = 'app/(dashboard)/contas-a-pagar/page.tsx'
-const RODAPE = 'components/contas-pagar/StickyFooter.tsx'
 const ROTA = 'app/api/contas-a-pagar/route.ts'
 
 /** ⭐ 23h de São Paulo do dia 13 — o servidor em UTC já diz 14 */
@@ -112,19 +112,27 @@ describe('⭐⭐ O CARD EXISTE, NA ORDEM, E É O FILTRO', () => {
      * outro. ***Grep não distingue "refatorei" de "quebrei"*** (a razão de existir da REGRA 3).
      *
      * ⭐ **A PERGUNTA NÃO MUDOU:** *o 4º estado está alcançável e manda o escopo que o servidor
-     * contou?* — e hoje ela é respondida por **DOIS caminhos**, os dois provados aqui: o
-     * **CARTÃO** (`cartao-faixa-VENCE_HOJE`, que filtra por faixa) e o **RODAPÉ** (que segue
-     * mandando `kind: 'today'` pelo `applyFilterPreset`).
+     * contou?* — ⚠️ mas o **número de caminhos caiu de dois pra UM, em 21/10**: a régua do rodapé
+     * (`StickyFooter`) foi apagada no item 2 do dono e o `applyFilterPreset` estreitou pra o único
+     * recorte que NÃO é faixa (as PAGAS do mês).
+     *
+     * ⭐⭐ **E o caminho que sobrou é o MAIS FORTE, não o mais fraco:** o cartão filtra por
+     * `faixa`, e `whereDaFaixa` **delega a `whereDoStatus` por RECURSÃO** — é o MESMO corte que o
+     * preset mandava, por construção, sem a chance de as duas réguas divergirem (o defeito de
+     * 13/09, em que o card dizia 34 e a tabela pintava 9).
      */
     const cartoes = semComentario(ler('components/contas-pagar/CartoesDoTempo.tsx'))
     expect(cartoes, 'o cartão do VENCE HOJE sumiu da família').toContain('cartao-faixa-')
     expect(cartoes, 'o rótulo voltou a ser derivado no cliente — dois relógios')
       .toContain('label={m.rotulo}')
     expect(pagina, 'a família de cartões saiu da tela').toContain('<CartoesDoTempo')
-    // ⭐ o preset segue vivo pelo RODAPÉ, e ele manda o ESCOPO, nunca um recorte na mão (13/09)
+    // ⭐ a FAIXA existe na lib (é dela que sai o `cartao-faixa-VENCE_HOJE`) — mais forte que
+    // procurar a string na página, porque é o tipo que alimenta o `.map` da família
+    expect(FAIXAS, 'VENCE_HOJE saiu da família de faixas').toContain('VENCE_HOJE')
+    // ⭐ e o 4º estado continua dentro do total em aberto que o invariante da tela confere
     expect(pagina).toContain('kpis.totalVenceHoje')
-    expect(pagina).toContain("'VENCE_HOJE'")
-    expect(pagina).toContain('onClickFilter={applyFilterPreset}')
+    // ⛔ a régua do rodapé não pode renascer (era a 3ª apresentação do mesmo número)
+    expect(pagina, 'o StickyFooter voltou — 3ª forma dos mesmos totais').not.toContain('StickyFooter')
   })
 
   it('⭐⭐ PAGAS é o ÚLTIMO cartão — e não se confunde com faixa de aberto', () => {
@@ -149,15 +157,24 @@ describe('⭐⭐ O CARD EXISTE, NA ORDEM, E É O FILTRO', () => {
     expect(pagina, 'o cartão das pagas perdeu o recorte do mês').toContain('Pagas · ')
   })
 
-  it('⛔⛔ e o RODAPÉ soma os quatro — ele se declara fechado', () => {
+  it('⛔⛔ o 4º estado conta no TOTAL EM ABERTO — a dupla contagem ao contrário', () => {
     /**
-     * ⚠️ Sem o 4º, o total geral do rodapé somaria **menos** que a realidade — a dupla
-     * contagem ao contrário. ⭐ E o rodapé conta o que os cards contam, pelo mesmo preset.
+     * ⚠️⚠️ **INVERTIDO em 21/10 com o motivo escrito, não apagado.** A régua antiga era
+     * *"o RODAPÉ soma os quatro — ele se declara fechado"*, e ela nasceu em 26/09 porque o 4º
+     * card tinha acabado de existir e o `StickyFooter` somaria **menos** que a realidade sem ele.
+     *
+     * ⛔ **O rodapé MORREU no item 2 do dono** (era a 3ª apresentação dos mesmos quatro totais),
+     * então não há mais soma pra conferir ali. ⭐ **A metade que importa é a mesma e continua
+     * travada:** o VENCE HOJE não pode ficar fora do total em aberto — se ficasse, a Σ das faixas
+     * pararia de fechar com ele e o grito do `CartoesDoTempo` acenderia na frente do dono.
+     *
+     * ⭐⭐ E ela agora é conferida no lugar CERTO: o total que a tela mostra, somado dos **três**
+     * estados de aberto, é o MESMO denominador que o invariante `Σ(faixas) == total em aberto`
+     * usa — então um estado esquecido aqui vira vermelho em DOIS testes, não em zero.
      */
-    const rodape = semComentario(ler(RODAPE))
-    expect(rodape).toContain("kind: 'today'")
-    expect(rodape).toMatch(/totals\.paid \+ totals\.pending \+ totals\.overdue \+ totals\.today/)
-    expect(pagina).toContain('today: kpis.totalVenceHoje')
+    expect(pagina, 'o VENCE HOJE saiu do total em aberto que a família confere')
+      .toContain('kpis.totalVenceHoje + kpis.totalPendente + kpis.totalVencido')
+    expect(pagina, 'a família deixou de receber o total em aberto').toContain('totalEmAberto=')
   })
 
   it('⛔ a ROTA devolve o KPI — sem ele o card nasce zerado e muda', () => {
