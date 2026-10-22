@@ -13548,6 +13548,154 @@ convincente quanto um defeito real.
    linhas-seção aparecem no recorte do chip/card. **Pré-existente** (a ordenação é de 26/09); fica
    registrado, não mexido.
 
+## 🧹⛔⛔⛔ CONTAS A PAGAR — FATIA 1.1: UMA FAMÍLIA SÓ, E A TERCEIRA FORMA MORREU (21/10/2026)
+
+**O veredito do dono, no print de 21/10 20:22:** *"bagunça total, cards repetidos, mesma
+informação 2 vezes em 2 modelos; a barra é embaixo"*. ⛔ **Zero migration · zero escrita · Lei C0
+(as telas vizinhas intocadas) · Δ chunks −4 KB.**
+
+### ⭐⭐⭐ O DIAGNÓSTICO: A MESMA INFORMAÇÃO VIVIA EM **TRÊS** FORMAS
+
+Os **4 cartões antigos** (PAGAS · VENCE HOJE · A PAGAR · VENCIDAS), os **5 chips de faixa** e a
+**régua do rodapé** (`StickyFooter`). **VENCE HOJE e VENCIDAS apareciam EM DOBRO com números
+IDÊNTICOS** — porque a faixa e o cartão são o **MESMO corte por construção**: `whereDaFaixa`
+delega a `whereDoStatus` por **RECURSÃO**. *Duas apresentações do mesmo número a dez centímetros
+uma da outra é a doença que esta casa mais paga — em tela ela se lê como erro.*
+
+**A CURA É SUBTRAÇÃO:** `CartoesDoTempo` é **UMA família** com o visual FORTE do `StatCard` (o
+molde desde 24/08) e os **rótulos ADULTOS da referência** (nome + data), todos clicáveis = filtro,
+com **PAGAS como o ÚLTIMO cartão, verde, com o detalhe das conciliadas** (ele é *contexto*, não
+faixa de aberto). ⛔ **O «A PAGAR» morreu como cartão e isso NÃO perde número:** ele é exatamente
+`SETE_DIAS + RESTO + DEPOIS + SEM_VENCIMENTO`, e mantê-lo ao lado das faixas seria **a mesma conta
+contada 2×** — o defeito que matou o *"a vencer (3d)"* em 13/09.
+
+### ⛔⛔ A TERCEIRA FORMA — EU MATEI DUAS E DEIXEI UMA VIVA
+
+Na 1ª volta eu removi os chips e unifiquei os cartões, e o **`StickyFooter` seguiu imprimindo os
+MESMOS quatro totais**, cada um clicando pro MESMO filtro. ⚠️ **E com a barra da seleção agora
+`fixed bottom-0`, os dois passaram a disputar o rodapé.** Quem achou foi a **prova em prod**
+contando ocorrências no chunk (2× *"Vence hoje"*), não a leitura do código.
+
+**⭐ NADA SE PERDEU, e isso foi MEDIDO antes de apagar:** VENCIDAS/VENCE HOJE/PAGAS são idênticos
+aos cartões · *"A pagar"* é a Σ das quatro faixas futuras, à vista como as próprias faixas · e o
+**TOTAL GERAL dele somava pagas-do-mês com dívida aberta de sempre** — **dois TEMPOS diferentes**
+(a régua de 14/09), um número que ninguém defende. ⛔ O componente foi **APAGADO, não deixado
+órfão** — *enquanto o arquivo existe, alguém religa* (a cicatriz do `GruposSugeridos`, 23/09).
+
+**⭐ E `applyFilterPreset` ESTREITOU DE 4 PRESETS PRA UM (`filtrarPagasDoMes`), sem perder
+caminho:** os kinds `overdue`/`today`/`pending` faziam o **MESMO recorte** que os cartões de faixa
+fazem por construção. Mantê-los seria **campo morto esperando alguém religar** — e no dia em que
+escopo e faixa divergissem, a tela teria duas réguas pro mesmo número (o defeito de 13/09, em que
+o card dizia 34 e a tabela pintava 9). ⭐ **PAGAS fica porque é o único que NÃO é faixa:** é
+recorte de **FLUXO** (o mês), não de aberto.
+
+### ⭐ AS OUTRAS QUATRO PEÇAS
+
+**A BARRA DESCEU PRA A POSIÇÃO DA LEI** — `fixed bottom-0 left-0 right-0`, miolo com o teto de
+1440px e padding `12px 26px`, total em `27px` com `tracking-[-0.02em]`, mais um **espaçador de
+110px** (as medidas saem **LITERAIS** do `.barra`/`.barra .in`/`body{padding-bottom}` da
+referência, nunca traduzidas pro passo Tailwind mais próximo — foi tradução mental que produziu as
+duas versões erradas da Conciliação, 10/09). ⛔ **FUNÇÃO INTOCADA:** os três gestos
+(`bulk-mark-paid` · `bulk-delete` · `bulk-clear`) e a régua do caixa são os mesmos — **só o lugar
+mudou**.
+
+**O CHECKBOX «SÓ VENCIDAS» MORREU** (o cartão VENCIDAS filtra o mesmo; dois controles pra uma
+pergunta, recortando por duas réguas) — ⚠️ **mas o CAMPO `vencidasOnly` FICA** no tipo e em
+`isFilterActive`, de propósito: `?vencidasOnly=true` de um print ou e-mail antigo continua
+funcionando e aparece como filtro ativo com o *"limpar"* ao lado. *Link velho não vira 404
+silencioso.*
+
+**A LINHA «Σ das faixas = o total em aberto» SAIU DA TELA** — *o invariante mora no TESTE, não
+precisa morar na frente do dono*. ⛔⛔ **O GRITO FICA:** esconder uma Σ que **NÃO** fecha trocaria
+a legenda por uma **mentira**, e número de dinheiro em tela sem régua é pior que ausência.
+
+**⭐ A RÉGUA DO CAIXA LÊ `lib/balance`, NUNCA `saldosDaEmpresa`** (que é ESTOQUE — somaria
+mercadoria e a barra diria *"pagando fica R$ Y"* sobre o valor da câmara fria), e
+`saldoHoje: number | null` **nunca `?? 0`**: falhar em ler o caixa é ausência de MEDIÇÃO, e `0`
+pintaria coral mandando o dono não pagar uma conta que ele pode pagar.
+
+### ⚠️⚠️ REGRA 11 — 19 DEFEITOS REPOSTOS (baseline 0 · restaurado 0)
+
+Na 1ª volta: a família duplicada de volta · a barra voltando a sticky · o espaçador removido · o
+miolo sem o teto de 1440px · o total gigante encolhendo · o grito do Σ incondicional · PAGAS
+perdendo o tom · medida ajustada no olho · o cartão deixando de zerar o escopo · o rótulo derivado
+no cliente (**2**) · o «Só vencidas» de volta · os chips ressuscitando. Na volta do rodapé: a
+régua do rodapé voltando · o VENCE HOJE saindo do total em aberto · a família perdendo o total em
+aberto · o cartão PAGAS perdendo o recorte do mês (**2 vermelhos cada**).
+
+**⛔⛔ E UM VEIO VERDE — *"menção, não uso"* pela 21ª vez nesta casa:** o guard do campo
+`vencidasOnly` fazia `toContain('vencidasOnly')` sobre o **arquivo inteiro**, e o nome sobrevive em
+`EMPTY_FILTERS` e `isFilterActive` mesmo com o campo arrancado do **TIPO**. Apertado pro campo
+**dentro do bloco da interface** E pelo uso em `isFilterActive`, ele morde.
+
+**⚠️ 2 GUARDS DE 26/09 REAPONTADOS e 1 INVERTIDO, com o motivo escrito — e os dois ficaram
+vermelhos COM A TELA CERTA** (***grep não distingue "refatorei" de "quebrei"***, a razão de existir
+da REGRA 3): o teste do 4º estado passou a afirmar a **FAIXA na lib** (mais forte que a string na
+página) · *"PAGAS é o PRIMEIRO"* **invertido** (a ordem cronológica é decisão do dono, e a metade
+que importa — PAGAS não volta pro meio das faixas — segue travada) · *"o RODAPÉ soma os quatro"*
+**invertido**, com a metade que importa (o VENCE HOJE não fica fora do total em aberto) travada **no
+lugar certo**: o mesmo denominador do invariante `Σ(faixas) == total em aberto`, então um estado
+esquecido vira vermelho em **DOIS** testes em vez de zero.
+
+### A PROVA EM PROD — 2 VIEWPORTS (REGRA 12) · ZERO ESCRITA
+
+```
+TOTAL EM ABERTO: 114 contas · R$ 163.052,98
+  VENCIDAS · até 20/10        20 ·  R$  5.097,42     RESTO DO MÊS · 29 a 31/10    7 · R$ 18.870,88
+  VENCE HOJE · qua · 21/10     5 ·  R$  5.536,01     DEPOIS DE 31/10             41 · R$ 64.420,92
+  PRÓXIMOS 7 DIAS · 22 a 28/10 41 · R$ 69.127,75     SEM VENCIMENTO               0 · R$      0,00
+  ⛔⛔ Σ das faixas R$ 163.052,98 == total em aberto → ⭐ FECHA AO CENTAVO · Σ contagens 114 == 114
+  ⛔  faixa de data sem a data no rótulo: 0 ⭐ (o rótulo é do SERVIDOR — um relógio só manda)
+
+O CARTÃO É O FILTRO — card == lista em 6 de 6 (as 5 faixas com conta + PAGAS 246)
+A RÉGUA DO CAIXA (a MESMA porta da mesa ①): -R$ 74.334,44
+
+REGRA 12   celular 200/377ms · desktop 200/51ms · chunk DESTA tela 123 KB
+  ⭐ 11/11 peças nos DOIS · ⭐ chunk IDÊNTICO (uma composição)
+  ⛔→✓ MORTAS, 0 ressuscitadas: sticky-footer · label="Vence hoje" · chip-faixa- ·
+       applyFilterPreset · filter-vencidasOnly · a legenda da Σ
+  ⛔⛔ CADA NÚMERO UMA VEZ: «Vence hoje» 1 · «footer-» 0 · «chip-faixa-» 0
+     ⚠️ a 1 ocorrência é `payable-status.ts:70` — o RÓTULO DO STATUS DA LINHA (26/09), que é
+        outra coisa: é o selo de uma conta na tabela, nunca um total. ZERO total duplicado.
+  ⚠️ 3 hex no chunk — TODOS pré-existentes e atribuídos por linha: #534AB7 ×2 (PayableTable
+     519/571, o roxo legado) · #999999 e #888888 (page.tsx, cor de categoria placeholder).
+     ZERO hex nas peças NOVAS.
+OS TOKENS   6 de 6 nos DOIS mapas do CSS servido (2.716 regras)
+LEI C0      mesa ① · contas a receber · conciliação · fluxo de caixa · custos fixos
+            → 200 nos dois viewports, INTOCADAS
+ESCRITA     transações 8.558 → 8.558 · categorias 269 → 269  ⭐ ZERO
+```
+
+**1019 arquivos · 13.785 verdes · 2 todo · TS 0 · migration NENHUMA · deploys 4/4 (`282e1fa5` e
+`7aa2f285`, BUILD_ID `88_lH9ri7c2ugS5kAz5Wv`) · Δ chunks −4 KB.**
+
+⚠️⚠️ **E A MINHA SONDA SOBRESCREVEU ARQUIVOS VIVOS COM BACKUP VELHO — a cicatriz de 09/10, em
+forma pior.** O probe da REGRA 11 chaveava o backup com `tr '/' '__'` (que mapeia **caractere a
+caractere**, produzindo UM `_`) e o `restaurar()` **globava o diretório de backup compartilhado**,
+rodando `sed 's#__#/#g'` em cada basename. **Chaves de sprints antigos usavam `__`**, então ele
+restaurou um `page.tsx` da era FATIA-1 por cima do meu trabalho, **ressuscitou o
+`ChipsDasFaixas.tsx`** (staged como deletado) e sujou o raiz do repo. ⭐ **Recuperado medindo com
+`git status` e restaurando com `cp` dos backups de chave única — nunca com `git checkout`** (foi
+assim que apaguei trabalho em 14/09). Reescrito com **chave pelo CAMINHO INTEIRO (`%`), diretório
+exclusivo por rodada, restauração por LISTA EXPLÍCITA, assert de md5 e suíte-que-não-coleta
+contando como vermelho**.
+
+📋 **FICA PRO DONO (REGRA 2, o olho é dele):**
+1. **Abrir a tela no celular e no notebook, nos dois temas** — a prova mede o que prod serve (11/11
+   peças, 6 tokens nos dois mapas, hex atribuído ao legado), **mas quem vê a cara é ele**.
+   ⚠️ Screenshot indisponível (extensão do Chrome desligada nesta sessão).
+2. ⚠️ **Os botões de ação da barra são do Sprint 5.0.3.0b (`408e6faa`) e FICARAM** — medido por
+   `git log`, eles **não vieram desta fatia**, e o brief mandava removê-los *se* tivessem nascido
+   aqui. *Remoção sem realocação é perda.* Se ele quiser a barra só informativa, é uma linha.
+3. ⚠️ **A régua do caixa está CORAL em toda seleção real**, porque o caixa está em
+   **−R$ 74.334,44** (a conta garantida do Sicredi operando negativa, documentada desde 25/08). O
+   verde está provado por contrafactual; aparece sozinho quando o caixa virar positivo.
+4. ⚠️ **O selo «⚠ sem banco» aparece em quase toda linha aberta** — conta a pagar **nasce sem
+   `bankAccountId`** por desenho (a ponte do estoque, 24/08). Medido: 25 de 200 na página 1.
+5. ⚠️ **A 1ª página sem filtro pode não mostrar seção nenhuma** — ordenada por vencimento no mês
+   corrente, ela traz as **pagas** primeiro, e conta paga não abre seção. As linhas-seção aparecem
+   no recorte do cartão. **Pré-existente** (a ordenação é de 26/09).
+
 ## Ordem de deploy (PJ + PF)
 
 **⚠️ SWAP DE 2GB É OBRIGATÓRIO NO SERVIDOR (25/08).** O `npm run build` do Next roda o type-check num worker que chega a **~1,9 GB de RSS**; o servidor tem 3,9 GB e estava **sem swap nenhum** → o OOM killer matava o worker (`signal: SIGKILL`) e o `.next` ficava **sem `BUILD_ID`**, deixando o pm2 em loop de erro. **Não adianta mexer no `--max-old-space-size`:** teto alto (2560) o kernel mata igual; teto baixo (1400) o próprio V8 aborta por heap insuficiente (`SIGABRT`) — o type-check PRECISA de ~2 GB. Criado em 25/08: `fallocate -l 2G /swapfile && chmod 600 && mkswap && swapon` + linha no `/etc/fstab` (persiste no reboot). Build voltou a passar de primeira. **Servidor novo nasce quebrado sem isso** — incluir no provisionamento junto com o poppler. Pra desfazer: `swapoff /swapfile && rm /swapfile` + tirar a linha do fstab.
