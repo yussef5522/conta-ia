@@ -12935,6 +12935,116 @@ viewports · ZERO ESCRITA (movimentos 9.565→9.565 · linhas 3.897→3.897 · c
 cura vale pra todos de graça. O que sobra na lista de dias são **9 consultas fixas**, nenhuma
 delas por ficha ou por dia.
 
+## 🔧⭐⭐ O SELETOR DE "ADICIONAR ITEM" DO REAL × TEÓRICO (23/10/2026)
+
+**O print do dono:** *"caixa estreita, nome quebrando em 2 linhas, lista cortada pelo card, 1 resultado só
+visível, e R$ aparecendo no resultado"*. ⛔ **Migration NENHUMA · zero escrita em prod · Lei C0
+(Produção/Hoje/Radar intocadas).**
+
+### ⛔⛔⛔ `z-index` NÃO RESOLVE CLIPPING POR OVERFLOW — correção da premissa do brief
+
+O pedido dizia *"resolver por sobreposição de verdade (z-index/portal)"*. **`z-index` não conserta
+nada aqui:** `overflow: hidden` num ancestral **RECORTA** o descendente `absolute` qualquer que seja
+o `z-index` — ele só ordena pintura entre stacking contexts. O card do grupo é
+`overflow-hidden rounded-[16px]` (ele **precisa** disso pro raio cortar os cantos dos filhos), e os
+chips são o último bloco dele. ⭐ **Só o PORTAL tira o painel do recorte**; mexer no overflow do card
+mataria o arredondamento.
+
+⚠️ **É a MESMA cicatriz do menu do cartão ≍ (18/09):** lá o cartão era `overflow-hidden`, o menu
+`absolute` dentro dele, e ele abriu *"sem nenhum contrato"* com **10 no payload** (o nginx provou
+`200 · 8024 bytes`). ***Menu que abre fora da vista é indistinguível de menu vazio.***
+
+### ⛔⛔⛔ PORTAL + CLIQUE-FORA = GESTO MORTO COM UM REF SÓ (pego ANTES de codar)
+
+No portal o painel **não é descendente** do container → o clique num resultado conta como **"fora"**
+→ o `mousedown` fecha o dropdown **antes** do `click` do botão chegar → ***o item nunca é
+adicionado.*** `useDismissivel` ganhou **2º ref opcional** (`extra`), reusando o padrão que o
+`menu-do-chip.tsx` já fazia **na mão** desde 18/09.
+
+⭐⭐ **E a régua saiu do `useEffect` pra função PURA** (`cliqueFoiForaDeTodos`): o projeto roda
+`environment: node`, sem jsdom — ***régua que mora num efeito é régua que ninguém prova***. ⚠️
+Container **ausente não vota**: o painel do portal monta um tick depois do container, e sem isso ele
+fecharia no primeiro toque. Com **UM** container a lista tem um item só e o comportamento é o de
+sempre — **chamador antigo intocado**.
+
+### ⭐⭐ A POSIÇÃO GANHOU DONO ÚNICO — `lib/ui/posicao-flutuante.ts`
+
+Movido de `lib/conciliacao/posicao-do-menu.ts` (que virou **re-export**, preservando os 2
+importadores sem tocar numa linha deles) e generalizado na largura: `ReguaDaLargura {minima, maxima}`.
+⛔ **O piso cede à janela** (`Math.min(…, cabeNaJanela)`): num celular de 390px o painel sai com
+**366px** e **nunca sangra** — piso de 420 cravado faria a caixa vazar a tela justo onde o dono
+opera. Abre **ACIMA** quando não cabe embaixo, com `maxAltura` = o espaço REAL.
+
+### ⛔⛔ AS PROPS SÃO OPT-IN — `BuscaItem` tem 7 CHAMADORES, e o dinheiro é legítimo em 6
+
+Medido antes de mexer: real-vs-teorico · radar · consumo-e-compras · entrada-manual (×2) ·
+itens-manuais-editor · **ficha-editor**. ⭐ Tirar o custo do componente mataria o número que **faz o
+gesto do dono funcionar** ao montar receita. `semDinheiro` e `emSerie` entram **só no RVT**, com
+default preservado — e o **guard é de DOIS LADOS**: ele afirma o zero-R$ no RVT **e** que o
+`ficha-editor` **não** passa `semDinheiro` (*guard que só proibisse o R$ aprovaria o dia em que o
+custo sumisse da ficha*).
+
+### ⭐ O RESTO DAS QUATRO FRENTES
+
+**uma linha por resultado** (`min-w-0 flex-1 truncate` — sem o `min-w-0` o flex item se recusa a
+encolher abaixo do conteúdo e a quebra volta — + `title={it.nome}`, porque truncar não pode esconder
+o que o dono procura, + selo da unidade e ＋ em `shrink-0`) · **8 com rolagem**, com o teto casado ao
+`pos.maxAltura` · **vazio honesto** (`nada encontrado com «xyz»`, e só quando a busca foi feita) ·
+**série**: clicou ＋ → o `gesto` do RVT já faz `await carregar()`, a linha entra **na hora** e volta
+com **"✓ adicionado"** (o selo vem do SERVIDOR, via `jaAdicionados`, nunca do clique) e o campo
+**continua aberto e focado**. ⛔ **Nenhuma porta de escrita nova** — é o `adicionarItem` de sempre.
+
+⚠️ **E o item 3 já estava feito:** a rota de itens usa a **`filtrarPorBusca` da casa** (a cicatriz de
+08/09 — `contains` é case-SENSITIVE no Postgres e case-INSENSITIVE no SQLite). Medido em prod:
+`porcao` · `porçao` · `PORCAO` → **os MESMOS 20**; `xis pao` → `PAO DE XIS`.
+
+### ⚠️⚠️ REGRA 11 — 12 DEFEITOS REPOSTOS, 12 VERMELHOS (baseline 0 · restaurado 0)
+
+o portal removido (o painel volta a ser `absolute` DENTRO do card) · o piso de 420 · o `truncate` · o
+gate do dinheiro · o RVT parando de passar `semDinheiro` · e `emSerie` · o `setAdicionando(false)` de
+volta (o painel fecha e mata a série) · **o 2º ref saindo do `useDismissivel` (o GESTO MORRE)** · a
+régua voltando a UM container · o vazio honesto · **o `overflow-hidden` do card REMOVIDO** (conserta o
+recorte matando o raio) · o piso ignorando a janela (a caixa sangra no celular).
+
+⚠️ **E os 2 vermelhos do guard novo eram asserção MINHA errada, com o código certo:** (a)
+`blocoEntre(linha, '!semDinheiro', '}')` cortava no primeiro `}` — virou **regex de ORDEM** (o gate
+ANTES do dinheiro), com o motivo escrito: ***janela de distância já produziu falso vermelho E falso
+verde nesta casa***; (b) `useDismissivel<[^>]*>\(aberto,[^)]*painelRef\)` — `[^)]*` **não atravessa**
+`() => setAberto(false)`.
+
+### A PROVA EM PROD — 2 VIEWPORTS (REGRA 12), ZERO ESCRITA
+
+```
+chunk DESTA tela 42 KB · celular 200/314ms · desktop 200/44ms · ⭐ composição IDÊNTICA
+  ✓ portal (fixed z-[60]) · ⛔ o absolute z-20 antigo: MORREU
+  ✓ min-w-0 + truncate · shrink-0 · "✓ adicionado" · vazio honesto · placeholder do RVT
+A BUSCA (payload real, universo PRATELEIRA)
+  "queijo" 9 · "porcao"/"porçao"/"PORCAO" ⭐ 20 nos TRÊS · "acem" 1 (Acém) · "xis pao" 1 · "xxxx" 0
+OS GRUPOS DO DONO  🥤 revenda 31 itens · 💰 os caros 9 · 🍳 porções 24 (membership)
+LEI C0  Produção · Hoje ao vivo · Radar · Consumo & Compras · Entrada manual → 200 nos dois
+ESCRITA  membership 64→64 · movimentos 10.040→10.040  ⭐ ZERO
+```
+
+⚠️⚠️ **E A PROVA ERROU DUAS VEZES, as duas MINHAS:** (a) chutei `prisma.stockRadarLista` — o model é
+**`StockGrupoVigiado`**; (b) assinei a sessão com **`admin@contaia.com.br`**, que **não é dono desta
+empresa** → a rota devolveu **403** e a sonda imprimiu *"0 itens"* em TODOS os termos, com cara de
+busca quebrada. **É a cicatriz da REGRA 8 pela 5ª vez neste doc: usuário se resolve pelo PAPEL
+(`userCompanyRole` + `role.name = 'OWNER'`), nunca por e-mail chutado.** ***Sonda errada dá um
+vermelho tão convincente quanto um defeito real.***
+
+⚠️ **E os 20 hex do chunk são do `radar-tokens.ts`** — hex por **decisão de 20/09**, e a família ainda
+é clara por **débito declarado de 22/10** (o brief manda não mexer aqui). **Zero hex nas peças NOVAS**;
+*achado não atribuível não é achado*.
+
+**1.023 arquivos · 13.880 verdes · 2 todo · TS 0 · migration NENHUMA · commit `8d46351d` ·
+deploy 4/4 (`Lo5xtWMmwoll-0cWL9qf8`) · Δ chunks +8 KB · home p95 18 ms.**
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** abrir o Real × Teórico no celular e no notebook,
+tocar "adicionar item" num grupo e **adicionar 2 ou 3 em série** — a prova mede o que prod serve (as 8
+peças nos dois viewports, uma composição, o dropdown no portal) e que **nada do R$ chega ao picker**,
+mas **o olho e o dedo são dele**. ⚠️ Screenshot indisponível (extensão do Chrome desligada nesta
+sessão).
+
 ## 🏭⭐⭐⭐ EQUIPAMENTO É **DESTINO**, NÃO CATEGORIA — MÁQUINA NÃO É ESTOQUE (20-21/10/2026)
 
 **O caso real:** a NF da **BOLEADORA BOL600** (1 UN · R$ 21.000, emissão 14/10) parada no funil, porque
