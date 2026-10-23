@@ -217,6 +217,19 @@ export interface RadarDoEstoque {
   porcoes: LinhaDoRadar[]
   /** ⭐ o rodapé de cada bloco — a MESMA régua pros três */
   totais: { caros: TotalDaSecao; revenda: TotalDaSecao; porcoes: TotalDaSecao }
+  /**
+   * ⭐⭐ RT2 — as linhas por SLUG de grupo, quando o chamador pediu `grupos` (22/10/2026).
+   *
+   * ⛔⛔ **ADITIVO E OPCIONAL de propósito, e é isso que torna a Lei C0 PROVÁVEL:** o Radar
+   * NÃO passa `grupos`, então este campo vem `undefined` e a resposta dele fica **byte a byte
+   * idêntica** à de ontem. Nada de refatorar o motor pra "ficar mais geral" — refatoração aqui
+   * mudaria o número de uma tela aprovada pra servir uma tela nova.
+   *
+   * ⭐ E o motor **já era agnóstico no meio**: `daLista` é o UNION e o trabalho pesado por item
+   * é feito uma vez; os 3 arrays nomeados só aparecem no FIM, via `linhaDe`. Grupo arbitrário
+   * cabe exatamente nessa costura.
+   */
+  porGrupo?: Record<string, LinhaDoRadar[]>
   /** ⭐ o gráfico do computador: um ponto por dia do período (null = dia sem contagem) */
   porDia: { dia: string; valor: number | null }[]
   avisos: string[]
@@ -295,7 +308,27 @@ interface ContagemDaLinha {
  * padeiro e gráfico. Uma segunda consulta na tela seria a segunda derivação de sempre.
  */
 export async function calcularFechamentoDoDia(
-  input: { companyId: string; de: string; ate: string; caros: string[]; revenda?: string[]; porcoes: string[] },
+  input: {
+    companyId: string
+    de: string
+    ate: string
+    caros: string[]
+    revenda?: string[]
+    porcoes: string[]
+    /**
+     * ⭐⭐ RT2 — os grupos do dono, quando quem chama é a tela de REAL × TEÓRICO.
+     *
+     * ⛔⛔ **OPCIONAL, e é isso que torna a Lei C0 PROVÁVEL:** o Radar não passa, então
+     * `daLista` continua sendo o UNION dos três de sempre e a resposta dele fica **byte a
+     * byte idêntica**. Nada de "generalizar o motor" — refatoração aqui mudaria o número de
+     * uma tela aprovada pra servir uma tela nova.
+     *
+     * ⚠️ E os `itemIds` entram no UNION de propósito: grupo novo pode conter item que não
+     * está em nenhuma das três listas, e sem ele a linha sairia **sem dado nenhum** em vez
+     * de sair com o veredito — a família do "erro disfarçado de vazio".
+     */
+    grupos?: { slug: string; itemIds: string[] }[]
+  },
   db: PrismaClient = defaultPrisma,
 ): Promise<RadarDoEstoque> {
   const avisos: string[] = []
@@ -308,7 +341,8 @@ export async function calcularFechamentoDoDia(
   const inicio = new Date(`${de}T00:00:00-03:00`)
   const fim = new Date(`${ate}T23:59:59.999-03:00`)
   const revendaIds = input.revenda ?? []
-  const daLista = [...new Set([...input.caros, ...revendaIds, ...input.porcoes])]
+  const grupos = input.grupos ?? []
+  const daLista = [...new Set([...input.caros, ...revendaIds, ...input.porcoes, ...grupos.flatMap((g) => g.itemIds)])]
 
   const [itens, contagensNoPeriodo, saldos, baixaNaPonta] = await Promise.all([
     db.stockItem.findMany({
@@ -719,7 +753,36 @@ export async function calcularFechamentoDoDia(
   const caros = ordenarPorDinheiro(input.caros.map(linhaDe))
   const revenda = ordenarPorDinheiro(revendaIds.map(linhaDe))
   const porcoes = ordenarPorDinheiro(input.porcoes.map(linhaDe))
-  const todas = [...caros, ...revenda, ...porcoes]
+
+  /**
+   * ⭐ RT2 — as linhas de cada grupo, pela MESMA `linhaDe` das três listas.
+   *
+   * ⛔ Nenhum cálculo novo: o trabalho pesado por item já foi feito uma vez pro `daLista`
+   * inteiro. Aqui é só recortar — e por isso o número do grupo **não tem como divergir** do
+   * número que o Radar mostra pro mesmo item.
+   */
+  const porGrupo: Record<string, LinhaDoRadar[]> | undefined = grupos.length
+    ? Object.fromEntries(grupos.map((g) => [g.slug, ordenarPorDinheiro(g.itemIds.map(linhaDe))]))
+    : undefined
+
+  /**
+   * ⭐⭐ O UNIVERSO DO PLACAR.
+   *
+   * ⛔⛔ **SEM GRUPO, É A CONCATENAÇÃO LITERAL DE ANTES** — e isso não é economia de
+   * código: é a **Lei C0 virando construção**. Deduplicar sempre mudaria o placar do Radar
+   * no dia em que o dono pusesse o MESMO item em duas listas (o unique de
+   * `stock_radar_item` é `(companyId, lista, itemId)`, então isso é **permitido** hoje), e
+   * aí eu teria "melhorado" o número de uma tela aprovada sem ninguém pedir.
+   *
+   * ⭐ **COM GRUPO, dedup por `itemId` é obrigatório:** item que está nos CAROS **e** num
+   * grupo do dono entraria duas vezes e o placar somaria a variância dele **2×** — e
+   * grupo é feito justamente pra reagrupar o que já está vigiado. É a duplicata que o
+   * `set` do juiz de vendas (26/08) deixou passar, impedida de nascer.
+   */
+  const semGrupos = [...caros, ...revenda, ...porcoes]
+  const todas = porGrupo
+    ? [...new Map([...semGrupos, ...Object.values(porGrupo).flat()].map((l) => [l.itemId, l])).values()]
+    : semGrupos
 
   // ── o placar: Σ dos vereditos das listas ─────────────────────────────────────
   const comContagem = todas.filter((l) => l.faltouValor != null)
@@ -769,5 +832,7 @@ export async function calcularFechamentoDoDia(
     de, ate, placar, caros, revenda, porcoes, porDia, avisos,
     // ⭐ v1.3 — a MESMA função pros três rodapés (uma régua, três blocos)
     totais: { caros: totalDaSecao(caros), revenda: totalDaSecao(revenda), porcoes: totalDaSecao(porcoes) },
+    // ⭐ `undefined` quando ninguém pediu grupo — o Radar nem vê o campo (Lei C0)
+    porGrupo,
   }
 }

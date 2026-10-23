@@ -17,7 +17,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireStock } from '@/lib/stock/require-stock'
 import { calcularFechamentoDoDia } from '@/lib/stock/radar/fechamento'
-import { listasDoRadar } from '@/lib/stock/radar/watchlist'
+import { itensPorLista } from '@/lib/stock/radar/watchlist'
+import { gruposDoRadar } from '@/lib/stock/radar/grupos'
+import { seloDaAgenda, rotuloCurtoDaAgenda, rotuloLongoDaAgenda, textoDaUltima } from '@/lib/stock/radar/agenda-da-contagem'
+import { universoDoGrupo } from '@/lib/stock/radar/universo-do-grupo'
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 import { janelaDoPeriodo, type ChavePeriodo } from '@/lib/stock/radar/periodo'
 import { montarMesa, somaDaMesa, colunasValidas, COLUNAS, COLUNAS_PADRAO } from '@/lib/stock/radar/mesa'
 import { formatarQtd } from '@/lib/stock/quantidade'
@@ -37,13 +41,89 @@ export async function GET(request: NextRequest, { params }: Params) {
   const janela = janelaDoPeriodo(chave, { de: sp.get('de'), ate: sp.get('ate') })
   const itensFiltro = (sp.get('itens') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
 
-  // ⭐ as MESMAS watchlists do Radar — uma configuração só, editada em qualquer das telas
-  const listas = await listasDoRadar(companyId, prisma)
+  /**
+   * ⭐⭐ OS GRUPOS DO DONO (RT2) — e eles são a MESMA membership do Radar.
+   *
+   * ⛔⛔ `stock_radar_item` continua sendo a **única** tabela de vínculo item↔lista (desde
+   * 20/09). Uma segunda daria DUAS verdades pra *"quais itens o dono acompanha"*: ele poria
+   * o FRANGO nos CAROS por esta tela e o Radar não saberia. O que nasceu novo é só a tabela
+   * de **grupos** (nome, emoji, ordem, agenda) — o vínculo é o de sempre.
+   *
+   * ⚠️ `gruposDoRadar` SEMEIA os três atuais na primeira leitura, com nome/emoji/ordem
+   * copiados do que a tela cravava — é isso que torna "antes==depois" provável.
+   */
+  const { grupos } = await gruposDoRadar(companyId, prisma, auth.userId)
+  const porLista = await itensPorLista(companyId, grupos.map((g) => g.slug), prisma)
+
+  /**
+   * ⚠️ As três listas nomeadas continuam indo pro motor **exatamente como antes** (Lei C0:
+   * o Radar não muda), e os grupos vão no campo ADITIVO `grupos`. Grupo legado aparece nas
+   * duas pontas de propósito — o motor dedupa por `itemId` ao montar o placar.
+   */
   const radar = await calcularFechamentoDoDia(
-    { companyId, de: janela.de, ate: janela.ate, caros: listas.caros, revenda: listas.revenda, porcoes: listas.porcoes },
+    {
+      companyId,
+      de: janela.de,
+      ate: janela.ate,
+      caros: porLista['CAROS'] ?? [],
+      revenda: porLista['REVENDA'] ?? [],
+      porcoes: porLista['PORCOES'] ?? [],
+      grupos: grupos.map((g) => ({ slug: g.slug, itemIds: porLista[g.slug] ?? [] })),
+    },
     prisma,
   )
-  const secoes = montarMesa(radar, itensFiltro)
+
+  const secoes = montarMesa(
+    grupos.map((g) => ({
+      slug: g.slug,
+      nome: g.nome,
+      emoji: g.emoji,
+      linhas: radar.porGrupo?.[g.slug] ?? [],
+    })),
+    itensFiltro,
+  )
+
+  /**
+   * ⭐⭐ A AGENDA DE CONTAGEM DE CADA GRUPO (RT3) — o selo que a tela pinta.
+   *
+   * ⛔ `hoje` é o **dia do BRASIL**, resolvido AQUI, no servidor: deixar a tela derivar faria
+   * o selo dizer "CONTAR HOJE" num aparelho e "próxima SEX" noutro (a cicatriz do tablet que
+   * mentiu zero por dois dias, 08/09). **Um relógio manda.**
+   *
+   * ⚠️ E a "última contagem do grupo" é a MAIS RECENTE entre as linhas dele — não existe
+   * carimbo de "contei o grupo": o que existe é contagem por item. Chutar uma data aqui
+   * inventaria um fato; a MAIS RECENTE é a única leitura defensável, e `null` (nunca
+   * contado) segue sendo estado próprio.
+   */
+  const hoje = diaEmSaoPaulo(new Date())
+  const agenda = grupos.map((g) => {
+    const linhas = radar.porGrupo?.[g.slug] ?? []
+    const dias = linhas.map((l) => l.ultimaContagem).filter((d): d is string => !!d)
+    const ultima = dias.length ? dias.sort().at(-1)! : null
+    return {
+      /**
+       * ⭐ O **id** vai junto porque os quatro gestos de grupo (✎ renomear · chips da agenda ·
+       * adicionar item · criar) resolvem o alvo por **id escopado pela empresa** (REGRA 8). A
+       * tela não tem como derivá-lo do slug, e mandar o slug como alvo faria a rota resolver
+       * por nome — a cicatriz da conta `'sicredi '`.
+       */
+      id: g.id,
+      slug: g.slug,
+      /**
+       * ⭐⭐ O universo da busca vem **PRONTO do servidor** (RT2). ⛔ A tela é `'use client'`:
+       * importar a régua junto de `grupos.ts` arrastaria o PrismaClient pro bundle do
+       * navegador. E quem decide tem um dono só — duas respostas pra *"que itens este grupo
+       * oferece?"* divergiriam no primeiro grupo novo.
+       */
+      universo: universoDoGrupo(g.slug),
+      todoDia: g.agenda.todoDia,
+      dias: g.agenda.dias,
+      rotuloCurto: rotuloCurtoDaAgenda(g.agenda),
+      rotuloLongo: rotuloLongoDaAgenda(g.agenda),
+      ultimaTexto: textoDaUltima(hoje, ultima),
+      selo: seloDaAgenda({ agenda: g.agenda, hoje, ultimaContagem: ultima }),
+    }
+  })
 
   // ⭐ a escolha de colunas desta pessoa nesta empresa (sem linha = o padrão)
   const pref = await prisma.stockMesaPreferencia.findUnique({
@@ -72,6 +152,8 @@ export async function GET(request: NextRequest, { params }: Params) {
   return NextResponse.json({
     janela,
     secoes,
+    // ⭐ RT3 — o selo vem PRONTO do servidor; a tela só pinta (um relógio, uma régua)
+    agenda,
     colunas,
     colunasDisponiveis: COLUNAS,
     /**

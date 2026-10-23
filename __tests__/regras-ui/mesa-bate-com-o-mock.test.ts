@@ -87,7 +87,17 @@ describe('⛔⛔⛔ o guard visual do dono: divisória e faixa colorida', () => 
   })
 
   it('⛔⛔ SEÇÃO SEM FAIXA COLORIDA = VERMELHO (e o subtotal repete o fundo dela)', () => {
-    expect(TELA).toContain('const fam = FAMILIA[s.chave]')
+    // ⚠️ REAPONTADO (22/10), não afrouxado: a cor da família deixou de ser um MAPA indexado
+    // pelos 3 nomes cravados e passou a ser `familiaDoGrupo(slug)` — o dono do grupo agora é
+    // DADO do dono (RT2), e um `Record<'caros'|'porcoes'|'revenda'>` não tem como responder por
+    // um grupo que ele acabou de criar. ⛔ A PERGUNTA NÃO MUDOU: *a faixa e o subtotal leem o
+    // MESMO dono?* — se pegassem a cor em lugares diferentes, divergiriam no 1º ajuste de tom e
+    // a seção deixaria de se ler como um bloco só. Guard que casasse o literal antigo ficaria
+    // vermelho com a TELA CERTA (grep não distingue "refatorei" de "quebrei" — a razão de
+    // existir da REGRA 3).
+    expect(TELA).toContain('const fam = familiaDoGrupo(s.chave)')
+    // ⛔ e o mapa indexado pelo nome não volta — ele é o que impede grupo novo de ter cor
+    expect(TELA, 'voltou o mapa cravado pelos 3 nomes').not.toMatch(/FAMILIA\[s\.chave\]/)
     // a faixa do cabeçalho usa a cor da família
     expect(TELA).toMatch(/background: fam\.bg, color: fam\.cor/)
     // ⭐ e o SUBTOTAL usa a MESMA — se pegasse outra, a seção deixaria de ser um bloco só

@@ -169,7 +169,17 @@ export function linhaDaMesa(l: LinhaDoRadar): LinhaDaMesa {
 }
 
 export interface SecaoDaMesa {
-  chave: 'revenda' | 'caros' | 'porcoes'
+  /**
+   * ⭐⭐ O **SLUG** do grupo, nunca o nome.
+   *
+   * ⛔⛔ Era `'revenda' | 'caros' | 'porcoes'` — três literais cravados que **impediam o
+   * dono de criar um grupo** (RT2) e **quebrariam no primeiro rename**. O slug é a
+   * IDENTIDADE (estável, uppercase por causa do `chk_stock_radar_item_lista`); o `titulo`
+   * é o NOME, que é do dono e muda. É a lição do `systemSlug='BRIDGE_ENTRY'` (13/08): o
+   * usuário renomeia e o vínculo continua.
+   */
+  chave: string
+  /** ⭐ o nome COMO O DONO ESCREVEU (ele renomeia pelo ✎ e isto acompanha) */
   titulo: string
   icone: string
   linhas: LinhaDaMesa[]
@@ -177,36 +187,62 @@ export interface SecaoDaMesa {
   total: TotalDaSecao
 }
 
+/** ⭐ o que a mesa precisa saber de um grupo: identidade, rótulo e as linhas DO MOTOR */
+export interface EntradaDaMesa {
+  slug: string
+  nome: string
+  emoji: string
+  linhas: LinhaDoRadar[]
+}
+
 /**
- * ⭐ A MESA INTEIRA. `filtroItens` vazio/nulo = as watchlists do Radar, inteiras.
+ * ⭐ A MESA INTEIRA — **uma seção por GRUPO DO DONO**, na ordem que ele definiu.
+ *
+ * ⛔⛔ **As três seções cravadas morreram** (`secao('revenda', 'revenda', '🥤', …)`): com
+ * elas, grupo novo era invisível e rename não aparecia. Quem decide quais seções existem é
+ * a **tabela de grupos**; esta função só traduz em seção de tela. ⚠️ Nenhum `if` pra "o
+ * grupo é legado": legado e novo entram pelo MESMO caminho — é isso que torna o
+ * "antes==depois" uma comparação, não uma promessa.
  *
  * ⛔ O filtro recorta **depois** do motor, de propósito: o motor decide a janela e a
  * variância de cada item sem saber o que a tela vai mostrar. Recortar antes mudaria o
  * placar do Radar dependendo do filtro — duas telas, duas verdades de novo.
  */
 export function montarMesa(
-  radar: { caros: LinhaDoRadar[]; revenda: LinhaDoRadar[]; porcoes: LinhaDoRadar[] },
+  grupos: readonly EntradaDaMesa[],
   filtroItens?: readonly string[] | null,
 ): SecaoDaMesa[] {
   const filtro = filtroItens && filtroItens.length ? new Set(filtroItens) : null
-  const recorte = (ls: LinhaDoRadar[]) => (filtro ? ls.filter((l) => filtro.has(l.itemId)) : ls)
-  const secao = (chave: SecaoDaMesa['chave'], titulo: string, icone: string, ls: LinhaDoRadar[]): SecaoDaMesa => {
-    const dentro = recorte(ls)
-    return { chave, titulo, icone, linhas: dentro.map(linhaDaMesa), total: totalDaSecao(dentro) }
-  }
-  return [
-    secao('revenda', 'revenda', '🥤', radar.revenda),
-    secao('caros', 'os caros', '💰', radar.caros),
-    secao('porcoes', 'porções', '🍳', radar.porcoes),
-  ]
+  return grupos.map((g) => {
+    const dentro = filtro ? g.linhas.filter((l) => filtro.has(l.itemId)) : g.linhas
+    return {
+      chave: g.slug,
+      titulo: g.nome,
+      icone: g.emoji,
+      linhas: dentro.map(linhaDaMesa),
+      total: totalDaSecao(dentro),
+    }
+  })
 }
 
 /**
- * ⭐⭐ O RODAPÉ HONESTO DE CADA SEÇÃO.
+ * ⭐⭐ O RODAPÉ HONESTO DE CADA SEÇÃO — **RT6: SÓ QUANTIDADE, ZERO R$** (22/10/2026).
  *
  * ⛔ *"2 sem contagem — fora dos totais"*: item sem contagem **não entra na soma** e a tela
  * **DIZ** que não entrou. Somar zero afirmaria que ele bateu; calar esconderia o tamanho do
  * que não foi medido — as duas mentiras que esta tela existe pra não contar.
+ *
+ * ⛔⛔ **UN E KG NUNCA SOMAM NUM NÚMERO SÓ** — a quantidade sai POR UNIDADE
+ * (`faltouPorUnidade`), e é por isso que o rodapé pode falar de quantidade sem mentir. Era
+ * essa a razão de o R$ existir aqui: ele era o único jeito de dar UM número ao grupo misto.
+ * Com a lei RT6, o grupo misto diz *"faltou 140 UN · 2 KG"*, que é mais feio e verdadeiro.
+ *
+ * ⚠️ **DIVERGÊNCIA DECLARADA da amostra da referência** (o `<script>` dela escreve
+ * `tudo batendo` quando `falt==0 && sob==0 && sc==0`): aqui o *"tudo batendo"* exige
+ * **item CONTADO**. ⭐ O motivo é o grupo NOVO, que a amostra dela não tem: grupo recém-criado
+ * tem zero item, zero falta, zero sobra e zero sem-contagem → pela régua literal ele diria
+ * *"tudo batendo"*, **afirmando que bateu um grupo que não tem nada dentro**. É a mesma
+ * família do *"sem contagem" × zero* — ***ausência de MEDIÇÃO não é ausência de FATO***.
  */
 export function frasesDoRodape(t: TotalDaSecao): string[] {
   const fr: string[] = []
@@ -214,8 +250,8 @@ export function frasesDoRodape(t: TotalDaSecao): string[] {
     Object.entries(m).map(([un, q]) => `${q.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} ${un}`).join(' · ')
   if (Object.keys(t.faltouPorUnidade).length) fr.push(`faltou ${porUn(t.faltouPorUnidade)}`)
   if (Object.keys(t.sobrouPorUnidade).length) fr.push(`sobrou ${porUn(t.sobrouPorUnidade)}`)
-  if (!fr.length && t.itensContados > 0) fr.push('nada faltou')
   if (t.itensSemContagem > 0) fr.push(`${t.itensSemContagem} sem contagem — fora dos totais`)
+  if (!fr.length && t.itensContados > 0) fr.push('tudo batendo')
   return fr
 }
 

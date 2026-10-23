@@ -70,8 +70,46 @@ describe('⛔⛔⛔ a mesa lê o motor do Radar, e só ele', () => {
     expect(tela).toMatch(/divergiu/)
   })
 
+  /**
+   * ⚠️ REAPONTADO em 22/10/2026, com o motivo escrito — e ele ficou MAIS FORTE.
+   *
+   * Ele afirmava o literal `listasDoRadar` e ficou **VERMELHO COM A ROTA CERTA** quando os
+   * grupos viraram DADO DO DONO (RT2): com nome/emoji editáveis e grupo novo, a pergunta
+   * deixou de ser *"as 3 listas fixas"* e passou a ser *"os itens de CADA grupo"* →
+   * `itensPorLista(slugs)`, a irmã da MESMA porta. ***Grep não distingue "refatorei" de
+   * "quebrei"*** — é a razão de existir da REGRA 3.
+   *
+   * ⭐ A PERGUNTA NÃO MUDOU (*a mesa lê a MESMA membership do Radar, uma configuração só*);
+   * o que mudou é por qual função dela ela passa. Agora o guard cobra as DUAS metades:
+   *   (a) a rota CONSOME a porta única (`lib/stock/radar/watchlist`), e
+   *   (b) ela NÃO lê `stock_radar_item` por conta própria — uma 2ª leitura daria DUAS
+   *       verdades pra *"quais itens o dono acompanha"* (ele poria o FRANGO nos CAROS por
+   *       esta tela e o Radar não saberia).
+   */
   it('⭐ e a tela usa as MESMAS watchlists do Radar (uma configuração só)', () => {
-    expect(rota).toContain('listasDoRadar')
+    const limpa = semComentario(rota)
+    expect(limpa, 'a rota deixou de consumir a porta única da membership').toMatch(
+      /from\s+'@\/lib\/stock\/radar\/watchlist'/,
+    )
+    expect(limpa).toMatch(/\b(listasDoRadar|itensPorLista)\s*\(/)
+    // ⛔ a 2ª leitura da membership: proibida por construção
+    expect(limpa, 'a rota passou a ler stock_radar_item direto — 2ª verdade').not.toMatch(
+      /stockRadarItem\s*\./,
+    )
+  })
+
+  /**
+   * ⭐⭐ E os GRUPOS têm o MESMO dono (RT2, 22/10/2026): nome, emoji, ordem e agenda vêm de
+   * `gruposDoRadar`. ⛔ Montar a lista de grupos na rota (o `montarMesa` com os 3 slugs
+   * cravados, como era até 21/10) faria o ✎ do dono renomear num lugar e a tela seguir
+   * imprimindo o nome velho no outro.
+   */
+  it('⭐⭐ e os GRUPOS vêm do dono único (nome/emoji são do dono, RT2)', () => {
+    const limpa = semComentario(rota)
+    expect(limpa).toMatch(/gruposDoRadar\s*\(/)
+    expect(limpa, 'os 3 slugs voltaram cravados na rota').not.toMatch(
+      /\[\s*'CAROS'\s*,\s*'REVENDA'\s*,\s*'PORCOES'\s*\]/,
+    )
   })
 })
 

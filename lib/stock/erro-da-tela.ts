@@ -25,6 +25,7 @@ import { SaidaError } from './saida'
 import { portaDoNegativo, type FatosDoNegativo } from './porta-do-negativo'
 import { VendaMapError } from './vendas/venda-map'
 import { RadarListaError } from './radar/watchlist'
+import { GrupoError } from './radar/grupos'
 import { GrandezaImplausivelError } from './producao/conclusao'
 // ⭐ 04/10 — o assistente de conversão KG→UN: a recusa mais importante dele é a 2ª conversão
 // ("já foi convertida enquanto você decidia"), e ela PRECISA chegar ao dono com a frase inteira.
@@ -73,6 +74,13 @@ const DE_DOMINIO = [
    * aquela em 422 por conta própria, e esta entra pelo tradutor único.
    */
   RadarListaError,
+  /**
+   * ⭐ 22/10 — os gestos dos grupos do Radar (RT2/RT3). ⛔ As frases dele NOMEIAM o que
+   * falhou (*"não achei este grupo nesta empresa"*, *"o nome do grupo não pode ficar em
+   * branco"*); fora desta lista escapariam como **500 sem corpo** e o ✎ do dono diria "não
+   * consegui" sobre uma recusa que o servidor sabe explicar — a cicatriz de 16/09.
+   */
+  GrupoError,
 ] as const
 
 export function ehErroDeDominio(e: unknown): e is Error {

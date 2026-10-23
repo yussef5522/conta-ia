@@ -4286,6 +4286,43 @@ model StockRadarItem {
   @@map("stock_radar_item")
 }
 
+/// ⭐⭐⭐ OS GRUPOS DO RADAR SÃO DADO DO DONO (RT2 + RT3, 22/10/2026).
+/// Nome e emoji editáveis, grupo novo, e a AGENDA DE CONTAGEM por grupo.
+///
+/// ⛔⛔ `slug` é a IDENTIDADE e vai CRU em `StockRadarItem.lista` — renomear o grupo NÃO
+/// toca uma linha de membership (a lição do `systemSlug='BRIDGE_ENTRY'`, 13/08). É isso que
+/// faz "comportamento idêntico antes==depois" ser PROVÁVEL em vez de prometido.
+/// ⚠️ E o slug é MAIÚSCULO por obrigação do banco: `chk_stock_radar_item_lista` exige
+/// `lista = upper(lista)`, então slug minúsculo seria impossível de gravar na membership.
+///
+/// ⚠️ A AGENDA É COLUNA, não tabela 1:1 (divergência declarada do brief, com o motivo
+/// escrito na migration): um grupo, uma agenda, sem histórico e sem agenda por usuário.
+model StockGrupoVigiado {
+  id        String @id @default(cuid())
+  companyId String // REGRA 8 — valor, sem @relation
+  slug      String // CAROS | REVENDA | PORCOES | G<cuid maiúsculo>
+  nome      String
+  emoji     String
+  ordem     Int
+
+  /// CSV SEG-first (0=SEG … 6=DOM); '' = nenhum dia. ⛔ CSV e não Int[] — array do Postgres
+  /// não existe no SQLite do dev, e código que só compila num dos dois bancos é a
+  /// divergência dev×prod que já custou a busca case-sensitive (28/08).
+  agendaTodoDia Boolean @default(false)
+  agendaDias    String  @default("")
+
+  criadoPorId         String?
+  criadoEm            DateTime  @default(now())
+  renomeadoPorId      String?
+  renomeadoEm         DateTime?
+  agendaDefinidaPorId String?
+  agendaDefinidaEm    DateTime?
+
+  @@unique([companyId, slug])
+  @@index([companyId, ordem])
+  @@map("stock_grupo_vigiado")
+}
+
 // ⚠️ ÓRFÃ desde 21/09 (substituída por `StockRadarItem`) — fica porque o módulo proíbe DROP.
 // ⭐⭐ A LIÇÃO: o `CHECK (lista IN ('CAROS','PORCOES'))` que eu chamei de "camada 1" virou
 // parede no dia seguinte, quando a 3ª lista nasceu. ***Vocabulário fechado no banco só

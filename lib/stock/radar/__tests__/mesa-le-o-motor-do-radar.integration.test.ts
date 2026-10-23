@@ -100,8 +100,40 @@ afterEach(async () => {
   await prisma.company.deleteMany({ where: { id: companyId } })
 })
 
+/**
+ * ⭐⭐ O guard passou a rodar pelo caminho NOVO (22/10): os grupos vão no campo **aditivo**
+ * `grupos` e a mesa é montada de `radar.porGrupo`.
+ *
+ * ⛔ **E as três listas nomeadas continuam indo juntas, de propósito** — é exatamente o que
+ * a rota faz, e é o que mantém a **Lei C0** sob teste: se o aditivo mexesse no placar das
+ * listas, `soma.absoluto == placar.valor` ficaria vermelho aqui.
+ */
 const rodarRadar = () => calcularFechamentoDoDia(
-  { companyId, de: JANELA.de, ate: JANELA.ate, caros: [], revenda: [coca], porcoes: [queijo] }, prisma,
+  {
+    companyId, de: JANELA.de, ate: JANELA.ate,
+    caros: [], revenda: [coca], porcoes: [queijo],
+    grupos: [
+      { slug: 'REVENDA', itemIds: [coca] },
+      { slug: 'PORCOES', itemIds: [queijo] },
+    ],
+  },
+  prisma,
+)
+
+/**
+ * ⚠️ O MESMO costurar da rota, numa linha: grupo → nome/emoji → linhas do motor.
+ * ⛔ Os nomes aqui são os da SEMENTE (`grupos.ts`) de propósito — se alguém "melhorar" o
+ * rótulo de um lado só, o teste do rodapé abaixo fica vermelho.
+ */
+const mesaDoRadar = (
+  radar: Awaited<ReturnType<typeof rodarRadar>>,
+  filtro?: readonly string[],
+) => montarMesa(
+  [
+    { slug: 'REVENDA', nome: 'revenda', emoji: '🥤', linhas: radar.porGrupo?.REVENDA ?? [] },
+    { slug: 'PORCOES', nome: 'porções', emoji: '🍳', linhas: radar.porGrupo?.PORCOES ?? [] },
+  ],
+  filtro,
 )
 
 describe('⛔⛔⛔ Σ(mesa) == Σ(Radar) — a lei 0', () => {
@@ -109,7 +141,7 @@ describe('⛔⛔⛔ Σ(mesa) == Σ(Radar) — a lei 0', () => {
     await contar(coca, '2026-09-16', 88, 86, 3)   // faltou 2 un
     await contar(queijo, '2026-09-16', 15, 15, 4) // bateu
     const radar = await rodarRadar()
-    const mesa = montarMesa(radar)
+    const mesa = mesaDoRadar(radar)
     const soma = somaDaMesa(mesa)
     // ⚠️ o placar do Radar é ABSOLUTO + tom (desenho de 20/09) — a comparação é campo a
     // campo, senão o guard acusaria divergência onde só há convenção de sinal.
@@ -123,9 +155,9 @@ describe('⛔⛔⛔ Σ(mesa) == Σ(Radar) — a lei 0', () => {
     await contar(coca, '2026-09-16', 88, 86, 3)
     await contar(queijo, '2026-09-16', 15, 13, 4)
     const radar = await rodarRadar()
-    expect(somaDaMesa(montarMesa(radar)).valor).toBe(-14) // −6 da coca − 8 do queijo
-    expect(somaDaMesa(montarMesa(radar, [coca])).valor).toBe(-6)
-    expect(montarMesa(radar, [coca]).flatMap((s) => s.linhas)).toHaveLength(1)
+    expect(somaDaMesa(mesaDoRadar(radar)).valor).toBe(-14) // −6 da coca − 8 do queijo
+    expect(somaDaMesa(mesaDoRadar(radar, [coca])).valor).toBe(-6)
+    expect(mesaDoRadar(radar, [coca]).flatMap((s) => s.linhas)).toHaveLength(1)
   })
 
   it('⛔⛔ e o cálculo PARALELO que morreu discordava — o caso do item contado 2× no período', async () => {
@@ -138,7 +170,7 @@ describe('⛔⛔⛔ Σ(mesa) == Σ(Radar) — a lei 0', () => {
     await contar(coca, '2026-09-14', 90, 85, 3)  // −5 un
     await contar(coca, '2026-09-17', 85, 84, 3)  // −1 un (a que vale)
     const radar = await rodarRadar()
-    const mesa = somaDaMesa(montarMesa(radar, [coca]))
+    const mesa = somaDaMesa(mesaDoRadar(radar, [coca]))
     const velho = await calcularRealVsTeorico({ companyId, de: JANELA.de, ate: JANELA.ate }, prisma)
     const linhaVelha = velho.linhas.find((l) => l.itemId === coca)!
 
@@ -184,7 +216,7 @@ describe('⭐ as colunas e o que cada uma diz', () => {
 
   it('⛔⛔ REAL sem contagem é null — NUNCA número inventado', async () => {
     const radar = await rodarRadar() // ninguém contou
-    for (const l of montarMesa(radar).flatMap((s) => s.linhas)) {
+    for (const l of mesaDoRadar(radar).flatMap((s) => s.linhas)) {
       expect(l.real, `${l.nome} inventou um "real"`).toBeNull()
       expect(l.variancia).toBeNull()
       expect(l.veredito).toBe('SEM_CONTAGEM')
@@ -198,7 +230,7 @@ describe('⭐ as colunas e o que cada uma diz', () => {
     await contar(coca, '2026-09-17', 88, 86, 3)
     await contar(queijo, '2026-09-16', 15, 15, 4)   // 1ª contagem do queijo
     const radar = await rodarRadar()
-    const porItem = new Map(montarMesa(radar).flatMap((s) => s.linhas).map((l) => [l.itemId, l]))
+    const porItem = new Map(mesaDoRadar(radar).flatMap((s) => s.linhas).map((l) => [l.itemId, l]))
     // ⚠️ a cena é relativa ao relógio (ver o topo): o "desde" é o DIA da contagem anterior,
     // e as duas contagens da coca estão a minutos de distância — então a janela é do mesmo dia
     expect(porItem.get(coca)!.desde).toBe(diaISO(QUANDO['2026-09-13']!))
@@ -219,9 +251,9 @@ describe('⛔⛔ o subtotal obedece a lei UN ≠ KG', () => {
     await contar(coca, '2026-09-16', 88, 86, 3)    // −2 UN
     await contar(queijo, '2026-09-16', 15, 13.5, 4) // −1,5 KG
     const radar = await rodarRadar()
-    const mesa = montarMesa(radar)
-    const revenda = mesa.find((s) => s.chave === 'revenda')!
-    const porcoes = mesa.find((s) => s.chave === 'porcoes')!
+    const mesa = mesaDoRadar(radar)
+    const revenda = mesa.find((s) => s.chave === 'REVENDA')!
+    const porcoes = mesa.find((s) => s.chave === 'PORCOES')!
     expect(revenda.total.faltouPorUnidade).toEqual({ UN: 2 })
     expect(porcoes.total.faltouPorUnidade).toEqual({ KG: 1.5 })
     // ⛔ nenhum subtotal tem um número só misturando as duas
@@ -235,8 +267,8 @@ describe('⛔⛔ o subtotal obedece a lei UN ≠ KG', () => {
   it('⛔ "falta contar" fica FORA do total e o rodapé DIZ isso', async () => {
     await contar(coca, '2026-09-16', 88, 86, 3)
     const radar = await rodarRadar()
-    const mesa = montarMesa(radar)
-    const porcoes = mesa.find((s) => s.chave === 'porcoes')!
+    const mesa = mesaDoRadar(radar)
+    const porcoes = mesa.find((s) => s.chave === 'PORCOES')!
     expect(porcoes.total.itensSemContagem).toBe(1)
     expect(porcoes.total.faltouPorUnidade).toEqual({}) // não virou zero
     expect(frasesDoRodape(porcoes.total).join(' · ')).toContain('1 sem contagem — fora dos totais')

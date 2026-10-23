@@ -154,7 +154,7 @@ export class RadarListaError extends Error {}
  * `stock_texto_de_escolha`.
  */
 export async function porNaLista(
-  input: { companyId: string; lista: Lista; itemId: string; quem?: string },
+  input: { companyId: string; lista: SlugDeLista; itemId: string; quem?: string },
   db: PrismaClient = defaultPrisma,
 ): Promise<void> {
   try {
@@ -172,10 +172,54 @@ export async function porNaLista(
 }
 
 export async function tirarDaLista(
-  input: { companyId: string; lista: Lista; itemId: string },
+  input: { companyId: string; lista: SlugDeLista; itemId: string },
   db: PrismaClient = defaultPrisma,
 ): Promise<void> {
   await db.stockRadarItem.deleteMany({
     where: { companyId: input.companyId, lista: input.lista, itemId: input.itemId },
   })
+}
+
+/**
+ * ⭐⭐ O SLUG DE QUALQUER LISTA — os 3 de origem **ou** o de um grupo que o dono criou.
+ *
+ * ⛔⛔ **NÃO NASCEU UMA 2ª TABELA DE MEMBERSHIP, e isso é a régua, não economia.**
+ * `stock_radar_item (companyId, lista, itemId)` responde *"quais itens o dono acompanha"*
+ * desde 21/09, com porta única e tela de gestão no Radar. Uma tabela nova daria **DUAS
+ * verdades** pra mesma pergunta: ele poria o FRANGO nos CAROS por uma tela e a outra não
+ * saberia. O grupo novo entra aqui com o SLUG dele, e o Radar e o Consumo & Compras passam a
+ * ver o mesmo vínculo **de graça**.
+ *
+ * ⚠️ O tipo é `string` de propósito: `Lista` é o vocabulário dos TRÊS de origem, e grupo novo
+ * tem slug gerado. Quem protege a forma é o CHECK do banco (`lista <> '' AND lista =
+ * upper(lista)`) + o trigger `stock_texto_de_escolha` + o `exigirEscolha` desta porta.
+ */
+export type SlugDeLista = Lista | (string & {})
+
+/**
+ * ⭐ A LEITURA GENÉRICA: os itens de cada slug pedido, numa consulta só.
+ *
+ * ⛔ **UMA consulta pra N slugs, nunca uma por grupo** — esta tela abre todo dia e o dono pode
+ * ter dez grupos (a lição dos 4.909 ms de 28/09: *o que o N+1 custa é round-trip*).
+ *
+ * ⚠️ Slug pedido que não tem item nenhum volta com **array VAZIO, nunca ausente**: grupo recém
+ * criado tem que aparecer na tela como grupo vazio, e `undefined` faria o leitor tratá-lo como
+ * *"não existe"* — a família do `?? 'CAIXA'` que sumiu com o CASPER (20/09).
+ */
+export async function itensPorLista(
+  companyId: string,
+  slugs: readonly string[],
+  db: PrismaClient = defaultPrisma,
+): Promise<Record<string, string[]>> {
+  const out: Record<string, string[]> = {}
+  for (const s of slugs) out[s] = []
+  if (!slugs.length) return out
+
+  const linhas = await db.stockRadarItem.findMany({
+    where: { companyId, lista: { in: [...slugs] } },
+    select: { lista: true, itemId: true },
+    orderBy: { criadoEm: 'asc' },
+  })
+  for (const l of linhas) (out[l.lista] ??= []).push(l.itemId)
+  return out
 }
