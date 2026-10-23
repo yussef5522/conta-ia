@@ -37,25 +37,64 @@ export function cliqueFoiFora(
 }
 
 /**
+ * PURA — o toque foi fora de TODOS os containers que compõem o mesmo controle?
+ *
+ * ⭐⭐ ESTA É A RÉGUA DOS DOIS REFS, e ela mora AQUI por um motivo: enquanto vivia dentro do
+ * `useEffect`, ela não tinha como ser provada (o projeto roda em `environment: node`, sem
+ * jsdom) — *regra que mora num efeito é regra que ninguém prova*.
+ *
+ * ⛔ O caso que ela existe pra impedir: com o painel no PORTAL, ele **não é descendente** do
+ * container, então o clique num resultado conta como "fora" se a pergunta for feita a UM ref
+ * só — o `mousedown` fecha o dropdown **antes** do `click` do botão chegar, e ***o item nunca
+ * é adicionado***. Só fecha quando o toque foi fora dos DOIS.
+ */
+export function cliqueFoiForaDeTodos(
+  containers: ReadonlyArray<{ contains(alvo: unknown): boolean } | null | undefined>,
+  alvo: unknown,
+): boolean {
+  // ⚠️ container ausente (ainda não montou) NÃO vota — senão o painel no portal, que monta
+  //    um tick depois do container, fecharia no primeiro toque.
+  const presentes = containers.filter((c) => c)
+  if (presentes.length === 0) return false
+  return presentes.every((c) => cliqueFoiFora(c, alvo))
+}
+
+/**
  * Liga clique-fora + ESC enquanto `aberto`. Devolve o ref pra pendurar no painel.
  *
  *   const ref = useDismissivel(aberto, () => setAberto(false))
  *   <div ref={ref}> …dropdown… </div>
+ *
+ * ⭐⭐ **COM PAINEL NO PORTAL, PASSE O 2º REF (`extra`) — e isto NÃO é refinamento, é o que
+ * impede o gesto de morrer (23/10).** No portal o painel **não é descendente** do container,
+ * então o clique num resultado conta como "fora": o `mousedown` fecha o dropdown **antes** do
+ * `click` do botão chegar, e ***o item nunca é adicionado***. Fecha só quando o toque foi fora
+ * dos DOIS.
+ *
+ * ⚠️ O `menu-do-chip.tsx` (18/09) resolveu isso com o laço de listeners **na mão**, chamando
+ * as mesmas puras daqui. A régua passou a morar no hook pra não existir uma 3ª cópia; migrar
+ * aquele componente é débito registrado, não escopo deste micro-sprint.
  */
 export function useDismissivel<T extends HTMLElement = HTMLDivElement>(
   aberto: boolean,
   aoFechar: () => void,
+  extra?: { current: HTMLElement | null },
 ) {
   const ref = useRef<T>(null)
   // guarda o callback num ref pra o efeito não re-assinar a cada render do pai
   const fechar = useRef(aoFechar)
   fechar.current = aoFechar
+  // idem pro 2º container: o pai recria o objeto do ref a cada render em alguns casos
+  const fora = useRef(extra)
+  fora.current = extra
 
   useEffect(() => {
     if (!aberto) return
 
     const porFora = (e: MouseEvent | TouchEvent) => {
-      if (cliqueFoiFora(ref.current, e.target)) fechar.current()
+      // ⛔ sem o 2º container a lista tem um item só e o comportamento é o de sempre —
+      //    chamador antigo intocado.
+      if (cliqueFoiForaDeTodos([ref.current, fora.current?.current], e.target)) fechar.current()
     }
     const porTecla = (e: KeyboardEvent) => {
       if (ehTeclaDeFechar(e.key)) fechar.current()

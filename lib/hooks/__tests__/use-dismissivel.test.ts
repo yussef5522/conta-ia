@@ -11,7 +11,7 @@
 // `addEventListener` trocaria um risco pequeno por um custo permanente de manutenção.
 
 import { describe, it, expect } from 'vitest'
-import { cliqueFoiFora, ehTeclaDeFechar } from '../use-dismissivel'
+import { cliqueFoiFora, cliqueFoiForaDeTodos, ehTeclaDeFechar } from '../use-dismissivel'
 
 /** painel falso: "contém" os nós que estiverem na lista */
 const painel = (dentro: unknown[]) => ({ contains: (n: unknown) => dentro.includes(n) })
@@ -52,5 +52,51 @@ describe('ESC fecha', () => {
     for (const k of ['e', 'Enter', 'ArrowDown', 'Backspace', 'a', ' ']) {
       expect(ehTeclaDeFechar(k)).toBe(false)
     }
+  })
+})
+
+// ⛔⛔ OS DOIS CONTAINERS — O GESTO QUE MORRIA NO PORTAL (23/10).
+//
+// Com o painel no PORTAL ele NÃO é descendente do container do campo. Perguntando a UM ref só,
+// o clique no resultado conta como "fora": o `mousedown` fecha o dropdown ANTES do `click` do
+// botão chegar, e ***o item nunca é adicionado***. O gesto morre sem erro nenhum na tela.
+describe('⭐⭐ clique dentro do PAINEL NO PORTAL não fecha (senão o item nunca é adicionado)', () => {
+  const campo = painel(['input', 'toggle'])
+  const portal = painel(['resultado-queijo', 'botao-mais', 'criar'])
+
+  it('⛔⛔ o clique no RESULTADO é "fora do campo" — com UM ref só, fecharia e mataria o gesto', () => {
+    // é o contrafactual: a régua antiga (um container) manda FECHAR no clique do resultado
+    expect(cliqueFoiFora(campo, 'resultado-queijo')).toBe(true)
+    // ⭐ a régua dos DOIS não fecha
+    expect(cliqueFoiForaDeTodos([campo, portal], 'resultado-queijo')).toBe(false)
+  })
+
+  it('clique no + do resultado e no "criar" também não fecham', () => {
+    expect(cliqueFoiForaDeTodos([campo, portal], 'botao-mais')).toBe(false)
+    expect(cliqueFoiForaDeTodos([campo, portal], 'criar')).toBe(false)
+  })
+
+  it('⭐ clique no CAMPO não fecha', () => {
+    expect(cliqueFoiForaDeTodos([campo, portal], 'input')).toBe(false)
+  })
+
+  it('⭐⭐ clique FORA dos dois fecha — o dono desistiu de escolher', () => {
+    expect(cliqueFoiForaDeTodos([campo, portal], 'fundo-da-pagina')).toBe(true)
+  })
+
+  it('⚠️ painel ainda NÃO montado não vota — senão fecharia no 1º toque do portal', () => {
+    // o portal monta um tick depois do campo: nesse instante só o campo existe
+    expect(cliqueFoiForaDeTodos([campo, null], 'input')).toBe(false)
+    expect(cliqueFoiForaDeTodos([campo, undefined], 'fundo-da-pagina')).toBe(true)
+  })
+
+  it('⚠️ nenhum container montado NÃO fecha (o chamador antigo, de 1 ref, intocado)', () => {
+    expect(cliqueFoiForaDeTodos([null, undefined], 'qualquer')).toBe(false)
+    expect(cliqueFoiForaDeTodos([], 'qualquer')).toBe(false)
+  })
+
+  it('⭐ com UM container a régua é a de sempre — o chamador antigo não muda de comportamento', () => {
+    expect(cliqueFoiForaDeTodos([campo], 'input')).toBe(false)
+    expect(cliqueFoiForaDeTodos([campo], 'fundo-da-pagina')).toBe(true)
   })
 })

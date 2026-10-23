@@ -816,12 +816,22 @@ function Secao({ s, ag, cols, mostra, empresaId, aberta, aoAbrir, onGesto, grava
                   jaAdicionados={s.linhas.map((l) => l.itemId)}
                   placeholder="buscar item pra este grupo…"
                   compacto
+                  /* ⛔ RT1 — o dinheiro NÃO aparece nesta tela: o picker mostrava
+                     "R$ 0,12/UN" no resultado (print de 23/10). A prop é opt-in porque no
+                     editor de ficha o custo médio é justamente o que faz o gesto funcionar. */
+                  semDinheiro
+                  /* ⭐ adição em SÉRIE: montar um grupo são vários itens, e reabrir o seletor
+                     a cada um é o atrito que fez o dono reclamar. O `gesto` já faz
+                     `await carregar()`, então a linha entra na tabela NA HORA e o item volta
+                     na lista com **✓ adicionado** — o feedback nasce onde o dedo clicou. */
+                  emSerie
                   onEscolher={async (it: ItemBusca) => {
-                    const ok = await onGesto(
+                    /* ⛔ NÃO fecha o painel: quem fecha é o "cancelar" ao lado (ou ESC /
+                       clique fora). Fechar aqui era o que obrigava a reabrir pro 2º item. */
+                    await onGesto(
                       { gesto: 'adicionarItem', grupoId: ag.id, itemId: it.id },
                       `item:${ag.id}`,
                     )
-                    if (ok) setAdicionando(false)
                   }}
                 />
                 <button onClick={() => setAdicionando(false)} className="h-8 px-1.5 text-[12px] font-bold"
