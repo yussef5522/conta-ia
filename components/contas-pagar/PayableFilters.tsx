@@ -25,7 +25,8 @@ import {
 } from '@/components/ui/select'
 import { ROTULO_PAGAS, ROTULO_TODOS, ROTULO_RECORTE } from '@/lib/contas-pagar/rotulos'
 import { ehFluxo, type EscopoDaLista } from '@/lib/contas-pagar/escopo'
-import type { FaixaDoTempo } from '@/lib/contas-pagar/faixa-do-tempo'
+import { formatBRL } from '@/lib/format/money'
+import type { FaixaLegada } from '@/lib/contas-pagar/faixa-legada'
 
 export interface PayableFilterState {
   q: string
@@ -40,12 +41,18 @@ export interface PayableFilterState {
    */
   escopo?: EscopoDaLista
   /**
-   * ⭐ a FAIXA DO TEMPO do chip do topo — `undefined` = todas (21/10).
+   * ⚠️ **LEGADO (21/10 → 23/10) — passthrough de URL, nada na tela escreve aqui.** Os chips de
+   * faixa morreram e o cartão «A VENCER» voltou; o campo sobrevive **só pra link velho não
+   * virar 404 silencioso** (print, e-mail, histórico do navegador), e a rota traduz pra
+   * `escopo`. Ele conta como filtro ATIVO em `isFilterActive`, então o dono sempre tem o
+   * "limpar" como caminho de volta.
    *
-   * ⚠️ O tipo **DERIVA** de `FaixaDoTempo`, nunca reenumerado aqui: foi a lista escrita à
-   * mão que deixou os campos mortos do «a vencer (3d)» vivos no tipo por 13 dias.
+   * ⚠️ O tipo **DERIVA** de `FaixaLegada` (o dono do vocabulário legado), nunca reenumerado
+   * aqui: foi a lista escrita à mão que deixou os campos mortos do «a vencer (3d)» vivos no
+   * tipo por 13 dias.
+   * @deprecated use `escopo`
    */
-  faixa?: FaixaDoTempo
+  faixa?: FaixaLegada
   vencidasOnly: boolean
 }
 
@@ -75,9 +82,21 @@ interface Props {
   onChange: (next: PayableFilterState) => void
   onClear: () => void
   total: number
+  /**
+   * ⭐⭐ O TOTAL EM R$ DO FILTRO INTEIRO — **agregado do SERVIDOR, nunca a soma da página**
+   * (23/10, item 1 do dono: *"ao lado de «81 contas no filtro» entra o valor"*).
+   *
+   * ⛔ A lista pagina em 50. Somar as linhas carregadas faria o cabeçalho dizer R$ 52 mil num
+   * filtro de R$ 97 mil — **o número que o dono usa pra decidir se paga**, errado por
+   * construção. Ele vem de `paginacao.totalValor`, medido com o MESMO `where` do `count` que
+   * produz as "81 contas" ao lado.
+   *
+   * ⚠️ `null` = **não medido**, nunca zero: zero afirmaria que o filtro não tem dinheiro.
+   */
+  totalValor: number | null
 }
 
-export function PayableFilters({ value, onChange, onClear, total }: Props) {
+export function PayableFilters({ value, onChange, onClear, total, totalValor }: Props) {
   const active = isFilterActive(value)
 
   return (
@@ -169,8 +188,14 @@ export function PayableFilters({ value, onChange, onClear, total }: Props) {
       <div className="flex-1" />
 
       {/* Total + limpar */}
-      <span className="text-xs text-muted-foreground tabular-nums">
+      <span className="text-xs text-muted-foreground tabular-nums" data-testid="filters-total">
         {total} {total === 1 ? 'conta' : 'contas'}
+        {totalValor !== null && (
+          <>
+            {' · '}
+            <span className="font-semibold text-foreground">{formatBRL(totalValor)}</span>
+          </>
+        )}
       </span>
 
       {active && (

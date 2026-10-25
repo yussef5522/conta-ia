@@ -11,12 +11,12 @@
 // linha hover, click → modal detalhe (placeholder), click no menu ⋯ → actions.
 
 import { useState, useMemo, Fragment } from 'react'
-import type { FaixaDoTempo } from '@/lib/contas-pagar/faixa-do-tempo'
+import type { EscopoEmAberto } from '@/lib/contas-pagar/rotulo-do-tempo'
 import {
   secoesDasLinhas,
   ordenadoPorVencimento,
   type SecaoDaTabela,
-  type TotalDaFaixa,
+  type TotalDoEstado,
 } from '@/lib/contas-pagar/secoes-da-tabela'
 import {
   useReactTable,
@@ -133,12 +133,23 @@ interface Props {
   rows: PayableRow[]
   onRowClick?: (row: PayableRow) => void
   /**
-   * ⭐⭐ 21/10 — OS TOTAIS POR FAIXA, pro cabeçalho de seção mostrar o subtotal da faixa
-   * INTEIRA (o MESMO número do chip do topo), nunca a soma das linhas da página.
+   * ⭐⭐ 21/10 — AS MEDIDAS POR ESTADO, pro cabeçalho de seção mostrar o subtotal do estado
+   * INTEIRO (o MESMO número do cartão do topo), nunca a soma das linhas da página — **e o
+   * MESMO rótulo, computado pelo servidor** (23/10: um relógio só manda).
    *
    * ⚠️ `undefined` desliga as seções — a lista fica plana, como antes.
    */
-  totaisPorFaixa?: Partial<Record<FaixaDoTempo, TotalDaFaixa>>
+  totaisPorEstado?: Partial<Record<EscopoEmAberto, TotalDoEstado>>
+  /**
+   * ⭐⭐ "Selecionar todas" = **O FILTRO INTEIRO** (23/10, item 3 do dono). `undefined` mantém
+   * o gesto antigo (só as linhas da página) — é o que os outros chamadores esperam.
+   */
+  selecaoDoFiltro?: {
+    /** `NENHUMA | PARCIAL | TODAS | CARREGANDO` — quem decide é a PÁGINA, que tem a seleção */
+    estado: 'NENHUMA' | 'PARCIAL' | 'TODAS' | 'CARREGANDO'
+    marcarTodas: () => void
+    limpar: () => void
+  }
   /** Efetivar pagamento COM banco (atualiza saldo) — Sprint 4.0.1.a */
   onEfetivar?: (row: PayableRow) => void
   /** Edit modal — Sprint 5.0.3.0a-fix */
@@ -261,7 +272,8 @@ export function PayableTable({
   editCell,
   onColumnOrderChange,
   disableDrag = false,
-  totaisPorFaixa,
+  totaisPorEstado,
+  selecaoDoFiltro,
 }: Props) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'dueDate', desc: false },
@@ -275,13 +287,41 @@ export function PayableTable({
   const columns: ColumnDef<PayableRow>[] = [
     {
       id: 'select',
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-          aria-label="Selecionar todas"
-        />
-      ),
+      /**
+       * ⛔⛔⛔ **"SELECIONAR TODAS" ALCANÇA O FILTRO INTEIRO — era `toggleAllPageRowsSelected`
+       * (23/10).** Com 81 contas em 2 páginas (limit 50), este checkbox marcava **50** e
+       * **não existia caminho nenhum** que alcançasse as 81: pra chegar lá o dono tinha que
+       * trocar de página e marcar de novo. ⚠️ As AÇÕES sempre agiram sobre a seleção inteira
+       * (`selectedIds` é um `Record` que sobrevive à paginação, e o `/bulk` recebe os ids
+       * explícitos) — **o gargalo era o GESTO**, nunca a gravação.
+       *
+       * ⚠️ `undefined` mantém o comportamento de página pros outros chamadores: a tabela não
+       * decide sozinha que existe um filtro inteiro pra alcançar.
+       */
+      header: ({ table }) =>
+        selecaoDoFiltro ? (
+          <Checkbox
+            checked={
+              selecaoDoFiltro.estado === 'TODAS'
+                ? true
+                : selecaoDoFiltro.estado === 'PARCIAL'
+                  ? 'indeterminate'
+                  : false
+            }
+            disabled={selecaoDoFiltro.estado === 'CARREGANDO'}
+            onCheckedChange={(v) =>
+              v ? selecaoDoFiltro.marcarTodas() : selecaoDoFiltro.limpar()
+            }
+            aria-label="Selecionar todas as contas do filtro"
+            data-testid="select-todas-do-filtro"
+          />
+        ) : (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+            aria-label="Selecionar todas"
+          />
+        ),
       cell: ({ row }) => (
         <Checkbox
           checked={row.getIsSelected()}
@@ -657,14 +697,14 @@ export function PayableTable({
   const linhasOrdenadas = table.getRowModel().rows
   const secoes: SecaoDaTabela[] | null = useMemo(
     () =>
-      totaisPorFaixa
+      totaisPorEstado
         ? secoesDasLinhas(
             linhasOrdenadas.map((r) => r.original),
-            totaisPorFaixa,
+            totaisPorEstado,
             { porVencimento: ordenadoPorVencimento(sorting) },
           )
         : null,
-    [linhasOrdenadas, totaisPorFaixa, sorting],
+    [linhasOrdenadas, totaisPorEstado, sorting],
   )
   /** ⭐ indexado pelo id da 1ª linha da seção — nunca por posição */
   const secaoQueComecaAqui = useMemo(() => {
@@ -766,7 +806,7 @@ export function PayableTable({
                 {secao && (
                   <tr
                     className="border-y bg-muted/50"
-                    data-testid={`secao-${secao.faixa}`}
+                    data-testid={`secao-${secao.escopo}`}
                   >
                     <td className="w-1 p-0" aria-hidden="true" />
                     <td colSpan={colunasVisiveis} className="px-3 py-1.5">

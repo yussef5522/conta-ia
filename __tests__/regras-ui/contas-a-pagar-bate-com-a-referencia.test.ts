@@ -41,7 +41,7 @@ const TABELA = ler('components/contas-pagar/PayableTable.tsx')
 const BARRA = ler('components/contas-pagar/BulkActionsBar.tsx')
 const CARTOES = ler('components/contas-pagar/CartoesDoTempo.tsx')
 const FILTROS = ler('components/contas-pagar/PayableFilters.tsx')
-const FAIXA_LIB = ler('lib/contas-pagar/faixa-do-tempo.ts')
+const ROTULO_LIB = ler('lib/contas-pagar/rotulo-do-tempo.ts')
 
 /** ⭐ o CSS e o `<script>` da referência, separados: um manda na FORMA, o outro no COMPORTAMENTO */
 const REF_CSS = blocoEntre(REF, '<style>', '</style>')
@@ -50,6 +50,8 @@ const REF_SCRIPT = blocoEntre(REF, '<script>', '</script>')
 describe('a referência versionada é a lei — e ela existe de verdade', () => {
   it('o arquivo é o que o dono aprovou (título v2) e traz as 3 regras P1–P3', () => {
     expect(REF).toContain('CONTAS A PAGAR · PROPOSTA v2')
+    // ⭐ v2.1 (23/10): as duas janelas deslizantes morreram e o card único A VENCER voltou
+    expect(REF, 'a referência perdeu o registro da aprovação de 23/10').toContain('v2.1')
     for (const p of ['P1.', 'P2.', 'P3.']) expect(REF).toContain(p)
     // ⚠️ sem CSS e sem script não há o que comparar — guard cego daria verde de graça
     expect(REF_CSS.length).toBeGreaterThan(2000)
@@ -161,8 +163,19 @@ describe('P1 · A BARRA — contagem, TOTAL gigante, régua do caixa e limpar', 
 
   it('⛔ O QUE O TOTAL NÃO ALCANÇA VAI NOMEADO (a seleção sobrevive à troca de página)', () => {
     const limpo = semComentarios(BARRA)
-    expect(limpo).toContain('foraDaPagina')
-    expect(limpo).toContain('em outra página')
+    /**
+     * ⚠️⚠️ **INVERTIDO em 23/10, com o motivo escrito — não apagado.** Ele exigia
+     * `foraDaPagina` e a nota *"em outra página"*: era a MITIGAÇÃO por TEXTO de um defeito
+     * que a cura do item 3 **matou na raiz** — a barra somava a soma da PÁGINA enquanto a
+     * contagem e as ações falavam do FILTRO inteiro. ⭐ Agora "selecionar todas" traz os
+     * pares `{id, amount}` do servidor e o total **É** o agregado por construção, então não
+     * existe mais "o que o total não alcança". ⛔ A metade que importava — *o total nunca é
+     * soma de página* — ficou travada no `expect` de baixo e no guard da seleção.
+     */
+    expect(limpo, 'a nota de parcialidade voltou — o total virou soma de página de novo')
+      .not.toContain('foraDaPagina')
+    expect(limpo, 'a nota "em outra página" voltou — ela mitigava por TEXTO o total de página')
+      .not.toContain('em outra página')
   })
 
   it('⛔ FATIA 1 NÃO ACRESCENTA BOTÃO DE AÇÃO — ação em lote é a fatia 2', () => {
@@ -186,10 +199,29 @@ describe('P1 · A BARRA — contagem, TOTAL gigante, régua do caixa e limpar', 
   })
 })
 
-describe('P2 · FAIXAS DO TEMPO — o rótulo adulto é NOME + DATA', () => {
-  it('a referência põe a data no rótulo das 4 faixas de data', () => {
-    for (const rot of ['VENCIDAS', 'VENCE HOJE', 'PRÓXIMOS 7 DIAS', 'RESTO DO MÊS']) {
-      expect(REF_SCRIPT, `a faixa «${rot}» saiu da referência`).toContain(rot)
+describe('P2 · OS CARTÕES DO TEMPO — o rótulo adulto é NOME + DATA', () => {
+  /**
+   * ⚠️⚠️ **REAPONTADO em 23/10, com a aprovação do dono escrita — nunca afrouxado.** Até
+   * 21/10 este bloco exigia as **4 faixas de data** (`PRÓXIMOS 7 DIAS` · `RESTO DO MÊS`). A
+   * ordem dele: *"morrem — janelas deslizantes que o dono não entende. Volta o card único A
+   * VENCER com as datas do período no rótulo."* ⛔⛔ E havia uma razão mais dura que a
+   * preferência: `whereDaFaixa('VENCIDAS')` era **cópia literal** de
+   * `whereDoStatus('VENCIDA')` — o defeito de 13/09. **A PERGUNTA NÃO MUDOU** (*o rótulo é
+   * NOME + DATA, medido pelo servidor?*); mudou quantos cartões existem.
+   */
+  it('a referência põe a data no rótulo dos 3 cartões de aberto', () => {
+    for (const rot of ['VENCIDAS', 'VENCE HOJE', 'A VENCER']) {
+      expect(REF_SCRIPT, `o cartão «${rot}» saiu da referência`).toContain(rot)
+    }
+    // ⛔ e as duas janelas deslizantes NÃO voltam pela referência
+    /**
+     * ⛔⛔ LIDO **SEM COMENTÁRIO**: a própria referência v2.1 DOCUMENTA a morte das duas
+     * janelas (*"A v2 desenhava PRÓXIMOS 7 DIAS…"*), e ***o arquivo que documenta o defeito
+     * não pode ser o que o absolve*** — a cicatriz de 21/09, pela 22ª vez nesta casa.
+     */
+    const refSemNota = semComentarios(REF_SCRIPT)
+    for (const morto of ['PRÓXIMOS 7 DIAS', 'RESTO DO MÊS']) {
+      expect(refSemNota, `a janela deslizante «${morto}» ressuscitou`).not.toContain(morto)
     }
     // ⚠️ o `sub` É a data: a lei do rótulo adulto mora nele
     expect(REF_SCRIPT).toMatch(/sub:"até ontem · \d{2}\/\d{2}"/)
@@ -198,29 +230,34 @@ describe('P2 · FAIXAS DO TEMPO — o rótulo adulto é NOME + DATA', () => {
 
   it('os cartões desenham o rótulo que o SERVIDOR mediu — a tela não deriva data', () => {
     const limpo = semComentarios(CARTOES)
-    expect(limpo, 'o cartão parou de desenhar o rótulo medido').toContain('m.rotulo')
+    expect(limpo, 'o cartão parou de desenhar o rótulo medido').toContain('m?.rotulo')
     expect(limpo, 'a tela voltou a derivar o rótulo — um relógio só manda')
-      .not.toMatch(/nomeDaFaixa|dataDaFaixa|rotuloDaFaixa|new Date\(\)/)
+      .not.toMatch(/nomeDoEscopo|dataDoEscopo|rotuloDoEscopo|new Date\(\)/)
   })
 
   it('⛔ o cartão FILTRA, e o número não é morto', () => {
     expect(REF_SCRIPT).toContain('onclick="filtrar(')
     const limpo = semComentarios(CARTOES)
-    expect(limpo).toContain('onEscolherFaixa')
-    expect(limpo, 'o cartão da faixa perdeu o testid').toContain('cartao-faixa-')
+    expect(limpo).toContain('onEscolherEscopo')
+    expect(limpo, 'o cartão do estado perdeu o testid').toContain('cartao-escopo-')
     const pag = semComentarios(PAGE)
     expect(pag, 'a tela parou de desenhar a família de cartões').toContain('<CartoesDoTempo')
     // ⭐ o cartão zera o escopo dos cards: senão a lista é recortada 2× e o número divergiria
     const chamada = blocoEntre(pag, '<CartoesDoTempo', '/>')
-    expect(chamada).toContain('faixa: f')
-    expect(chamada, 'o cartão deixou de zerar o escopo — a divergência de 13/09').toContain('escopo: undefined')
+    expect(chamada, 'o cartão parou de mandar o estado que ele mediu').toContain('escopo: e')
+    /**
+     * ⛔⛔ o cartão **mata a faixa legada** ao filtrar: deixar as duas ligadas recortaria a
+     * lista DUAS vezes, e o cartão diria 25 com a tabela mostrando 3 (a divergência de 13/09).
+     */
+    expect(chamada, 'a faixa legada ficou ligada junto do escopo — recorte duplo').toContain('faixa: undefined')
+    expect(chamada, 'o cartão deixou de limpar o status — o recorte sai por duas réguas').toContain("status: 'TODOS'")
   })
 
-  it('⭐ Σ DAS FAIXAS == TOTAL EM ABERTO, e a tela GRITA quando não fecha', () => {
+  it('⭐ Σ DOS ESTADOS == TOTAL EM ABERTO, e a tela GRITA quando não fecha', () => {
     const limpo = semComentarios(CARTOES)
-    expect(limpo).toContain('somaDasFaixas')
+    expect(limpo).toContain('somaDosEstados')
     expect(limpo).toContain('totalEmAberto')
-    expect(limpo, 'o alarme deixou de ser VISÍVEL na tela').toMatch(/Math\.abs\(somaDasFaixas - totalEmAberto\)/)
+    expect(limpo, 'o alarme deixou de ser VISÍVEL na tela').toMatch(/Math\.abs\(somaDosEstados - totalEmAberto\)/)
     /**
      * ⭐⭐ A LEGENDA PERMANENTE MORREU (item 5 do dono, 21/10): *"o invariante mora no TESTE,
      * não precisa morar na frente do dono"*. ⛔ **O GRITO FICA** — esconder uma Σ que NÃO
@@ -231,14 +268,27 @@ describe('P2 · FAIXAS DO TEMPO — o rótulo adulto é NOME + DATA', () => {
     expect(limpo, 'o grito deixou de ser condicional ao NÃO fechar').toContain('{!fecha && (')
   })
 
-  it('a faixa FILTRADA nunca desaparece da fileira', () => {
-    /**
-     * ⚠️ A régua PURA mudou de casa: ela morava dentro do componente dos chips e veio pra lib
-     * quando eles morreram. ***Régua que mora num componente é régua que ninguém prova*** — o
-     * projeto roda em `environment: node`, sem jsdom.
-     */
-    const vis = blocoEntre(semComentarios(FAIXA_LIB), 'export function faixasVisiveis', '\n}')
-    expect(vis).toContain('faixaAtiva')
+  /**
+   * ⚠️⚠️ **TESTE INVERTIDO em 23/10, com o motivo escrito — não apagado.** Ele exigia
+   * `faixasVisiveis`/`faixaAtiva`: com 5 chips havia o risco real de o chip FILTRADO sumir da
+   * fileira e o dono perder o caminho de volta. ⭐ **Com 3 cartões a régua deixou de ser
+   * necessária porque o estado ruim virou INALCANÇÁVEL** (REGRA 5): `ESCOPOS_EM_ABERTO.map`
+   * desenha os três SEMPRE, e o filtrado só muda de tom (`active`). *Linha que não pode
+   * falhar é linha que finge ser trava* (a lição do `ehVizinho`, 17/10).
+   *
+   * ⭐ **A METADE QUE IMPORTAVA FICOU TRAVADA, e mais forte:** o que ela protegia era *"o
+   * cartão filtrado tem caminho de volta"* — e agora isso é **o próprio cartão**, que
+   * desliga o filtro no 2º toque.
+   */
+  it('⭐ os TRÊS cartões de aberto são desenhados SEMPRE — nenhum some ao filtrar', () => {
+    const limpo = semComentarios(CARTOES)
+    expect(limpo, 'a fileira parou de derivar da família — cartão pode sumir ao filtrar')
+      .toContain('ESCOPOS_EM_ABERTO.map')
+    expect(limpo, 'a fileira passou a esconder o cartão filtrado')
+      .not.toMatch(/\.filter\([^)]*escopoAtivo/)
+    // ⭐ e o caminho de volta é o próprio cartão: 2º toque desliga o filtro
+    expect(limpo, 'o cartão deixou de desligar o próprio filtro no 2º toque')
+      .toContain('onEscolherEscopo(ativa ? undefined : e)')
   })
 })
 
@@ -284,9 +334,9 @@ describe('⭐⭐⭐ FATIA 1.1 — UMA FAMÍLIA SÓ DE CARTÕES DO TEMPO', () => 
     const limpo = semComentarios(CARTOES)
     expect(limpo).toContain('cartao-pagas')
     expect(limpo, 'o cartão de contexto perdeu o tom distinto').toMatch(/tone="emerald"/)
-    const i = limpo.indexOf('cartao-faixa-')
+    const i = limpo.indexOf('cartao-escopo-')
     const j = limpo.indexOf('cartao-pagas')
-    expect(i, 'os cartões de faixa sumiram').toBeGreaterThan(0)
+    expect(i, 'os cartões de estado sumiram').toBeGreaterThan(0)
     expect(j, 'o cartão PAGAS sumiu').toBeGreaterThan(i)
     const pag = semComentarios(PAGE)
     const chamada = blocoEntre(pag, '<CartoesDoTempo', '/>')
@@ -305,7 +355,7 @@ describe('⭐⭐⭐ FATIA 1.1 — UMA FAMÍLIA SÓ DE CARTÕES DO TEMPO', () => 
     expect(pag, 'o import do StatCardGrid voltou').not.toMatch(/import .*StatCardGrid/)
     expect(pag, 'o import dos chips voltou').not.toMatch(/import .*ChipsDasFaixas/)
     // ⭐ e o rótulo de faixa segue vindo MEDIDO do servidor, nunca escrito na tela
-    expect(semComentarios(CARTOES)).toContain('label={m.rotulo}')
+    expect(semComentarios(CARTOES)).toContain("label={m?.rotulo ?? ''}")
   })
 
   it('⛔⛔ a BARRA desceu pra posição da LEI: fixa EMBAIXO', () => {
@@ -402,9 +452,10 @@ describe('P2 · SEÇÕES NA TABELA — subtotal da faixa e checkbox do grupo', (
 
   it('⭐ o subtotal é o da FAIXA INTEIRA (agregado do servidor), nunca a soma da página', () => {
     const limpo = semComentarios(TABELA)
-    expect(limpo).toContain('totaisPorFaixa')
+    expect(limpo).toContain('totaisPorEstado')
     const pag = semComentarios(PAGE)
-    expect(pag, 'a tabela deixou de receber os totais do servidor').toMatch(/totaisPorFaixa=\{faixas\}/)
+    expect(pag, 'a tabela deixou de receber os totais do servidor')
+      .toMatch(/totaisPorEstado=\{medidasDoTempo\}/)
   })
 })
 
@@ -482,7 +533,8 @@ describe('⛔⛔ ZERO ESCRITA — a fatia 1 só LÊ', () => {
     for (const [nome, src] of [
       ['CartoesDoTempo', CARTOES],
       ['BulkActionsBar', BARRA],
-      ['faixa-do-tempo', ler('lib/contas-pagar/faixa-do-tempo.ts')],
+      ['rotulo-do-tempo', ROTULO_LIB],
+      ['selecao-do-filtro', ler('lib/contas-pagar/selecao-do-filtro.ts')],
       ['regua-do-caixa-na-selecao', ler('lib/contas-pagar/regua-do-caixa-na-selecao.ts')],
       ['secoes-da-tabela', ler('lib/contas-pagar/secoes-da-tabela.ts')],
     ] as const) {
@@ -531,19 +583,49 @@ describe('⛔⛔ ZERO ESCRITA — a fatia 1 só LÊ', () => {
   })
 })
 
-describe('⭐ as faixas DERIVAM do dono da palavra — nunca uma 2ª régua de «vencida»', () => {
-  it('whereDaFaixa delega em whereDoStatus nos dois degraus que ele já partia', () => {
-    const faixa = semComentarios(ler('lib/contas-pagar/faixa-do-tempo.ts'))
-    expect(faixa, 'a faixa passou a escrever a própria régua de vencida — o defeito de 13/09')
+describe('⭐⭐ O RÓTULO NÃO TEM RÉGUA DE RECORTE — ele só diz TEXTO', () => {
+  /**
+   * ⚠️⚠️ **REAPONTADO em 23/10.** Até 21/10 este bloco exigia que `whereDaFaixa` **delegasse**
+   * a `whereDoStatus` — porque a faixa TINHA régua de recorte, e sem a delegação ela escreveria
+   * uma 2ª definição de *"vencida"* (o defeito de 13/09: card 34, tabela 9). ⭐⭐ **Agora a
+   * pergunta é mais forte: a lib do rótulo NÃO PODE TER RÉGUA DE RECORTE NENHUMA.** Quem
+   * recorta é o `whereDoStatus`, e os três estados são partição por construção — então a 2ª
+   * régua deixou de ser *"não delegada"* e passou a ser **impossível** (REGRA 5).
+   */
+  it('⛔ a lib do rótulo não monta `where` nem conhece Prisma', () => {
+    const limpo = semComentarios(ROTULO_LIB)
+    expect(limpo, 'o rótulo passou a montar where — a 2ª régua de «vencida» renasceu')
+      .not.toMatch(/where|dueDate:\s*\{|prisma/i)
+    // ⭐ o que ele importa é só a fronteira do DIA (o dono da palavra segue sendo o escopo)
+    expect(limpo).toContain('inicioDoDiaBrasil')
+  })
+
+  it('⛔ quem recorta é o `whereDoStatus`, e a rota mede os 3 estados por ele', () => {
+    const rota = semComentarios(ler('app/api/contas-a-pagar/route.ts'))
+    expect(rota, 'a rota deixou de medir pelos estados de aberto').toContain('ESCOPOS_EM_ABERTO')
+    expect(rota, 'a rota passou a recortar por uma régua que não é o dono da palavra')
       .toContain('whereDoStatus')
-    expect(faixa).toContain('inicioDoDiaBrasil')
   })
 
   it('⛔ a rota mede o rótulo no relógio do SERVIDOR (um relógio só manda)', () => {
     const rota = semComentarios(ler('app/api/contas-a-pagar/route.ts'))
-    expect(rota).toContain('rotuloDaFaixa')
-    expect(rota).toContain('faixaTemIntervaloVazio')
-    // ⚠️ o filtro de faixa NÃO pode entrar no input dos cards, senão clicar zera os 4 números
+    expect(rota).toContain('rotuloDoEscopo')
+    // ⚠️ nem o escopo nem a faixa legada entram no input dos cards, senão clicar zera os números
     expect(rota).toMatch(/faixa:\s*undefined/)
+    /**
+     * ⚠️ `escopo: undefined` NÃO é conferido aqui: medido na rota, ele **não existe como
+     * linha** — o `kpiBaseInput` dropa `status`/`q`/`vencidasOnly`/`faixa`, e o escopo é
+     * passado por cada medida (`escopo: 'PAGA'`, `escopo` do laço dos estados). Afirmar a
+     * linha seria afirmar uma forma que o código não tem.
+     */
+  })
+
+  it('⛔⛔ a lib MORTA não volta — `faixa-do-tempo.ts` foi APAGADA, não deixada órfã', () => {
+    /**
+     * *Enquanto o arquivo existe, alguém religa* (a cicatriz do `GruposSugeridos`, 23/09) — e
+     * aí a 2ª régua de "vencida" renasce com o guard verde.
+     */
+    expect(existsSync(join(raiz, 'lib/contas-pagar/faixa-do-tempo.ts')),
+      'a faixa-do-tempo voltou a existir').toBe(false)
   })
 })

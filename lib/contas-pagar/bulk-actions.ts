@@ -8,11 +8,21 @@
 // (lógica fica no endpoint usando lib/balance ou direct increment).
 
 import { z } from 'zod'
+import { TETO_DO_LOTE } from './selecao-do-filtro'
+
+/**
+ * ⛔⛔ 23/10 — **O TETO TEM UM DONO SÓ, E ELE É DERIVADO, nunca repetido.** Até hoje o `500`
+ * vivia escrito **três vezes** (as duas ações aqui + `TETO_DO_LOTE`), e o comentário da lib
+ * prometia que *"os dois são conferidos por teste"* — **esse teste não existia**.
+ * ***Comentário que promete ser a trava sem ser a trava é pior que comentário nenhum*** (a
+ * cicatriz de 08/10). Derivado, elevar um e esquecer o outro passou a ser **impossível**
+ * (REGRA 5): a tela nunca mais oferece 800 ids pra uma rota que recusa 500.
+ */
 
 export const bulkActionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('mark_paid'),
-    transactionIds: z.array(z.string().cuid()).min(1).max(500),
+    transactionIds: z.array(z.string().cuid()).min(1).max(TETO_DO_LOTE),
     paymentDate: z.coerce.date(),
     // Sprint Caixa — conta usada pra pagar (opcional). Se preenchida:
     //   - tx é vinculada à conta (atualiza balance)
@@ -22,7 +32,7 @@ export const bulkActionSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     action: z.literal('delete'),
-    transactionIds: z.array(z.string().cuid()).min(1).max(500),
+    transactionIds: z.array(z.string().cuid()).min(1).max(TETO_DO_LOTE),
   }),
 ])
 

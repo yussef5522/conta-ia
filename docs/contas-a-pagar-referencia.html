@@ -144,7 +144,7 @@ footer{max-width:1440px;margin:0 auto;padding:10px 26px 26px;font-size:11.5px;co
     </div>
   </div>
 
-  <footer>CONTAS A PAGAR · PROPOSTA v2 — a tabela de hoje é a lei da lista; por cima: seleção com total vivo + régua do caixa · faixas do tempo com data no rótulo · selo sem-banco · aprovação do dono pendente</footer>
+  <footer>CONTAS A PAGAR · PROPOSTA v2.1 — a tabela de hoje é a lei da lista; por cima: seleção multi-página com total AGREGADO DO SERVIDOR + régua do caixa · os 4 cartões do tempo (VENCIDAS · VENCE HOJE · A VENCER · PAGAS) com data no rótulo · selo sem-banco · <b>v2.1 (23/10): morreram PRÓXIMOS 7 DIAS e RESTO DO MÊS; voltou o card único A VENCER — aprovado pelo dono</b></footer>
 
 <script>
 /* ===== AMOSTRA — em prod: portas reais de contas a pagar + saldosDaEmpresa ===== */
@@ -158,18 +158,29 @@ var CONTAS=[
  {id:5, fx:"VENC", venc:"19/10/2026", fav:"ODISSEA CORREA DA SILVA", desc:"NF 787 (parcela R01)", nf:"NF 787", cat:null, bco:null, v:219.00},
  {id:6, fx:"HOJE", venc:"21/10/2026", fav:"CELESC", desc:"Energia elétrica do salão", nf:null, cat:"Fixas", bco:"Banrisul", v:2310.45},
  {id:7, fx:"HOJE", venc:"21/10/2026", fav:"FRIGORÍFICO SILVA", desc:"Carnes da semana — NF 8831", nf:"NF 8831", cat:"Insumos", bco:"Sicredi", v:3890.20},
- {id:8, fx:"SETE", venc:"23/10/2026", fav:"SICREDI — C41022227-1", desc:"Parcela #26 do empréstimo", nf:null, cat:"Empréstimos", bco:"Sicredi", v:6903.45},
- {id:9, fx:"SETE", venc:"24/10/2026", fav:"IMOBILIÁRIA CENTRO", desc:"Aluguel do salão", nf:null, cat:"Fixas", bco:"Banrisul", v:6500.00},
- {id:10,fx:"SETE", venc:"25/10/2026", fav:"MOINHO SUL", desc:"Massas e farinhas — NF 2210", nf:"NF 2210", cat:"Insumos", bco:null, v:740.00},
- {id:11,fx:"MES",  venc:"28/10/2026", fav:"VERO INTERNET", desc:"Fibra 600 MB", nf:null, cat:"Fixas", bco:"Banrisul", v:199.90},
- {id:12,fx:"MES",  venc:"31/10/2026", fav:"RECEITA FEDERAL", desc:"DAS — impostos do mês", nf:null, cat:"Impostos", bco:"Banrisul", v:1890.33},
- {id:13,fx:"MES",  venc:"31/10/2026", fav:"CASAN", desc:"Água e saneamento", nf:null, cat:"Fixas", bco:"Banrisul", v:310.12}
+ {id:8, fx:"VENCER", venc:"23/10/2026", fav:"SICREDI — C41022227-1", desc:"Parcela #26 do empréstimo", nf:null, cat:"Empréstimos", bco:"Sicredi", v:6903.45},
+ {id:9, fx:"VENCER", venc:"24/10/2026", fav:"IMOBILIÁRIA CENTRO", desc:"Aluguel do salão", nf:null, cat:"Fixas", bco:"Banrisul", v:6500.00},
+ {id:10,fx:"VENCER", venc:"25/10/2026", fav:"MOINHO SUL", desc:"Massas e farinhas — NF 2210", nf:"NF 2210", cat:"Insumos", bco:null, v:740.00},
+ {id:11,fx:"VENCER",  venc:"28/10/2026", fav:"VERO INTERNET", desc:"Fibra 600 MB", nf:null, cat:"Fixas", bco:"Banrisul", v:199.90},
+ {id:12,fx:"VENCER",  venc:"31/10/2026", fav:"RECEITA FEDERAL", desc:"DAS — impostos do mês", nf:null, cat:"Impostos", bco:"Banrisul", v:1890.33},
+ {id:13,fx:"VENCER",  venc:"31/10/2026", fav:"CASAN", desc:"Água e saneamento", nf:null, cat:"Fixas", bco:"Banrisul", v:310.12}
 ];
 var FAIXAS=[
  {k:"VENC", rot:"VENCIDAS", sub:"até ontem · 20/10", cls:"venc", st:'<span class="st v">VENCIDA</span>'},
  {k:"HOJE", rot:"VENCE HOJE", sub:"ter · 21/10", cls:"hoje", st:'<span class="st h">HOJE</span>'},
- {k:"SETE", rot:"PRÓXIMOS 7 DIAS", sub:"22 a 28/10", cls:"", st:'<span class="st a">A VENCER</span>'},
- {k:"MES",  rot:"RESTO DO MÊS", sub:"29 a 31/10", cls:"", st:'<span class="st a">A VENCER</span>'}
+ /* ⭐⭐ v2.1 (aprovado pelo dono 23/10) — AS DUAS JANELAS DESLIZANTES MORRERAM.
+    A v2 desenhava "PRÓXIMOS 7 DIAS · 22 a 28/10" e "RESTO DO MÊS · 29 a 31/10", e a ordem
+    escrita dele é: *"morrem PRÓXIMOS 7 DIAS e RESTO DO MÊS (janelas deslizantes que o dono
+    não entende). Volta o card único A VENCER com as datas do período no rótulo (A VENCER ·
+    24 A 31/10 · R$ 61.157,56 · 44 contas). A fileira fica: VENCIDAS · VENCE HOJE · A VENCER
+    · PAGAS — os 3 que ele entende, intocados."*
+    ⛔⛔ E havia uma razão mais dura que a preferência: `whereDaFaixa('VENCIDAS')` era CÓPIA
+    LITERAL de `whereDoStatus('VENCIDA')` — duas réguas pra mesma palavra, o defeito de 13/09
+    (o card dizia 34 e a tabela pintava 9). As 3 faixas de data só SUBDIVIDIAM o A_PAGAR.
+    ⭐ A data do A VENCER é a INTERSEÇÃO do estado (começa AMANHÃ) com a janela do filtro —
+    por isso "24 a 31/10" e não "a partir de 24/10": a lista para no dia 31. */
+ {k:"VENCER", rot:"A VENCER", sub:"22 a 31/10", cls:"", st:'<span class="st a">A VENCER</span>'},
+ {k:"PAGAS", rot:"PAGAS (sem conciliar)", sub:"outubro", cls:"pagas", st:'<span class="st p">PAGA</span>'}
 ];
 var SEL={}, FILTRO=null;
 function brl(v){return "R$ "+v.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}

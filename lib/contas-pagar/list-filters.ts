@@ -6,7 +6,40 @@
 
 import { z } from 'zod'
 import { whereDoStatus } from './escopo'
-import { whereDaFaixa } from './faixa-do-tempo'
+import { FAIXAS_LEGADAS, type FaixaLegada } from './faixa-legada'
+import type { EscopoEmAberto } from './rotulo-do-tempo'
+
+/**
+ * ⭐⭐ `?faixa=` É PARÂMETRO LEGADO (21/10 → 23/10) — traduzido, nunca uma 2ª régua.
+ *
+ * Os chips de faixa viveram dois dias e podem estar num print, num e-mail ou no histórico do
+ * navegador do dono. ⛔ **Link velho não vira 404 silencioso** (a régua do `vencidasOnly` e
+ * do `?aba=processados`): as três faixas de data aposentadas colapsam no estado que elas
+ * subdividiam — `A_PAGAR` —, que é exatamente o que o dono vê hoje no cartão «A VENCER».
+ *
+ * ⚠️ `SEM_VENCIMENTO` também cai em `A_PAGAR` porque **sempre esteve dentro dele** (o `OR`
+ * do `whereDoStatus` carrega `dueDate: null`): o recorte antigo era mais estreito, e o mais
+ * largo é o erro SEGURO — mostrar a conta a mais o dono vê; esconder, não.
+ */
+/**
+ * ⚠️⚠️ **O VOCABULÁRIO LEGADO TEM UM DONO SÓ, e ele é PURO** (`./faixa-legada`) — quem traduz
+ * `?faixa=` é quem define o que ele aceita, e o `z.enum` abaixo DERIVA da lista de lá: repetir os
+ * seis valores à mão no schema foi o que deixou dois gestos mortos por dias em 25/09.
+ *
+ * ⛔ **POR QUE A LISTA NÃO MORA AQUI:** quem lê `?faixa=` da URL é a **PÁGINA** (client), e este
+ * arquivo importa `zod` e o montador de `where` do Prisma — a lista aqui obrigaria o bundle do
+ * cliente a arrastar tudo isso, ou a página a reenumerar os seis valores à mão.
+ */
+export { FAIXAS_LEGADAS, ehFaixaLegada, type FaixaLegada } from './faixa-legada'
+
+const FAIXA_LEGADA_PARA_ESCOPO: Record<FaixaLegada, EscopoEmAberto> = {
+  VENCIDAS: 'VENCIDA',
+  VENCE_HOJE: 'VENCE_HOJE',
+  SETE_DIAS: 'A_PAGAR',
+  RESTO_DO_MES: 'A_PAGAR',
+  DEPOIS_DO_MES: 'A_PAGAR',
+  SEM_VENCIMENTO: 'A_PAGAR',
+}
 
 /**
  * ⭐⭐⭐ A BASE DOS KPIs DE PAGAS TEM UM DONO SÓ (26/09/2026).
@@ -73,17 +106,12 @@ export const listPayableSchema = z.object({
    */
   escopo: z.enum(['VENCIDA', 'VENCE_HOJE', 'A_PAGAR', 'PAGA', 'PAGA_CONCILIADA', 'PAGA_SEM_VINCULO']).optional(),
   /**
-   * ⭐⭐ A FAIXA DO TEMPO (21/10) — o chip do topo clicável como filtro.
-   *
-   * ⛔ **Ela DERIVA do `escopo`, não concorre com ele** (`whereDaFaixa` chama
-   * `whereDoStatus` por recursão): `VENCIDAS` e `VENCE_HOJE` são o MESMO recorte dos
-   * cartões, e as três de data só subdividem o `A_PAGAR`. ⚠️ Faixa e escopo podem vir
-   * juntos sem se contradizer — os dois entram no `AND`, e o resultado é a interseção
-   * honesta (faixa de uma, escopo de outra → lista vazia, que é a verdade).
+   * ⚠️ **LEGADO (21/10 → 23/10)** — os chips de faixa morreram e o cartão «A VENCER» voltou.
+   * O parâmetro sobrevive **só pra link velho não quebrar**, traduzido em
+   * `FAIXA_LEGADA_PARA_ESCOPO` (ver o topo do arquivo). **Nada novo manda `faixa`.**
+   * @deprecated use `escopo=VENCIDA|VENCE_HOJE|A_PAGAR`
    */
-  faixa: z
-    .enum(['VENCIDAS', 'VENCE_HOJE', 'SETE_DIAS', 'RESTO_DO_MES', 'DEPOIS_DO_MES', 'SEM_VENCIMENTO'])
-    .optional(),
+  faixa: z.enum(FAIXAS_LEGADAS).optional(),
   /**
    * ⭐⭐ O MÊS DO RECORTE DE FLUXO (`YYYY-MM`, 14/09) — padrão: o mês corrente.
    *
@@ -243,12 +271,18 @@ export function buildPayableListWhere(
     ;(where.AND as Array<Record<string, unknown>>).push(whereDoStatus('VENCIDA', now))
   }
   /**
-   * ⭐ A FAIXA entra no MESMO `AND`, pelo dono dela (`whereDaFaixa`) — que por dentro chama
-   * `whereDoStatus`. ⚠️ Nunca por spread, pelo mesmo motivo do escopo: o fragmento das
-   * faixas de data tem `AND` próprio e o spread apagaria o OR multi-tenant.
+   * ⚠️ A FAIXA LEGADA é TRADUZIDA pro estado que ela subdividia e entra pelo MESMO
+   * `whereDoStatus` — ela não tem régua própria nenhuma (ver o topo do arquivo).
+   *
+   * ⛔ Nunca por spread, pelo mesmo motivo do escopo: o fragmento do `A_PAGAR` tem `OR`
+   * próprio e o spread apagaria o OR multi-tenant (o Bug #1 de 5.0.3.1, que já vazou
+   * transação de outra empresa).
    */
   if (input.faixa) {
-    ;(where.AND as Array<Record<string, unknown>>).push(whereDaFaixa(input.faixa, now))
+    const escopoDaFaixa = FAIXA_LEGADA_PARA_ESCOPO[input.faixa]
+    if (escopoDaFaixa) {
+      ;(where.AND as Array<Record<string, unknown>>).push(whereDoStatus(escopoDaFaixa, now))
+    }
   }
 
   // Período no campo escolhido

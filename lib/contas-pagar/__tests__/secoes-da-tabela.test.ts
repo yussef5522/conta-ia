@@ -18,9 +18,9 @@ import {
   secoesDasLinhas,
   ordenadoPorVencimento,
   type LinhaParaSecao,
-  type TotalDaFaixa,
+  type TotalDoEstado,
 } from '../secoes-da-tabela'
-import type { FaixaDoTempo } from '../faixa-do-tempo'
+import type { EscopoEmAberto } from '../rotulo-do-tempo'
 
 const NOW = new Date('2026-10-21T02:30:00.000Z') // 20/10 23h30 em SP
 
@@ -33,14 +33,21 @@ function linha(id: string, dueDate: string | null, pago = false): LinhaParaSecao
   }
 }
 
-const TOTAIS: Partial<Record<FaixaDoTempo, TotalDaFaixa>> = {
-  VENCIDAS: { contagem: 3, total: 9_581.08 },
-  VENCE_HOJE: { contagem: 1, total: 1_940.59 },
-  SETE_DIAS: { contagem: 5, total: 20_000 },
+/**
+ * ⚠️ 23/10 — o vocabulário das SEIS faixas morreu e o corte voltou aos TRÊS estados de
+ * aberto (`VENCIDA | VENCE_HOJE | A_PAGAR`), que são **partição** por construção desde
+ * 26/09. ⛔ E a medida agora carrega o **RÓTULO**: ele vem do SERVIDOR, no mesmo instante
+ * do agregado — *um relógio só manda*. Derivar a janela aqui ressuscitaria o segundo
+ * relógio que o `secoesDasLinhas` acabou de aposentar.
+ */
+const TOTAIS: Partial<Record<EscopoEmAberto, TotalDoEstado>> = {
+  VENCIDA: { contagem: 3, total: 9_581.08, rotulo: 'VENCIDAS · até 20/10' },
+  VENCE_HOJE: { contagem: 1, total: 1_940.59, rotulo: 'VENCE HOJE · ter · 21/10' },
+  A_PAGAR: { contagem: 5, total: 20_000, rotulo: 'A VENCER · 22 A 31/10' },
 }
 
 describe('as seções agrupam na ordem em que a tabela desenha', () => {
-  it('abre uma seção por faixa, na ordem das linhas', () => {
+  it('abre uma seção por estado, na ordem das linhas', () => {
     const s = secoesDasLinhas(
       [
         linha('a', '2026-10-01'),
@@ -52,7 +59,7 @@ describe('as seções agrupam na ordem em que a tabela desenha', () => {
       { porVencimento: true },
       NOW,
     )!
-    expect(s.map((x) => x.faixa)).toEqual(['VENCIDAS', 'VENCE_HOJE', 'SETE_DIAS'])
+    expect(s.map((x) => x.escopo)).toEqual(['VENCIDA', 'VENCE_HOJE', 'A_PAGAR'])
     expect(s[0].ids).toEqual(['a', 'b'])
     expect(s[1].ids).toEqual(['c'])
   })
@@ -72,10 +79,10 @@ describe('as seções agrupam na ordem em que a tabela desenha', () => {
     expect(s[0].parcial).toBe(true)
   })
 
-  it('faixa inteira na página NÃO é parcial', () => {
+  it('estado inteiro na página NÃO é parcial', () => {
     const s = secoesDasLinhas(
       [linha('c', '2026-10-20')],
-      { VENCE_HOJE: { contagem: 1, total: 1_940.59 } },
+      { VENCE_HOJE: { contagem: 1, total: 1_940.59, rotulo: 'VENCE HOJE · ter · 21/10' } },
       { porVencimento: true },
       NOW,
     )!
@@ -100,10 +107,10 @@ describe('as seções agrupam na ordem em que a tabela desenha', () => {
     const ids = s.flatMap((x) => x.ids)
     expect(ids).not.toContain('p')
     // ⭐ e a conta depois da paga abre seção nova em vez de entrar na anterior
-    expect(s.map((x) => x.faixa)).toEqual(['VENCIDAS', 'VENCE_HOJE'])
+    expect(s.map((x) => x.escopo)).toEqual(['VENCIDA', 'VENCE_HOJE'])
   })
 
-  it('a mesma faixa voltando depois de uma paga abre OUTRA seção (a ordem manda)', () => {
+  it('o mesmo estado voltando depois de uma paga abre OUTRA seção (a ordem manda)', () => {
     const s = secoesDasLinhas(
       [linha('a', '2026-10-19'), linha('p', '2026-10-01', true), linha('b', '2026-10-18')],
       TOTAIS,
@@ -111,7 +118,7 @@ describe('as seções agrupam na ordem em que a tabela desenha', () => {
       NOW,
     )!
     expect(s).toHaveLength(2)
-    expect(s.every((x) => x.faixa === 'VENCIDAS')).toBe(true)
+    expect(s.every((x) => x.escopo === 'VENCIDA')).toBe(true)
   })
 
   it('o rótulo do cabeçalho é o MESMO do chip (um texto, um dono)', () => {

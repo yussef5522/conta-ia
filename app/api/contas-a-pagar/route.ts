@@ -18,11 +18,11 @@ import {
 import { notasDeOrigem, type NotaDeOrigem } from '@/lib/stock/ponte/nota-de-origem'
 import { whereDoStatus } from '@/lib/contas-pagar/escopo'
 import {
-  FAIXAS,
-  whereDaFaixa,
-  rotuloDaFaixa,
-  faixaTemIntervaloVazio,
-} from '@/lib/contas-pagar/faixa-do-tempo'
+  ESCOPOS_EM_ABERTO,
+  rotuloDoEscopo,
+  diaDoFiltro,
+  type JanelaDeVencimento,
+} from '@/lib/contas-pagar/rotulo-do-tempo'
 import { saldoDeCaixaAgora } from '@/lib/balance/serie-de-saldo'
 import { mesCorrente } from '@/lib/periodo/mes-corrente'
 
@@ -87,15 +87,30 @@ export async function GET(request: NextRequest) {
       vencidasOnly: false,
       q: undefined,
       /**
-       * ⭐⭐ 21/10 — a FAIXA sai da base dos números do topo, **de propósito**.
+       * ⭐⭐ 21/10 — o RECORTE DE ESTADO sai da base dos números do topo, **de propósito**.
        *
-       * ⛔ Sem isto, clicar numa faixa zeraria os chips das OUTRAS (cada um mediria dentro
-       * do recorte da faixa escolhida) e o dono perderia o mapa justamente quando entrou
-       * nele. É a mesma régua do `status`/`q`: **o chip é o filtro, e filtro não pode
-       * apagar o painel que o oferece.**
+       * ⛔ Sem isto, clicar num cartão zeraria os OUTROS (cada um mediria dentro do recorte
+       * do escolhido) e o dono perderia o mapa justamente quando entrou nele. É a mesma
+       * régua do `status`/`q`: **o cartão é o filtro, e filtro não pode apagar o painel que
+       * o oferece.** ⚠️ `escopo` já sai pela linha de baixo (`escopo: undefined`) nos KPIs
+       * que a limpam; a `faixa` legada sai aqui pelo mesmo motivo.
        */
       faixa: undefined,
     } as typeof input
+
+    /**
+     * ⭐⭐ A JANELA DE VENCIMENTO QUE O FILTRO APLICOU — e ela só existe quando o filtro de
+     * período é de `dueDate`.
+     *
+     * ⛔⛔ Com `dataField=paymentDate` (ou `date`/`competenceDate`) o período do dono **não
+     * restringe `dueDate` nenhum**: dizer *"A VENCER · 24 a 31/10"* ali seria afirmar um
+     * recorte que o `where` não aplicou. `undefined` → o rótulo volta a ser aberto
+     * (*"a partir de 24/10"*), que é o honesto.
+     */
+    const janelaDeVencimento: JanelaDeVencimento | undefined =
+      input.dataField === 'dueDate' && (input.dataDe || input.dataAte)
+        ? { de: diaDoFiltro(input.dataDe), ate: diaDoFiltro(input.dataAte) }
+        : undefined
     const whereBase = buildPayableListWhere(kpiBaseInput, now)
     /**
      * ⭐⭐⭐ 26/09 — O BASE DAS PAGAS, e ele é **o coração do acerto**.
@@ -112,8 +127,8 @@ export async function GET(request: NextRequest) {
     const whereBasePagas = baseDosKpisDePagas(kpiBaseInput, now)
 
     const [
-      items, total, kpiPagas, kpiPendentes, kpiVencidas, kpiVenceHoje,
-      kpiConciliadas, kpiSemVinculo, faixasMedidas, saldoCaixa,
+      items, total, totalDoFiltro, kpiPagas, kpiPendentes, kpiVencidas, kpiVenceHoje,
+      kpiConciliadas, kpiSemVinculo, medidasDoTempo, saldoCaixa,
     ] = await Promise.all([
         prisma.transaction.findMany({
           where: whereList,
@@ -132,6 +147,25 @@ export async function GET(request: NextRequest) {
           },
         }),
         prisma.transaction.count({ where: whereList }),
+        /**
+         * ⭐⭐⭐ O TOTAL EM R$ DO FILTRO INTEIRO (item 1 de 1.2, 23/10).
+         *
+         * **O dono:** *"ao lado de «81 contas no filtro» entra o valor — 81 contas ·
+         * R$ 97.313,25. É agregado do SERVIDOR sobre o filtro inteiro (nunca soma da
+         * página). Muda o filtro, muda o número."*
+         *
+         * ⛔⛔ **É `whereList`, o MESMO `where` do `findMany` e do `count` logo acima** — e é
+         * isso que faz o par *"N contas · R$ X"* fechar **por construção**. ⚠️ Até hoje
+         * `whereList` era usado em exatamente dois lugares (listar e contar) e **nenhum
+         * agregado de VALOR existia sobre ele**: todos os `_sum` da rota usam `whereBase`,
+         * que **ignora `status`/`q`/`escopo` de propósito** (é a base dos cartões). Somar
+         * por lá daria um número do painel, não do filtro.
+         *
+         * ⛔ E **nunca a soma da página**: a lista pagina em 50 e o dono tem 81 — somar o
+         * visível diria R$ 52 mil onde o filtro vale R$ 97 mil, com os dois números a dez
+         * centímetros um do outro (a doença que esta casa mais paga).
+         */
+        prisma.transaction.aggregate({ where: whereList, _sum: { amount: true } }),
         // PAGAS = paymentDate preenchida (status RECONCILED ou EFFECTED)
         /**
          * ⭐⭐ PAGAS É FLUXO: recorta no MÊS (padrão, o corrente).
@@ -201,37 +235,40 @@ export async function GET(request: NextRequest) {
           _count: { _all: true },
         }),
         /**
-         * ⭐⭐⭐ 21/10 — AS FAIXAS DO TEMPO, pelo dono único (`whereDaFaixa`, que chama o
-         * `whereDoStatus` por recursão).
+         * ⭐⭐⭐ OS TRÊS ESTADOS DE ABERTO, MEDIDOS COM RÓTULO (21/10 · recortados 23/10).
          *
-         * ⛔ **Σ das faixas == total em aberto, por CONSTRUÇÃO**: `VENCIDAS` e `VENCE_HOJE`
-         * SÃO os cartões, e as quatro restantes particionam o `A_PAGAR` (as três de data
-         * mais a sem-vencimento, que o A_PAGAR carrega). Faixa nova fora dessa partição
-         * quebraria o invariante — e é isso que o guard afirma.
+         * ⛔⛔ **Σ dos três == total em aberto, por CONSTRUÇÃO** — eles são a PARTIÇÃO do
+         * `whereDoStatus` desde 26/09 (`]-∞,hoje[ · [hoje,amanhã[ · [amanhã,+∞[` mais a
+         * sem-vencimento, que o `A_PAGAR` carrega no `OR`). Não há faixa a somar nem a
+         * esconder: é o invariante que o guard afirma.
          *
-         * ⚠️ `whereBase` (sem a faixa), igual aos cartões — o AND explícito, nunca spread.
+         * ⚠️ Em 21/10 isto media **6 faixas** (as três de data subdividindo o `A_PAGAR`). O
+         * dono aposentou a subdivisão em 23/10 (*"janelas deslizantes que o dono não
+         * entende"*), e com ela morreu o 2º vocabulário — `whereDaFaixa` era cópia do
+         * `whereDoStatus`.
+         *
+         * ⚠️ `whereBase`, igual aos cartões — o AND explícito, nunca spread (o fragmento do
+         * `A_PAGAR` tem `OR` próprio e o spread apagaria o OR multi-tenant).
          *
          * ⛔⛔ **O RÓTULO VEM DAQUI, NUNCA DA TELA — um relógio só manda.** O agregado é
-         * medido com o `now` do SERVIDOR; se o chip derivasse a data no cliente, um aparelho
-         * com a hora torta mostraria *"PRÓXIMOS 7 DIAS · 22 a 28/10"* sobre um número que o
+         * medido com o `now` do SERVIDOR; se o cartão derivasse a data no cliente, um
+         * aparelho com a hora torta mostraria *"A VENCER · 24 a 31/10"* sobre um número que o
          * servidor contou de outra janela. É a cicatriz do cronômetro do tablet (08/09) e do
          * mês default do PF (30/09), aplicada ao rótulo.
          */
         Promise.all(
-          FAIXAS.map(async (faixa) => {
+          ESCOPOS_EM_ABERTO.map(async (escopo) => {
             const r = await prisma.transaction.aggregate({
-              where: { AND: [whereBase, whereDaFaixa(faixa, now)] },
+              where: { AND: [whereBase, whereDoStatus(escopo, now)] },
               _sum: { amount: true },
               _count: { _all: true },
             })
             return [
-              faixa,
+              escopo,
               {
                 contagem: r._count._all,
                 total: r._sum.amount ?? 0,
-                rotulo: rotuloDaFaixa(faixa, now),
-                /** ⚠️ `true` quando o intervalo não tem dia nenhum (fim de mês) */
-                intervaloVazio: faixaTemIntervaloVazio(faixa, now),
+                rotulo: rotuloDoEscopo(escopo, now, janelaDeVencimento),
               },
             ] as const
           }),
@@ -267,6 +304,11 @@ export async function GET(request: NextRequest) {
       items: items.map((t) => ({ ...t, notaOrigem: notas.get(t.id) ?? null })),
       paginacao: {
         total,
+        /**
+         * ⭐ O VALOR do filtro inteiro, ao lado da contagem — o par que a tela imprime.
+         * ⚠️ Mesmo `where` do `total` acima: os dois fecham por construção.
+         */
+        totalValor: totalDoFiltro._sum.amount ?? 0,
         page: input.page,
         limit: input.limit,
         totalPages: Math.max(1, Math.ceil(total / input.limit)),
@@ -300,10 +342,10 @@ export async function GET(request: NextRequest) {
         countPagasSemVinculo: kpiSemVinculo._count._all,
       },
       /**
-       * ⭐⭐ AS FAIXAS DO TEMPO (21/10) — contagem e total de cada uma, medidos pelo mesmo
-       * `whereDoStatus` dos cartões. A tela ecoa; ela não soma nada por conta própria.
+       * ⭐⭐ OS TRÊS ESTADOS DE ABERTO — contagem, total e RÓTULO de cada um, medidos pelo
+       * mesmo `whereDoStatus` dos cartões. A tela ecoa; ela não soma nada por conta própria.
        */
-      faixas: Object.fromEntries(faixasMedidas),
+      medidasDoTempo: Object.fromEntries(medidasDoTempo),
       /**
        * ⭐ O saldo de caixa de AGORA — a régua da barra da seleção.
        * ⚠️ `null` quando a leitura falhou: a barra DIZ *"a apurar"* em vez de afirmar zero.

@@ -37,13 +37,19 @@ interface Props {
   /** ⭐ a régua já decidida (total, saldo, depois, tom) — a barra só desenha */
   regua: ReguaDoCaixaNaSelecao
   /**
-   * ⚠️ quantas selecionadas estão em OUTRA página (fora do total somado).
+   * ⭐⭐ O aviso que a barra DIZ quando o gesto não alcança tudo — hoje só o **TETO DO LOTE**
+   * (`avisoDoTeto`), que é a única coisa que ainda fica de fora.
    *
-   * ⛔ A seleção sobrevive à troca de página (o lote opera por id), então o total abaixo pode
-   * falar de menos contas do que o rótulo conta. **Dizer isso é obrigatório** — total que não
-   * fecha com o número ao lado dele é a mentira mais fácil de uma tela de dinheiro.
+   * ⛔⛔ **A NOTA *"N em outra página"* MORREU (23/10, item 3 do dono), e isso não é remoção
+   * de aviso: é o aviso perdendo o ASSUNTO.** Enquanto "selecionar todas" marcava só as 50 da
+   * página, o total da barra era a soma da página e o rótulo falava das 81 — então dizer *"31
+   * em outra página"* era obrigatório. Agora a seleção pega o **FILTRO INTEIRO** e o valor de
+   * cada id vem do SERVIDOR junto do id: ***o total É o agregado, por construção***, e não há
+   * mais nada "fora da página" pra nomear.
+   *
+   * ⚠️ `null` = nada a avisar. Frase que aparece sempre vira frase que ninguém lê.
    */
-  foraDaPagina?: number
+  aviso?: string | null
   onMarkPaid: () => void
   onDelete: () => void
   onClear: () => void
@@ -67,7 +73,7 @@ const TOM = {
 export function BulkActionsBar({
   selectedCount,
   regua,
-  foraDaPagina = 0,
+  aviso,
   onMarkPaid,
   onDelete,
   onClear,
@@ -107,10 +113,10 @@ export function BulkActionsBar({
         >
           {formatBRL(regua.total)}
         </div>
-        {/* ⚠️ o que o total NÃO alcança vai NOMEADO, nunca escondido */}
-        {foraDaPagina > 0 && (
-          <div className="text-[10.5px] text-amber-700 dark:text-amber-400">
-            {foraDaPagina} em outra página — o total acima soma as desta
+        {/* ⚠️ o que o gesto NÃO alcança vai NOMEADO, nunca escondido */}
+        {aviso && (
+          <div className="text-[10.5px] text-amber-700 dark:text-amber-400" data-testid="bulk-aviso">
+            {aviso}
           </div>
         )}
       </div>

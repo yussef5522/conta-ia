@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { statusDaConta, whereDoStatus, ehFluxo, inicioDoDiaBrasil, inicioDoDiaSeguinteBrasil, type StatusDaConta } from '../escopo'
-import { FAIXAS } from '../faixa-do-tempo'
+import { ESCOPOS_EM_ABERTO } from '../rotulo-do-tempo'
 
 const ler = (p: string) => readFileSync(join(process.cwd(), p), 'utf-8')
 /** ⚠️ sem comentário: o arquivo que DOCUMENTA a remoção não pode ser o que a reprova */
@@ -122,13 +122,13 @@ describe('⭐⭐ O CARD EXISTE, NA ORDEM, E É O FILTRO', () => {
      * 13/09, em que o card dizia 34 e a tabela pintava 9).
      */
     const cartoes = semComentario(ler('components/contas-pagar/CartoesDoTempo.tsx'))
-    expect(cartoes, 'o cartão do VENCE HOJE sumiu da família').toContain('cartao-faixa-')
+    expect(cartoes, 'o cartão do VENCE HOJE sumiu da família').toContain('cartao-escopo-')
     expect(cartoes, 'o rótulo voltou a ser derivado no cliente — dois relógios')
-      .toContain('label={m.rotulo}')
+      .toContain("label={m?.rotulo ?? ''}")
     expect(pagina, 'a família de cartões saiu da tela').toContain('<CartoesDoTempo')
-    // ⭐ a FAIXA existe na lib (é dela que sai o `cartao-faixa-VENCE_HOJE`) — mais forte que
+    // ⭐ a FAIXA existe na lib (é dele que sai o `cartao-escopo-VENCE_HOJE`) — mais forte que
     // procurar a string na página, porque é o tipo que alimenta o `.map` da família
-    expect(FAIXAS, 'VENCE_HOJE saiu da família de faixas').toContain('VENCE_HOJE')
+    expect(ESCOPOS_EM_ABERTO, 'VENCE_HOJE saiu da família de estados de aberto').toContain('VENCE_HOJE')
     // ⭐ e o 4º estado continua dentro do total em aberto que o invariante da tela confere
     expect(pagina).toContain('kpis.totalVenceHoje')
     // ⛔ a régua do rodapé não pode renascer (era a 3ª apresentação do mesmo número)
@@ -149,8 +149,8 @@ describe('⭐⭐ O CARD EXISTE, NA ORDEM, E É O FILTRO', () => {
      */
     const cartoes = semComentario(ler('components/contas-pagar/CartoesDoTempo.tsx'))
     expect(cartoes.indexOf('cartao-pagas'), 'o cartão das PAGAS sumiu').toBeGreaterThan(-1)
-    expect(cartoes.indexOf('cartao-pagas'), 'PAGAS deixou de ser o ÚLTIMO — virou faixa de aberto')
-      .toBeGreaterThan(cartoes.indexOf('cartao-faixa-'))
+    expect(cartoes.indexOf('cartao-pagas'), 'PAGAS deixou de ser o ÚLTIMO — virou estado de aberto')
+      .toBeGreaterThan(cartoes.indexOf('cartao-escopo-'))
     // ⛔ e o rótulo NÃO pode voltar a se chamar "(sem conciliar)": ele conta as conciliadas
     expect(pagina, 'o rótulo do card promete menos do que ele entrega')
       .not.toContain('label={`${ROTULO_PAGAS}')

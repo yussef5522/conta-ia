@@ -45,13 +45,18 @@ import { mesCorrente, rotuloDoMes } from '@/lib/periodo/mes-corrente'
  * fica; o que saiu foi a legenda permanente.*
  */
 import { ROTULO_PAGAS } from '@/lib/contas-pagar/rotulos'
+import { ehFaixaLegada, type FaixaLegada } from '@/lib/contas-pagar/faixa-legada'
+import type {
+  EscopoEmAberto,
+  MedidaDoTempo,
+} from '@/lib/contas-pagar/rotulo-do-tempo'
 import {
-  ehFaixaDoTempo,
-  type FaixaDoTempo,
-  type FaixaMedida,
-} from '@/lib/contas-pagar/faixa-do-tempo'
+  avisoDoTeto,
+  type SelecaoDoFiltro,
+} from '@/lib/contas-pagar/selecao-do-filtro'
 import { CartoesDoTempo } from '@/components/contas-pagar/CartoesDoTempo'
 import { reguaDoCaixaNaSelecao } from '@/lib/contas-pagar/regua-do-caixa-na-selecao'
+import { formatBRL } from '@/lib/format/money'
 import {
   PayableFilters,
   EMPTY_FILTERS,
@@ -140,6 +145,16 @@ interface KPIs {
 
 interface Paginacao {
   total: number
+  /**
+   * ⭐⭐ O VALOR do filtro inteiro, ao lado da contagem (23/10, item 1 do dono).
+   *
+   * ⛔ **Agregado do SERVIDOR, nunca soma da página:** a lista pagina em 50, e somar as
+   * carregadas faria o cabeçalho dizer R$ 52 mil num filtro de R$ 97 mil — *o número que o
+   * dono usa pra decidir se paga*, errado por construção.
+   *
+   * ⚠️ `null` = **não medido**, nunca zero (zero afirmaria filtro sem dinheiro).
+   */
+  totalValor: number | null
   page: number
   limit: number
   totalPages: number
@@ -161,12 +176,12 @@ const EMPTY_KPIS: KPIs = {
 /**
  * ⭐ A faixa que veio da URL — **validada pelo dono da pergunta**, nunca castada.
  *
- * ⛔ `as FaixaDoTempo` deixaria `?faixa=xpto` virar um filtro que o servidor recusa (400) ou,
+ * ⛔ `as FaixaLegada` deixaria `?faixa=xpto` virar um filtro que o servidor recusa (400) ou,
  * pior, uma lista vazia com cara de *"não tem conta nenhuma"*. Valor desconhecido cai em
  * `undefined` = a lista inteira, que é o default honesto.
  */
-function faixaDaUrl(v: string | null): FaixaDoTempo | undefined {
-  return v && ehFaixaDoTempo(v) ? v : undefined
+function faixaDaUrl(v: string | null): FaixaLegada | undefined {
+  return v && ehFaixaLegada(v) ? v : undefined
 }
 
 // Sprint 5.0.3.2 — Feature flag pra esconder UI das tabs Saved Views.
@@ -233,7 +248,7 @@ function ContasAPagarInner() {
     status:
       (searchParams.get('status') as PayableFilterState['status']) ?? 'PENDING',
     // ⭐ a faixa do chip sobrevive ao F5 e é compartilhável, como o resto dos filtros.
-    // ⚠️ VALIDADA pelo dono da pergunta (`ehFaixaDoTempo`), nunca castada cega: `?faixa=xpto`
+    // ⚠️ VALIDADA pelo dono da pergunta (`ehFaixaLegada`), nunca castada cega: `?faixa=xpto`
     // tem que cair na lista inteira, não numa tela vazia ("erro disfarçado de vazio").
     faixa: faixaDaUrl(searchParams.get('faixa')),
     vencidasOnly: searchParams.get('vencidasOnly') === 'true',
@@ -264,12 +279,16 @@ function ContasAPagarInner() {
   const [items, setItems] = useState<PayableRow[]>([])
   const [kpis, setKpis] = useState<KPIs>(EMPTY_KPIS)
   /**
-   * ⭐⭐ AS FAIXAS DO TEMPO — medidas pelo SERVIDOR, com rótulo e tudo (21/10).
+   * ⭐⭐ AS MEDIDAS POR ESTADO — medidas pelo SERVIDOR, com rótulo e tudo (21/10 · 23/10).
    *
    * ⛔ A tela **ecoa**; ela não conta nem datifica nada. Contagem, total e rótulo saem do
-   * MESMO `whereDoStatus` dos cartões, no MESMO instante do relógio do servidor.
+   * MESMO `whereDoStatus` dos cartões, no MESMO instante do relógio do servidor —
+   * ***um relógio só manda***. Um cliente com a hora torta escreveria a data de uma janela
+   * sobre o número de outra.
    */
-  const [faixas, setFaixas] = useState<Partial<Record<FaixaDoTempo, FaixaMedida>>>({})
+  const [medidasDoTempo, setMedidasDoTempo] = useState<
+    Partial<Record<EscopoEmAberto, MedidaDoTempo>>
+  >({})
   /**
    * ⭐ O saldo de caixa de AGORA — a régua da barra da seleção.
    *
@@ -288,6 +307,8 @@ function ContasAPagarInner() {
   const [mes, setMes] = useState(searchParams.get('mes') ?? mesCorrente())
   const [paginacao, setPaginacao] = useState<Paginacao>({
     total: 0,
+    // ⚠️ nasce `null`, nunca 0: antes da 1ª leitura o valor é "a apurar", não "zero"
+    totalValor: null,
     page: 1,
     limit: 50,
     totalPages: 1,
@@ -295,6 +316,27 @@ function ContasAPagarInner() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [selection, setSelection] = useState<Record<string, boolean>>({})
+  /**
+   * ⭐⭐⭐ O VALOR DE CADA ID QUE JÁ PASSOU PELA TELA — é isto que faz o total da barra ser
+   * **o agregado do servidor por construção**, em vez da soma da página.
+   *
+   * ⛔⛔ A seleção atravessa páginas de propósito (o lote opera por id, nunca por página).
+   * Somar só as linhas CARREGADAS fazia a barra imprimir um total que não fecha com o
+   * rótulo ao lado dele — *número de dinheiro em tela sem régua é pior que ausência*. Cada
+   * página carregada acumula aqui, e o "selecionar todas" traz `{id, amount}` do servidor:
+   * ***a soma local É o agregado***, não uma 2ª conta.
+   *
+   * ⚠️ Id sem valor é **impossível por construção**: um id só entra na seleção vindo de uma
+   * página carregada (que grava aqui) ou do `/ids` (que também grava). Não existe caminho
+   * que selecione um id cujo valor a tela não tenha.
+   */
+  const [valorPorId, setValorPorId] = useState<Record<string, number>>({})
+  /**
+   * ⭐ O retrato do "selecionar todas" — os ids+valores do FILTRO INTEIRO, medidos pelo
+   * servidor. `null` = o dono não usou o gesto nesta volta.
+   */
+  const [selecaoDoFiltro, setSelecaoDoFiltro] = useState<SelecaoDoFiltro | null>(null)
+  const [selecionandoTodas, setSelecionandoTodas] = useState(false)
   const [bankAccounts, setBankAccounts] = useState<BankAccountOption[]>([])
   const [efetivar, setEfetivar] = useState<PayableForEfetivar | null>(null)
   // Sprint 5.0.3.0a-fix — dialogs de row actions
@@ -539,33 +581,26 @@ function ContasAPagarInner() {
   const selectedCount = selectedIds.length
 
   /**
-   * ⭐⭐⭐ A RÉGUA DO CAIXA NA SELEÇÃO (item 4 do brief) — *"saldo hoje R$ X → pagando fica
-   * R$ Y"*, a MESMA régua da mesa ① (`saldoDeCaixaAgora` sobre a `regua-do-caixa`).
+   * ⭐⭐⭐ O TOTAL DA SELEÇÃO — **AGREGADO DO SERVIDOR POR CONSTRUÇÃO** (23/10, item 3 do dono).
    *
-   * ⛔⛔ **A SOMA É DAS LINHAS QUE ESTÃO NA PÁGINA, e a barra DIZ quando não alcança tudo.**
-   * A seleção sobrevive à troca de página (por desenho — o lote opera por id), então
-   * `selectedCount` pode ser 6 com 4 linhas carregadas. Somar só as 4 e imprimir *"6 contas
-   * selecionadas · TOTAL"* seria um total que não fecha com o rótulo ao lado dele — *número
-   * de dinheiro em tela sem régua é pior que ausência*. Por isso a barra recebe
-   * `foraDaPagina` e nomeia o que ficou de fora.
+   * ⛔⛔ **A SOMA DA PÁGINA MORREU.** Ela era `items.filter(...).reduce(...)` — e como a
+   * seleção atravessa páginas, a barra imprimia *"81 contas"* ao lado de um total das ~50
+   * carregadas, com uma nota de texto tentando explicar o resto. **Medido em prod: escondia
+   * 31 contas e R$ 44.533,81.** Agora cada valor vem de `valorPorId`, que é preenchido pela
+   * própria página carregada E pelo `/ids` do servidor — ***a soma local É o agregado***.
    *
-   * ⚠️ E a aritmética mora na LIB (`reguaDoCaixaNaSelecao`), não aqui: quem decide
-   * verde/coral/a-apurar é ela, pros oito estados possíveis serem testáveis sem tela.
+   * ⚠️ E a aritmética do verde/coral/a-apurar mora na LIB (`reguaDoCaixaNaSelecao`), não
+   * aqui: os oito estados possíveis são testáveis sem tela.
    */
-  const selecaoNaPagina = useMemo(
-    () => items.filter((i) => selection[i.id]),
-    [items, selection],
+  const totalSelecionado = useMemo(
+    () => selectedIds.reduce((acc, id) => acc + (valorPorId[id] ?? 0), 0),
+    [selectedIds, valorPorId],
   )
   const regua = useMemo(
-    () =>
-      reguaDoCaixaNaSelecao(
-        selecaoNaPagina.length,
-        selecaoNaPagina.reduce((acc, i) => acc + i.amount, 0),
-        saldoCaixa,
-      ),
-    [selecaoNaPagina, saldoCaixa],
+    () => reguaDoCaixaNaSelecao(selectedCount, totalSelecionado, saldoCaixa),
+    [selectedCount, totalSelecionado, saldoCaixa],
   )
-  const selecionadasForaDaPagina = selectedCount - selecaoNaPagina.length
+
 
   // Sprint 5.0.3.0b — Saved view derivado da URL
   const urlViewParam = searchParams.get('view')
@@ -617,52 +652,32 @@ function ContasAPagarInner() {
       .catch(() => {})
   }, [empresaId])
 
-  const fetchItems = useCallback(async () => {
-    if (!empresaId) {
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    try {
-      const qs = new URLSearchParams({
-        empresaId,
-        page: String(page),
-        limit: '50',
-      })
-      if (qDebounced) qs.set('q', qDebounced)
-      if (filters.dataDe) qs.set('dataDe', filters.dataDe)
-      if (filters.dataAte) qs.set('dataAte', filters.dataAte)
-      if (filters.status !== 'TODOS') qs.set('status', filters.status)
-      // ⭐ o recorte dos três stats — é ele que faz o card e a lista mostrarem o MESMO
-      if (filters.escopo) qs.set('escopo', filters.escopo)
-      // ⭐ o chip da faixa é o filtro — o MESMO `whereDaFaixa` que contou o chip recorta a lista
-      if (filters.faixa) qs.set('faixa', filters.faixa)
-      qs.set('mes', mes)
-      if (filters.vencidasOnly) qs.set('vencidasOnly', 'true')
-
-      const { ok, data, message } = await fetchJson<{
-        items: typeof items
-        kpis: typeof kpis
-        paginacao: typeof paginacao
-        faixas: Partial<Record<FaixaDoTempo, FaixaMedida>>
-        saldoCaixa: number | null
-      }>(`/api/contas-a-pagar?${qs}`)
-      if (!ok) {
-        toast({ variant: 'destructive', title: 'Erro ao carregar contas a pagar', description: message ?? 'Tenta de novo.' })
-        return // não deixa lista/KPIs stale passarem por atuais
-      }
-      setItems(data!.items)
-      setKpis(data!.kpis)
-      setPaginacao(data!.paginacao)
-      setFaixas(data!.faixas ?? {})
-      // ⚠️ `?? null` e nunca `?? 0`: payload sem o campo é "não medi", não "caixa zerado"
-      setSaldoCaixa(data!.saldoCaixa ?? null)
-    } finally {
-      setLoading(false)
-    }
+  /**
+   * ⭐⭐⭐ O RECORTE TEM UM DONO SÓ — a LISTA e o "selecionar todas" mandam os MESMOS params.
+   *
+   * ⛔⛔ Montar a query duas vezes seria a 2ª régua do *"o que está no filtro?"*: a rota de ids
+   * usa o MESMO `buildPayableListWhere` da lista, mas **só se receber os mesmos parâmetros**.
+   * Divergir aqui marcaria um conjunto que a tabela não mostra — a pior divergência possível
+   * numa tela de dinheiro, porque o dono confere o número e ele fecha com a coisa errada.
+   *
+   * ⚠️ `page`/`limit` ficam FORA de propósito: eles são da paginação da lista, e a seleção do
+   * filtro não tem página.
+   */
+  const paramsDoFiltro = useCallback(() => {
+    const qs = new URLSearchParams({ empresaId: empresaId ?? '' })
+    if (qDebounced) qs.set('q', qDebounced)
+    if (filters.dataDe) qs.set('dataDe', filters.dataDe)
+    if (filters.dataAte) qs.set('dataAte', filters.dataAte)
+    if (filters.status !== 'TODOS') qs.set('status', filters.status)
+    // ⭐ o recorte dos cartões — é ele que faz o card e a lista mostrarem o MESMO
+    if (filters.escopo) qs.set('escopo', filters.escopo)
+    // ⚠️ LEGADO: link velho com `?faixa=` ainda recorta (a rota traduz pra `escopo`)
+    if (filters.faixa) qs.set('faixa', filters.faixa)
+    qs.set('mes', mes)
+    if (filters.vencidasOnly) qs.set('vencidasOnly', 'true')
+    return qs
   }, [
     empresaId,
-    page,
     qDebounced,
     filters.dataDe,
     filters.dataAte,
@@ -673,9 +688,133 @@ function ContasAPagarInner() {
     mes,
   ])
 
+  const fetchItems = useCallback(async () => {
+    if (!empresaId) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    try {
+      const qs = paramsDoFiltro()
+      qs.set('page', String(page))
+      qs.set('limit', '50')
+
+      const { ok, data, message } = await fetchJson<{
+        items: typeof items
+        kpis: typeof kpis
+        paginacao: typeof paginacao
+        medidasDoTempo: Partial<Record<EscopoEmAberto, MedidaDoTempo>>
+        saldoCaixa: number | null
+      }>(`/api/contas-a-pagar?${qs}`)
+      if (!ok) {
+        toast({ variant: 'destructive', title: 'Erro ao carregar contas a pagar', description: message ?? 'Tenta de novo.' })
+        return // não deixa lista/KPIs stale passarem por atuais
+      }
+      setItems(data!.items)
+      setKpis(data!.kpis)
+      setPaginacao(data!.paginacao)
+      setMedidasDoTempo(data!.medidasDoTempo ?? {})
+      /**
+       * ⭐⭐ O VALOR DE CADA LINHA FICA GUARDADO POR ID, e é isso que faz o total da barra ser
+       * o agregado do servidor **por construção** em vez da soma da página.
+       *
+       * ⛔ A seleção atravessa páginas (o lote opera por id). Sem acumular, trocar de página
+       * deixaria o id selecionado e o valor dele fora da conta — foi exatamente o defeito
+       * medido em prod (a barra escondia 31 contas e R$ 44.533,81).
+       */
+      setValorPorId((prev) => {
+        const next = { ...prev }
+        for (const i of data!.items) next[i.id] = i.amount
+        return next
+      })
+      // ⚠️ `?? null` e nunca `?? 0`: payload sem o campo é "não medi", não "caixa zerado"
+      setSaldoCaixa(data!.saldoCaixa ?? null)
+    } finally {
+      setLoading(false)
+    }
+    // ⚠️ `toast` fora das deps de propósito (é a referência do provider e o fetch não deve
+    // re-disparar por causa dela) — a mesma forma de antes desta fatia.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId, page, paramsDoFiltro])
+
   useEffect(() => {
     void fetchItems()
   }, [fetchItems])
+
+  /**
+   * ⭐⭐ SELECIONAR TODAS = **O FILTRO INTEIRO**, não a página.
+   *
+   * ⛔ Os ids vêm do servidor pelos **MESMOS params da lista** (`paramsDoFiltro`), pela rota
+   * que usa o MESMO `buildPayableListWhere` — senão o gesto marcaria um conjunto que a
+   * tabela não mostra. E **SUBSTITUI** a seleção (não soma): *"todas do filtro"* é uma
+   * afirmação sobre um conjunto, não um acréscimo ao que estava marcado antes.
+   *
+   * ⚠️ Os valores entram no `valorPorId` no MESMO gesto — é o que mantém o total verdadeiro
+   * pros ids que a tela nunca carregou.
+   */
+  const marcarTodasDoFiltro = useCallback(async () => {
+    if (!empresaId) return
+    setSelecionandoTodas(true)
+    try {
+      const { ok, data, message } = await fetchJson<SelecaoDoFiltro>(
+        `/api/contas-a-pagar/ids?${paramsDoFiltro()}`,
+      )
+      if (!ok || !data) {
+        toast({
+          variant: 'destructive',
+          title: 'Não consegui marcar todas do filtro',
+          description: message ?? 'Tenta de novo.',
+        })
+        return
+      }
+      setSelecaoDoFiltro(data)
+      setValorPorId((prev) => {
+        const next = { ...prev }
+        for (const par of data.pares) next[par.id] = par.amount
+        return next
+      })
+      const marcadas: Record<string, boolean> = {}
+      for (const par of data.pares) marcadas[par.id] = true
+      setSelection(marcadas)
+    } finally {
+      setSelecionandoTodas(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId, paramsDoFiltro])
+
+  /**
+   * ⭐ O estado do checkbox do cabeçalho — quem sabe é a PÁGINA, que tem a seleção.
+   *
+   * ⚠️ `TODAS` só quando o retrato existe E a seleção é EXATAMENTE ele: assim desmarcar uma
+   * linha depois de marcar todas volta pra `PARCIAL` na hora, em vez de seguir prometendo
+   * um conjunto que já não está marcado.
+   */
+  const estadoDaSelecaoDoFiltro: 'NENHUMA' | 'PARCIAL' | 'TODAS' | 'CARREGANDO' =
+    selecionandoTodas
+      ? 'CARREGANDO'
+      : selectedCount === 0
+        ? 'NENHUMA'
+        : selecaoDoFiltro &&
+            selecaoDoFiltro.pares.length > 0 &&
+            selecaoDoFiltro.pares.length === selectedCount &&
+            selecaoDoFiltro.pares.every((p) => selection[p.id])
+          ? 'TODAS'
+          : 'PARCIAL'
+
+  /**
+   * ⭐⭐ TROCAR O FILTRO INVALIDA O RETRATO DO "TODAS", **nunca a seleção**.
+   *
+   * ⛔ `selecaoDoFiltro` é a resposta de *"quais são as contas DESTE filtro"* — mudou o
+   * filtro, aquela resposta deixou de valer e o checkbox do cabeçalho não pode seguir
+   * dizendo `TODAS`. ⛔⛔ Mas a SELEÇÃO fica: ela atravessar página e filtro é o desenho
+   * (o lote opera por id), e zerá-la aqui jogaria fora o trabalho do dono.
+   *
+   * ⚠️ E **trocar de PÁGINA não entra nas deps** de propósito: paginar não muda o filtro.
+   */
+  useEffect(() => {
+    setSelecaoDoFiltro(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramsDoFiltro])
 
   // Sync URL com state (sem provocar reload). Inclui ?view= quando ativa.
   useEffect(() => {
@@ -1061,16 +1200,28 @@ function ContasAPagarInner() {
               *"a vencer (3d)"* em 13/09. O total em aberto segue à vista (é a Σ dos cartões).
               ⭐ O rótulo adulto (nome + data) vem MEDIDO do servidor; a tela ecoa. */}
           <CartoesDoTempo
-            medidas={faixas}
-            faixaAtiva={filters.faixa}
+            medidas={medidasDoTempo}
+            escopoAtivo={filters.escopo}
             totalEmAberto={kpis.totalVenceHoje + kpis.totalPendente + kpis.totalVencido}
-            onEscolherFaixa={(f) => {
+            onEscolherEscopo={(e) => {
               /**
-               * ⚠️ A faixa recorta o que está EM ABERTO, então ela manda `status: 'TODOS'` e
-               * **zera o escopo do cartão** — deixar os dois ligados recortaria duas vezes,
-               * e o cartão diria 25 com a lista mostrando 3 (a divergência de 13/09).
+               * ⚠️ O cartão recorta o que está EM ABERTO, então ele manda `status: 'TODOS'`
+               * e **mata a faixa legada** — deixar as duas ligadas recortaria duas vezes, e
+               * o cartão diria 25 com a lista mostrando 3 (a divergência de 13/09).
+               *
+               * ⛔⛔ E **`dataDe`/`dataAte`/`mes` SOBREVIVEM**: o `kpiBaseInput` mede os
+               * cartões DENTRO do período, então resetar pra `EMPTY_FILTERS` aqui faria a
+               * lista mostrar MAIS do que o cartão contou — a doença de 13/09 (o card dizia
+               * 34 e a tabela pintava 9).
                */
-              setFilters({ ...filters, faixa: f, status: 'TODOS', escopo: undefined })
+              setFilters({
+                ...filters,
+                escopo: e,
+                faixa: undefined,
+                status: 'TODOS',
+                vencidasOnly: false,
+                q: '',
+              })
               setPage(1)
             }}
             pagas={{
@@ -1101,6 +1252,9 @@ function ContasAPagarInner() {
                 }}
                 onClear={clearFilters}
                 total={paginacao.total}
+                /* ⭐⭐ item 1 do dono: *"ao lado de «81 contas no filtro» entra o valor"* —
+                   agregado do SERVIDOR sobre o filtro INTEIRO, nunca a soma da página. */
+                totalValor={paginacao.totalValor}
               />
             </CardContent>
           </Card>
@@ -1129,7 +1283,14 @@ function ContasAPagarInner() {
               /* ⭐ o subtotal do cabeçalho de seção é o da FAIXA INTEIRA (o MESMO número do
                  chip), nunca a soma das linhas da página — e quando a página corta a faixa,
                  o cabeçalho DIZ. */
-              totaisPorFaixa={faixas}
+              totaisPorEstado={medidasDoTempo}
+              /* ⭐⭐ "selecionar todas" = O FILTRO INTEIRO (item 3). O estado vem da PÁGINA,
+                 que é quem tem a seleção; a tabela só desenha o checkbox. */
+              selecaoDoFiltro={{
+                estado: estadoDaSelecaoDoFiltro,
+                marcarTodas: () => void marcarTodasDoFiltro(),
+                limpar: () => setSelection({}),
+              }}
               density={tablePrefs.effectiveDensity}
               hiddenColumns={
                 // Sprint 5.0.3.0d (d3) — Em mobile, esconde colunas secundárias
@@ -1295,6 +1456,9 @@ function ContasAPagarInner() {
       <MarkPaidBulkDialog
         open={bulkMarkPaidOpen}
         count={selectedCount}
+        /* ⭐⭐ *"Marcar 81 contas como pagas — R$ 97.313,25?"* — a confirmação DIZ o número
+           E o valor. ⚠️ É o agregado (`valorPorId`), nunca a soma da página. */
+        valor={totalSelecionado}
         empresaId={empresaId}
         transactionIds={selectedIds}
         onClose={() => setBulkMarkPaidOpen(false)}
@@ -1326,7 +1490,11 @@ function ContasAPagarInner() {
       <ConfirmDialog
         open={bulkDeleteOpen}
         onOpenChange={setBulkDeleteOpen}
-        title={`Excluir ${selectedCount} ${selectedCount === 1 ? 'conta' : 'contas'} a pagar?`}
+        /* ⭐ a confirmação em lote DIZ o número E o valor — *"Excluir 81 contas — R$ …?"*
+           ⚠️ zero não vira `R$ 0,00`: sem valor medido, o título sai só com a contagem. */
+        title={`Excluir ${selectedCount} ${selectedCount === 1 ? 'conta' : 'contas'} a pagar${
+          totalSelecionado > 0 ? ` — ${formatBRL(totalSelecionado)}` : ''
+        }?`}
         description={
           <>
             Esta ação não pode ser desfeita. Contas efetivadas com banco terão
@@ -1412,7 +1580,13 @@ function ContasAPagarInner() {
           <BulkActionsBar
             selectedCount={selectedCount}
             regua={regua}
-            foraDaPagina={selecionadasForaDaPagina}
+            /**
+             * ⛔⛔ A NOTA *"N em outra página"* MORREU: a seleção pega o FILTRO INTEIRO e o
+             * valor de cada id vem do servidor junto do id, então **o total É o agregado por
+             * construção** — não há mais nada "fora da página" pra nomear.
+             * ⭐ O que ainda fica de fora é só o TETO DO LOTE, e ele vai NOMEADO.
+             */
+            aviso={selecaoDoFiltro ? avisoDoTeto(selecaoDoFiltro) : null}
             onMarkPaid={() => setBulkMarkPaidOpen(true)}
             onDelete={() => setBulkDeleteOpen(true)}
             onClear={() => setSelection({})}

@@ -26,9 +26,23 @@ interface ContaPagamento {
   balance: number
 }
 
+import { formatBRL } from '@/lib/format/money'
+
 interface Props {
   open: boolean
   count: number
+  /**
+   * ⭐⭐ O VALOR do que vai ser marcado — *"Marcar 81 contas como pagas — R$ 97.313,25?"*
+   * (23/10, item 3 do dono: *"confirmação explícita do número E do valor"*).
+   *
+   * ⛔ Com "selecionar todas" pegando o FILTRO INTEIRO, o número pode ser bem maior que a
+   * página — e **confirmar 81 pagamentos vendo só a contagem é confirmar no escuro**. O valor
+   * vem da MESMA régua que a barra desenha (agregado do servidor, nunca soma de página).
+   *
+   * ⚠️ `null` = não medido. O título sai **sem** o valor, nunca com `R$ 0,00` — zero afirmaria
+   * que o lote não vale nada.
+   */
+  valor: number | null
   empresaId: string
   transactionIds: string[]
   onClose: () => void
@@ -47,6 +61,7 @@ function todayISO(): string {
 export function MarkPaidBulkDialog({
   open,
   count,
+  valor,
   empresaId,
   transactionIds,
   onClose,
@@ -152,9 +167,10 @@ export function MarkPaidBulkDialog({
     <Dialog open={open} onOpenChange={(o) => !o && !loading && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle data-testid="bulk-pay-titulo">
             Marcar {count} {count === 1 ? 'conta' : 'contas'} como{' '}
             {count === 1 ? 'paga' : 'pagas'}
+            {valor !== null && <> — {formatBRL(valor)}</>}
           </DialogTitle>
           <DialogDescription>
             Registra o pagamento sem mexer em saldo bancário. Pra debitar de
