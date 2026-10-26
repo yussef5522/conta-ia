@@ -13806,6 +13806,182 @@ contando como vermelho**.
    corrente, ela traz as **pagas** primeiro, e conta paga não abre seção. As linhas-seção aparecem
    no recorte do cartão. **Pré-existente** (a ordenação é de 26/09).
 
+## 🔧⭐⭐⭐ CONTAS A PAGAR — MICRO 1.2: O TOTAL DO FILTRO · OS CARTÕES QUE SE ENTENDEM · A SELEÇÃO QUE NÃO MENTE (23-25/10/2026)
+
+⛔ **Migration NENHUMA · ZERO escrita em dado · Lei C0 (as telas vizinhas intocadas) · Δ chunks +0 KB.**
+
+### ⭐⭐⭐ ITEM 3 — A CAÇA RESPONDEU PRIMEIRO, E O ALVO DO SPRINT MUDOU
+
+A pergunta do dono era *"com 81 selecionadas em 2 páginas, «Marcar como pagas» e «Excluir» agem nas
+81 ou só nas da página?"*. **Medido no código de prod (`8d46351d`): elas SEMPRE agiram nas 81** —
+`selectedIds` vem de um `Record<string, boolean>` que **sobrevive à paginação**, e a rota de bulk
+recebe **IDS EXPLÍCITOS** (`transactionIds: z.array(...).min(1).max(TETO_DO_LOTE)`), **sem resolver
+filtro nenhum no servidor**. ⛔ **Não era o defeito grave de *"ação parcial dizendo total"*.**
+
+**⛔⛔ O DEFEITO ESTAVA UM DEGRAU ANTES, e era DOIS:** (a) **não havia caminho pra selecionar as
+81** — o checkbox do cabeçalho era `toggleAllPageRowsSelected`, que alcança só as ~50 da página; e
+(b) **o total da barra era a soma da PÁGINA** (`selecaoNaPagina.reduce(…)`) enquanto a contagem e as
+ações falavam das 81. **Esse MENTIA** — medido no estado de hoje, a barra escondia **27 contas e
+R$ 48.165,66**.
+
+⭐ **A cura é `/api/contas-a-pagar/ids` (read-only) devolvendo os ids do filtro inteiro + o
+`amount`** — então **o total da barra É o agregado por construção**, não uma 2ª soma que pode
+divergir. ⛔ E o teto de 500 é tratado com honestidade (`avisoDoTeto`), nunca truncando calado.
+
+### ⭐⭐ ITEM 1 — O TOTAL DO FILTRO, SEMPRE VISÍVEL
+
+*"81 contas no filtro · R$ 97.313,25"*, do **agregado do SERVIDOR** (`paginacao.totalValor`, com o
+MESMO `where` do `count` que produz a contagem ao lado), **nunca a soma da página**. ⛔ A lista
+pagina em 50 — somar as linhas carregadas faria o cabeçalho dizer R$ 36 mil num filtro de R$ 84
+mil, **no número que o dono usa pra decidir se paga**. ⚠️ `totalValor` **`null` = não medido, nunca
+zero**: zero afirmaria que o filtro não tem dinheiro.
+
+### ⭐⭐⭐ ITEM 2 — OS CARTÕES VOLTARAM A SER OS 3 QUE ELE ENTENDE
+
+Morreram as **janelas deslizantes** (`PRÓXIMOS 7 DIAS` · `RESTO DO MÊS`) e voltou o cartão único
+**A VENCER com as datas do período no rótulo**. A fileira é **VENCIDAS · VENCE HOJE · A VENCER ·
+PAGAS**, e as seções da tabela seguem o mesmo corte.
+
+- ⭐⭐ **`whereDoStatus` é PARTIÇÃO PERFEITA dos 3 estados de aberto** — `]-∞,hoje[` · `[hoje,amanhã[`
+  · `[amanhã,+∞[` **+ a sem-vencimento** —, então **Σ dos três == total em aberto POR CONSTRUÇÃO**,
+  não por coincidência de dado.
+- ⛔⛔ **E o motivo de o vocabulário de 6 faixas morrer é mais duro que preferência:**
+  `whereDaFaixa('VENCIDAS')` era **CÓPIA LITERAL** de `whereDoStatus('VENCIDA')` — **duas réguas pra
+  mesma palavra**, o defeito exato de 13/09 (o card dizia `34 · 48.502,57` e a tabela pintava
+  `9 · 20.635,54`). As três faixas de data só **subdividiam** `A_PAGAR`.
+- ⛔⛔ **UM RELÓGIO SÓ MANDA: o SERVIDOR monta o `rotuloDoEscopo`** no mesmo instante do agregado.
+  Cliente com hora torta **escreveria a data de uma janela sobre o número de outra** (a cicatriz do
+  tablet que mentiu zero por dois dias, 08/09).
+- ⭐ **A data do «A VENCER» é a INTERSEÇÃO** do estado (começa AMANHÃ) com a janela do filtro:
+  `de = max(amanhã, janela.de)` · `ate = janela.ate`. Sem ela o rótulo prometeria *"a partir de
+  26/10"* numa lista que para em 31/10.
+- ⚠️ **Dia é CALENDÁRIO, no dia do BRASIL** — às 23h de São Paulo o servidor em UTC já diz amanhã, e
+  a conta de hoje apareceria vencida com o dia inteiro pra pagar.
+- ⛔ **Clicar no cartão PRESERVA `dataDe/dataAte/mes` e limpa `q`/`status`/`vencidasOnly`** — manter
+  os dois recortaria por **duas** réguas, que é como a lista passou a mostrar menos do que o card
+  dizia. E o `faixa` legado vai `undefined` (recorte duplo).
+- ⚠️ **O `?faixa=` legado sobrevive só como passthrough de URL** (`FAIXA_LEGADA_PARA_ESCOPO`, em
+  `lib/contas-pagar/faixa-legada.ts`): print, e-mail ou histórico do navegador não viram 404
+  silencioso.
+
+### ⭐⭐ O TETO DO LOTE GANHOU DONO ÚNICO — e o comentário PROMETIA uma trava inexistente
+
+O `500` vivia escrito **três vezes** (os dois `.max(500)` do `bulkActionSchema` + `TETO_DO_LOTE`), e
+o comentário da lib prometia que *"os dois são conferidos por teste"* — **esse teste não existia**.
+⛔⛔ ***Comentário que promete ser a trava sem ser a trava é pior que comentário nenhum*** (a
+cicatriz de 08/10). Derivado de `TETO_DO_LOTE`, **elevar um e esquecer o outro passou a ser
+impossível** (REGRA 5): a tela nunca mais oferece 800 ids pra uma rota que recusa 500. ⚠️ Sem ciclo
+de import — `selecao-do-filtro.ts` é puro, zero import.
+
+### ⭐ O TESTE QUE FALTAVA — `o-lote-age-nas-81.test.ts` (11 testes)
+
+Ele **EXECUTA o schema e a lib** (REGRA 3 — *grep não distingue "a rota aceita 81 ids" de "a rota
+tem a palavra 81 num comentário"*), com os números reais do print e `cuid()` de forma válida pra o
+`z.string().cuid()` rodar de verdade. Três describes: *a seleção é do FILTRO inteiro* (as 81, Σ dos
+pares == total, **contrafactual da soma de página**, o `amount` viajando com o id) · *as ações agem
+nas 81* (`mark_paid`/`delete` com 81 ids, all-or-nothing com `'1 de 81'` na mensagem, e **a recusa
+de `filtro` no lugar de `transactionIds`** — *se a rota aceitasse filtro, um bug nele apagaria a
+linha errada*) · *o teto tem um dono só* (500 passa, 501 recusa nas duas ações, truncagem **DITA**).
+
+### ⚠️⚠️ REGRA 11 — 5 DEFEITOS REPOSTOS, 5 MORDERAM (baseline 0 · restaurado 0)
+
+o teto não-derivado (**1**) · o recorte caindo (**2**) · a truncagem calada (**1**) · o `amount`
+saindo do par (**1**) · o rótulo DERIVADO no cliente (**3**).
+
+⚠️ **E o reaponte do guard da referência levou 3 rodadas de MEDIÇÃO, com 4 asserções minhas
+desatualizadas ou CHUTADAS:** `totaisPorFaixa` → o nome real é **`totaisPorEstado`** ·
+`label={m.rotulo}` → o real é **`label={m?.rotulo ?? ''}`** · `totaisPorEstado={faixas}` → o prop
+real é **`={medidasDoTempo}`** · e **`escopo: undefined` na rota era CHUTE meu** — medido, a rota só
+tem `faixa: undefined`, porque o `kpiBaseInput` dropa `status`/`q`/`vencidasOnly`/`faixa` e o escopo
+é passado **por cada medida**. ***Afirmar a linha seria afirmar uma forma que o código não tem*** —
+removida com o motivo escrito.
+
+⛔⛔ **E o P2 MORDIA O COMENTÁRIO DA PRÓPRIA REFERÊNCIA:** `PRÓXIMOS 7 DIAS` aparece na nota v2.1 que
+**documenta a morte das janelas**. ***O arquivo que documenta o defeito não pode ser o que o
+absolve*** (a 22ª vez nesta casa) — o guard passou a ler `semComentarios(REF_SCRIPT)`.
+
+**⚠️ 2 TESTES INVERTIDOS com o motivo escrito:** *"os cartões são desenhados sempre"* (eram
+filtrados por `faixaAtiva`) e *"O RÓTULO NÃO TEM RÉGUA DE RECORTE"* (a lib do rótulo não pode
+conter `where`/`dueDate:`/`prisma`; a rota mede por `ESCOPOS_EM_ABERTO`/`whereDoStatus`, e
+`faixa-do-tempo.ts` **não existe mais**). **E 2 inversões da nota de parcialidade** (`foraDaPagina`
+· *"em outra página"*): elas **morreram do código** com a cura do item 3, e a metade que importa —
+*o total nunca é soma de página* — segue travada nos outros `expect`.
+
+### A PROVA EM PROD — NAVEGANDO, 2 VIEWPORTS (REGRA 12) · ZERO ESCRITA
+
+⚠️ **O filtro é o do print, o dado é o de HOJE** (25/10 20:24 UTC): o dono operou nos dois dias, e
+o print de 23/10 dizia 81 · R$ 97.313,25. ***Número de tela muda quando o dado muda — reportar
+sempre COM o instante*** (a lição de 26/08). **O que não muda é o invariante.**
+
+```
+ROTA 200 · ⭐ CABEÇALHO: 77 contas no filtro · R$ 84.166,94   (filtro 1–31/10 · Pendentes)
+
+OS CARTÕES (rótulo montado no SERVIDOR, no mesmo instante do agregado)
+  VENCIDAS · até 24/10            28 ·  R$ 20.854,04
+  VENCE HOJE · dom · 25/10         6 ·  R$  8.560,34
+  A VENCER · 26 a 31/10           43 ·  R$ 54.752,56
+  PAGAS (sem conciliar) ·  …            (contexto, FORA da soma)
+  ⛔⛔ Σ dos 3 abertos  77 · R$ 84.166,94
+  ⛔⛔ total do filtro   77 · R$ 84.166,94   → ⭐⭐ FECHA AO CENTAVO
+  ⛔ cartão de data SEM data no rótulo: 0 ✓
+
+A SELEÇÃO É DO FILTRO INTEIRO (/ids 200)
+  77 pares · totalNoFiltro 77 · truncado false · avisoDoTeto (nenhum)
+  ⛔ Σ dos pares R$ 84.166,94 == total do filtro → ⭐ BATE (o total da barra É o agregado)
+  ⛔ pares == contagem do cabeçalho → ⭐ SIM
+  ⛔ CONTRAFACTUAL (a barra ANTES da cura): soma da PÁGINA R$ 36.001,28 de 50 linhas
+     ela escondia 27 contas e R$ 48.165,66
+
+O CARTÃO É O FILTRO — card == lista em 3 de 3
+  VENCIDA 28 → 28 ⭐ · VENCE_HOJE 6 → 6 ⭐ · A_PAGAR 43 → 43 ⭐
+
+REGRA 12 — chunk DESTA tela 123 KB · celular 200/276ms · desktop 200/90ms
+  ⭐ 11/11 peças nos DOIS (filters-total · cartao-escopo- · secao- · bulk-total ·
+     bulk-actions-bar · regua-do-caixa · bulk-mark-paid/delete/clear · filter-status ·
+     filters-clear)   ·   ⭐ os 2 viewports carregam os MESMOS chunks (uma composição)
+  ⛔→✓ MORTAS, 0 ressuscitadas: foraDaPagina · "em outra página" · "A vencer (3d)" ·
+       "Vence em breve" · sticky-footer · chip-faixa- · filter-vencidasOnly
+  ⚠️ 3 hex no chunk — TODOS pré-existentes e atribuídos por linha: #534AB7 ×2 (PayableTable
+     519/571, o roxo legado) · #999999 e #888888 (page.tsx 359/366, categoria placeholder).
+     ZERO hex nas peças NOVAS.
+
+LEI C0   mesa ① · contas a receber · conciliação · fluxo de caixa · custos fixos
+         → 200 nos DOIS viewports, INTOCADAS
+ESCRITA  transações 10.490 → 10.490 · categorias 714 → 714   ⭐ ZERO ESCRITA
+```
+
+**1024 arquivos · 13.897 verdes · 2 todo · TS 0 · migration NENHUMA · commit `179a3e03` ·
+deploy 4/4 (`KoWQCthEBip0Ioo7k1NzV`) · Δ chunks +0 KB · home p95 22 ms.**
+
+### ⚠️⚠️ CINCO ERROS DE SONDA MEUS, e os três últimos são a MESMA família
+
+(a) **o SSH caiu no meio do deploy (exit 255)** — o `deploy.sh` **não falhou** (build terminou,
+symlink trocou, SHA em prod é o meu), mas **eu não li o gate**: medi os 4 na mão (BUILD_ID servido ·
+pm2 mesmo PID após 10s · 2/2 CSS 200 · login com credencial inválida → **401**, nunca 500).
+***Deploy cujo gate eu não li é deploy não provado*** — daqui pra frente `ServerAliveInterval`.
+(b) **`\/` dentro de regex literal** no heredoc **fechava o regex** → `Syntax error "\"` do esbuild.
+(c) **chutei `m.count`** — o campo é **`contagem`** (e a sonda imprimiu `0` com o VALOR fechando ao
+centavo, parecendo defeito numa tela certa). (d) **chutei `j.rows`** — é **`items`**. (e) **medi a
+superfície ERRADA**: baixei `/contas-a-pagar` **sem cookie**, peguei o HTML do **login**, e os 12
+testids vieram ⛔ **com a tela correta**. ***Nome de campo, testid e superfície se LEEM do repo —
+nunca se chutam***, e cada chute produz um vermelho tão convincente quanto um defeito real.
+
+⚠️ E as 3 sondas rodaram de `scripts/` e saíram com **`saferm` na MESMA linha de comando**
+(`git status --short scripts/` limpo depois) — a regra de 18/10: *sonda nunca dorme no workspace de
+build*.
+
+📋 **FICA PRO DONO (REGRA 2, o olho e o dedo são dele):**
+1. **Abrir a tela no celular e no notebook, nos dois temas** — a prova mede o que prod serve (11/11
+   peças, chunk idêntico nos dois, hex atribuído ao legado), **mas quem vê a cara é ele**.
+   ⚠️ Screenshot indisponível (extensão do Chrome desligada nesta sessão).
+2. **Selecionar TODAS no filtro e conferir a barra** — ela tem que dizer **77 · R$ 84.166,94** (o
+   agregado), nunca a soma da página; e o *"Marcar 77 contas como pagas — R$ 84.166,94?"* confirma o
+   número antes de agir. ⛔ **Eu não marquei nada** (zero escrita).
+3. ⚠️ **O teto do lote é 500** — acima disso a seleção trunca e **DIZ** (`avisoDoTeto` com o total e
+   o que ficou fora). Hoje não dispara (77 contas).
+4. ⚠️ **A régua do caixa segue CORAL em toda seleção real** — o caixa está negativo (a conta
+   garantida do Sicredi, documentada desde 25/08). O verde está provado por contrafactual.
+
 ## Ordem de deploy (PJ + PF)
 
 **⚠️ SWAP DE 2GB É OBRIGATÓRIO NO SERVIDOR (25/08).** O `npm run build` do Next roda o type-check num worker que chega a **~1,9 GB de RSS**; o servidor tem 3,9 GB e estava **sem swap nenhum** → o OOM killer matava o worker (`signal: SIGKILL`) e o `.next` ficava **sem `BUILD_ID`**, deixando o pm2 em loop de erro. **Não adianta mexer no `--max-old-space-size`:** teto alto (2560) o kernel mata igual; teto baixo (1400) o próprio V8 aborta por heap insuficiente (`SIGABRT`) — o type-check PRECISA de ~2 GB. Criado em 25/08: `fallocate -l 2G /swapfile && chmod 600 && mkswap && swapon` + linha no `/etc/fstab` (persiste no reboot). Build voltou a passar de primeira. **Servidor novo nasce quebrado sem isso** — incluir no provisionamento junto com o poppler. Pra desfazer: `swapoff /swapfile && rm /swapfile` + tirar a linha do fstab.
