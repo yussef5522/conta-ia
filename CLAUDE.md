@@ -13982,6 +13982,178 @@ build*.
 4. ⚠️ **A régua do caixa segue CORAL em toda seleção real** — o caixa está negativo (a conta
    garantida do Sicredi, documentada desde 25/08). O verde está provado por contrafactual.
 
+## 🛡⭐⭐⭐ FASE 0 — A CHAVE RESERVA (backup 3-2-1 + disco + os 3 ajustes, 26/10/2026)
+
+**Risco zero, nada visível muda.** ⛔ Zero toque em dado · migration ADITIVA (3 `CREATE INDEX IF
+NOT EXISTS`, no-op em prod) · deploy 4/4 (`DBzJ2ye6PbCSLjd7MRdBw`, SHA `d8e34690`).
+
+### ⭐ PASSO 1 — O DISCO: **NÃO recomendar o upgrade** (o veredito, com número)
+
+```
+116G total · 10G usado · 105G livres → 9% usado / 91% livre     (gatilho era "abaixo de ~40% livre")
+faxina de builds agendada 5h (MANTER=3) · 3 dirs de 191M cada
+```
+⛔ **NÃO aumentei nada por conta própria** — resize é clique do dono, e aqui ele **não é
+necessário**. ⚠️ **Dois achados do disco, decisão dele:** **1.2G em 397 dumps SEM retenção** em
+`/var/backups/conta-ia` (o `pg_dump` pré-sprint nunca foi expurgado) e **27 dumps de 0 BYTES** — a
+cicatriz de 28/09 (*dump só conta depois de conferir o TAMANHO*) deixando rastro no disco.
+
+### ⛔⛔⛔ PASSO 2 — O BACKUP EXISTE, ESTÁ AGENDADO, E **ABORTA SEM AS CHAVES** (é o bloqueio)
+
+`backup-diario.sh` (2h30) faz `pg_dump -Fc` → cofre EXTERNO via rclone, retenção **30 diárias + 12
+mensais**. ⭐ **E ele PARA no lugar certo**, provado rodando em prod:
+```
+FALHOU 2026-10-26T23:57:33-03:00  falta /opt/conta-ia/.env.backup — o dono ainda nao deu as 2 chaves do cofre
+```
+⚠️ **`.env.backup` NÃO EXISTE e o rclone NÃO está instalado** — então **hoje NÃO HÁ cópia do banco
+fora desta máquina**. ⛔ **Nada de chave inventada nem cofre na mesma máquina:** cofre no próprio
+droplet não é backup, é uma segunda pasta do mesmo ponto de falha. **O passo a passo está no
+relatório ao dono; o sistema espera as 2 chaves.**
+
+### ⭐⭐ PASSO 3 — A PROVA DE RESTAURAÇÃO: **OK, e ela restaura de verdade**
+
+`backup-prova.sh` (dom 4h) restaura num banco **TEMPORÁRIO**, confere contagens-chave, **apaga o
+temporário** e grava o state. Medido em prod: `OK · pre-grupo-vigiado-20261023-001809.dump`.
+⭐ *Backup que ninguém restaurou é esperança, não cópia* — e é por isso que o teste é semanal e
+avisa quando falha, em vez de supor.
+
+### ⭐⭐ PASSO 4 — OS DOIS ALARMES NOVOS CHEGAM NO E-MAIL (N4 · N5/N6)
+
+**N4** (`lib/infra/health.ts`): disco acima de **80%** usado. **N5/N6**
+(`lib/infra/chave-reserva.ts`): backup diário FALHOU / mais velho que **36h**, e a prova de
+restauração mais velha que **10 dias**.
+
+- ⭐⭐ **`CheckChaveReserva` nasceu com o MESMO shape de `CheckInfra`** (`invariante`/`nivel`/
+  `detalhe`), e isso é o que faz o array misto do payload renderizar — `judge-alert-email.ts:8`
+  declara exatamente esse formato e a linha 36 itera nele. **Shape diferente sairia no e-mail como
+  `undefined undefined`**, e alarme ilegível é alarme que o dono aprende a ignorar.
+- ⛔ **Estado malformado vira `null`, nunca um "OK" otimista:** um `.state` truncado é precisamente
+  o caso em que não se pode afirmar que o backup correu bem.
+- ⛔ **O gate do aviso soma `reserva.checks`** (`cron-judge.ts:115`) e o payload leva
+  `...reserva.checks` (136) — com o N5 vermelho, o e-mail das 3h carrega a frase inteira, incluindo
+  *"se o droplet morrer, morre o dado com ele"*. **O teste trava o payload** (`chave-reserva.test.ts`).
+
+**Medido em prod:** disco 9% · swap **171 MB** (abaixo do N1 de 256 → **o gatilho (b) do upgrade
+4→8 GB NÃO disparou**) · `avaliarInfra` **verde** · `checkChaveReserva` **vermelho no N5**, que é o
+estado honesto.
+
+### ⭐⭐ PASSO 5 — OS ÍNDICES DA AUDITORIA, E O TETO DE POOL
+
+3 `@@index` em `transactions` (`supplierId` · `employeeId` · `categoryId`), criados em prod **à mão
+com `CREATE INDEX CONCURRENTLY`** (não trava a tabela quente) e declarados no schema com migration
+**`IF NOT EXISTS`** — no-op em prod, cria em instalação nova. ⚠️ **`transactions_employeeId_idx` já
+existia no banco desde `20260606000000` e nunca estava declarado: DRIFT schema×banco**, que um
+`migrate diff` futuro tentaria recriar.
+
+⚠️ **O ganho de HOJE é pequeno e está medido** (10.547 linhas / 13 MB, tabela inteira em cache):
+Seq Scan 2,67ms → Index Scan com `shared hit` **575 → 5 páginas**. ⭐ **Eles valem por CRESCIMENTO,
+nunca pelo badge de 1,3s** — esse é CPU no app (`reconhecerFornecedor` linha a linha), e a decisão
+do dono de 11/09 continua valendo: *"performance se resolve com cache, nunca com número errado"*.
+
+**⛔⛔⛔ E EU CRIEI 2 ÍNDICES DUPLICADOS EM PROD — defeito meu, achado e curado no mesmo passo.** A
+tabela ficou com `transactions_categoryId_idx` **e** `transactions_categoryid_idx` (96 kB cada,
+MESMA coluna), idem `supplierId`. **A causa:** em Postgres **identificador sem aspas é dobrado pra
+minúsculo**, e eu rodei o `CREATE INDEX CONCURRENTLY` a primeira vez **sem aspas no nome**.
+⚠️ Índice duplicado em tabela quente é **custo de escrita puro** — todo INSERT/UPDATE mantém os
+dois. Curado com **`DROP INDEX CONCURRENTLY`** (que também não trava): **31 → 29 índices**, e os
+três que sobraram são exatamente os nomes que o `@@index` gera, então **banco e schema convergem**.
+
+**⭐ O TETO DE POOL (`connection_limit=5` pras 2 vCPU)** — `lib/db.ts`. ⚠️ **ELE NÃO MUDA NADA
+HOJE:** o default do Prisma é `num_cpus × 2 + 1`, que em 2 vCPU dá **exatamente 5**. O que muda é o
+teto deixar de ser implícito — num resize 2→4 vCPU o default saltaria pra 9 **em silêncio**.
+
+- ⛔⛔ **POR QUE NO CLIENT E NÃO NO `.env`:** a variável de ambiente alcançaria **TODO** consumidor —
+  inclusive os ~100 scripts de `scripts/`, que criam `PrismaClient` próprio, e o próprio
+  `prisma migrate`. No client fica escopado ao processo LONGO do app, que é quem tem pool de
+  verdade; script curto abre, faz e fecha.
+- ⛔⛔⛔ **A RÉGUA MORA EM MÓDULO PURO (`lib/db/teto-de-conexoes.ts`), E O MOTIVO É UM INCIDENTE:**
+  a 1ª versão mexia em QUALQUER URI, e **`file:` é *special scheme* no WHATWG URL** — então
+  `new URL('file:./dev.db')` resolve o caminho relativo **contra a RAIZ do sistema** e devolve
+  `file:///dev.db`. O engine passava a abrir `/dev.db` → **SQLITE_CANTOPEN (code 14) → 198 arquivos
+  de teste vermelhos de uma vez, 1.474 testes, com cara de 198 defeitos de negócio**. Em produção
+  (`postgresql://`) a URI saía perfeita, então **o estrago vivia SÓ no dev** — a mesma classe do
+  `contains` case-sensitive (28/08): funciona num banco e falha calado no outro.
+- ⭐ **ALLOWLIST, nunca denylist** (`postgresql:`/`postgres:`/`mysql:`): protocolo novo cai no lado
+  que **NÃO MEXE**. *O erro seguro é um teto de pool não declarado; o inseguro é a URI do banco
+  reescrita por uma função que não entende aquele protocolo.*
+- ⚠️ **Fail-soft, e o `catch` NÃO imprime a exceção** — a mensagem do Prisma/URL **vaza a URI com a
+  senha** (a cicatriz de 07/10).
+- ⚠️ **Ela não mora em `lib/db.ts` de propósito:** aquele arquivo **instancia o `PrismaClient` no
+  topo**, então um teste que o importasse abriria conexão. ***Regra que mora num arquivo que
+  instancia client é regra que ninguém prova*** — e esta precisava ser provada.
+- ⚠️⚠️ **E A REGRA 11 ACHOU UMA LINHA QUE FINGIA SER TRAVA:** o cinto que confere
+  `host`/`pathname` depois da reescrita é **INALCANÇÁVEL hoje** — repondo o defeito (removendo as 2
+  linhas), **os 19 testes ficam VERDES**, porque a allowlist já barra tudo que não é postgres/mysql
+  e nesses o round-trip preserva host e pathname **por construção**. ⭐ **Ele FICA** pelo dia em que
+  alguém acrescentar à allowlist um protocolo cujo round-trip NÃO seja lossless — **com a medição
+  escrita no código E no teste**, pra ninguém chamá-lo de trava em funcionamento (o mesmo desenho do
+  `IS NOT NULL` redundante dos CHECKs de 14/10).
+
+### ⭐ PASSO 6 — `send-now` EXIGE PAPEL (o furo do e-mail)
+
+`POST /api/alerts/send-now` dispara `runAlertsJob`, que faz
+`user.findMany({ emailAlertsEnabled: true })` — **varre os usuários da PLATAFORMA INTEIRA**, sem
+filtro por empresa nem por quem pediu. ⛔⛔ **E até hoje aceitava QUALQUER LOGADO**, com o
+comentário prometendo *"só ADMIN"* ao lado de um corpo que dizia *"pra MVP: aceita qualquer user
+logado"*. ***Comentário que promete ser a trava sem ser a trava é pior que comentário nenhum.***
+
+⭐ Agora é o padrão (B) da casa (`getAdminSession` → `loadGerenciador`). ⚠️ **403 e não 401, com o
+motivo escrito:** o cookie `admin_session` é de `admin.caixaos.com.br` e não chega aqui — responder
+401 a quem está com a sessão ótima diria *"sua sessão expirou"* e mandaria o dono caçar um problema
+de login que não existe.
+
+**PROVADO EM PROD (sessão real de OWNER, `dryRun`):** `HTTP 403 · code FORBIDDEN_RBAC · nenhum
+e-mail disparado`. ⛔ **Não chamei o caminho admin de propósito** — ele envia e-mail de verdade pra
+toda a plataforma; esse lado está travado na suíte (`__tests__/alertas/send-now-exige-admin.test.ts`).
+
+### ⛔⛔ ACHADO NO CAMINHO — OS 4 SCRIPTS DO CRON VIVIAM **SÓ NO SERVIDOR**
+
+O `git status` de `scripts/` em prod trouxe 4 **untracked**: `backup-diario.sh` (2h30) ·
+`backup-prova.sh` (dom 4h) · `faxina-builds.sh` (5h) · `_db-uri.sh`. ⚠️ ***O script de BACKUP
+existia só na máquina que ele existe pra proteger*** — droplet morto levaria os três com ele.
+Versionados (commit `f05d7c27`), com a permissão de execução preservada.
+
+⚠️ **E o meu grep de credencial deu 2 falsos positivos:** `_db-uri.sh` **lê** o `DATABASE_URL` do
+`.env` (nunca imprime a URI) e a linha que casou em `backup-prova.sh` é **um comentário dizendo que
+a senha não aparece**. *Achado não atribuível não é achado.* **Credencial segue só no `.env` do
+servidor, nunca no repo.**
+
+### ⚠️ TRÊS ERROS DE SONDA MEUS, e os três da mesma família
+
+(a) **chutei os campos do check** (`codigo`/`mensagem`; são **`invariante`/`detalhe`**) e a sonda
+imprimiu **`[erro] undefined undefined`** — com cara de alarme quebrado numa lib correta; (b)
+**`${PIPESTATUS[0]}` é bashism** — no zsh é `$pipestatus[1]`, e medir exit code de pipeline exige
+redirecionar pra arquivo; (c) **`grep --include=*.ts` sem aspas abortou com `no matches found`** e
+devolveu **saída vazia**, que eu quase li como *"ninguém consome `infraChecks`"* — a **REGRA 8b**
+na minha própria verificação. ***Nome de campo e forma de comando se LEEM, nunca se chutam.***
+
+⚠️ E **o SSH caiu num deploy anterior desta frente (exit 255)**: daqui pra frente o deploy roda com
+`ServerAliveInterval` e **log em arquivo no servidor**, porque ***deploy cujo gate eu não li é
+deploy não provado***.
+
+### 📋 NÍVEL 2 — REGISTRADO, **NÃO CONSTRUÍDO** (ordem do dono)
+
+1. **WAL / PITR** (point-in-time recovery) — hoje o backup é snapshot diário: perda máxima de ~24h.
+   Com WAL arquivado, a recuperação vai ao minuto. ⚠️ Exige espaço e um destino de WAL.
+2. **Postgres em máquina separada** — hoje app e banco dividem o mesmo droplet (2 vCPU), então
+   build e banco competem por CPU/RAM, e um OOM alcança os dois.
+3. **Schedulers FORA do processo do site** — o `instrumentation.ts` sobe o scheduler de recorrentes
+   dentro do processo do Next; um reload do pm2 no meio de uma janela é perda silenciosa.
+
+### 📋 FICA PRO DONO
+
+1. ⛔⛔ **AS 2 CHAVES DO COFRE** — é o único bloqueio real da FASE 0, e **enquanto ele estiver aberto
+   NÃO existe cópia do banco fora da máquina**. O passo a passo está no relatório.
+2. ⚠️ **Os 2 índices duplicados que eu criei já foram dropados** (`DROP INDEX CONCURRENTLY`, sem
+   travar) — fica registrado porque o defeito foi meu e o rastro importa.
+3. ⚠️ **397 dumps / 1,2 GB sem retenção** em `/var/backups/conta-ia`, dos quais **27 têm 0 bytes**.
+   Decisão dele se expurga (o backup novo já nasce com retenção; estes são os pré-sprint).
+4. ⚠️ **O achado de SSH das sessões anteriores segue em aberto, e nada foi alterado (REGRA 2):**
+   ~1,79 milhão de tentativas falhas · `permitrootlogin yes` · `passwordauthentication yes` ·
+   **fail2ban INACTIVE** · 1 chave expirada `dotty_ssh`.
+5. ⚠️ **`/api/alerts/send-now` não tem chamador nenhum** — *porta sem maçaneta*: ou ganha botão no
+   painel admin, ou o teste fica escopado só pro próprio usuário.
+
 ## Ordem de deploy (PJ + PF)
 
 **⚠️ SWAP DE 2GB É OBRIGATÓRIO NO SERVIDOR (25/08).** O `npm run build` do Next roda o type-check num worker que chega a **~1,9 GB de RSS**; o servidor tem 3,9 GB e estava **sem swap nenhum** → o OOM killer matava o worker (`signal: SIGKILL`) e o `.next` ficava **sem `BUILD_ID`**, deixando o pm2 em loop de erro. **Não adianta mexer no `--max-old-space-size`:** teto alto (2560) o kernel mata igual; teto baixo (1400) o próprio V8 aborta por heap insuficiente (`SIGABRT`) — o type-check PRECISA de ~2 GB. Criado em 25/08: `fallocate -l 2G /swapfile && chmod 600 && mkswap && swapon` + linha no `/etc/fstab` (persiste no reboot). Build voltou a passar de primeira. **Servidor novo nasce quebrado sem isso** — incluir no provisionamento junto com o poppler. Pra desfazer: `swapoff /swapfile && rm /swapfile` + tirar a linha do fstab.
