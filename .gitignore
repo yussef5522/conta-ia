@@ -14,11 +14,15 @@
 /build
 
 # Ambiente
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# ⛔⛔ A LISTA E CEGA POR PREFIXO DE PROPOSITO (`.env*`), nunca nome a nome.
+#    Cicatriz de 27/10/2026: a lista enumerava .env/.env.local/.env.*.local e NAO
+#    cobria `.env.backup` — o arquivo com as 2 chaves do cofre nasceu no servidor
+#    RASTREAVEL por `git add -A`. Credencial fora do ignore depende de alguem lembrar;
+#    prefixo cego torna o commit impossivel (REGRA 5). Arquivo de ambiente NOVO entra
+#    protegido de graca; os dois exemplos (sem segredo) voltam por negacao explicita.
+.env*
+!.env.example
+!.env.production.example
 
 # Debug
 npm-debug.log*
