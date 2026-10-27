@@ -667,6 +667,24 @@ model Transaction {
   // Sprint Pending Transfer State (27/06/2026): fila "Aguardando par"
   // filtra pendingTransfer=true escopo da empresa via bankAccount.
   @@index([pendingTransfer])
+  // FASE 0 PASSO 5 (26/10/2026) — os 3 filtros da auditoria de fornecedor/funcionário/categoria.
+  //
+  // ⚠️ MEDIDO ANTES DE CRIAR, e as duas premissas do pedido caíram:
+  //   (a) `transactions_employeeId_idx` JÁ EXISTIA NO BANCO desde a migration
+  //       20260606000000_sprint_5_0_2_0_excel_import_ap (linha 28) e NUNCA foi declarado
+  //       aqui — DRIFT schema×banco. Declarar agora é o conserto: sem isto, qualquer
+  //       `prisma migrate diff` futuro tentaria CRIAR um índice que já existe.
+  //   (b) o ganho de hoje é pequeno: 10.547 linhas / 13 MB, tabela inteira em cache.
+  //       Seq Scan media 2,67ms (supplierId) e 2,16ms (categoryId). Depois dos índices,
+  //       Index Scan com `shared hit` caindo de 575 → 5 páginas. ⭐ Eles valem por
+  //       CRESCIMENTO, não pelo badge de 1,3s (esse é CPU no app — ver lib/db.ts).
+  //
+  // Os dois primeiros foram criados em prod com CREATE INDEX CONCURRENTLY (não trava a
+  // tabela quente); a migration abaixo usa IF NOT EXISTS não-concurrent, que é no-op em
+  // prod e cria no dev/instalação nova — o padrão da casa desde 20260619000000.
+  @@index([supplierId])
+  @@index([employeeId])
+  @@index([categoryId])
   @@map("transactions")
 }
 

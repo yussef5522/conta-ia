@@ -3,8 +3,6 @@
 // Sprint 4.0.4 — Preferências de email alerts.
 
 import { useEffect, useState } from 'react'
-import { Mail, RefreshCw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Header } from '@/components/layout/header'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -23,7 +21,6 @@ export default function AlertasConfigPage() {
   const [prefs, setPrefs] = useState<Prefs | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
 
   useEffect(() => {
     fetch('/api/configuracoes/alertas', { credentials: 'include' })
@@ -61,35 +58,6 @@ export default function AlertasConfigPage() {
     }
   }
 
-  async function enviarTeste() {
-    setTesting(true)
-    try {
-      const res = await fetch('/api/alerts/send-now', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: true, dryRun: false }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({
-          variant: 'destructive',
-          title: 'Falha',
-          description: data.erro ?? `HTTP ${res.status}`,
-        })
-        return
-      }
-      const r = data.result
-      toast({
-        title: `${r.emailsSent} email${r.emailsSent === 1 ? '' : 's'} enviado${r.emailsSent === 1 ? '' : 's'}`,
-        description: r.emailsSkippedNoData
-          ? `${r.emailsSkippedNoData} sem alertas ativos`
-          : undefined,
-      })
-    } finally {
-      setTesting(false)
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -145,25 +113,21 @@ export default function AlertasConfigPage() {
               </div>
             )}
 
-            <div className="border-t pt-4 flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={enviarTeste}
-                disabled={testing || !prefs.emailAlertsEnabled}
-              >
-                <Mail className="mr-1.5 h-3.5 w-3.5" />
-                {testing ? (
-                  <>
-                    <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />
-                    Enviando…
-                  </>
-                ) : (
-                  'Enviar email de teste agora'
-                )}
-              </Button>
+            {/*
+              ⛔ O BOTÃO "enviar email de teste agora" MORREU AQUI (FASE 0 PASSO 6, 26/10).
+              Ele chamava POST /api/alerts/send-now, e aquele endpoint dispara e-mail pra
+              TODOS os usuários da plataforma — não existe versão "só pra mim". Com a trava
+              de administrador, o botão passaria a dar 403 em TODO clique nesta tela, e
+              botão morto é clique errado esperando.
+              ⚠️ Remoção COM realocação (a régua de 10/09): o que ele fazia continua existindo
+              no painel administrativo, e a linha abaixo DIZ isso — some o gesto, não a
+              informação de onde ele mora.
+            */}
+            <div className="border-t pt-4">
               <p className="text-xs text-muted-foreground">
-                Útil pra confirmar que está chegando na sua caixa.
+                O envio é automático, no horário escolhido acima. Um disparo manual pra
+                conferir a entrega é feito pelo painel administrativo — ele envia pra todos
+                os usuários de uma vez, então não fica nesta tela.
               </p>
             </div>
           </CardContent>

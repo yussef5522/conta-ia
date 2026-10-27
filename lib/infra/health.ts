@@ -8,17 +8,24 @@
 // momento não é o build respirando — é a operação normal já não cabendo na RAM. É
 // exatamente o gatilho (b) do upgrade 4→8 GB registrado no CLAUDE.md.
 
-import { readFileSync } from 'fs'
+import { readFileSync, statfsSync } from 'fs'
 
 export interface LeituraInfra {
   memTotalMb: number
   memDisponivelMb: number
   swapTotalMb: number
   swapUsadoMb: number
+  /**
+   * ⚠️ `null` = NÃO MEDIDO, nunca "disco vazio" — a mesma régua do "sem contagem" do
+   * estoque. Sem leitura o N4 se cala em vez de afirmar 0%.
+   */
+  discoUsadoPct: number | null
+  discoUsadoGb: number | null
+  discoTotalGb: number | null
 }
 
 export interface CheckInfra {
-  invariante: 'N1' | 'N2' | 'N3'
+  invariante: 'N1' | 'N2' | 'N3' | 'N4'
   nivel: 'erro' | 'aviso'
   detalhe: string
 }
@@ -29,11 +36,53 @@ export const N1_SWAP_MB = 256
 export const N2_DISPONIVEL_PCT = 0.15
 /** Sem swap nenhum a máquina não tem folga pro build (foi o que derrubou prod em 24/08). */
 export const N3_SWAP_MINIMO_MB = 1024
+/**
+ * Disco acima disso = alarme (FASE 0 PASSO 4, pedido do dono: "alarme de disco >80%").
+ *
+ * ⚠️ O gate do `deploy.sh` exige ≥ 2000 MB livres pra buildar; num disco de 116 GB, 80%
+ * usado ainda deixa ~23 GB, então o alarme chega MUITO antes de o deploy travar. É o
+ * desenho certo: avisar enquanto dá pra agir, não quando o build já morreu.
+ *
+ * ⭐ MEDIDO EM 26/10, depois da faxina: 11 de 116 GB = 9% usado. O alarme não dispara
+ * hoje — ele existe pro dia em que o journal (ou um build órfão) crescer de novo.
+ */
+export const N4_DISCO_USADO_PCT = 80
 
 const mb = (kb: number) => Math.round(kb / 1024)
 
+/**
+ * Lê o disco do caminho dado, pela MESMA aritmética do `df`: usado = total − livre, e o
+ * denominador é `usado + disponível-pra-não-root` (NÃO o total), senão a conta discorda
+ * do número que o dono lê no terminal.
+ *
+ * ⚠️ Em QUALQUER falha devolve nulos e segue — leitura de disco não pode derrubar o N1/N2/N3,
+ * que são a razão de este arquivo existir.
+ */
+function lerDisco(caminho: string): Pick<LeituraInfra, 'discoUsadoPct' | 'discoUsadoGb' | 'discoTotalGb'> {
+  const vazio = { discoUsadoPct: null, discoUsadoGb: null, discoTotalGb: null }
+  try {
+    const s = statfsSync(caminho)
+    const bsize = Number(s.bsize)
+    const blocks = Number(s.blocks)
+    const bfree = Number(s.bfree)
+    const bavail = Number(s.bavail)
+    if (!bsize || !blocks) return vazio
+    const usado = blocks - bfree
+    const base = usado + bavail
+    if (base <= 0) return vazio
+    const gb = (b: number) => Math.round((b * bsize) / 1024 ** 3)
+    return {
+      discoUsadoPct: Math.round((usado / base) * 100),
+      discoUsadoGb: gb(usado),
+      discoTotalGb: gb(blocks),
+    }
+  } catch {
+    return vazio
+  }
+}
+
 /** Lê o /proc/meminfo (Linux). Em outro SO devolve null — o caller simplesmente pula. */
-export function lerInfra(caminho = '/proc/meminfo'): LeituraInfra | null {
+export function lerInfra(caminho = '/proc/meminfo', caminhoDisco = '/'): LeituraInfra | null {
   let txt: string
   try {
     txt = readFileSync(caminho, 'utf-8')
@@ -54,6 +103,7 @@ export function lerInfra(caminho = '/proc/meminfo'): LeituraInfra | null {
     memDisponivelMb: mb(memDisp),
     swapTotalMb: mb(swapTotal),
     swapUsadoMb: mb(swapTotal - swapFree),
+    ...lerDisco(caminhoDisco),
   }
 }
 
@@ -86,11 +136,22 @@ export function avaliarInfra(l: LeituraInfra): CheckInfra[] {
     })
   }
 
+  // N4 — disco. ⛔ Só opina quando MEDIU: `null` é "não sei", nunca 0%.
+  if (l.discoUsadoPct != null && l.discoUsadoPct > N4_DISCO_USADO_PCT) {
+    out.push({
+      invariante: 'N4', nivel: 'erro',
+      detalhe: `disco em ${l.discoUsadoPct}% usado (${l.discoUsadoGb} de ${l.discoTotalGb} GB) — acima de ${N4_DISCO_USADO_PCT}%. O gate do deploy exige 2 GB livres; sem espaço o build morre pela metade. Começar pela faxina: \`journalctl --vacuum-size=200M\` (em 26/10 isso liberou 3,8 GB) e \`bash /opt/conta-ia/scripts/faxina-builds.sh\`. Se depois disso seguir apertado, é o resize do droplet — e o clique é do dono.`,
+    })
+  }
+
   return out
 }
 
 /** Atalho pro cron: lê + avalia. Fora do Linux devolve lista vazia (nada a checar). */
-export function checkInfra(caminho?: string): { leitura: LeituraInfra | null; checks: CheckInfra[] } {
-  const leitura = lerInfra(caminho)
+export function checkInfra(
+  caminho?: string,
+  caminhoDisco?: string,
+): { leitura: LeituraInfra | null; checks: CheckInfra[] } {
+  const leitura = lerInfra(caminho, caminhoDisco)
   return { leitura, checks: leitura ? avaliarInfra(leitura) : [] }
 }

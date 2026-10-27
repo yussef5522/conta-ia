@@ -16,6 +16,7 @@ import { sendEmail } from '../lib/email/send'
 import { checkInfra } from '../lib/infra/health'
 import { checkDeploy, migrationsPendentes, avaliarDeploy } from '../lib/infra/deploy-health'
 import { checkRotas } from '../lib/infra/rotas-lentas'
+import { checkChaveReserva } from '../lib/infra/chave-reserva'
 
 const prisma = new PrismaClient()
 const BASE = process.env.APP_BASE_URL ?? 'https://app.caixaos.com.br'
@@ -55,7 +56,20 @@ async function main() {
   const { leitura, checks: infraChecks } = checkInfra()
   const stamp = new Date().toISOString()
   if (leitura) {
-    console.log(`[juiz ${stamp}] infra: RAM ${leitura.memDisponivelMb}/${leitura.memTotalMb} MB livres · swap ${leitura.swapUsadoMb}/${leitura.swapTotalMb} MB em uso${infraChecks.length ? ` · ${infraChecks.length} alerta(s)` : ''}`)
+    const disco = leitura.discoUsadoPct != null
+      ? ` · disco ${leitura.discoUsadoPct}% (${leitura.discoUsadoGb}/${leitura.discoTotalGb} GB)`
+      : ' · disco: não medido'
+    console.log(`[juiz ${stamp}] infra: RAM ${leitura.memDisponivelMb}/${leitura.memTotalMb} MB livres · swap ${leitura.swapUsadoMb}/${leitura.swapTotalMb} MB em uso${disco}${infraChecks.length ? ` · ${infraChecks.length} alerta(s)` : ''}`)
+    for (const c of infraChecks) console.log(`[juiz ${stamp}]   ${c.invariante} (${c.nivel}): ${c.detalhe}`)
+  }
+  // CHAVE RESERVA — a cópia de fora existe e foi PROVADA? (FASE 0 PASSO 4, 26/10)
+  // ⚠️ Nasce VERMELHO até o dono dar as 2 chaves do cofre: o backup-diario.sh é inerte sem
+  // elas e grava FALHOU. Não é alarme falso — é a verdade de que não há cópia fora daqui.
+  const reserva = checkChaveReserva()
+  if (reserva.habilitado) {
+    const d = reserva.diario, p = reserva.prova
+    console.log(`[juiz ${stamp}] chave reserva: diário ${d ? `${d.status} ${d.quando.toISOString()}` : 'SEM ESTADO'} · prova ${p ? `${p.status} ${p.quando.toISOString()}` : 'SEM ESTADO'}${reserva.checks.length ? ` · ${reserva.checks.length} alerta(s)` : ''}`)
+    for (const c of reserva.checks) console.log(`[juiz ${stamp}]   ${c.invariante} (${c.nivel}): ${c.detalhe}`)
   }
   // DEPLOY — o artefato servido está são? (symlink íntegro, BUILD_ID, CSS, rollback
   // disponível). Pega o que o smoke não pega: `.next` que voltou a ser diretório real
@@ -98,7 +112,7 @@ async function main() {
 
   console.log(`[juiz ${stamp}] ${rep.passed ? '✓ OK' : '✗ FALHA'} · ${rep.totalContracts - rep.totalFail}/${rep.totalContracts} contratos · balance ${rep.balanceIssues} · dup ${rep.dupIssues} · venda ${rep.vendaIssues} · cartão ${rep.cardIssues} · estoque ${stockRep.stockIssues} · ${rep.durationMs}ms`)
 
-  if (!rep.passed || !stockRep.passed || infraChecks.length > 0 || deployChecks.length > 0 || rotas.checks.length > 0) {
+  if (!rep.passed || !stockRep.passed || infraChecks.length > 0 || deployChecks.length > 0 || rotas.checks.length > 0 || reserva.checks.length > 0) {
     if (!ALERT_TO) {
       console.error(`[juiz ${stamp}] FALHA detectada mas JUDGE_ALERT_EMAIL não configurado — e-mail NÃO enviado`)
     } else {
@@ -117,7 +131,9 @@ async function main() {
         stockChecks: stockRep.fails,
         // ⭐ R1/R2 entram no MESMO bloco de infra do e-mail: o dono lê UM lugar sobre a
         // máquina, não três. (O R2 é aviso — não deixa o selo vermelho sozinho.)
-        infraChecks: [...infraChecks, ...deployChecks, ...rotas.checks],
+        // ⭐ N5/N6 (chave reserva) entram no MESMO bloco pelo mesmo motivo: "a máquina
+        // está de pé e a cópia de fora existe?" é UMA leitura pro dono, não duas telas.
+        infraChecks: [...infraChecks, ...deployChecks, ...rotas.checks, ...reserva.checks],
         juizUrl: `${BASE}/juiz`,
       })
       const r = await sendEmail({ to: ALERT_TO, subject, html, type: 'juiz-module-alert' })
