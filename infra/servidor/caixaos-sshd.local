@@ -1,0 +1,27 @@
+# Porteiro do SSH (fail2ban) — auditoria out/2026
+#
+# CAMINHO REAL NO SERVIDOR: /etc/fail2ban/jail.d/caixaos-sshd.local
+# (CAIXAOS prod · root@198.211.103.10 · aplicado 27/10/2026)
+#
+# ⚠️ O fail2ban NÃO ESTAVA INSTALADO (a unit respondia `not-found`, não "inactive").
+# Servidor novo nasce sem porteiro: `apt-get install -y fail2ban` entra no
+# provisionamento, junto com poppler-utils e o swap de 2 GB.
+#
+# ⚠️ `backend` DEPENDE DA MÁQUINA: aqui /var/log/auth.log EXISTE, então `auto`
+# resolve. Em Ubuntu que só tem journald o `auto` acha log nenhum e a jail sobe
+# vazia — ali é `backend = systemd`. Conferir com `[ -s /var/log/auth.log ]` antes
+# de copiar este arquivo pra outro servidor; jail que não lê log é porteiro
+# dormindo com cara de porteiro ligado.
+#
+# A tranca da porta (chave obrigatória) é o 00-caixaos-tranca.conf; este arquivo é
+# a segunda camada: quem fica tentando leva ban. Os dois são independentes.
+#
+# Prova de que morde: `fail2ban-client status sshd`.
+
+[sshd]
+enabled = true
+backend = auto
+maxretry = 5
+findtime = 10m
+bantime = 1h
+ignoreip = 127.0.0.1/8
