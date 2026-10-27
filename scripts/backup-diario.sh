@@ -19,7 +19,30 @@ MANTER_MENSAIS=12
 set +u; . /opt/conta-ia/.env.backup; set -u
 : "${RCLONE_REMOTE:?RCLONE_REMOTE ausente}" || morre "RCLONE_REMOTE ausente no .env.backup"
 command -v rclone >/dev/null || morre "rclone nao instalado"
-rclone lsd "$RCLONE_REMOTE" >/dev/null 2>&1 || morre "rclone nao alcanca $RCLONE_REMOTE (chave errada ou bucket inexistente)"
+
+# A credencial NUNCA sai daqui: toda mensagem de erro do rclone passa por mascara().
+ERRTMP=$(mktemp); PROBE=$(mktemp)
+trap 'rm -f "$ERRTMP" "$PROBE"' EXIT
+mascara(){ sed -e "s#${RCLONE_CONFIG_COFRE_ACCESS_KEY_ID:-__na__}#<ACCESS_KEY>#g" \
+               -e "s#${RCLONE_CONFIG_COFRE_SECRET_ACCESS_KEY:-__na__}#<SECRET>#g" "$ERRTMP" | tail -1; }
+
+# ⛔⛔ O GATE PROVA ESCRITA, NUNCA LEITURA — cicatriz de 27/10/2026.
+#    A 1a chave do cofre LISTAVA o bucket e NAO GRAVAVA (Spaces Key com escopo
+#    read-only). O gate antigo era `rclone lsd` (leitura): ele dizia "alcanca o
+#    cofre ✓", o script seguia, gastava o pg_dump inteiro (10,8 MB) e MORRIA no
+#    upload 2 segundos depois — com a recusa dizendo so "upload falhou", que manda
+#    o dono cacar rede/bucket quando o problema era PERMISSAO DA CHAVE.
+#    ⭐ Gate que exercita um gesto PARECIDO (listar) nao prova o gesto REAL (gravar).
+rclone lsd "$RCLONE_REMOTE" >/dev/null 2>"$ERRTMP" \
+  || morre "rclone nao alcanca $RCLONE_REMOTE (chave errada ou bucket inexistente): $(mascara)"
+printf 'probe %s\n' "$(date -Is)" > "$PROBE"
+if ! rclone copyto "$PROBE" "$RCLONE_REMOTE/.probe-escrita" >/dev/null 2>"$ERRTMP"; then
+  if grep -qE 'AccessDenied|status code: 403' "$ERRTMP"; then
+    morre "o cofre RECUSOU a escrita (403 AccessDenied) — a chave LE e NAO GRAVA, entao nao existe backup fora da maquina. No painel da DigitalOcean: API > Spaces Keys > a chave do backup > Edit > permissao Read/Write no bucket ${RCLONE_REMOTE#*:} (NAO precisa gerar chave nova)."
+  fi
+  morre "nao consegui escrever no cofre: $(mascara)"
+fi
+rclone deletefile "$RCLONE_REMOTE/.probe-escrita" >/dev/null 2>&1 || log "⚠️ sobrou .probe-escrita no cofre"
 
 _le_db_uri || morre "nao consegui ler o DATABASE_URL"
 STAMP=$(date +%Y%m%d-%H%M%S)
@@ -32,7 +55,10 @@ pg_dump -Fc "$DB_URI" > "$ARQ" 2>>"$LOG" || { rm -f "$ARQ"; morre "pg_dump falho
 BYTES=$(stat -c%s "$ARQ")
 [ "$BYTES" -ge 1000000 ] || { rm -f "$ARQ"; morre "dump saiu com $BYTES bytes (minimo 1 MB) — NAO vale"; }
 
-rclone copyto "$ARQ" "$RCLONE_REMOTE/diario/$(basename "$ARQ")" 2>>"$LOG" || morre "upload falhou"
+if ! rclone copyto "$ARQ" "$RCLONE_REMOTE/diario/$(basename "$ARQ")" 2>"$ERRTMP"; then
+  mascara >> "$LOG"
+  morre "upload falhou (o dump local de $((BYTES/1024/1024)) MB FICOU em $ARQ): $(mascara)"
+fi
 REMOTO=$(rclone size --json "$RCLONE_REMOTE/diario/$(basename "$ARQ")" 2>>"$LOG" | grep -o '"bytes":[0-9]*' | cut -d: -f2)
 [ "$REMOTO" = "$BYTES" ] || morre "o cofre recebeu $REMOTO bytes e o dump tem $BYTES — NAO confere"
 
