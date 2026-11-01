@@ -28,6 +28,41 @@ export function ehCaminhoInterno(v: string | null | undefined): boolean {
 }
 
 /**
+ * ⭐⭐ OS NOMES DO PDV QUE A FICHA VAI MAPEAR — a rede que impede a ficha ÓRFÃ.
+ *
+ * ⛔⛔ O BUG (10/05/2026): a revisão do import mandava `?mapearComplemento=<nome>` e
+ * `fichas/nova/page.tsx` + `ficha-editor` leem `?complemento=`. **Nome de param inventado
+ * de um lado, lido do outro: NINGUÉM casava** → o POST ia com `mapearComplemento: null`,
+ * a ficha nascia SEM VÍNCULO, a revisão seguia dizendo "sem destino" e a venda daquele
+ * sabor NÃO baixava estoque. Outubro: 5 sabores com ficha e 0 vínculo · 266 vendas sem baixa.
+ *
+ * ⭐ A REDE É ESTA FUNÇÃO (REGRA 5 — disciplina vira impossibilidade): ela é o ÚNICO leitor
+ * de "quais nomes do PDV esta ficha mapeia", e aceita as DUAS grafias — `complemento` (a
+ * convenção que o cardápio e a volta-da-revisão já usavam) e o ALIAS `mapearComplemento`.
+ * Com ela, param reinventado não pode mais ser dropado em silêncio: o alias cai no mesmo
+ * balde. E link velho em print/e-mail/histórico continua funcionando.
+ *
+ * ⚠️ `getAll` nos dois: o link do grupo manda um `complemento=` POR GRAFIA, e o salvar
+ * mapeia todas na MESMA transação — uma ficha, uma viagem.
+ * ⚠️ Trim e dedup porque as duas grafias podem vir juntas no mesmo link (o sender antigo
+ * mandava `mapearComplemento` E o novo manda `complemento`) — mapear o mesmo nome duas
+ * vezes no mesmo gesto é pedir pro upsert brigar com ele mesmo.
+ */
+export function nomesDeComplementoDaUrl(qp: URLSearchParams | null | undefined): string[] {
+  if (!qp) return []
+  const crus = [...qp.getAll('complemento'), ...qp.getAll('mapearComplemento')]
+  const vistos = new Set<string>()
+  const nomes: string[] = []
+  for (const cru of crus) {
+    const nome = cru.trim()
+    if (!nome || vistos.has(nome)) continue
+    vistos.add(nome)
+    nomes.push(nome)
+  }
+  return nomes
+}
+
+/**
  * Pra onde voltar ao salvar/cancelar.
  *
  * ⚠️ O fallback continua sendo `/estoque/fichas` **de propósito**: ela deixou de ser lista e

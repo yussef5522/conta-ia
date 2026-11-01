@@ -367,8 +367,17 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
             setAba(relatorio === 'COMPLEMENTOS' ? 'complementos' : 'importar')
           }}
           onMapearProduto={(nome) => { setAba('importar'); setEditando((e) => new Set(e).add(nome)) }}
+          /**
+           * ⛔⛔ ESTE SENDER MANDAVA `mapearComplemento=` E NINGUÉM LIA (10/05/2026).
+           * O editor lê `complemento=` (a convenção que o cardápio e a volta-da-revisão já
+           * usam), então o POST ia com `mapearComplemento: null`: a ficha nascia ÓRFÃ, a
+           * revisão seguia dizendo "sem destino" e a venda daquele sabor não baixava estoque.
+           * ⭐ Alinhado à convenção que JÁ FUNCIONA — e `destinoDeVolta` dá precedência ao
+           * `?voltar=` explícito, `rotulosDaFicha` decide por `tipo=SABOR`: trocar o nome do
+           * param não muda destino nem título (medido antes de mexer).
+           */
           onCriarFichaDeSabor={(nome) => {
-            window.location.href = `/empresas/${id}/estoque/fichas/nova?nome=${encodeURIComponent(nome)}&mapearComplemento=${encodeURIComponent(nome)}&tipo=SABOR&voltar=${encodeURIComponent(`/empresas/${id}/estoque/vendas`)}`
+            window.location.href = `/empresas/${id}/estoque/fichas/nova?nome=${encodeURIComponent(nome)}&complemento=${encodeURIComponent(nome)}&tipo=SABOR&voltar=${encodeURIComponent(`/empresas/${id}/estoque/vendas`)}`
           }}
           /**
            * ⚠️ SUBSTITUIR O DIA = RE-IMPORTAR: o dono sobe o arquivo de novo e o import
@@ -1098,7 +1107,14 @@ function BaixaComplementos({ id, recarga, revisandoDia, onRevisar }: { id: strin
         <div className="rounded-lg border border-emerald-300 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-800">
           <b>{recibo.ocorrencias.toLocaleString('pt-BR')} ocorrências</b> baixadas em {recibo.itensBaixados} item(ns) · {brl(recibo.valorBaixado)}
           {recibo.estornou > 0 && <> · {recibo.estornou} baixa(s) anterior(es) estornada(s)</>}
-          {recibo.pendentes > 0 && <> · {recibo.pendentes} sem ficha (não baixaram)</>}
+          {/*
+            ⭐ SELO HONESTO (10/05): dizia "sem ficha" — e `pendentes` vem de
+            `baixa-complemento.ts:176` (`!porNome.get(nome)`), ou seja **falta a linha no
+            MAPA**, nunca ausência de ficha. Os 5 órfãos de outubro TINHAM ficha e caíam
+            aqui: o texto mandava o dono criar uma ficha que já existia.
+            ⛔ Só o TEXTO mudou — a régua (`pendentes`) está intocada.
+          */}
+          {recibo.pendentes > 0 && <> · {recibo.pendentes} sem vínculo (não baixaram)</>}
         </div>
       )}
 

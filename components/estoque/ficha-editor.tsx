@@ -26,6 +26,7 @@ import { BuscaItem, type ItemBusca } from './busca-item'
 import { previewDoRendimento, fraseDoPreview } from '@/lib/stock/producao/preview-do-rendimento'
 import { valoresIniciaisDaFicha, paraCampo, faixaMargem, type LinhaParaFicha } from '@/lib/stock/cardapio/valores-iniciais'
 import { camposDaCopia } from '@/lib/stock/producao/duplicar-ficha'
+import { nomesDeComplementoDaUrl } from '@/lib/stock/producao/voltar-ficha'
 import { montaNaVenda, ehTipoDeFicha, TIPO_INTERMEDIARIO, type TipoFicha } from '@/lib/stock/tipos-ficha'
 import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, validarQtd, formatarQtd } from '@/lib/stock/quantidade'
 import { useDismissivel } from '@/lib/hooks/use-dismissivel'
@@ -74,7 +75,10 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   // ~50 vezes, e o passo 2 é justamente o que ficou de fora nas 3 fichas órfãs de 01/09.
   // ⭐ `getAll`: o link do grupo manda um `complemento=` por grafia, e o salvar mapeia todas
   // na MESMA transação — uma ficha, uma viagem.
-  const complementosDaUrl = qp?.getAll('complemento') ?? []
+  // ⭐⭐ UM leitor só pros nomes do PDV (REGRA 5): ele aceita `complemento=` E o alias
+  // `mapearComplemento=`. Ler `getAll('complemento')` aqui na mão foi o que deixou a ficha
+  // nascer ÓRFÃ quando a revisão do import inventou o outro nome de param (10/05).
+  const complementosDaUrl = nomesDeComplementoDaUrl(qp)
   const complementoDaUrl = mapearComplemento ?? (complementosDaUrl.length ? complementosDaUrl : undefined)
   // ⭐ o irmão do `?complemento=` pro mundo dos PRODUTOS (porta da tela de Vendas):
   // sem ele a ficha nascia órfã ali também — a MESMA classe das 3 órfãs de 01/09.
