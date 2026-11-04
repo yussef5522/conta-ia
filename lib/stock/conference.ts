@@ -22,6 +22,13 @@ export interface ConfItem {
   qCom: number
   vUnCom: number
   vProd: number
+  /**
+   * ⭐ O CFOP da linha, pro selo "parece bonificação" (04/11). Ele já era gravado
+   * (`sefaz/persist-nfe.ts`) e nunca chegava à tela.
+   * ⛔ SUGERE, não decide: a cortesia é marcada pelo dono — notas 5910 desta empresa vieram
+   * COM boleto (mistas, parte brinde parte venda). Medido em prod, 04/11.
+   */
+  cfop: string | null
   mapeado: { itemId: string; nome: string; unidadeControle: UnidadeControle; fatorConversao: number } | null
   /** ⭐⭐ O DESTINO DA LINHA — `EQUIPAMENTO` quando o dono já ensinou que este produto é
    *  máquina (item 2 do brief: "BOLEADORA → equipamento, uma vez só").
@@ -139,6 +146,7 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
       qCom: it.qCom ?? 0,
       vUnCom: it.vUnCom ?? 0,
       vProd: it.vProd ?? r2((it.qCom ?? 0) * (it.vUnCom ?? 0)),
+      cfop: it.cfop ?? null,
       mapeado: m && estoque ? { itemId: m.itemId, nome: estoque.nome, unidadeControle: estoque.unidadeControle as UnidadeControle, fatorConversao: m.fatorConversao } : null,
       // ⭐ o destino aprendido: código PRIMEIRO (identificador do fornecedor), nome depois
       // (texto que ele reescreve) — a MESMA ordem do mapa de item, logo acima.

@@ -79,6 +79,22 @@ export interface ConfirmInput {
    */
   confirmouResiduo?: boolean
   /**
+   * ⭐⭐⭐ CORTESIA/BONIFICAÇÃO (04/11/2026) — *"a mercadoria entra, a cobrança não nasce"*.
+   *
+   * A nota de brinde de fábrica (CFOP 1910/2910 na entrada) traz valor nos produtos por
+   * obrigação de ICMS, mas **não há nada a pagar**. Com isto `true`:
+   *   • estoque entra pela MESMA porta (`criarMovimento`), com o `vUnCom` da nota no custo;
+   *   • **nenhuma** `StockPayableSuggestion` nasce ⇒ nenhuma conta a pagar, nada no A DEFINIR;
+   *   • a nota fica marcada em `StockNfeCortesia`, com autor e data.
+   *
+   * ⚠️ É DECLARAÇÃO do dono, não dedução do CFOP — e recusada se o XML trouxer duplicata
+   * (o emitente já disse que há cobrança). O porquê, com os números de prod, está no model
+   * `StockNfeCortesia` do `schema.prisma`.
+   */
+  cortesia?: boolean
+  /** livre, opcional — ex.: "bonificação de volume do trimestre" */
+  cortesiaMotivo?: string
+  /**
    * ⭐ O BOLETO DE PAPEL, quando o XML não traz duplicata (04/09). OPCIONAL: sem ele a
    * parcela nasce "A DEFINIR", que é o caminho certo pra pix/dinheiro combinado.
    * ⚠️ A soma tem que fechar com o total da nota AO CENTAVO (`conferirPagamentoDoPapel`).
@@ -136,10 +152,37 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
   // contagem (23/08): aviso que vive no componente some no dia em que a rota for chamada
   // por outro caminho, e foi por outro caminho que estas 21 entraram.
   const temDup = await prisma.stockNfeDup.count({ where: { companyId, nfeId } })
-  if (temDup === 0 && !input.pagamento?.parcelas?.length && !input.pagamento?.semDataDefinirDepois) {
+  /**
+   * ⭐⭐⭐ A CORTESIA É A TERCEIRA RESPOSTA — e ela é "não vai ser paga" (04/11/2026).
+   *
+   * ⛔ Até aqui a porta aceitava DUAS respostas: *as parcelas* ou *"sem data, defino
+   * depois"*. A nota de bonificação não tem nenhuma das duas — o dono não sabe o
+   * vencimento porque **não existe vencimento**. Ele era empurrado pro `A DEFINIR`, que
+   * cria sugestão de conta a pagar e acende o F5: *um alarme sobre uma dívida que não
+   * existe*. Medido na caçula: **10 notas CFOP 5910 paradas, zero duplicata**, a mais
+   * antiga de 23/09.
+   *
+   * ⚠️ **É uma DECLARAÇÃO do dono, nunca uma dedução do CFOP.** O CFOP 1910/2910/5910
+   * *sugere* (a tela mostra o selo), mas quem decide é o dedo dele — e aqui está medido
+   * por que a dedução seria errada: as notas 5910 que esta empresa já confirmou **têm
+   * duplicata** (SPAL `vNF` 100,50 com boleto de 67,14), porque são notas MISTAS, parte
+   * brinde parte venda. *Heurística sugere; nunca decide em silêncio.*
+   *
+   * ⛔ E a porta NÃO afrouxou: nota COM duplicata no XML não vira cortesia por capricho —
+   * o emitente já declarou que há cobrança, e aceitar as duas coisas ao mesmo tempo seria
+   * gravar estoque sem a dívida que o próprio XML afirma.
+   */
+  if (input.cortesia && temDup > 0) {
+    throw new Error(
+      'Esta nota traz boleto no XML: ela não pode ser marcada como cortesia. '
+      + 'Se o fornecedor cancelou a cobrança, ajuste as parcelas da nota antes de confirmar.',
+    )
+  }
+  if (temDup === 0 && !input.cortesia && !input.pagamento?.parcelas?.length && !input.pagamento?.semDataDefinirDepois) {
     throw new Error(
       'Esta nota não traz boleto no XML: diga como ela vai ser paga — digite o(s) vencimento(s), '
-      + 'ou marque "sem data, defino depois" (ela entra na fila de notas sem vencimento).',
+      + 'ou marque "sem data, defino depois" (ela entra na fila de notas sem vencimento), '
+      + 'ou marque "cortesia/bonificação" se não há nada a pagar.',
     )
   }
   // De onde veio o QUE está sendo conferido: XML da SEFAZ, ou os itens que o dono digitou
@@ -422,7 +465,28 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
     }
 
     // (d) contas a pagar SUGERIDO (ponte OFF)
-    for (const d of dups) {
+    //
+    // ⭐⭐⭐ NA CORTESIA, ESTE BLOCO INTEIRO NÃO RODA — é aqui que a cobrança nasceria.
+    //
+    // ⚠️ O corte é NESTE ponto, e não no `enviarParaContasPagar` lá fora, porque a
+    // `StockPayableSuggestion` **é** o gatilho: a ponte dispara "sempre que existe sugestão
+    // com `dVenc != null`", sem flag nenhuma (`ponte-contas-pagar.ts:316`). Sugestão que não
+    // nasce é conta a pagar que não existe — e também nada na fila do A DEFINIR e nada pro
+    // F5 vigiar. *Cortar depois deixaria a dívida nascer pra ser apagada em seguida.*
+    //
+    // ⛔ E repare no que fica FORA deste `if`: `criarMovimento` (acima) já rodou com o
+    // `custoUnitario` da nota. A cortesia muda o lado do dinheiro e **nada** no estoque —
+    // mesma porta, mesmo custo médio, mesmo invariante E16.
+    if (input.cortesia) {
+      await tx.stockNfeCortesia.create({
+        data: {
+          companyId, nfeId, chave: nfe.chave,
+          motivo: input.cortesiaMotivo?.trim() || null,
+          marcadaPorId: userId,
+        },
+      })
+    }
+    for (const d of input.cortesia ? [] : dups) {
       await tx.stockPayableSuggestion.create({ data: { companyId, nfeId, chave: nfe.chave, supplierCnpj: cnpj || null, supplierNome: input.fornecedor.nome, nDup: d.nDup, dVenc: d.dVenc, valor: d.vDup } })
     }
     // ⭐⭐ NOTA SEM BOLETO TAMBÉM VIRA SUGESTÃO — com `dVenc = null` ("A DEFINIR").
@@ -432,7 +496,7 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
     // dinheiro combinados com o fornecedor viravam dívida invisível: o dinheiro sai e nunca
     // aparece no fluxo de caixa. ⚠️ E o juiz também não via — o F3 vigia sugestão parada, e
     // sugestão que não nasce não pára (a cegueira do E15).
-    if (!dups.length) {
+    if (!dups.length && !input.cortesia) {
       // ⭐⭐ O BOLETO DE PAPEL (04/09): o XML não traz duplicata, mas o boleto veio junto com a
       // mercadoria e o dono SABE o vencimento. Digitar aqui — na hora em que a informação
       // está na mão dele — faz o payable nascer no fluxo normal, sem passar pelo A DEFINIR.

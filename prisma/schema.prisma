@@ -3828,6 +3828,41 @@ model StockNfeAdiada {
   @@map("stock_nfe_adiada")
 }
 
+/// ⭐⭐⭐ A NOTA DE CORTESIA/BONIFICAÇÃO — ESTOQUE ENTRA, COBRANÇA NÃO NASCE (04/11/2026)
+///
+/// ⛔ O caso real: a fábrica manda bonificação (CFOP 1910/2910 na entrada; a nota traz valor
+/// nos produtos por obrigação de ICMS) e **não existe nada a pagar**. O recebimento travava
+/// em `confirmar-conferencia.ts:139` — *"diga como ela vai ser paga"* —, e a única saída era
+/// "sem data, defino depois", que gera sugestão `A DEFINIR` e acende o alarme F5. Medido na
+/// caçula: **10 notas CFOP 5910 paradas, zero duplicata**, a mais antiga de 23/09.
+///
+/// ⚠️ **Satélite, não coluna em `StockNfe`** — o mesmo padrão de `StockNfeRecusa` e
+/// `StockNfeAdiada`: a decisão do dono sobre a nota é um FATO DATADO com autor, não um
+/// atributo da nota. O `@@unique([companyId, nfeId])` é a trava de uma marca por nota.
+///
+/// ⭐ Decisão do dono (com consultor, 04/11): o custo entra **pelo valor da nota**, não a
+/// zero — bonificação a custo zero derrubaria o custo médio e as margens das fichas. Isso
+/// também mantém o invariante **E16** (`Σ ENTRADA_NF == Σ vProd`) de pé.
+/// ⚠️ A base tributária da casa sugere o contrário pro caso "bonificação NA MESMA NF"
+/// (`lib/tax/knowledge/deep/03-comercio-roupa-completo.ts:248`, *"reduz custo médio"*). São
+/// casos diferentes — ali é desconto diluído na nota de compra, aqui é nota separada de
+/// brinde — e de todo modo *categoria/receita/preço é decisão do DONO*.
+model StockNfeCortesia {
+  id        String   @id @default(cuid())
+  companyId String
+  nfeId     String
+  chave     String
+  /// livre (ex: "bonificação de volume do trimestre")
+  motivo    String?
+  marcadaEm DateTime @default(now())
+  /// ⚠️ quem decidiu — decisão sem autor é decisão sem dono
+  marcadaPorId String?
+
+  @@unique([companyId, nfeId])
+  @@index([companyId])
+  @@map("stock_nfe_cortesia")
+}
+
 // ESTOQUE FASE 2 item 2.0 (21/08) — PRODUÇÃO (cadastros que a produção vai usar): setor,
 // colaborador e FICHA TÉCNICA versionada. SEM ordem de produção ainda (2.1). Isolado,
 // CREATE-only, companyId VALOR sem @relation.

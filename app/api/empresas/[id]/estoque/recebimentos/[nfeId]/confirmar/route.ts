@@ -63,6 +63,13 @@ const bodySchema = z.object({
    */
   confirmouResiduo: z.boolean().optional(),
   /**
+   * ⭐⭐⭐ CORTESIA/BONIFICAÇÃO (04/11/2026) — a mercadoria entra, a cobrança não nasce.
+   * ⚠️ Nasce ausente de propósito: marcar cortesia é um GESTO do dono, nunca um default —
+   * e o servidor recusa se o XML trouxer duplicata (ver `confirmar-conferencia.ts`).
+   */
+  cortesia: z.boolean().optional(),
+  cortesiaMotivo: z.string().trim().max(200).optional(),
+  /**
    * ⭐ O BOLETO DE PAPEL (04/09) — OPCIONAL. Quando o XML não traz duplicata mas o boleto veio
    * junto com a mercadoria, o dono digita aqui e o payable nasce com a data certa, no fluxo
    * normal. ⚠️ Sem isso a parcela nasce "A DEFINIR" — o certo pra pix/dinheiro combinado.
@@ -94,6 +101,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   try {
     const r = await confirmarConferencia({ companyId, nfeId, userId: user.sub, fornecedor: parsed.data.fornecedor, itens: parsed.data.itens,
       confirmouResiduo: parsed.data.confirmouResiduo,
+      cortesia: parsed.data.cortesia,
+      cortesiaMotivo: parsed.data.cortesiaMotivo,
       pagamento: parsed.data.pagamento
         ? { parcelas: parsed.data.pagamento.parcelas.map((p) => ({ dVenc: new Date(`${p.dVenc}T00:00:00.000Z`), valor: p.valor })) }
         : undefined })

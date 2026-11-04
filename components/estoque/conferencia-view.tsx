@@ -36,6 +36,10 @@ type Motivo = (typeof MOTIVOS)[number]
 
 export interface ConfItem {
   nfeItemId: string; xProd: string; cProd: string; ncm: string; uCom: string; qCom: number; vUnCom: number; vProd: number
+  /** ⭐ CFOP da linha (04/11) — só pro selo "parece bonificação". SUGERE, não decide.
+   *  ⚠️ Este tipo é uma 2ª cópia do `ConfItem` de `lib/stock/conference.ts` (dívida antiga,
+   *  anotada e NÃO ampliada neste sprint): os dois precisam ganhar o campo junto. */
+  cfop?: string | null
   mapeado: { itemId: string; nome: string; unidadeControle: Unidade; fatorConversao: number } | null
   /** ⭐ 05/09: o que o dono corrigiu da última vez neste (fornecedor, cProd) */
   correcaoAnterior?: { unidadeNota: string; unidadeEntrada: string; em: string } | null
@@ -153,6 +157,8 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
   // de antes (A DEFINIR); o que muda é que ele passa a ser uma ESCOLHA. **O silêncio era
   // a fábrica das 21 notas** (R$ 8.588,75 fora do fluxo de caixa, sem alarme nenhum).
   const [semDataDefinirDepois, setSemDataDefinirDepois] = useState(false)
+  /** ⭐ CORTESIA/BONIFICAÇÃO (04/11) — nasce FALSO: marcar é gesto do dono, nunca default */
+  const [cortesia, setCortesia] = useState(false)
   const [boletos, setBoletos] = useState<string[]>(() => dupsPendentes.map((d) => d.nDup ?? ''))
   // ⭐ ajustar parcelas (renegociação pós-nota) — REGRA 9: hook no topo, longe do JSX
   const [editandoParcelas, setEditandoParcelas] = useState(false)
@@ -190,11 +196,24 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
    * a única guardiã, o dia em que a rota for chamada por outro caminho a fábrica das 21
    * reabriria — que é exatamente como elas entraram.
    */
+  /**
+   * ⭐ O CFOP SUGERE — e só. 1910/2910 (entrada) e 5910/6910 (o espelho que o emitente
+   * escreve) são os códigos de brinde/bonificação. ⛔ Ele pinta um selo e **não** marca a
+   * caixa: medido em prod, notas 5910 desta empresa vieram COM boleto (notas mistas, parte
+   * brinde parte venda). *Heurística sugere; nunca decide em silêncio.*
+   */
+  const cfopDeBonificacao = useMemo(() => {
+    const cfops = new Set(data.itens.map((i) => i.cfop).filter(Boolean))
+    for (const c of ['1910', '2910', '5910', '6910']) if (cfops.has(c)) return c
+    return null
+  }, [data.itens])
+
   const pagamentoRespondido = useMemo(() => {
     if (!semDuplicataNoXml) return true // a nota trouxe boleto: não há o que perguntar
+    if (cortesia) return true // ⭐ "não vai ser paga" é uma resposta
     if (semDataDefinirDepois) return true
     return parcelasPapel.length > 0 && parcelasPapel.every((p) => p.dVenc && Number(p.valor.replace(',', '.')) > 0)
-  }, [semDuplicataNoXml, semDataDefinirDepois, parcelasPapel])
+  }, [semDuplicataNoXml, cortesia, semDataDefinirDepois, parcelasPapel])
   const divergencias = useMemo(() => data.itens.filter((it) => { const e = estado[it.nfeItemId]; return e && Math.abs(e.qtdRecebida - it.qCom * (e.mapeado?.fatorConversao ?? 1)) > 0.0001 }).length, [data.itens, estado])
   const setItem = (id_: string, patch: Partial<Estado>) => setEstado((s) => ({ ...s, [id_]: { ...s[id_], ...patch } }))
 
@@ -282,6 +301,8 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
           boletosSelecionados: boletos,
           cadastrarFornecedor: cadastrarForn,
           ...(confirmouResiduo ? { confirmouResiduo: true } : {}),
+          // ⭐ só vai quando marcado — e o servidor recusa se o XML tiver duplicata
+          ...(cortesia ? { cortesia: true } : {}),
           // ⚠️ só manda se o dono preencheu: lista vazia é "a definir", não erro
           pagamento: parcelasPapel.length && parcelasPapel.every((p) => p.dVenc && Number(p.valor.replace(',', '.')) > 0)
             ? { parcelas: parcelasPapel.map((p) => ({ dVenc: p.dVenc, valor: Number(p.valor.replace(',', '.')) })) }
@@ -642,6 +663,23 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                     className="h-3.5 w-3.5 accent-[#185FA5]" />
                   sem data — <b>defino depois</b> (entra na fila de notas sem vencimento)
                 </label>
+                {/* ⭐⭐⭐ A TERCEIRA RESPOSTA (04/11/2026): "não vai ser paga".
+                    A nota de bonificação de fábrica não tem vencimento porque não tem
+                    dívida — empurrá-la pro A DEFINIR criava conta a pagar fantasma e
+                    acendia o F5. ⚠️ A trava e a régua moram no SERVIDOR; isto é só o dedo
+                    do dono. O selo de CFOP ao lado SUGERE, nunca decide. */}
+                <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-600">
+                  <input type="checkbox" checked={cortesia}
+                    onChange={(e) => setCortesia(e.target.checked)}
+                    data-testid="conferencia-cortesia"
+                    className="h-3.5 w-3.5 accent-[#185FA5]" />
+                  <b>cortesia/bonificação</b> — sem cobrança (o estoque entra, nenhuma conta nasce)
+                </label>
+                {cfopDeBonificacao && (
+                  <span className="inline-flex items-center rounded-md bg-amber-50 px-1.5 py-0.5 text-[10.5px] font-medium text-amber-700">
+                    CFOP {cfopDeBonificacao} — parece bonificação
+                  </span>
+                )}
               </div>
             ) : (
               <>
