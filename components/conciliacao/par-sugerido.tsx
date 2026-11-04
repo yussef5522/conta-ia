@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { ancoraDoPar } from '@/lib/conciliacao/uma-casa-por-caso'
 import { formatBRL } from '@/lib/format/money'
+import type { SituacaoDaConta } from '@/lib/conciliacao/situacao-da-conta'
 
 export interface LadoDoParDTO {
   id: string
@@ -44,7 +45,12 @@ export interface SugestaoDTO {
 
 export interface ContaDaFilaDTO {
   conta: LadoDoParDTO
-  situacao: 'EM_ABERTO' | 'DUPLA_CONTAGEM'
+  /**
+   * ⭐ do DONO ÚNICO (`lib/conciliacao/situacao-da-conta`), não uma 2ª união aqui.
+   * ⛔ Até 04/11 este campo repetia `'EM_ABERTO' | 'DUPLA_CONTAGEM'` à mão — e uma união
+   * copiada é a forma mais barata de a tela ficar cega pra um estado novo do servidor.
+   */
+  situacao: SituacaoDaConta
   fornecedor: string | null
   sugestoes: SugestaoDTO[]
 }

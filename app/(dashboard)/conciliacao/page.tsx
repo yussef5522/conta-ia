@@ -34,6 +34,7 @@ import {
   CabecalhoDaFila, RodapeDaTela, type TotaisDTO, type SemParDTO,
 } from '@/components/conciliacao/cabecalho-da-fila'
 import { LoteSugerido, type LoteDTO } from '@/components/conciliacao/lote-sugerido'
+import { AlarmeDeContas } from '@/components/conciliacao/alarme-de-contas'
 import { type FilasDTO } from '@/components/conciliacao/stats-do-mock'
 import { MOCK } from '@/components/conciliacao/mock-tokens'
 import { type CardDeEscolhaDTO } from '@/components/conciliacao/escolher-na-mao-card'
@@ -256,6 +257,20 @@ function ConciliacaoInner() {
   const duplaContagem = fila?.totais.duplaContagem ?? 0
 
   /**
+   * ⭐ AS LINHAS que cada alarme desenha — a MESMA lista que o servidor mandou, não uma
+   * contagem paralela. O card só pode "levar até" o que ele tem em mão.
+   *
+   * ⚠️ `emDuplaContagem` pode ter MENOS itens que `totais.duplaContagem`: a conta que entrou
+   * num lote sai desta lista porque o card do lote já explica o pagamento inteiro (a régua de
+   * 23/09). Nada é escondido — o card diz quantas estão lá (`ocultas`), e *remoção sem
+   * realocação é perda*.
+   */
+  const emDuplaContagem = useMemo(
+    () => (fila?.contas ?? []).filter((c) => c.situacao === 'DUPLA_CONTAGEM'), [fila])
+  const pagasPorFora = useMemo(
+    () => (fila?.contas ?? []).filter((c) => c.situacao === 'PAGA_POR_FORA'), [fila])
+
+  /**
    * ⛔ Quantas contas disputam CADA linha do extrato. Duas notas do mesmo
    * fornecedor com o mesmo valor viram dois cards quase idênticos — e só uma pode
    * ser. Mostrar as duas continua certo; o que faltava era dizer isso alto.
@@ -355,17 +370,40 @@ function ConciliacaoInner() {
                   categorizadas). Colapsar sem carregá-las perderia R$ 2.120,81 ·
                   2.275,05 · 3.510,78 … de trabalho real. *Categoria não quita conta.*
                 */}
-                {duplaContagem > 0 && (
-                  <div className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
-                    <span>
-                      <b>{duplaContagem} conta{duplaContagem > 1 ? 's' : ''} em dupla contagem.</b>{' '}
-                      Já {duplaContagem > 1 ? 'foram marcadas' : 'foi marcada'} como paga
-                      {duplaContagem > 1 ? 's' : ''}, mas ficou sem vínculo — o mesmo dinheiro está
-                      em duas linhas, e o saldo mente até alguém costurar.
-                    </span>
-                  </div>
-                )}
+                {/*
+                  ⭐⭐⭐ O CARD QUE LISTA E LEVA (04/11/2026) — ele mostrava só o número.
+
+                  ⛔⛔ **O dono não tinha como agir:** *"EM DUPLA CONTAGEM — R$ 408,65 — 1
+                  conta paga sem vínculo"* e nada mais. Sem nome, sem valor por linha, sem
+                  link. O payload (`fila.contas`) já trazia tudo e a tela **jogava fora** —
+                  *porta sem maçaneta*, a enésima volta.
+                */}
+                <AlarmeDeContas
+                  tom="rose"
+                  contas={emDuplaContagem}
+                  ocultas={duplaContagem - emDuplaContagem.length}
+                  empresaId={empresaId}
+                  titulo={(n) => `${n} conta${n > 1 ? 's' : ''} em dupla contagem.`}
+                  explicacao={(n) =>
+                    `Já ${n > 1 ? 'foram marcadas' : 'foi marcada'} como paga${n > 1 ? 's' : ''}, mas ficou sem vínculo — o mesmo dinheiro está em duas linhas, e o saldo mente até alguém costurar.`}
+                />
+
+                {/*
+                  ⭐⭐ O TERCEIRO ESTADO (04/11/2026) — paga em dinheiro não é dupla contagem.
+
+                  Conta `CASH` não tem extrato por desenho, então *"o mesmo dinheiro em duas
+                  linhas"* é falso por construção ali: não há par, e nunca vai haver. O que
+                  falta é **classificar** — e é só isso que este card pede.
+                */}
+                <AlarmeDeContas
+                  tom="amber"
+                  contas={pagasPorFora}
+                  ocultas={0}
+                  empresaId={empresaId}
+                  titulo={(n) => `${n} conta${n > 1 ? 's' : ''} paga${n > 1 ? 's' : ''} por fora.`}
+                  explicacao={() =>
+                    'Saiu em dinheiro, de uma conta sem extrato — não há par pra casar. Só confirme a categoria.'}
+                />
 
 
                 <CaixaDeEntrada empresaId={empresaId} />

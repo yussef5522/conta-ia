@@ -266,3 +266,32 @@ export function chamadasDe(src: string, padrao: RegExp): string[] {
   }
   return out
 }
+
+/**
+ * ⭐⭐ UM ELEMENTO JSX INTEIRO, por NOME — `<Nome … />` ou `<Nome …>…</Nome>`.
+ *
+ * ⛔⛔ **Existe porque `chamadasDe` NÃO serve pra JSX e falha CALADA ali:** ela procura o
+ * primeiro `(` depois do match, e `<AlarmeDeContas` não tem parêntese nenhum — ela pegaria o
+ * próximo `(` do arquivo e devolveria um bloco que não é o elemento. *Sonda errada dá um
+ * vermelho tão convincente quanto um defeito real* — e um verde também.
+ *
+ * ⚠️ Conta `{}` pra não parar num `/>` que vive dentro de uma prop (`titulo={(n) => …}`), e
+ * aceita as duas formas de fechamento. Estrutural: a distância nunca entra na conta.
+ */
+export function elementosJsx(src: string, nome: string): string[] {
+  const out: string[] = []
+  const abre = new RegExp(`<${nome}(?=[\\s/>])`, 'g')
+  for (const m of src.matchAll(abre)) {
+    let i = m.index! + m[0].length
+    let chaves = 0
+    for (; i < src.length; i++) {
+      const ch = src[i]
+      if (ch === '{') chaves++
+      else if (ch === '}') chaves--
+      else if (chaves === 0 && ch === '/' && src[i + 1] === '>') { i += 2; break }
+      else if (chaves === 0 && ch === '>') { i += 1; break }
+    }
+    out.push(src.slice(m.index!, i))
+  }
+  return out
+}

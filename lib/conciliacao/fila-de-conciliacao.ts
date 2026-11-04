@@ -37,6 +37,7 @@ import {
 import { podeConferirPorLedgerbal, resolveBankProfile } from '@/lib/bank-profiles'
 import { contarFilas, type ContagemDasFilas } from './filas-da-tela'
 import { WHERE_ORIGEM_DO_EXTRATO } from './origem-do-extrato'
+import { situacaoDaConta, pedeGesto, type SituacaoDaConta } from './situacao-da-conta'
 
 type Db = PrismaClient
 
@@ -106,8 +107,8 @@ export const LINHA_DISPONIVEL_WHERE = {
 
 export interface ContaEsperandoPagamento {
   conta: LadoDoPar
-  /** PAYABLE em aberto · EX_PAYABLE = já marcada como paga e sem vínculo (dupla contagem) */
-  situacao: 'EM_ABERTO' | 'DUPLA_CONTAGEM'
+  /** ⭐ os quatro destinos, com dono em `situacao-da-conta.ts` (a régua velha tinha dois e mentia) */
+  situacao: SituacaoDaConta
   fornecedor: string | null
   sugestoes: (SugestaoDeVinculo & { extrato: LadoDoPar; extratoConta: string | null; extratoCategoria: string | null })[]
 }
@@ -161,10 +162,20 @@ export interface FilaDeConciliacao {
     contas: number; comSugestao: number; transferencias: number; duplicatas: number
     /** quantos PIX consolidados esperam confirmação, e quantas notas eles liquidam */
     lotes: number; notasEmLote: number
-    /** contas marcadas como pagas e SEM vínculo — o mesmo dinheiro em duas linhas */
+    /**
+     * contas pagas e SEM vínculo **numa conta que tem extrato** — ali o par é possível, e
+     * o mesmo dinheiro pode estar em duas linhas.
+     * ⛔ Pagamento em dinheiro NÃO entra aqui desde 04/11: não há par a existir, e contá-lo
+     * era o alarme falso dos R$ 408,65 (ver `situacao-da-conta.ts`).
+     */
     duplaContagem: number
     /** quanto está contado duas vezes. Soma das contas ACIMA, cada uma UMA vez. */
     valorEmDuplaContagem: number
+    /** pagas em dinheiro (conta CASH) e ainda sem categoria — falta classificar, não costurar */
+    pagaPorFora: number
+    valorPagaPorFora: number
+    /** pagas em dinheiro e já categorizadas — selo de arquivo, nunca alarme */
+    pagaPorForaResolvida: number
   }
 }
 
@@ -232,6 +243,12 @@ export async function contasEsperandoPagamento(
       select: {
         id: true, description: true, amount: true, date: true, dueDate: true, type: true,
         lifecycle: true, supplierId: true, supplier: { select: { razaoSocial: true } },
+        // ⭐ os dois fatos que a situação precisa (ver `situacao-da-conta.ts`): o TIPO
+        // DECLARADO da conta de onde o dinheiro saiu, e se o dono já categorizou.
+        // ⛔ Sem o `accountType` aqui, o pagamento em dinheiro seguia rotulado de dupla
+        // contagem — era este select incompleto que sustentava o alarme falso.
+        categoryId: true,
+        bankAccount: { select: { accountType: true } },
       },
       orderBy: { dueDate: 'asc' },
     }),
@@ -308,7 +325,14 @@ export async function contasEsperandoPagamento(
 
   const out: ContaEsperandoPagamento[] = contas.map((c) => ({
     conta: lados.get(c.id)!,
-    situacao: c.lifecycle === 'EFFECTED' ? 'DUPLA_CONTAGEM' : 'EM_ABERTO',
+    // ⭐ a régua tem dono desde 04/11 — e ela distingue "paga em dinheiro" (sem par
+    // possível) de "paga numa conta com extrato" (par possível). O porquê, com os números
+    // medidos em prod, está em `situacao-da-conta.ts`.
+    situacao: situacaoDaConta({
+      lifecycle: c.lifecycle,
+      accountType: c.bankAccount?.accountType ?? null,
+      categoryId: c.categoryId,
+    }),
     fornecedor: c.supplier?.razaoSocial ?? null,
     sugestoes: (porConta.get(c.id) ?? []).sort((a, b) => b.score - a.score),
   }))
@@ -525,9 +549,21 @@ export interface ResumoSemPar {
 export function resumirSemPar(
   contas: ContaEsperandoPagamento[], agora: Date, ultimoExtrato: Date | null,
 ): ResumoSemPar {
-  // ⚠️ a dupla contagem NÃO é "sem par no extrato" — ela continua na tela como
-  // anomalia. Contá-la aqui a esconderia atrás de um número de informação.
-  const semPar = contas.filter((c) => c.sugestoes.length === 0 && c.situacao !== 'DUPLA_CONTAGEM')
+  /**
+   * ⚠️ a dupla contagem NÃO é "sem par no extrato" — ela continua na tela como
+   * anomalia. Contá-la aqui a esconderia atrás de um número de informação.
+   *
+   * ⛔⛔ **E O FILTRO É POR LISTA-BRANCA desde 04/11, não por exclusão.** Ele era
+   * `situacao !== 'DUPLA_CONTAGEM'`, que valia enquanto existiam DOIS estados. Com o
+   * terceiro (`PAGA_POR_FORA`), a exclusão passou a **admitir** o que ela nunca quis: a
+   * conta paga em dinheiro cairia aqui como *"venceu e o extrato já veio — lacuna real"*, e
+   * o alarme dos R$ 408,65 **sairia do card e reapareceria neste número**. *N caminhos, 1
+   * esquecido* — a doença mais caras desta casa, e o "sem par" era o caminho esquecido.
+   *
+   * ⭐ `=== 'EM_ABERTO'` diz o que a função quer: conta que ainda espera pagamento. Estado
+   * novo no futuro fica de fora por padrão, em vez de entrar sem ninguém ver.
+   */
+  const semPar = contas.filter((c) => c.sugestoes.length === 0 && c.situacao === 'EM_ABERTO')
   let naoVenceram = 0, aguardandoExtrato = 0, comExtratoImportado = 0
   /**
    * ⭐⭐ A MESMA FRONTEIRA DO CONTAS A PAGAR (13/09) — *"as duas telas, uma verdade"*.
@@ -600,11 +636,22 @@ export async function filaDeConciliacao(
    * ⚠️ A **dupla contagem** nunca é escondida: ela não é "conta esperando pagamento", é
    * anomalia — e se sumisse daqui não sobraria lugar nenhum onde aparecesse.
    */
+  /**
+   * ⭐ `pedeGesto` é o dono de "isto ainda espera o dono" — e é por ele que a conta paga em
+   * dinheiro **JÁ CATEGORIZADA** sai da fila: ela não tem par pra costurar nem campo pra
+   * preencher. *Fila que cobra o que já foi decidido é como o dono aprende a não olhar a
+   * fila* (a lição do `origem-do-extrato`, e o caso dos 408,65 era exatamente isso).
+   */
   const contas = todas.filter((c) =>
-    (c.sugestoes.length > 0 && !contasQueMoramNaCaixa.has(c.conta.id)) || c.situacao === 'DUPLA_CONTAGEM')
+    (c.sugestoes.length > 0 && !contasQueMoramNaCaixa.has(c.conta.id)) || pedeGesto(c.situacao))
   // ⚠️ a dupla contagem conta TODAS, inclusive as sem par: é dinheiro contado
   // duas vezes exista ou não sugestão, e esconder isso seria o oposto do ponto.
+  // ⛔ Mas agora só cai aqui quem está numa conta COM extrato — onde o par é possível.
   const dc = todas.filter((c) => c.situacao === 'DUPLA_CONTAGEM')
+  /** ⭐ paga em dinheiro e ainda sem categoria: não é dupla contagem, é classificação faltando */
+  const ppf = todas.filter((c) => c.situacao === 'PAGA_POR_FORA')
+  /** ⭐ paga em dinheiro e já categorizada: nada pendente — vira selo no arquivo, não alarme */
+  const ppfOk = todas.filter((c) => c.situacao === 'PAGA_POR_FORA_RESOLVIDA')
   // ⛔ NOTA QUE JÁ ESTÁ NUM LOTE NÃO REPETE COMO CARD 1:1. Ela apareceria duas vezes
   // pedindo a mesma decisão por dois caminhos — e confirmar os dois seria contar o mesmo
   // dinheiro em dobro. O lote ganha porque ele explica o pagamento inteiro; o 1:1 daquela
@@ -621,6 +668,10 @@ export async function filaDeConciliacao(
     duplaContagem: dc.length,
     // ⚠️ `reduce` sobre a LISTA, não sobre um join: cada conta entra uma vez.
     valorEmDuplaContagem: Math.round(dc.reduce((s, c) => s + c.conta.valor, 0) * 100) / 100,
+    pagaPorFora: ppf.length,
+    valorPagaPorFora: Math.round(ppf.reduce((s, c) => s + c.conta.valor, 0) * 100) / 100,
+    /** ⚠️ contado pra o selo do arquivo — NUNCA somado aos alarmes */
+    pagaPorForaResolvida: ppfOk.length,
   }
   return {
     contas: contasForaDoLote, lotes: lote.lotes, lotesQueNaoFecham: lote.naoFecham,
