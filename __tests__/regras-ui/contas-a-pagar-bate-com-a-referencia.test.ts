@@ -45,7 +45,17 @@ const ROTULO_LIB = ler('lib/contas-pagar/rotulo-do-tempo.ts')
 
 /** ⭐ o CSS e o `<script>` da referência, separados: um manda na FORMA, o outro no COMPORTAMENTO */
 const REF_CSS = blocoEntre(REF, '<style>', '</style>')
+/**
+ * ⛔⛔ O `<script>` SEM AS TAGS (05/11/2026). `blocoEntre` devolve os marcos INCLUÍDOS, então
+ * isto entregava `<script>…</script>` — HTML, não JS. Com o apagador antigo (regex) passava
+ * por acidente; com o parser do TypeScript o texto é recusado, e sem isso o comentário da
+ * referência (`docs/contas-a-pagar-referencia.html:171-180`) sobrevivia à limpeza e deixava
+ * o `not.toContain('PRÓXIMOS 7 DIAS')` vermelho — sobre uma referência que está CERTA (ela
+ * *documenta* a morte das janelas).
+ */
 const REF_SCRIPT = blocoEntre(REF, '<script>', '</script>')
+  .replace(/^<script>/, '')
+  .replace(/<\/script>$/, '')
 
 describe('a referência versionada é a lei — e ela existe de verdade', () => {
   it('o arquivo é o que o dono aprovou (título v2) e traz as 3 regras P1–P3', () => {

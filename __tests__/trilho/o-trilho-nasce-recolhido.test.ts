@@ -21,13 +21,15 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { semComentarios, usosDe } from '../regras-ui/_leitura-de-fonte'
+import { semComentarios, semComentariosDeCss, usosDe } from '../regras-ui/_leitura-de-fonte'
 
 const RAIZ = process.cwd()
 const ler = (p: string) => readFileSync(join(RAIZ, p), 'utf8')
 
 const CSS = ler('app/globals.css')
-const CSS_LIMPO = semComentarios(CSS)
+// ⛔ CSS não é TypeScript: o apagador de TS recusa o arquivo (e com regex "funcionava" por
+// acidente). O apagador de CSS tem porta própria desde 05/11 — ver `_leitura-de-fonte.ts`.
+const CSS_LIMPO = semComentariosDeCss(CSS)
 const SIDEBAR = ler('components/sidebar/global-sidebar.tsx')
 const ITEM = ler('components/sidebar/sidebar-item.tsx')
 const SHELL = ler('components/layout/dashboard-shell.tsx')

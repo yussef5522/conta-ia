@@ -160,10 +160,17 @@ describe('⛔⛔ 3. O CARTÃO TEM 3 LINHAS — parágrafo de volta é vermelho',
 describe('⭐⭐ 4. O CHIP "N SEM PLANO →" — e ele FILTRA de verdade', () => {
   it('⭐ está no 1º cartão, como botão (teclado e leitor de tela)', () => {
     expect(TELA).toContain('sem plano')
-    const i = TELA.indexOf('sem plano')
-    const volta = TELA.slice(Math.max(0, i - 900), i)
-    expect(volta, 'chip clicável que não é <button> perde teclado').toContain('<button')
-    expect(volta, 'o chip mora no cartão do "O mês custa"').toContain('qual="conta"')
+    /**
+     * ⛔⛔ ERA `slice(i - 900, i)` — JANELA DE DISTÂNCIA, o anti-padrão que a casa proíbe.
+     * Ele quebrou em 05/11 quando o apagador passou a deixar espaço no lugar do comentário:
+     * a distância virou **911** e ele perdeu por 11 chars, com a tela CERTA. Agora o recorte
+     * é ESTRUTURAL — cada cartão vai da sua abertura até a abertura do PRÓXIMO.
+     */
+    const cartoes = TELA.split('<CartaoDeDono').slice(1)
+    const oDaConta = cartoes.find((c) => c.includes('qual="conta"'))
+    expect(oDaConta, 'não achei o cartão "O mês custa"').toBeTruthy()
+    expect(oDaConta!, 'o chip mora no cartão do "O mês custa"').toContain('sem plano')
+    expect(oDaConta!, 'chip clicável que não é <button> perde teclado').toContain('<button')
   })
 
   it('⭐ o clique LIGA o filtro e ROLA até a lista — os dois', () => {

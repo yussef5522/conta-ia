@@ -14,7 +14,7 @@ import { join } from 'node:path'
  * **verde com a tela fazendo conta própria** (REGRA 11, 07/10) — duas cópias do mesmo detector
  * divergem, e foi assim que esta passou.
  */
-import { semComentarios, usosDe } from './_leitura-de-fonte'
+import { semComentarios, usosDe, corpoDaFuncao } from './_leitura-de-fonte'
 
 const R = (p: string) => join(process.cwd(), p)
 const TELA = R('app/(dashboard)/empresas/[id]/custos-fixos/page.tsx')
@@ -219,16 +219,19 @@ describe('⭐⭐ 📅 COMPROMISSOS — a prateleira que não é custo', () => {
     expect(semComentarios(ler(COMPROMISSOS))).toContain('/emprestimos/${l.id}')
     expect(semComentarios(ler(COMPROMISSOS))).toContain('/cartoes/${c.id}')
     const i = tela.indexOf('function LinhaDeParcelaNaTela')
-    expect(tela.slice(i, i + 1600)).toContain('href={p.href}')
-    const j = tela.indexOf('function LinhaDeFaturaNaTela')
-    expect(tela.slice(j, j + 1800)).toContain('href={f.href}')
+    expect(corpoDaFuncao(tela, 'LinhaDeParcelaNaTela')).toContain('href={p.href}')
+    expect(corpoDaFuncao(tela, 'LinhaDeFaturaNaTela')).toContain('href={f.href}')
   })
 
   it('⛔⛔ "a apurar" NUNCA vira R$ 0,00 — nem na parcela nem na fatura', () => {
-    const i = tela.indexOf('function LinhaDeParcelaNaTela')
-    expect(tela.slice(i, i + 2000)).toContain("p.valor == null ? 'a apurar'")
-    const j = tela.indexOf('function LinhaDeFaturaNaTela')
-    expect(tela.slice(j, j + 2200)).toContain("f.net == null ? 'a apurar'")
+    /**
+     * ⛔⛔ ERAM `slice(i, i + 2000)` e `+ 2200` — JANELA DE DISTÂNCIA. O de 2000 quebrou em
+     * 05/11 (o alvo está a **2.551** chars do início da função) quando o apagador passou a
+     * deixar espaço no lugar do comentário; o app estava CERTO. Agora o fim do recorte é a
+     * PRÓXIMA declaração, não um orçamento de caracteres.
+     */
+    expect(corpoDaFuncao(tela, 'LinhaDeParcelaNaTela')).toContain("p.valor == null ? 'a apurar'")
+    expect(corpoDaFuncao(tela, 'LinhaDeFaturaNaTela')).toContain("f.net == null ? 'a apurar'")
   })
 
   it('⚠️ o que ficou FORA da Σ é contado E explicado na tela', () => {

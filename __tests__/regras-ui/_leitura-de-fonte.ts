@@ -1,5 +1,6 @@
 import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import ts from 'typescript'
 /**
  * ⭐⭐ O DETECTOR DE "USO, NUNCA MENÇÃO" — UM lugar, não uma cópia por guard (07/10/2026).
  *
@@ -23,35 +24,205 @@ import { join } from 'node:path'
 /**
  * ⚠️ Tira comentário de bloco, de linha e JSX — **o arquivo que documenta o defeito não pode
  * ser o que o absolve** (a lição de 21/09, no motor do Radar).
+ *
+ * ⛔⛔⛔ **DESDE 05/11/2026 ISTO USA O PARSER DO TYPESCRIPT, NÃO REGEX — e a troca foi por
+ * MEDIÇÃO, não por gosto.**
+ *
+ * A versão regex tinha duas cicatrizes registradas e uma terceira medida:
+ *   1. 08/10 — o comentário JSX preguiçoso comeu **4.431 chars** na central de import;
+ *   2. a cura foi um regex melhor… que durou até 04/11;
+ *   3. 04/11 — numa tela com `accept` de upload de imagem (valor terminando em
+ *      barra-asterisco), a sequência **dentro da string** abriu um comentário falso e o
+ *      apagador engoliu **27.816 de 81.765 chars (34%)**, num bloco único de **16.069**.
+ *      Todo guard que lia aquela tela estava cego em um terço dela — e o `data-testid` que
+ *      eu acabara de adicionar caiu justo ali.
+ *
+ * ⭐⭐ **A lição não é "regex melhor": é que apagar comentário por regex é a abordagem
+ * errada.** Para saber se uma barra-asterisco é comentário, é preciso saber se ela está
+ * dentro de string, de template, de regex literal, de texto JSX ou de divisão — isso é
+ * trabalho de PARSER, e um regex nunca vai ter esse contexto. A mesma família de bug morde
+ * bibliotecas conhecidas da indústria (`strip-comments`, `windicss`) exatamente aqui.
+ * ***Detector com um lugar só é força; detector com um lugar só e um furo é cegueira em
+ * todos os guards de uma vez*** — e foram três furos no mesmo lugar.
+ *
+ * ⚠️ **Apaga por ESPAÇOS, não por remoção**, preservando os `\n`: o tamanho e o número de
+ * linhas ficam idênticos, então `indexOf`, contagem de linha e qualquer medida de posição
+ * continuam valendo. *Remoção faria as posições derivarem e os guards de medida mentiriam.*
+ *
+ * ⛔ **E FALHA ALTO se o arquivo não parsear.** Vigia lendo lixo é pior que vigia nenhum:
+ * ele fica verde sobre um texto que não é o código. O nome do arquivo entra na mensagem
+ * quando foi informado — *achado não atribuível não é achado*.
  */
-export function semComentarios(s: string): string {
-  return s
-    .replace(COMENTARIO_JSX, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+export function semComentarios(s: string, arquivo?: string): string {
+  const { sf, kind } = parsear(s, arquivo)
+
+  const diags = (sf as unknown as { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics
+  if (diags && diags.length) {
+    const primeiro = ts.flattenDiagnosticMessageText(diags[0]!.messageText, ' ')
+    throw new Error(
+      `semComentarios: não consegui PARSEAR ${arquivo ?? '(fonte sem nome)'} como ${kind}: `
+      + `${primeiro}. ⛔ Um guard lendo texto que o parser recusa fica verde sobre lixo — `
+      + `conserte o fonte, ou passe o nome do arquivo pra escolher o ScriptKind certo.`,
+    )
+  }
+
+  return apagar(s, [...comentariosDe(sf, s), ...chavesSoDeComentario(sf)])
 }
 
 /**
- * ⛔⛔⛔ O COMENTÁRIO JSX SE FECHA NO PRIMEIRO FECHA-COMENTÁRIO, E ISSO NÃO É DETALHE DE REGEX
- * (08/10/2026).
- *
- * A versão anterior usava um `[\s\S]*?` preguiçoso entre `{` e `}` — e o FIM dela exigia o
- * fecha-comentário **seguido de `}`**. Num arquivo onde um bloco abre com `{` e a primeira
- * coisa dentro dele é um comentário de bloco (o caso trivial de `}) {` seguido de um JSDoc de
- * variável), o match **não parava no fecha-comentário dele**: corria até achar o primeiro
- * comentário JSX de verdade lá embaixo e **engolia tudo no meio**.
- *
- * ⚠️⚠️ MEDIDO: na central de import ele comeu **4.431 caracteres**, levando o container
- * (`max-w-[1440px]`), as medidas do celular e a `casaBusca` junto — e o guard passou a acusar
- * peças que ESTAVAM na tela, enquanto seria **cego** a qualquer defeito naquele trecho.
- * ***Detector com um lugar só é força; detector com um lugar só e um furo é cegueira em todos
- * os guards de uma vez.***
- *
- * ⭐ A cura é dizer NA FORMA o que um comentário de bloco é: abre-comentário, nada que contenha
- * o fecha, e o fecha. Assim o match **não pode** atravessar o fechamento, e o `{…}` em volta
- * precisa abraçar exatamente um comentário.
+ * ⭐ Apaga os ranges por ESPAÇO, preservando `\n` — UM lugar, usado pelo arquivo e pelo
+ * fragmento. ⛔ Duas cópias deste laço divergiriam no primeiro ajuste, e seria a esquecida
+ * que mentiria (a doença que este próprio arquivo documenta).
  */
-const COMENTARIO_JSX = /\{\s*\/\*(?:[^*]|\*(?!\/))*\*\/\s*\}/g
+function apagar(s: string, ranges: ts.CommentRange[]): string {
+  if (!ranges.length) return s
+  const buf = s.split('')
+  for (const r of ranges) {
+    for (let i = r.pos; i < r.end && i < buf.length; i++) {
+      if (buf[i] !== '\n' && buf[i] !== '\r') buf[i] = ' '
+    }
+  }
+  return buf.join('')
+}
+
+/**
+ * ⭐⭐⭐ O MODO FRAGMENTO — pra quem recebe um PEDAÇO de código, não um programa (05/11/2026).
+ *
+ * ⛔⛔ **ISTO NASCEU DE UM DEFEITO MEU, MEDIDO: 25 guards ficaram vermelhos de uma vez.**
+ * `usosDe` e `hexCravados` chamam o apagador por dentro, e o que chega nelas quase nunca é
+ * um arquivo: é o corpo de uma função (`blocoDa`, `blocoEntre`, `corpoDoCartao`) ou um
+ * pedaço de atributo JSX (`"style={{ color: '#fff' }}"`). **Fragmento não parseia como
+ * programa** — e o `throw` novo, que é a trava certa pra arquivo inteiro, matava o guard.
+ *
+ * ⭐ A régua: tenta como programa; se o parser recusa, **devolve o texto intocado**. É a
+ * leitura MAIS ESTRITA, não a mais frouxa — na prática o fragmento chega de um texto que já
+ * passou pelo apagador, então não há comentário pra tirar, e re-apagar era trabalho
+ * redundante que só podia introduzir erro.
+ *
+ * ⚠️ **O falhar-alto NÃO foi enfraquecido:** ele mora em {@link semComentarios}, que é quem
+ * os guards chamam pro ARQUIVO INTEIRO (com nome). Quem lê pedaço usa esta porta e declara
+ * isso no nome. *Duas perguntas diferentes, duas funções* — misturar as duas foi o erro.
+ */
+export function semComentariosDeFragmento(s: string): string {
+  const comoTsx = criar('fragmento.tsx', s, ts.ScriptKind.TSX)
+  if (!temErro(comoTsx)) return apagar(s, [...comentariosDe(comoTsx, s), ...chavesSoDeComentario(comoTsx)])
+  const comoTs = criar('fragmento.ts', s, ts.ScriptKind.TS)
+  if (!temErro(comoTs)) return apagar(s, [...comentariosDe(comoTs, s), ...chavesSoDeComentario(comoTs)])
+  return s
+}
+
+/**
+ * ⭐⭐ CSS TEM APAGADOR PRÓPRIO — porque CSS não é TypeScript (05/11/2026).
+ *
+ * ⛔ **Achado ao trocar o miolo:** `o-trilho-nasce-recolhido` passava `app/globals.css` pra
+ * `semComentarios`. Com regex isso "funcionava" **por acidente** — regex não liga pra
+ * linguagem. Com o parser, o CSS não parseia e o guard morreu na coleta. O guard precisa da
+ * limpeza de verdade: ele acha `.trilho {` no texto limpo, e um `.trilho {` COMENTADO
+ * passaria por bloco de verdade.
+ *
+ * ⚠️ **Aqui o regex é a ferramenta certa, e isso não contradiz a troca acima:** o que torna
+ * regex errado em JS/TS é o CONTEXTO — string, template, regex literal, JSX, divisão. CSS
+ * não tem nenhum desses. A única armadilha concebível é uma barra-asterisco dentro de string
+ * (`content: "…"`), e eu MEDI: em `app/globals.css` são **143 comentários de bloco, zero
+ * `content:` com a sequência, zero `//`**. O limite fica declarado e com teste.
+ *
+ * ⛔ A forma do regex é a estrutural (abre, nada que contenha o fecha, o fecha) — a mesma
+ * lição de 08/10: assim o match **não pode** atravessar o fechamento.
+ */
+export function semComentariosDeCss(s: string): string {
+  return s.replace(/\/\*(?:[^*]|\*(?!\/))*\*\//g, (m) => m.replace(/[^\n\r]/g, ' '))
+}
+
+/**
+ * ⭐ O ScriptKind vem da EXTENSÃO quando o nome é informado — regra determinística.
+ *
+ * ⚠️ Sem nome, tenta `TSX` e cai pra `TS`: os dois divergem de verdade (`<T>x` é *cast* em
+ * `.ts` e *elemento JSX* em `.tsx`), então um default único reprovaria arquivos válidos. A
+ * ordem é TSX primeiro porque a varredura de telas é a dona da maioria das chamadas.
+ * ⛔ Não é heurística sobre o conteúdo: é tentar e **conferir o parser**, que é fato.
+ */
+function parsear(s: string, arquivo?: string): { sf: ts.SourceFile; kind: string } {
+  const nome = arquivo ?? 'fonte.tsx'
+  if (arquivo) {
+    const kind = arquivo.endsWith('.tsx') ? ts.ScriptKind.TSX
+      : arquivo.endsWith('.jsx') ? ts.ScriptKind.JSX
+      : arquivo.endsWith('.js') || arquivo.endsWith('.mjs') || arquivo.endsWith('.cjs') ? ts.ScriptKind.JS
+      : ts.ScriptKind.TS
+    return { sf: criar(nome, s, kind), kind: ts.ScriptKind[kind] }
+  }
+  const comoTsx = criar(nome, s, ts.ScriptKind.TSX)
+  if (!temErro(comoTsx)) return { sf: comoTsx, kind: 'TSX' }
+  const comoTs = criar('fonte.ts', s, ts.ScriptKind.TS)
+  if (!temErro(comoTs)) return { sf: comoTs, kind: 'TS' }
+  // ⚠️ devolve o TSX de propósito: a mensagem de erro sai pela tentativa principal
+  return { sf: comoTsx, kind: 'TSX (e TS também falhou)' }
+}
+
+const criar = (nome: string, s: string, kind: ts.ScriptKind) =>
+  ts.createSourceFile(nome, s, ts.ScriptTarget.Latest, /* setParentNodes */ true, kind)
+
+const temErro = (sf: ts.SourceFile) =>
+  ((sf as unknown as { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics ?? []).length > 0
+
+/**
+ * ⭐⭐ `{/* … *\/}` SAI INTEIRO — as chaves incluídas (05/11/2026).
+ *
+ * ⛔⛔ **Medido, e é a razão de isto existir:** apagando só o comentário, sobravam `{   }`
+ * no texto — **32** em `conferencia-view.tsx`, **47** na tela de margem, **22** no contas a
+ * pagar. A régua velha removia o `{…}` junto, então todo guard de JSX foi calibrado num
+ * texto SEM essas chaves. Deixá-las produziria vermelhos que não são nem defeito do app nem
+ * guard mal escrito — seriam **artefato da minha troca**, o pior tipo: faz triar trabalho
+ * que não existe.
+ *
+ * ⚠️ Um `JsxExpression` cuja `expression` é `undefined` é exatamente *"chaves com só
+ * comentário dentro"* — fato do AST, não heurística de texto. E continua apagando por
+ * ESPAÇOS: o `{` e o `}` viram espaço, as posições não se movem.
+ */
+function chavesSoDeComentario(sf: ts.SourceFile): ts.CommentRange[] {
+  const out: ts.CommentRange[] = []
+  const andar = (n: ts.Node): void => {
+    if (ts.isJsxExpression(n) && n.expression === undefined) {
+      out.push({ pos: n.getStart(sf), end: n.end, kind: ts.SyntaxKind.MultiLineCommentTrivia, hasTrailingNewLine: false })
+    }
+    ts.forEachChild(n, andar)
+  }
+  andar(sf)
+  return out
+}
+
+/**
+ * ⭐⭐ OS COMENTÁRIOS DE VERDADE, pelo AST.
+ *
+ * ⚠️⚠️ **Varre os TOKENS, não só os nós** — e isto foi medido: com `forEachChild` sozinho, o
+ * `{/* … *\/}` de JSX **não aparece**, porque um `JsxExpression` vazio não tem filho nenhum e
+ * o comentário não é trivia de nó algum. `getChildren()` traz os tokens (`{`, `}`), e aí o
+ * comentário aparece como trivia deles.
+ *
+ * ⚠️ Dedup por `pos:end` porque o mesmo range é trailing de um token e leading do seguinte.
+ */
+function comentariosDe(sf: ts.SourceFile, texto: string): ts.CommentRange[] {
+  const achados = new Map<string, ts.CommentRange>()
+  const guardar = (rs: readonly ts.CommentRange[] | undefined) => {
+    for (const r of rs ?? []) achados.set(`${r.pos}:${r.end}`, r)
+  }
+
+  const andar = (n: ts.Node): void => {
+    guardar(ts.getLeadingCommentRanges(texto, n.pos))
+    guardar(ts.getTrailingCommentRanges(texto, n.end))
+    let filhos: readonly ts.Node[] = []
+    try {
+      filhos = n.getChildren(sf)
+    } catch {
+      // ⚠️ nó sintético (sem posição real) não tem filhos navegáveis — segue pelos nós
+      ts.forEachChild(n, andar)
+      return
+    }
+    for (const f of filhos) andar(f)
+  }
+
+  andar(sf)
+  return [...achados.values()].sort((a, b) => a.pos - b.pos)
+}
 
 /**
  * ⛔⛔ Tira a DECLARAÇÃO de import inteira, **multilinha incluída** — é o que faltava.
@@ -68,7 +239,7 @@ export function semImports(s: string): string {
 
 /** ⭐ conta o USO de um símbolo: sem comentário e sem import, multilinha incluída */
 export function usosDe(src: string, nome: string): number {
-  const limpo = semImports(semComentarios(src))
+  const limpo = semImports(semComentariosDeFragmento(src))
   return (limpo.match(new RegExp(`\\b${nome}\\b`, 'g')) ?? []).length
 }
 
@@ -90,10 +261,29 @@ export function usosDe(src: string, nome: string): number {
  * `#RRGGBBAA`, que o Tailwind aceita em valor arbitrário.
  */
 export function hexCravados(src: string): string[] {
-  const limpo = semComentarios(src)
+  const limpo = semComentariosDeFragmento(src)
   return [...limpo.matchAll(/(?:^|[^0-9a-zA-Z_#])(#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3}))\b/g)].map(
     (m) => m[1].toLowerCase(),
   )
+}
+
+/**
+ * ⭐⭐ O CORPO DE UMA FUNÇÃO, por MARCO — o fim é a próxima declaração, não um orçamento de
+ * caracteres (05/11/2026).
+ *
+ * ⛔⛔ Nasceu de dois guards que usavam `slice(i, i + 2000)` e `slice(i - 900, i)`. Eles
+ * ficaram vermelhos quando o apagador passou a deixar ESPAÇO no lugar do comentário em vez
+ * de removê-lo: as distâncias cresceram (**2.551 > 2.000** e **911 > 900 — perdeu por 11**)
+ * e o app estava CERTO nos dois casos. *Janela de distância já deu falso vermelho E falso
+ * verde nesta casa; aumentar o número só adia a próxima vez.*
+ */
+export function corpoDaFuncao(src: string, nome: string): string {
+  const i = src.indexOf(`function ${nome}`)
+  if (i < 0) return ''
+  const depois = src.indexOf('\nfunction ', i + 1)
+  const depoisConst = src.indexOf('\nconst ', i + 1)
+  const fins = [depois, depoisConst].filter((x) => x > 0)
+  return src.slice(i, fins.length ? Math.min(...fins) : src.length)
 }
 
 /** ⭐ o corpo de um bloco entre dois marcos — pra asserção ESTRUTURAL, não por distância */
@@ -159,7 +349,7 @@ const DECL_DE_PROP = /\b(on[A-Z]\w*|acao)\??\s*:\s*\(([^)]*)\)\s*=>/g
 export function aridadeDasProps(fontes: string[]): Map<string, Set<number>> {
   const m = new Map<string, Set<number>>()
   for (const src of fontes) {
-    for (const g of semComentarios(src).matchAll(DECL_DE_PROP)) {
+    for (const g of semComentariosDeFragmento(src).matchAll(DECL_DE_PROP)) {
       const p = g[2].trim()
       if (!m.has(g[1])) m.set(g[1], new Set())
       m.get(g[1])!.add(p === '' ? 0 : p.split(',').length)
@@ -187,7 +377,7 @@ export function handlersPorReferenciaComParametro(
   src: string,
   aridade: Map<string, Set<number>>,
 ): HandlerPorReferencia[] {
-  const limpo = semImports(semComentarios(src))
+  const limpo = semImports(semComentariosDeFragmento(src))
 
   const blocos: { nome: string; ini: number }[] = []
   for (const m of limpo.matchAll(INICIO_DE_COMPONENTE)) blocos.push({ nome: m[1], ini: m.index! })
