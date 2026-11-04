@@ -18,6 +18,8 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { computeLinkSplit, storedScheduleValid, shouldWriteSplit, bloqueioDoVinculo } from './link-payment'
+// ⭐ a terceira base do teto (04/11/2026) — a MESMA leitura que o preview faz
+import { encargoRealRecente } from './encargo-real-recente'
 // ⚠️ o arredondamento vem de um lugar só — um `round2` local aqui seria a 3ª cópia
 import { arredondar2 } from './estado-da-parcela'
 
@@ -157,6 +159,7 @@ export async function vincularPagamentoDeParcela(input: VincularInput): Promise<
    * ⚠️ A chamada é AQUI, depois do `paidTotal`, porque o `SOMA_ESTOUROU` precisa dos três
    * fatos juntos (os vínculos que já existem + as tx deste gesto + o teto da parcela).
    */
+  const encReal = await encargoRealRecente(db, loanId)
   const bloqueio = bloqueioDoVinculo({
     installmentNumber,
     temVinculo11: target.reconciledTransactionId != null,
@@ -170,6 +173,7 @@ export async function vincularPagamentoDeParcela(input: VincularInput): Promise<
     interest: target.interest,
     openingBalance: target.openingBalance,
     rateMonthly: loan.interestRateMonthly,
+    encargoRealRecente: encReal,
   })
   if (bloqueio) throw new VinculoDeParcelaError(bloqueio.code, bloqueio.mensagem)
 

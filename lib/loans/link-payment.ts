@@ -256,8 +256,50 @@ export interface LinkSplit {
  * R$ 41.428,57 é legítimo e documentado desde 06/08; ali todo valor é amortização. E
  * `jurosEsperado <= 0` também devolve `null`: sem saber o juros não dá pra dizer o teto, e
  * inventar um barraria pagamento verdadeiro.
+ *
+ * ──────────────────────────────────────────────────────────────────────────────────
+ * ⭐⭐⭐ 04/11/2026 — A MARGEM APRENDE COM O ENCARGO REAL DAS PAGAS DO MESMO CONTRATO
+ *
+ * ⛔ **O que o teto velho barrou, MEDIDO em prod:** Banrisul `002100057538834` #60, débito
+ * real de **2.314,77** em 26/10. `teto = 1.898,69 + 2 × 112,97 = 2.124,63` → recusado. E o
+ * `112,97` é o juros por **fórmula** (`32.277,77 × 0,35%`) — ele **não inclui a correção
+ * monetária**, que neste contrato é a maior metade do encargo. As duas pagas anteriores
+ * mostram o tamanho real: `#58` juros 126,26 + corr **419,67** = 545,93 · `#59` 119,62 +
+ * **395,55** = 515,17. O encargo real da #60 é `2.314,77 − 1.898,69 = 416,08` — na série.
+ * *A régua estava medindo meia conta e chamando de teto.*
+ *
+ * ⭐ **Régua nova:** a margem é `FOLGA ×` o maior entre **três** bases, não duas —
+ * `MAX(juros da agenda; maior encargo REAL das últimas 3 PAGAS do mesmo contrato; juros
+ * por fórmula)`. No caso real: `MAX(0; 545,93; 112,97) = 545,93` → `teto = 1.898,69 +
+ * 1.091,86 = 2.990,55 ≥ 2.314,77` ✓.
+ *
+ * ⭐⭐ **O freio NÃO afrouxou, e isso é álgebra e não sorte do número:** o teto é
+ * `A + 2·B`; duas parcelas custam `2·A + 2·e`, e como o encargo de uma parcela não passa
+ * da base (`e ≤ B`), a soma de duas só caberia se `A ≤ 0`. **Enquanto houver capital na
+ * parcela, duas parcelas estouram sempre.** No caso real: `~4.629,54 > 2.990,55` ✓.
+ *
+ * ⚠️ **3 pagas, não todas:** no pós-fixado o encargo CAI junto com o saldo (medido neste
+ * contrato: 628 → 597 → 618 → 545 → 545 → 515). Ancorar na série inteira puxaria a margem
+ * pela parcela mais velha e mais gorda (628 → teto 3.154) — folga que ninguém mediu. Três
+ * acompanha a curva e ainda sobrevive a um mês atípico.
+ *
+ * ⚠️ **Contrato SEM parcela paga se comporta exatamente como antes** — sem base nova, o
+ * `MAX` cai nos dois termos de sempre. A régua só sabe o que o contrato já mostrou.
  */
 export const FOLGA_DO_TETO = 2
+
+/**
+ * O maior encargo REAL já GRAVADO nas últimas parcelas pagas deste contrato — `paidInterest
+ * + paidCorrection + paidPenalty`, exatamente os campos que o DRE lê (a identidade está no
+ * `schema.prisma`: `paidTotal = amortization + paidInterest + paidCorrection + paidPenalty`).
+ *
+ * ⚠️ Carrega o **número da parcela** porque a recusa precisa dizer de onde tirou a base —
+ * senão a frase manda o dono conferir um valor que ele não acha em tela nenhuma.
+ */
+export interface EncargoRealRecente {
+  valor: number
+  parcela: number
+}
 
 export function tetoDoPagamento(input: {
   /** capital da parcela (do cronograma) */
@@ -266,13 +308,32 @@ export function tetoDoPagamento(input: {
   interest: number
   openingBalance: number
   rateMonthly: number
-}): { teto: number | null; jurosEsperado: number } {
-  if (input.rateMonthly === 0) return { teto: null, jurosEsperado: 0 }
+  /** ⭐ a terceira base: o encargo real das pagas. `null` = contrato sem histórico */
+  encargoRealRecente?: EncargoRealRecente | null
+}): {
+  teto: number | null
+  jurosEsperado: number
+  /** a base que o `FOLGA` multiplicou — pode ser o juros do mês OU o encargo real */
+  margemBase: number
+  baseDaMargem: 'JUROS_DO_MES' | 'ENCARGO_REAL'
+  encargoRealRecente: EncargoRealRecente | null
+} {
+  const enc = input.encargoRealRecente ?? null
+  if (input.rateMonthly === 0) {
+    return { teto: null, jurosEsperado: 0, margemBase: 0, baseDaMargem: 'JUROS_DO_MES', encargoRealRecente: enc }
+  }
   const jurosEsperado = round2(Math.max(input.interest, input.openingBalance * input.rateMonthly))
-  if (jurosEsperado <= 0) return { teto: null, jurosEsperado }
+  if (jurosEsperado <= 0) {
+    return { teto: null, jurosEsperado, margemBase: 0, baseDaMargem: 'JUROS_DO_MES', encargoRealRecente: enc }
+  }
+  const usaEncargo = enc != null && round2(enc.valor) > jurosEsperado
+  const margemBase = usaEncargo ? round2(enc.valor) : jurosEsperado
   return {
-    teto: round2(round2(input.amortization) + jurosEsperado * FOLGA_DO_TETO),
+    teto: round2(round2(input.amortization) + margemBase * FOLGA_DO_TETO),
     jurosEsperado,
+    margemBase,
+    baseDaMargem: usaEncargo ? 'ENCARGO_REAL' : 'JUROS_DO_MES',
+    encargoRealRecente: enc,
   }
 }
 
@@ -310,6 +371,12 @@ export interface FatosDoVinculo {
   interest: number
   openingBalance: number
   rateMonthly: number
+  /**
+   * ⭐ o maior encargo REAL das últimas 3 PAGAS deste contrato (04/11/2026) — lido do banco
+   * por quem tem banco, via `encargoRealRecente()`. `null`/ausente = contrato sem histórico,
+   * e aí o teto é exatamente o de antes.
+   */
+  encargoRealRecente?: EncargoRealRecente | null
 }
 
 export interface BloqueioDoVinculo {
@@ -344,15 +411,24 @@ export function bloqueioDoVinculo(f: FatosDoVinculo): BloqueioDoVinculo | null {
     }
   }
 
-  const { teto, jurosEsperado } = tetoDoPagamento(f)
+  const { teto, margemBase, baseDaMargem, encargoRealRecente: enc } = tetoDoPagamento(f)
   if (teto != null && round2(f.paidTotal) > teto + 0.02) {
+    /**
+     * ⚠️ **A frase diz QUAL das bases o teto usou.** Antes ela dizia sempre *"2× o juros do
+     * mês"*; com a régua de 04/11 a base pode ser o encargo real de uma paga — e aí aquele
+     * texto nomearia como "juros" um valor que é juros **+ correção**. *Rótulo que promete
+     * mais do que entrega manda o dono procurar na tela um número que não está lá.*
+     */
+    const explicaBase =
+      baseDaMargem === 'ENCARGO_REAL' && enc != null
+        ? `${FOLGA_DO_TETO}× o encargo real da parcela ${enc.parcela} ${brl(margemBase)} (juros + correção)`
+        : `${FOLGA_DO_TETO}× o juros do mês ${brl(margemBase)}`
     return {
       code: 'SOMA_ESTOUROU',
       mensagem:
         `A soma dos pedaços (${brl(round2(f.paidTotal))}) passa do teto desta parcela (${brl(teto)} = capital `
-        + `${brl(round2(f.amortization))} + ${FOLGA_DO_TETO}× o juros do mês ${brl(jurosEsperado)}). `
-        + 'Confira se alguma linha não é desta parcela; se a diferença é mora acima disso, corrija a agenda '
-        + 'antes — somar aqui vira despesa financeira que ninguém explica.',
+        + `${brl(round2(f.amortization))} + ${explicaBase}). `
+        + 'Confira se alguma linha não é desta parcela — somar aqui vira despesa financeira que ninguém explica.',
     }
   }
 

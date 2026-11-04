@@ -28,7 +28,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { semComentarios, usosDe, blocoEntre } from '../../../__tests__/regras-ui/_leitura-de-fonte'
+import { semComentarios, usosDe, blocoEntre, chamadasDe } from '../../../__tests__/regras-ui/_leitura-de-fonte'
 
 const raiz = process.cwd()
 const ler = (p: string) => semComentarios(readFileSync(join(raiz, p), 'utf8'))
@@ -95,6 +95,58 @@ describe('o bloqueio atravessa a rota e desarma o botão', () => {
 
   it('e DIZ o porquê — recusa muda manda o dono caçar o que não existe', () => {
     expect(ler(MODAL)).toMatch(/bloqueio\.mensagem/)
+  })
+})
+
+describe('⭐⭐ a TERCEIRA BASE DO TETO chega nas DUAS pontas (04/11/2026)', () => {
+  /**
+   * ⛔⛔ **O defeito que este guard trava é o de sempre:** `tetoDoPagamento` passou a aceitar
+   * `encargoRealRecente`, e o campo é **opcional** (contrato sem histórico se comporta como
+   * antes). Opcional significa que *esquecer de passá-lo compila, passa no tsc e fica VERDE*
+   * — e o Banrisul #60 seguiria recusado com o motor novo em prod, **inalcançável**. É a
+   * "porta sem maçaneta" pela enésima vez, agora com o tipo ajudando a esconder.
+   *
+   * ⛔ E é de DOIS LADOS: se só a porta lesse o encargo, o painel apagaria o botão sobre um
+   * vínculo que a gravação aceita — a divergência preview↔confirm ao contrário.
+   */
+  it('a porta E o preview passam `encargoRealRecente` DENTRO da chamada da régua', () => {
+    for (const p of [ROTA, PORTA]) {
+      const args = blocoEntre(ler(p), 'bloqueioDoVinculo(', '})')
+      expect(args, `${p} não entrega o encargo real à régua — o teto velho continua valendo`)
+        .toMatch(/encargoRealRecente:/)
+    }
+  })
+
+  it('e os dois leem pela MESMA função — não por consulta copiada', () => {
+    for (const p of [ROTA, PORTA]) {
+      const src = ler(p)
+      expect(usosDe(src, 'encargoRealRecente'), `${p} tem que chamar a porta única`).toBeGreaterThanOrEqual(2)
+      /**
+       * ⛔ uma 2ª consulta divergiria na janela (3 pagas) ou nos campos do encargo.
+       *
+       * ⛔⛔ **ESTE GUARD JÁ FOI POR JANELA DE DISTÂNCIA** (`/status:'PAID'[\s\S]{0,200}
+       * paidCorrection/`) e isso é o anti-padrão que esta casa proíbe: a cópia que espaçasse
+       * o `select` passaria VERDE, e um `where` inocente a 190 chars de um `paidCorrection`
+       * alheio daria VERMELHO falso. Agora é ESTRUTURAL: extrai o bloco BALANCEADO de **cada**
+       * chamada a `loanInstallment.find*` do arquivo e cobra que nenhuma delas leia os campos
+       * do encargo. A distância deixou de importar.
+       */
+      for (const bloco of chamadasDe(src, /\.loanInstallment\.find\w*\s*\(/g)) {
+        for (const campo of ['paidInterest', 'paidCorrection', 'paidPenalty'] as const) {
+          expect(bloco, `${p} reimplementa a leitura das pagas (lê ${campo} direto do banco)`)
+            .not.toContain(campo)
+        }
+      }
+    }
+  })
+
+  /**
+   * ⛔ REGRA 11 de mim mesmo: o guard acima só vale se ele AINDA acha chamada pra inspecionar.
+   * Se amanhã alguém renomear `loanInstallment`, `chamadasDe` devolve `[]` e o `for` vazio
+   * aprova tudo em silêncio — *o guard viraria enfeite*. Então a porta prova que há consulta.
+   */
+  it('o guard anterior não está vazio: a porta REALMENTE consulta loanInstallment', () => {
+    expect(chamadasDe(ler(PORTA), /\.loanInstallment\.find\w*\s*\(/g).length).toBeGreaterThan(0)
   })
 })
 

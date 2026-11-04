@@ -232,3 +232,37 @@ export function handlersPorReferenciaComParametro(
   }
   return out
 }
+
+/**
+ * ⭐⭐ TODAS as chamadas que casam `padrao`, cada uma devolvida como o bloco de argumentos
+ * BALANCEADO — `(` … `)` contados, então `select: { a: { b: 1 } }` e string com parêntese
+ * dentro não truncam o bloco.
+ *
+ * ⛔⛔ **Existe pra matar a "janela de distância"** (`[\s\S]{0,N}`), que nesta casa já deu
+ * falso VERMELHO *e* falso VERDE: a cópia que espaça o código escapa da janela, e um trecho
+ * alheio dentro dela acusa inocente. A pergunta certa nunca é *"quão perto?"* e sim
+ * *"dentro de qual chamada?"*.
+ *
+ * ⚠️ Difere de {@link blocoEntre}, que acha só a PRIMEIRA ocorrência e corta na 1ª string de
+ * fim — bom pra inspecionar uma chamada conhecida, cego pra varrer N delas.
+ */
+export function chamadasDe(src: string, padrao: RegExp): string[] {
+  const re = new RegExp(padrao.source, padrao.flags.includes('g') ? padrao.flags : padrao.flags + 'g')
+  const out: string[] = []
+  for (const m of src.matchAll(re)) {
+    const abre = src.indexOf('(', m.index!)
+    if (abre < 0) continue
+    let nivel = 0
+    for (let i = abre; i < src.length; i++) {
+      if (src[i] === '(') nivel++
+      else if (src[i] === ')') {
+        nivel--
+        if (nivel === 0) {
+          out.push(src.slice(m.index!, i + 1))
+          break
+        }
+      }
+    }
+  }
+  return out
+}

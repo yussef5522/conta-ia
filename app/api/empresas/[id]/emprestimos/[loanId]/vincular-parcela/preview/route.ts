@@ -10,6 +10,8 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { buildLinkGroup, computeLinkSplit, storedScheduleValid, shouldWriteSplit, pickTargetInstallment, bloqueioDoVinculo } from '@/lib/loans/link-payment'
 import { exigeContaDoEmprestimo, MutuoSemContaError } from '@/lib/loans/exige-conta'
+// ⭐ a terceira base do teto (04/11/2026) — a MESMA leitura que a porta faz
+import { encargoRealRecente } from '@/lib/loans/encargo-real-recente'
 
 export const runtime = 'nodejs'
 interface Params { params: Promise<{ id: string; loanId: string }> }
@@ -166,6 +168,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     const jaVinculado = round2(jaVinculadosDaParcela.reduce((s, p) => s + p.amount, 0))
     const paidTotalGravado = round2(jaVinculado + paidTotal)
 
+    const encReal = await encargoRealRecente(prisma, loanId)
     const bloqueio = bloqueioDoVinculo({
       installmentNumber: target.number,
       temVinculo11: target.reconciledTransactionId != null,
@@ -176,6 +179,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       interest: target.interest,
       openingBalance: target.openingBalance,
       rateMonthly: loan.interestRateMonthly,
+      encargoRealRecente: encReal,
     })
 
     const split = computeLinkSplit({

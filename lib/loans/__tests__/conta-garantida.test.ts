@@ -30,8 +30,12 @@ import {
   buildLinkGroup,
   tetoDoPagamento,
   bloqueioDoVinculo,
+  computeLinkSplit,
   FOLGA_DO_TETO,
+  type FatosDoVinculo,
 } from '../link-payment'
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
 /** ⚠️ os contratos REAIS da Caçula — é contra ELES que o auxiliar é "não-cadastrado" */
 const CADASTRADOS = [
@@ -196,6 +200,160 @@ describe('⛔⛔ O TETO DA SOMA — a folga saiu do histórico MEDIDO deste cont
 
   it('⛔ juros esperado ≤ 0 também não ganha teto — ausência de régua não se inventa', () => {
     expect(tetoDoPagamento({ ...P25, openingBalance: 0, interest: 0 }).teto).toBeNull()
+  })
+})
+
+describe('⛔⛔⛔ O TETO APRENDE COM O ENCARGO REAL DAS PAGAS (04/11/2026)', () => {
+  /**
+   * ⚠️⚠️ **TODOS os números deste bloco foram MEDIDOS em prod** (contrato Banrisul
+   * `002100057538834`, empresa caçula mix), não escolhidos:
+   *
+   * ```
+   *  #58 PAID  amort 1.898,69  pInt 126,26 + pCorr 419,67 = encargo real 545,93
+   *  #59 PAID  amort 1.898,69  pInt 119,62 + pCorr 395,55 = encargo real 515,17
+   *  #60 OPEN  amort 1.898,69  juros da agenda 0,00  ·  saldo 32.277,77 × 0,35% = 112,97
+   * ```
+   *
+   * ⛔ **O débito real de 26/10 é 2.314,77** → encargo `2.314,77 − 1.898,69 = 416,08`, na
+   * série decrescente das anteriores. *O teto velho recusava um pagamento verdadeiro porque
+   * media meia conta: a fórmula `saldo × taxa` não enxerga a correção monetária, que neste
+   * contrato é a maior metade do encargo.*
+   */
+  const P60 = { amortization: 1898.69, interest: 0, openingBalance: 32277.77, rateMonthly: 0.0035 }
+  /** ⚠️ a #25 do Sicredi `C41022227-1`, pro espelho da REGRA 14 (mesmos números do bloco acima) */
+  const P25 = { amortization: 4385.96, interest: 0, openingBalance: 149122.92, rateMonthly: 0.0172076372375527 }
+  const ENC_58 = { valor: 545.93, parcela: 58 }
+  const REAL = 2314.77
+  const DUAS = 4629.54
+
+  // ⚠️ O tipo é `Partial<FatosDoVinculo> & { paidTotal: number }` de propósito: espalhar um
+  // `Record<string, unknown>` apaga TODA propriedade conhecida pro TypeScript, então o
+  // helper devolvia um objeto sem `paidTotal` (que é OBRIGATÓRIO) e o `tsc` reprovava os 3
+  // call-sites. ⛔ E `paidTotal` fica EXIGIDO no chamador, nunca com default — um default
+  // mascararia a intenção de cada teste (cada um afirma uma soma diferente).
+  const fatos = (over: Partial<FatosDoVinculo> & { paidTotal: number }): FatosDoVinculo => ({
+    installmentNumber: 60, temVinculo11: false, status: 'OPEN',
+    jaVinculados: { quantos: 0, soma: 0 }, ...P60, ...over,
+  })
+
+  it('⭐ (a) O CASO REAL ACEITA — teto 2.990,55 sobre a base medida 545,93', () => {
+    const t = tetoDoPagamento({ ...P60, encargoRealRecente: ENC_58 })
+    expect(t.margemBase, 'a base deixou de ser o encargo real das pagas').toBe(545.93)
+    expect(t.baseDaMargem).toBe('ENCARGO_REAL')
+    // 1.898,69 + 2 × 545,93 = 2.990,55
+    expect(t.teto).toBe(2990.55)
+    expect(REAL).toBeLessThanOrEqual(t.teto!)
+    expect(bloqueioDoVinculo(fatos({ paidTotal: REAL, encargoRealRecente: ENC_58 }))).toBeNull()
+  })
+
+  it('⛔ (b) CONTRAFACTUAL: a régua VELHA recusava este pagamento verdadeiro', () => {
+    /**
+     * ⚠️ Sem a 3ª base o teto é `1.898,69 + 2 × 112,97 = 2.124,63` — **exatamente** o número
+     * que o dono viu na tela do import. Este teste é o vermelho de origem: se ele passar a
+     * dar verde, alguém desfez a régua nova sem perceber.
+     */
+    const velho = tetoDoPagamento(P60)
+    expect(velho.jurosEsperado).toBe(112.97)
+    expect(velho.teto, 'o teto velho mudou — o contrafactual perdeu o sentido').toBe(2124.63)
+    const b = bloqueioDoVinculo(fatos({ paidTotal: REAL }))
+    expect(b?.code).toBe('SOMA_ESTOUROU')
+  })
+
+  it('⛔⛔ (c) A SOMA DE DUAS PARCELAS SEGUE BARRADA — e é álgebra, não sorte do número', () => {
+    /**
+     * ⭐ O teto é `A + 2·B` e duas parcelas custam `2·A + 2·e`. Como o encargo de uma parcela
+     * não passa da base (`e ≤ B`), a soma de duas só caberia se `A ≤ 0`. **Enquanto a parcela
+     * tiver capital, duas parcelas estouram sempre** — a folga não compra uma parcela a mais.
+     */
+    const b = bloqueioDoVinculo(fatos({ paidTotal: DUAS, encargoRealRecente: ENC_58 }))
+    expect(b?.code).toBe('SOMA_ESTOUROU')
+    // ⭐ a frase nomeia a base que usou: não pode chamar 545,93 de "juros do mês"
+    expect(b?.mensagem).toContain('encargo real da parcela 58')
+    expect(b?.mensagem, 'a recusa deixou de dizer o capital').toContain('1.898,69')
+    expect(b?.mensagem, 'a recusa chamou juros+correção de "juros do mês"').not.toContain('juros do mês')
+
+    // ⚠️ e a invariante geral, com a base esticada ao absurdo
+    for (const base of [545.93, 5000, 50000]) {
+      const t = tetoDoPagamento({ ...P60, encargoRealRecente: { valor: base, parcela: 58 } })
+      expect(2 * P60.amortization + 2 * base, `base ${base}: duas parcelas couberam no teto`)
+        .toBeGreaterThan(t.teto!)
+    }
+  })
+
+  it('⭐ (d) CONTRATO SEM PARCELA PAGA se comporta EXATAMENTE como hoje', () => {
+    /** ⚠️ `null` e ausente têm que dar o mesmo teto — o campo é opcional de propósito */
+    for (const enc of [undefined, null, { valor: 0, parcela: 1 }]) {
+      const t = tetoDoPagamento({ ...P60, encargoRealRecente: enc })
+      expect(t.teto, `encargoRealRecente=${JSON.stringify(enc)} mudou o teto do contrato novo`).toBe(2124.63)
+      expect(t.baseDaMargem).toBe('JUROS_DO_MES')
+    }
+    // ⛔ e o mútuo FLEXIBLE segue SEM teto mesmo com encargo gravado
+    expect(tetoDoPagamento({ ...P60, rateMonthly: 0, encargoRealRecente: ENC_58 }).teto).toBeNull()
+  })
+
+  it('⭐⭐ e o CASAR grava o split REAL pela porta que já existia — nenhum caminho novo', () => {
+    /**
+     * ⚠️ `computeLinkSplit` **não mudou e não precisava**: ela já derivava o encargo do pago
+     * real (`pago − amortização do cronograma`). O teto era o único portão fechado. Os
+     * números do fecho são medidos: o `openingBalance` da **#61 em prod é 30.379,08**,
+     * exatamente o que esta conta devolve.
+     */
+    const s = computeLinkSplit({
+      installment: { amortization: P60.amortization, openingBalance: P60.openingBalance },
+      rateMonthly: P60.rateMonthly,
+      paidTotal: REAL,
+    })
+    expect(s.isPartial).toBe(false)
+    expect(s.amortization, 'o capital do cronograma deixou de abater o saldo').toBe(1898.69)
+    expect(s.encargos, 'o encargo real da #60 saiu de 416,08').toBe(416.08)
+    expect(s.closingBalance, 'o saldo não fechou no openingBalance medido da #61').toBe(30379.08)
+    // ⭐ a identidade do schema: pago = capital + juros + correção + mora
+    expect(round2(s.amortization + s.paidInterest + s.paidCorrection + s.paidPenalty)).toBe(REAL)
+    // ⚠️ e os encargos inteiros são despesa financeira — o capital fica FORA do DRE
+    expect(round2(s.paidInterest + s.paidCorrection + s.paidPenalty)).toBe(416.08)
+  })
+
+  it('⭐⭐ REGRA 14 — a régua é a MESMA do Sicredi conta garantida, e lá ela não aperta nada', () => {
+    /**
+     * ⭐ `bloqueioDoVinculo` tem **dois** chamadores (a porta e o preview) e os dois bancos
+     * passam por ela — então a base nova vale no Sicredi de graça. O que este teste prova é
+     * que valer lá **não quebra o que já passava**: o `MAX` só pode SUBIR o teto, porque os
+     * dois termos antigos continuam dentro dele.
+     *
+     * ⚠️ Números MEDIDOS (não narrados) no `C41022227-1` — e ASSERIDOS logo abaixo, porque
+     * *número em comentário envelhece errado e ninguém vê*: teto hoje **9.518,06** (base
+     * `JUROS_DO_MES` = 2.566,05, o juros derivado do saldo) → com a base nova **10.285,74**
+     * (base `ENCARGO_REAL` = 2.949,89, que é MAIOR que o juros da fórmula).
+     *
+     * ⚠️ **A base nova AFROUXA o teto, nunca aperta** — ela entra num `MAX`, então só pode
+     * subir. O que ela compra não é rigor, é *deixar de barrar o pagamento legítimo* (o #60
+     * do Banrisul). O rigor contra o absurdo de 6,1× é o `2×`, e ele segue valendo (abaixo).
+     */
+    const enc25 = { valor: 2949.89, parcela: 23 }
+    const velho = tetoDoPagamento(P25)
+    const novo = tetoDoPagamento({ ...P25, encargoRealRecente: enc25 })
+
+    expect(velho.teto, 'teto de hoje do P25').toBe(9518.06)
+    expect(velho.baseDaMargem).toBe('JUROS_DO_MES')
+    expect(velho.margemBase).toBe(2566.05)
+    expect(novo.teto, 'teto do P25 com a base nova').toBe(10285.74)
+    expect(novo.baseDaMargem, 'o encargo real 2.949,89 vence o juros 2.566,05').toBe('ENCARGO_REAL')
+    expect(novo.margemBase).toBe(2949.89)
+    expect(novo.teto!, 'a base nova entra num MAX: só pode AFROUXAR').toBeGreaterThanOrEqual(velho.teto!)
+
+    // ⭐ o débito real da #25 que já passava, segue passando nos DOIS mundos
+    for (const t of [velho.teto!, novo.teto!]) expect(7055.75).toBeLessThanOrEqual(t)
+
+    // ⛔ e o absurdo de 6,1× segue recusado — nos DOIS bancos
+    for (const caso of [
+      { nome: 'Sicredi', fatos: { installmentNumber: 25, ...P25, encargoRealRecente: enc25, paidTotal: 20000 } },
+      { nome: 'Banrisul', fatos: { installmentNumber: 60, ...P60, encargoRealRecente: ENC_58, paidTotal: 20000 } },
+    ]) {
+      const b = bloqueioDoVinculo({
+        temVinculo11: false, status: 'OPEN', jaVinculados: { quantos: 0, soma: 0 }, ...caso.fatos,
+      })
+      expect(b?.code, `o absurdo passou no ${caso.nome}`).toBe('SOMA_ESTOUROU')
+    }
   })
 })
 
