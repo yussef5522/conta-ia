@@ -127,6 +127,14 @@ export async function createBridge(
         include: {
           bankAccount: { include: { company: true } },
           bridge: true,
+          /**
+           * ⭐⭐ O PAR CONCILIADO, nos DOIS sentidos (05/11/2026). `reconciledWithId` só
+           * aponta num sentido (a MANUAL → a OFX), então quem chega pelo lado do extrato
+           * precisa de `reconciledFrom`. ⛔ Olhar um sentido só deixaria metade dos casos
+           * passar — e seria a mesma doença "N caminhos, 1 esquecido" de novo.
+           */
+          reconciledWith: { select: { id: true, bridge: { select: { id: true } } } },
+          reconciledFrom: { select: { id: true, bridge: { select: { id: true } } } },
         },
       })
 
@@ -172,6 +180,35 @@ export async function createBridge(
       if (pjTx.bridge) {
         throw new BridgeError(
           'Esta transação PJ já tem ponte ativa',
+          'PJ_ALREADY_BRIDGED',
+        )
+      }
+      /**
+       * ⛔⛔⛔ O GUARD É POR DINHEIRO, NÃO POR LINHA (05/11/2026).
+       *
+       * **A conta que ele impede, medida em prod:** a retirada vive em DUAS linhas
+       * conciliadas (a `MANUAL` digitada + a `OFX` do extrato) — **um dinheiro**. O guard
+       * acima e o `@unique(pjTransactionId)` são ambos **por linha**: o dono criou a ponte
+       * no lado `OFX` (3 pontes de 04/11, corretas), a fila devolveu a gêmea `MANUAL`, e
+       * confirmar de novo **passava os dois guards** e criava uma 2ª `PersonalTransaction`
+       * CREDIT do mesmo dinheiro. Só nos dois pares abertos eram **R$ 249,00 dobrados no
+       * PF**. Nada foi gravado porque o dono foi avisado a não confirmar — *a trava não
+       * pode depender de alguém lembrar* (REGRA 5).
+       *
+       * ⚠️ Mora no SERVIDOR de propósito: a fila colapsada já não oferece o dinheiro
+       * resolvido, mas *régua que vive só na tela some no dia em que a rota for chamada por
+       * outro caminho* — e o endpoint do lote chama `createBridge` em laço.
+       */
+      const gemeas = [
+        ...(pjTx.reconciledWith ? [pjTx.reconciledWith] : []),
+        ...pjTx.reconciledFrom,
+      ]
+      const gemeaComPonte = gemeas.find((g) => g.bridge != null)
+      if (gemeaComPonte) {
+        throw new BridgeError(
+          'Este dinheiro já tem ponte pro PF: a transação conciliada com esta (o outro lado '
+          + 'do mesmo pagamento) já foi enviada. Criar outra lançaria a mesma retirada duas '
+          + 'vezes no pessoal.',
           'PJ_ALREADY_BRIDGED',
         )
       }

@@ -13,25 +13,38 @@
 
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { WITHDRAWAL_DRE_GROUPS } from './is-orphan'
+import { dinheirosDeRetiradaPendentes, linhasCandidatasWhere } from './dinheiro-da-retirada'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
-/** O WHERE canônico — a fonte única. Todos os contadores usam ISTO. */
+/**
+ * O WHERE canônico das LINHAS candidatas.
+ *
+ * ⛔⛔ **ELE DEIXOU DE FILTRAR PONTE EM 05/11, e isso é o conserto, não um descuido.** Ele
+ * tinha `bridge: { is: null }` — exclusão **na própria linha** — e por isso cobrava a gêmea
+ * `MANUAL` de uma retirada já resolvida pelo lado `OFX`. Medido em prod: 3 fantasmas
+ * (escola 100 · escola 1.318,57 · carro 2.845) e 2 pares com AMBOS os lados listados.
+ *
+ * ⚠️ *A pergunta "este dinheiro tem ponte?" não cabe num filtro por linha* — ela precisa
+ * olhar a linha **e o par conciliado**. Quem responde é `dinheirosDeRetiradaPendentes`
+ * (`dinheiro-da-retirada.ts`), e é por lá que a lista E a contagem passam.
+ *
+ * ⛔ Mantido exportado porque é o universo das candidatas (o `aggregate` de total e os
+ * testes o usam). Quem quiser "as pendentes" tem que pedir DINHEIRO, não linha.
+ */
 export function orphanWithdrawalWhere(companyId: string): Prisma.TransactionWhereInput {
-  return {
-    bankAccount: { companyId },
-    type: 'DEBIT',
-    lifecycle: 'EFFECTED',
-    isInternalTransfer: false,
-    transferGroupId: null,
-    bridge: { is: null },
-    category: { dreGroup: { in: Array.from(WITHDRAWAL_DRE_GROUPS) } },
-  }
+  return linhasCandidatasWhere(companyId)
 }
 
-/** Contagem de retiradas órfãs (banner, sidebar, empty state). */
-export function countOrphanWithdrawals(db: Db, companyId: string): Promise<number> {
-  return db.transaction.count({ where: orphanWithdrawalWhere(companyId) })
+/**
+ * Contagem de retiradas órfãs (banner, sidebar, empty state).
+ *
+ * ⛔ Conta DINHEIRO, não linha, e pela MESMA derivação da lista — esta lib nasceu de dois
+ * endpoints discordando, e um `count` por linha ao lado de uma lista colapsada reabriria
+ * exatamente isso: o banner diria 4 e a tela mostraria 2.
+ */
+export async function countOrphanWithdrawals(db: Db, companyId: string): Promise<number> {
+  return (await dinheirosDeRetiradaPendentes(db, companyId)).length
 }
 
 export interface OrphanWithdrawalRow {
@@ -45,30 +58,17 @@ export interface OrphanWithdrawalRow {
   categoryName: string | null
 }
 
-/** Lista das órfãs (com detalhe pra tela). Mesma fonte do count. */
+/** Lista das órfãs (com detalhe pra tela). Mesma fonte do count — um DINHEIRO por linha. */
 export async function listOrphanWithdrawals(db: Db, companyId: string): Promise<OrphanWithdrawalRow[]> {
-  const rows = await db.transaction.findMany({
-    where: orphanWithdrawalWhere(companyId),
-    select: {
-      id: true,
-      date: true,
-      amount: true,
-      description: true,
-      bankAccountId: true,
-      bankAccount: { select: { name: true } },
-      categoryId: true,
-      category: { select: { name: true } },
-    },
-    orderBy: { date: 'desc' },
-  })
-  return rows.map((r) => ({
-    id: r.id,
-    date: r.date.toISOString(),
-    amount: r.amount,
-    description: r.description,
-    bankAccountId: r.bankAccountId ?? '',
-    bankAccountName: r.bankAccount?.name ?? '—',
-    categoryId: r.categoryId,
-    categoryName: r.category?.name ?? null,
+  const dinheiros = await dinheirosDeRetiradaPendentes(db, companyId)
+  return dinheiros.map((d) => ({
+    id: d.id,
+    date: d.date.toISOString(),
+    amount: d.amount,
+    description: d.description,
+    bankAccountId: d.bankAccountId ?? '',
+    bankAccountName: d.bankAccountName ?? '—',
+    categoryId: d.categoryId,
+    categoryName: d.categoryName,
   }))
 }

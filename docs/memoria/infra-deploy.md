@@ -13,6 +13,50 @@
 - ANTES do pull: descartar o swap-postgres local (senão o pull ABORTA calado).
 - ⚠️ O lock é prisma/migrations/migration_lock.toml (NÃO prisma/migration_lock.toml).
 - ⭐ INVARIANTES DE INFRA — o juiz olha a máquina também (25/08)
+- ⛔⛔ `exit 0` DE SSH QUE CAIU NÃO É PROVA DE DEPLOY (medido 2× em 04/11/2026)
+
+---
+## ⛔⛔ `exit 0` DE SSH QUE CAIU NÃO É PROVA DE DEPLOY — medido 2× em 04/11/2026
+
+**O sintoma:** rodei `ssh root@198.211.103.10 'cd /opt/conta-ia && bash scripts/deploy.sh …'`
+e o comando voltou **sem saída nenhuma** — arquivo de log com **0 byte** — e, quando
+terminou, com **`exit code 0`**. A causa, lida depois no output do próprio wrapper:
+
+```
+Read from remote host 198.211.103.10: Operation timed out
+client_loop: send disconnect: Broken pipe
+[exited with code 0]
+```
+
+O `deploy.sh` **seguiu rodando no servidor**; quem morreu foi o canal SSH. O `0` é do
+wrapper quebrado, não do deploy.
+
+⛔⛔ **Por que isso é perigoso:** o zero parece sucesso. Se eu o tratasse como prova, teria
+declarado *"deploy 4/4 verde"* sem ter lido gate nenhum — e **deploy cujo gate eu não li é
+deploy não provado**. Nas duas vezes o deploy de fato tinha dado certo, o que é justamente a
+armadilha: o hábito se forma com o falso positivo e cobra o preço no dia em que o build
+falha.
+
+⭐ **A mitigação, que funcionou na 2ª vez:** disparar com o log **em arquivo no servidor** e
+ler o gate de lá, nunca do stdout do SSH.
+
+```bash
+ssh root@198.211.103.10 'cd /opt/conta-ia && nohup bash scripts/deploy.sh > /tmp/deploy-<tema>.log 2>&1 &'
+# depois (o SSH pode cair de novo — não importa):
+ssh root@198.211.103.10 'grep -E "1/4|2/4|3/4|4/4|DEPLOY OK|FALHOU" /tmp/deploy-<tema>.log'
+```
+
+⚠️ E se o log tiver sumido ou a sessão tiver caído antes de escrever: rodar o **gate 4/4 na
+mão**, com os comandos literais de `scripts/deploy.sh` (hoje nas linhas 232-267) — BUILD_ID
+servido == buildado · pm2 `online` com o MESMO pid depois de 10s · TODOS os CSS do HTML em
+200 vindos do build novo · POST no login com credencial inválida → **401**. Foi o que fiz em
+04/11 no deploy `a626e040`, e o gate passou — mas por medição, não por fé no `exit 0`.
+
+⚠️ **Corolário para migrations:** o deploy imprime *"schema do banco em dia"* e isso **não
+substitui olhar a tabela**. Em 04/11 (`a6fc4ec9`) fui conferir no banco:
+`_prisma_migrations` com a linha registrada, colunas e índices presentes. *Rótulo não é
+prova* — a cicatriz do próprio `deploy.sh:101` é exatamente uma migration não aplicada com
+gate 4/4 verde.
 
 ---
 ## 🩺 CHECK-UP DE SAÚDE (28/09/2026) — o mapa antes de otimizar, e o que ele refutou

@@ -15,6 +15,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { orphanWithdrawalWhere } from '@/lib/withdrawals/orphan-query'
+import { dinheirosDeRetiradaPendentes } from '@/lib/withdrawals/dinheiro-da-retirada'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -30,37 +31,47 @@ export async function GET(request: NextRequest, { params }: Params) {
     const includeList = sp.get('includeList') === 'true'
     const limit = Math.max(1, Math.min(100, Number(sp.get('limit')) || 50))
 
-    // FONTE ÚNICA (13/08): mesma consulta canônica que o sidebar e o empty state.
-    const where = orphanWithdrawalWhere(empresaId)
+    /**
+     * ⛔⛔ FONTE ÚNICA, E AGORA POR DINHEIRO (05/11/2026).
+     *
+     * Este endpoint tinha `count` e `findMany` PRÓPRIOS sobre o where de linha — e era ele
+     * que a tela "Resolver retiradas em lote" consome. Por isso o dono via **5 linhas pra 2
+     * dinheiros**: os dois lados conciliados de formatura (190) e camiseta (59), lado a
+     * lado, mais 3 fantasmas já resolvidos pelo lado OFX.
+     *
+     * ⚠️ `dinheirosDeRetiradaPendentes` é a MESMA derivação do banner e da sidebar. *Duas
+     * telas decidindo o mesmo dinheiro é como a dobra entra.*
+     */
+    const dinheiros = await dinheirosDeRetiradaPendentes(prisma, empresaId)
+    const count = dinheiros.length
+    const totalAmount = Math.round(dinheiros.reduce((s, d) => s + d.amount, 0) * 100) / 100
 
     if (!includeList) {
-      const [count, agg] = await Promise.all([
-        prisma.transaction.count({ where }),
-        prisma.transaction.aggregate({ where, _sum: { amount: true } }),
-      ])
-      return NextResponse.json({ count, totalAmount: agg._sum.amount ?? 0 })
+      return NextResponse.json({ count, totalAmount })
     }
 
-    const [count, orfas] = await Promise.all([
-      prisma.transaction.count({ where }),
-      prisma.transaction.findMany({
-        where,
-        select: {
-          id: true,
-          date: true,
-          amount: true,
-          description: true,
-          bankAccount: { select: { id: true, name: true, accountType: true } },
-          category: {
-            select: { id: true, name: true, color: true, dreGroup: true },
-          },
-        },
-        orderBy: { date: 'desc' },
-        take: limit,
-      }),
-    ])
+    // ⚠️ a forma do payload NÃO muda (a tela já consome `orfas[].bankAccount.name` etc.):
+    // o que muda é que cada item agora é um DINHEIRO, não uma linha.
+    const ids = dinheiros.slice(0, limit).map((d) => d.id)
+    const detalhe = await prisma.transaction.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        date: true,
+        amount: true,
+        description: true,
+        bankAccount: { select: { id: true, name: true, accountType: true } },
+        category: { select: { id: true, name: true, color: true, dreGroup: true } },
+      },
+    })
+    const porId = new Map(detalhe.map((d) => [d.id, d]))
+    const orfas = dinheiros.slice(0, limit).map((d) => {
+      const base = porId.get(d.id)!
+      // ⭐ número do extrato, rótulo da mão — a régua de `montarDinheiro`, não uma 2ª cópia
+      return { ...base, amount: d.amount, description: d.description }
+    })
 
-    return NextResponse.json({ count, orfas })
+    return NextResponse.json({ count, totalAmount, orfas })
   } catch (err) {
     return handleApiError(err)
   }
