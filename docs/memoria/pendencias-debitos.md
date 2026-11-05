@@ -165,3 +165,17 @@ Entra **depois** que o dono validar o cartão PF em prod (importar a fatura + ca
 - **DÉBITO DE UI — linha de empréstimo NÃO cadastrado trava o usuário** (Sprint Categorizar C61021766 05/08) — quando a detecção acha um nº de contrato NÃO cadastrado (`detect-payment.ts` kind `NOT_REGISTERED`), o `pendentes-client.tsx` **remove o dropdown de categoria** e deixa só o link "cadastrar". Isso PRENDE o usuário: não dá pra categorizar nem vincular — a única saída (no C61021766) foi gravar direto no servidor. Cliente real ficaria travado. **Corrigir:** a linha deve oferecer AS DUAS opções — "cadastrar o empréstimo" (sugestão) E o dropdown de categoria normal (saída padrão). Detectar empréstimo é SUGESTÃO, nunca remove a saída padrão — mesma regra do resto do sistema (sugere, usuário decide). Vale revisar também o kind `CONTRACT`/`CANDIDATES`: hoje substituem o dropdown; idealmente oferecem "Vincular à parcela" COMO destaque, mas mantêm categorizar acessível.
 - **Casar pagamento de empréstimo — FASES 2-5 deployadas** (Sprint Casar Pagamento 04/08) — tela `/corrigir-agenda` aceita SAC+valor financiado+carência; detecção nos Pendentes (`detect-payment.ts`: contrato Sicredi direto, candidatos Banrisul/Caixa sem adivinhar); painel N:1 (`LinkPaymentModal`) agrupa débitos parciais → split amortização (fora DRE) + encargos (despesa financeira) via ponte `LoanInstallmentPayment`; DRE reinjeta encargos reais, agenda inválida → vincula sem injetar split. Aceite C41022570 validado read-only (21 tx jul = 5.951,33 → amort 4.166,66 + encargos 1.784,67). **Falta o usuário:** (1) corrigir a agenda do C41022570 pela tela (SAC, financiado 150.000, taxa 0,4868%/m pós, carência 12 juros capitalizados), (2) vincular os 21 lançamentos de julho. As 32 tx Sicredi seguem pendentes até isso.
 
+
+## 💸 FLUXO DE CAIXA — CAPITAL DE TERCEIROS (05/11/2026)
+
+**Curado:** `whereFluxoCaixa` agora tira o grupo TRANSFERENCIA só quando a transação **não tem vínculo de contrato** (`CATEGORIA_DE_TRANSFERENCIA_PROPRIA` / `VINCULO_COM_CONTRATO` em `lib/fluxo-caixa/motor.ts`). A devolução do mútuo Arafat aparece. O aviso de transferências próprias usa `whereTransferenciaPropria`, o complemento exato.
+
+**⚠️ IRMÃOS COM O MESMO RISCO (REGRA 14, listados e NÃO curados):** escondem a amortização paga a terceiro porque excluem o grupo inteiro.
+- `lib/cashflow/consolidated.ts:70` → é a raiz de: **Relatório Fluxo de Caixa** (`relatorios/fluxo-caixa/route.ts:102` + `export/route.ts:113`, que DIVERGE da tela `/fluxo-caixa` desde 05/11), preview de relatório (`lib/relatorios/preview-queries.ts:314`), burn/variação 30d (`lib/dashboard/queries.ts:600,623`), KPIs (`lib/dashboard/compute-kpis.ts:87,108`, a confirmar), insight de burn (`lib/insights/queries.ts:141-147`, que ainda filtra por conta própria).
+- Têm filtro próprio: `lib/dashboard/compute-waterfall.ts:117` · `lib/dashboard/queries.ts:864` (`saldoFinal`) · `lib/dashboard/widgets.ts:122` (`notIn` mesmo em regime caixa).
+- Ninguém chama hoje: `lib/cashflow/query.ts:54`.
+- DRE: fora deste bloco (o raio-X dele vem a seguir).
+
+**📌 ANOTADO SEM CONSTRUIR:** (1) aviso "parcela de MM paga em MM+1" (ex.: Caixa #34, vencida em 24/10 e paga em 03/11, cai em novembro pela regra do caixa); (2) uma **seção Financiamento** completa no padrão DFC: amortizações e liberações juntas, com subtotal próprio no SOBROU.
+
+**Débito visto de passagem:** `lib/avisos/__tests__/import-de-venda.integration.test.ts` ("o selo que o sininho usa…") falha também SEM a mudança: `expected undefined to be 'SABORES_NAO_IMPORTADOS'`.

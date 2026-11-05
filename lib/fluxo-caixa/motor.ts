@@ -96,6 +96,60 @@ const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 
 /**
+ * ⭐⭐ 05/11/2026 — O VÍNCULO COM O CONTRATO DE EMPRÉSTIMO. As três portas pelas quais uma
+ * transação vira dinheiro de CAPITAL DE TERCEIROS: parcela 1:1, parcela N:1, liberação.
+ * (O mesmo trio que o `SEM_DUPLA_CONTAGEM` dos Custos fixos já usa em prod.)
+ */
+export const VINCULO_COM_CONTRATO: Prisma.TransactionWhereInput = {
+  OR: [
+    { loanInstallmentPaid: { isNot: null } },
+    { loanInstallmentPayments: { some: {} } },
+    { loanDisbursement: { isNot: null } },
+  ],
+}
+
+/**
+ * ⭐⭐ 05/11/2026 — A CATEGORIA DE TRANSFERÊNCIA QUE É TRANSFERÊNCIA PRÓPRIA DE VERDADE.
+ *
+ * ⛔ O DEFEITO: o grupo `TRANSFERENCIA` tem "Entre Contas Próprias" e também
+ * "Amortização de Mútuo (terceiros)". Excluir o grupo INTEIRO tratava R$ 40.000 entregues
+ * em dinheiro ao Arafat como se o dono tivesse tirado do Sicredi e posto no cofre: o SAIU
+ * de outubro mostrava 536.130,56 e o SOBROU, +12.443,43, quando o caixa real foi −27.556,57.
+ *
+ * ⭐ A RÉGUA: **o VÍNCULO com o contrato decide, não o nome da categoria.** Uma transação
+ * do grupo TRANSFERENCIA que paga parcela ou é liberação de empréstimo é dinheiro que saiu
+ * pra (ou veio de) TERCEIRO, então entra no universo do fluxo. A liberação continua fora
+ * do ENTROU, porque `entradaInformativa` a manda pra faixa informativa (é dívida).
+ * O grupo continua valendo pro resto: transferência própria segue fora.
+ */
+export const CATEGORIA_DE_TRANSFERENCIA_PROPRIA: Prisma.TransactionWhereInput = {
+  AND: [{ category: { dreGroup: 'TRANSFERENCIA' } }, { NOT: VINCULO_COM_CONTRATO }],
+}
+
+/**
+ * O que o aviso "transferências entre contas próprias" conta. Mora aqui, ao lado do where,
+ * pra ser o COMPLEMENTO exato dele: antes a rota tinha uma 2ª cópia do filtro, e a cópia
+ * somava a devolução do mútuo junto com as transferências reais.
+ */
+export function whereTransferenciaPropria(
+  companyId: string,
+  periodo: { de: Date; ate: Date },
+): Prisma.TransactionWhereInput {
+  if (!companyId) throw new Error('companyId é obrigatório (isolamento multi-tenant)')
+  return {
+    bankAccount: { companyId },
+    lifecycle: 'EFFECTED',
+    date: { gte: periodo.de, lte: periodo.ate },
+    OR: [
+      { type: 'TRANSFER' },
+      { isInternalTransfer: true },
+      { pendingTransfer: true },
+      CATEGORIA_DE_TRANSFERENCIA_PROPRIA,
+    ],
+  }
+}
+
+/**
  * O WHERE do dinheiro vivo. Todas as regras de honestidade moram aqui — uma vez.
  *
  * ⚠️ `isCardPayment` é INCLUÍDO (é dinheiro saindo do banco) e a COMPRA no cartão é
@@ -115,10 +169,13 @@ export function whereFluxoCaixa(
     // 1) transferência entre contas PRÓPRIAS não é entrada nem saída — as 3 marcas
     //    que o sistema usa pra isso (o par TRANSFER, a categoria de transferência, o
     //    par entre CNPJs do grupo) + a tx marcada "aguardando par".
+    //    ⚠️ A categoria de transferência COM vínculo de contrato NÃO é própria (05/11).
+    //    Ver `CATEGORIA_DE_TRANSFERENCIA_PROPRIA`. Segue um `NOT` só no topo, na mesma
+    //    forma de antes, pra não mudar quem compõe este where com `AND` ou spread.
     type: { not: 'TRANSFER' },
     isInternalTransfer: false,
     pendingTransfer: false,
-    NOT: { category: { dreGroup: 'TRANSFERENCIA' } },
+    NOT: CATEGORIA_DE_TRANSFERENCIA_PROPRIA,
     // 2) só o que REALMENTE saiu/entrou: conta a pagar em aberto não é caixa.
     lifecycle: 'EFFECTED',
     // 3) anti-dupla-contagem: a PAYABLE conciliada com a OFX aponta pra ela; a OFX

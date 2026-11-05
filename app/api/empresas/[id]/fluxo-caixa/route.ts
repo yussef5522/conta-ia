@@ -9,7 +9,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import {
-  whereFluxoCaixa, SELECT_FLUXO, paraLinha, agruparFluxo, serieMensal, ultimosMeses,
+  whereFluxoCaixa, whereTransferenciaPropria, SELECT_FLUXO, paraLinha, agruparFluxo, serieMensal, ultimosMeses,
 } from '@/lib/fluxo-caixa/motor'
 
 interface Params { params: Promise<{ id: string }> }
@@ -56,10 +56,10 @@ export async function GET(request: NextRequest, { params }: Params) {
       // entre contas próprias. Esconder a exclusão é tão ruim quanto não excluir — se o
       // número parecer errado, ele percebe (e o detector de par tem onde ser conferido).
       prisma.transaction.aggregate({
-        where: {
-          bankAccount: { companyId }, lifecycle: 'EFFECTED', date: { gte: inicioMes, lte: fimMes },
-          OR: [{ type: 'TRANSFER' }, { isInternalTransfer: true }, { pendingTransfer: true }, { category: { dreGroup: 'TRANSFERENCIA' } }],
-        },
+        // ⭐ 05/11 — o filtro mora no motor (`whereTransferenciaPropria`), complemento do
+        // `whereFluxoCaixa`: a cópia que vivia aqui somava a devolução do mútuo ao terceiro
+        // junto com as transferências reais.
+        where: whereTransferenciaPropria(companyId, { de: inicioMes, ate: fimMes }),
         _sum: { amount: true }, _count: true,
       }),
     ])

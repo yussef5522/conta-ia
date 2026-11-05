@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest'
 import {
   whereFluxoCaixa, agruparFluxo, rotularLinha, serieMensal, ultimosMeses, paraLinha,
   entradaInformativa, CAT_FATURA, CAT_PARCELA, CAT_SEM, CAT_LIBERACAO, CAT_APORTE,
-  DRE_APORTE, type LinhaFluxo,
+  DRE_APORTE, CATEGORIA_DE_TRANSFERENCIA_PROPRIA, type LinhaFluxo,
 } from '../motor'
 
 const d = (s: string) => new Date(`${s}T12:00:00.000Z`)
@@ -25,7 +25,9 @@ describe('whereFluxoCaixa — as travas do dinheiro vivo', () => {
     expect(w.type).toEqual({ not: 'TRANSFER' })
     expect(w.isInternalTransfer).toBe(false)
     expect(w.pendingTransfer).toBe(false)
-    expect(w.NOT).toEqual({ category: { dreGroup: 'TRANSFERENCIA' } })
+    // ⭐ 05/11 — o NOT é a categoria de transferência SEM vínculo de contrato (o comportamento
+    // está provado contra o banco em capital-de-terceiros.integration.test.ts)
+    expect(w.NOT).toEqual(CATEGORIA_DE_TRANSFERENCIA_PROPRIA)
   })
 
   it('só dinheiro que de fato saiu/entrou (EFFECTED) e sem dupla contagem da conciliada', () => {
