@@ -13,10 +13,10 @@
 - ANTES do pull: descartar o swap-postgres local (senão o pull ABORTA calado).
 - ⚠️ O lock é prisma/migrations/migration_lock.toml (NÃO prisma/migration_lock.toml).
 - ⭐ INVARIANTES DE INFRA — o juiz olha a máquina também (25/08)
-- ⛔⛔ `exit 0` DE SSH QUE CAIU NÃO É PROVA DE DEPLOY (medido 2× em 04/11/2026)
+- ⛔⛔ `exit 0` DE SSH QUE CAIU NÃO É PROVA DE DEPLOY (medido 3× em 04-05/11/2026)
 
 ---
-## ⛔⛔ `exit 0` DE SSH QUE CAIU NÃO É PROVA DE DEPLOY — medido 2× em 04/11/2026
+## ⛔⛔ `exit 0` DE SSH QUE CAIU NÃO É PROVA DE DEPLOY — medido 3× em 04-05/11/2026
 
 **O sintoma:** rodei `ssh root@198.211.103.10 'cd /opt/conta-ia && bash scripts/deploy.sh …'`
 e o comando voltou **sem saída nenhuma** — arquivo de log com **0 byte** — e, quando
@@ -33,12 +33,20 @@ wrapper quebrado, não do deploy.
 
 ⛔⛔ **Por que isso é perigoso:** o zero parece sucesso. Se eu o tratasse como prova, teria
 declarado *"deploy 4/4 verde"* sem ter lido gate nenhum — e **deploy cujo gate eu não li é
-deploy não provado**. Nas duas vezes o deploy de fato tinha dado certo, o que é justamente a
-armadilha: o hábito se forma com o falso positivo e cobra o preço no dia em que o build
-falha.
+deploy não provado**. ⛔ E nos **três** casos o deploy de fato tinha dado certo — é
+justamente isso que torna o zero perigoso: o hábito se forma com o falso positivo e cobra o
+preço no primeiro dia em que o build falhar.
 
-⭐ **A mitigação, que funcionou na 2ª vez:** disparar com o log **em arquivo no servidor** e
-ler o gate de lá, nunca do stdout do SSH.
+⚠️ **E não é intermitência de um dia ruim: são 3 casos, todos com a MESMA assinatura** (duas
+linhas de `Operation timed out` / `Broken pipe` e `exit code 0`), em deploys diferentes:
+`a626e040`, `a6fc4ec9` e `f4878f6e`. ***Trate como o comportamento normal de comando longo
+via SSH, não como acidente.***
+
+⭐ **A mitigação, VALIDADA EM CAMPO:** disparar com o log **em arquivo no servidor** e ler o
+gate de lá, nunca do stdout do SSH. No 3º caso (`f4878f6e`, 05/11) o canal caiu **de novo** e
+**não custou nada** — o `deploy.sh` seguiu rodando, escreveu o log, e o gate 4/4 (BUILD_ID
+`UEZ8Jwy_oZLPAvHAQKU6L`) foi lido de `/tmp/deploy-fila.log`. *A mitigação deixou de ser
+hipótese: ela já salvou um deploy real.*
 
 ```bash
 ssh root@198.211.103.10 'cd /opt/conta-ia && nohup bash scripts/deploy.sh > /tmp/deploy-<tema>.log 2>&1 &'
@@ -50,7 +58,8 @@ ssh root@198.211.103.10 'grep -E "1/4|2/4|3/4|4/4|DEPLOY OK|FALHOU" /tmp/deploy-
 mão**, com os comandos literais de `scripts/deploy.sh` (hoje nas linhas 232-267) — BUILD_ID
 servido == buildado · pm2 `online` com o MESMO pid depois de 10s · TODOS os CSS do HTML em
 200 vindos do build novo · POST no login com credencial inválida → **401**. Foi o que fiz em
-04/11 no deploy `a626e040`, e o gate passou — mas por medição, não por fé no `exit 0`.
+04/11 no deploy `a626e040` (o log tinha voltado com **0 byte**), e o gate passou — mas por
+medição, não por fé no `exit 0`.
 
 ⚠️ **Corolário para migrations:** o deploy imprime *"schema do banco em dia"* e isso **não
 substitui olhar a tabela**. Em 04/11 (`a6fc4ec9`) fui conferir no banco:
