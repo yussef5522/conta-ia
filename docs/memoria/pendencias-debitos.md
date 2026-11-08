@@ -179,3 +179,18 @@ Entra **depois** que o dono validar o cartão PF em prod (importar a fatura + ca
 **📌 ANOTADO SEM CONSTRUIR:** (1) aviso "parcela de MM paga em MM+1" (ex.: Caixa #34, vencida em 24/10 e paga em 03/11, cai em novembro pela regra do caixa); (2) uma **seção Financiamento** completa no padrão DFC: amortizações e liberações juntas, com subtotal próprio no SOBROU.
 
 **Débito visto de passagem:** `lib/avisos/__tests__/import-de-venda.integration.test.ts` ("o selo que o sininho usa…") falha também SEM a mudança: `expected undefined to be 'SABORES_NAO_IMPORTADOS'`.
+
+## 🔤 GRAFIA CANÔNICA NOS PRODUTOS (08/11/2026)
+
+**Curado:** o mapa de produto passa a ser lido pela porta `resolvedorDeGrafia` (`lib/stock/vendas/grafia-canonica.ts`), com a mesma chave dos complementos, `canonicoDaGrafia`. Essa chave ignora caixa, acento e **pontuação** (decisão do dono de 08/11). Letra e dígito continuam distintos. O mapa segue guardando a grafia crua; quem canonicaliza é o lookup, e nada é gravado. Grafias irmãs com destinos diferentes viram **CONFLITO**: a linha não baixa, aparece na tela e o sistema não sugere destino. Aplicado em: plano de baixa, detalhe do dia, revisão do import (só PRODUTOS), preview do upload, central do mês, Processados e alarme V1.
+
+**📌 BLOCO 2 (reprocesso, com pg_dump + autorização):**
+- 15 dias afetados entre 10/10 e 06/11 (ver o relatório do sprint).
+- **3 conflitos reais**, decisão do dono: `XIS COMPLETO` × `XIS - COMPLETO` (2 fichas ativas), `PIZZA GRANDE 35CM` × `Pizza Grande (35cm)` e `PIZZA FAMILIA 45CM` × `Pizza Família (45cm)`. Enquanto não forem decididos, a grafia nova desses lanches **continua sem baixar**.
+
+**⚠️ Listados, não curados:**
+- `lib/stock/cardapio/hub.ts:150` segue pela grafia exata. O comentário de :175 recusa casar por semelhança; vale decidir se a canônica, que não é semelhança, entra lá.
+- `juiz-da-baixa.ts:123` (`mundoMudouDepois`): mapear a irmã depois não dispara o alarme de reprocesso.
+- `baixa-venda.ts` `vendasPendentesDeMapa`: sem chamador.
+- `agrupamentoAutomatico` (complementos) ainda escolhe a 1ª irmã em caso de conflito. Prod tem 0 conflitos de complemento.
+- O preview do upload (`venda-map.ts`) não tem teste próprio.

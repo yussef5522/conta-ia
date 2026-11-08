@@ -555,7 +555,9 @@ export function CentralDeImportView({
                         style={{
                           borderColor: 'var(--prod-line)',
                           background:
-                            p.destino === 'SEM_DESTINO'
+                            p.destino === 'CONFLITO'
+                              ? 'var(--fam-coral-bg)'
+                              : p.destino === 'SEM_DESTINO'
                               ? 'var(--fam-ambar-bg)'
                               : i % 2 === 1
                                 ? 'var(--prod-surface-1)'
@@ -564,13 +566,29 @@ export function CentralDeImportView({
                       >
                         <span
                           className="overflow-hidden text-ellipsis whitespace-nowrap font-semibold"
-                          style={{ color: p.destino === 'SEM_DESTINO' ? 'var(--fam-ambar-ink)' : 'var(--prod-primary)' }}
+                          style={{ color: p.destino === 'CONFLITO' ? 'var(--fam-coral-ink)' : p.destino === 'SEM_DESTINO' ? 'var(--fam-ambar-ink)' : 'var(--prod-primary)' }}
+                          title={p.grafias.length > 1 ? `grafias do PDV: ${p.grafias.join(' · ')}` : undefined}
                         >
-                          {p.destino === 'SEM_DESTINO' ? '⚠ ' : ''}{p.nome}
+                          {p.destino === 'SEM_DESTINO' || p.destino === 'CONFLITO' ? '⚠ ' : ''}{p.nome}
+                          {/* ⭐ 08/11 — uma linha por produto: as grafias que ela juntou ficam à vista */}
+                          {p.grafias.length > 1 && (
+                            <span className="ml-1 text-[11px] font-normal" style={{ color: 'var(--prod-muted)' }}>
+                              (+{p.grafias.length - 1} grafia{p.grafias.length > 2 ? 's' : ''})
+                            </span>
+                          )}
                         </span>
                         <span className="text-right" style={{ color: 'var(--prod-secondary)' }}>{num(p.unidades)}</span>
                         <span className="text-right" style={{ color: 'var(--prod-primary)' }}>{brl(p.valor)}</span>
-                        {p.destino === 'SEM_DESTINO' ? (
+                        {p.destino === 'CONFLITO' ? (
+                          /* ⛔ 08/11 — o mesmo produto com fichas DIFERENTES nas grafias: o sistema não escolhe */
+                          <span className="text-right text-[12px] font-semibold" style={{ color: 'var(--fam-coral-ink)' }}
+                            title={`apontam pra destinos diferentes: ${p.candidatas.join(' · ')}`}>
+                            conflito: {p.candidatas.join(' × ')} —{' '}
+                            <span role="button" onClick={() => onMapearProduto(p.nome)} style={{ color: 'var(--fam-indigo-mid)' }}>
+                              escolher →
+                            </span>
+                          </span>
+                        ) : p.destino === 'SEM_DESTINO' ? (
                           <span className="text-right text-[12px] font-semibold" style={{ color: 'var(--fam-ambar-ink)' }}>
                             sem destino —{' '}
                             <span role="button" onClick={() => onMapearProduto(p.nome)} style={{ color: 'var(--fam-indigo-mid)' }}>

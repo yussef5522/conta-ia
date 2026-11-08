@@ -14,6 +14,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import type { StockInvariantFail } from '../stock-invariants'
 import { ehLinhaDePeriodo } from './import-complementos'
+import { resolvedorDeGrafia, mapaQueDecide } from './grafia-canonica'
 
 type Db = PrismaClient | Prisma.TransactionClient
 const V1_DIAS = 7
@@ -23,13 +24,17 @@ export async function checkVendasInvariants(db: Db, now: Date = new Date()): Pro
   const limite = new Date(now.getTime() - V1_DIAS * 86_400_000)
   const [linhas, mapa] = await Promise.all([
     db.stockVendaLinha.findMany({ where: { data: { lt: limite } }, select: { companyId: true, nomeSuitable: true } }),
-    db.stockVendaProdutoMap.findMany({ select: { companyId: true, nomeSuitable: true } }),
+    db.stockVendaProdutoMap.findMany({ select: { companyId: true, nomeSuitable: true, alvoTipo: true, fichaId: true, itemId: true } }),
   ])
-  const mapeados = new Set(mapa.map((m) => `${m.companyId}|${m.nomeSuitable}`))
+  // ⭐ 08/11 — a porta `resolvedorDeGrafia`, POR EMPRESA (o mapa de uma nunca resolve a grafia de outra)
+  const porEmpresa = new Map<string, typeof mapa>()
+  for (const m of mapa) porEmpresa.set(m.companyId, [...(porEmpresa.get(m.companyId) ?? []), m])
+  const resolvers = new Map([...porEmpresa].map(([c, ms]) => [c, resolvedorDeGrafia(ms)]))
   const pendentesAntigos = new Map<string, { companyId: string; nome: string }>()
   for (const l of linhas) {
     const k = `${l.companyId}|${l.nomeSuitable}`
-    if (mapeados.has(k)) continue
+    const resolver = resolvers.get(l.companyId)
+    if (resolver && mapaQueDecide(resolver(l.nomeSuitable))) continue
     if (!pendentesAntigos.has(k)) pendentesAntigos.set(k, { companyId: l.companyId, nome: l.nomeSuitable })
   }
   for (const p of pendentesAntigos.values()) {

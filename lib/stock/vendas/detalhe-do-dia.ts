@@ -14,6 +14,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { montarPlanoDeLinhas } from './baixa-venda'
+import { canonicoDaGrafia } from './grafia-canonica'
 import { ehSaborDeVerdade } from './razao-sabor-pizza'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -23,6 +24,8 @@ export type DestinoNoEstoque =
   | 'BAIXOU_BASE_E_SABORES'
   | 'BAIXOU_REVENDA'
   | 'SEM_DESTINO'
+  /** ⛔ 08/11 — grafias do mesmo produto apontando pra destinos diferentes: o dono escolhe */
+  | 'CONFLITO'
   /** ⚠️ decisão do dono: não controla estoque. Não é pendência. */
   | 'IGNORADO'
 
@@ -31,6 +34,7 @@ export const ROTULO_DO_DESTINO: Record<DestinoNoEstoque, string> = {
   BAIXOU_BASE_E_SABORES: 'baixou base + sabores ✓',
   BAIXOU_REVENDA: 'baixou revenda ✓',
   SEM_DESTINO: 'sem destino',
+  CONFLITO: 'grafias em conflito — escolha a ficha',
   IGNORADO: 'ignorado (sua decisão)',
 }
 
@@ -42,6 +46,13 @@ export interface LinhaProduto {
   destinoRotulo: string
   /** o nome do destino quando há um (a ficha/item que baixou) */
   alvoNome: string | null
+  /**
+   * ⭐ 08/11 — as grafias CRUAS do PDV que esta linha junta (uma linha por produto). Com 1
+   * elemento é o caso de sempre; com 2+ a tela mostra quais grafias entraram.
+   */
+  grafias: string[]
+  /** só no CONFLITO: as grafias já mapeadas que apontam pra destinos diferentes */
+  candidatas: string[]
 }
 
 export interface LinhaSabor {
@@ -102,7 +113,7 @@ export async function lerDetalheDoDia(
   const deDia = new Date(`${dia}T00:00:00.000Z`)
   const ateDia = new Date(deDia.getTime() + 86_400_000)
   const noDia = { gte: deDia, lt: ateDia }
-  const [linhas, comp, mapaProd, mapaComp, bases] = await Promise.all([
+  const [linhas, comp, mapaComp, bases] = await Promise.all([
     db.stockVendaLinha.findMany({
       where: { companyId, data: noDia },
       select: { nomeSuitable: true, quantidade: true, valorTotal: true },
@@ -111,7 +122,6 @@ export async function lerDetalheDoDia(
       where: { companyId, data: noDia },
       select: { nomeSuitable: true, ocorrencias: true },
     }),
-    db.stockVendaProdutoMap.findMany({ where: { companyId } }),
     db.stockVendaComplementoMap.findMany({ where: { companyId } }),
     basesApontadas(companyId, db),
   ])
@@ -130,28 +140,54 @@ export async function lerDetalheDoDia(
   const noPlano = new Map(plano.produtos.map((p) => [p.nome, p]))
   const pendentes = new Set(plano.pendentes.map((p) => p.nome))
   const ignorados = new Set(plano.ignorados.map((p) => p.nome))
-  const mapaPorNome = new Map(mapaProd.map((m) => [m.nomeSuitable, m]))
+  const emConflito = new Map(plano.conflitos.map((c) => [c.nome, c.candidatas]))
 
-  const produtos: LinhaProduto[] = linhas
-    .map((l) => {
-      const p = noPlano.get(l.nomeSuitable)
-      const m = mapaPorNome.get(l.nomeSuitable)
-      let destino: DestinoNoEstoque
-      if (ignorados.has(l.nomeSuitable)) destino = 'IGNORADO'
-      else if (pendentes.has(l.nomeSuitable) || !p) destino = 'SEM_DESTINO'
-      else if (p.alvoTipo === 'REVENDA') destino = 'BAIXOU_REVENDA'
-      else if (m?.fichaId && bases.has(m.fichaId)) destino = 'BAIXOU_BASE_E_SABORES'
-      else destino = 'BAIXOU_FICHA'
-      return {
-        nome: l.nomeSuitable,
-        unidades: l.quantidade,
-        valor: round2(l.valorTotal),
-        destino,
-        destinoRotulo: ROTULO_DO_DESTINO[destino],
-        alvoNome: p?.alvoNome ?? null,
-      }
+  /**
+   * ⭐⭐ 08/11 — UMA LINHA POR PRODUTO, e o destino vem do PLANO (a mesma porta que baixa).
+   *
+   * ⛔ Antes havia aqui um 2º lookup EXATO (`mapaPorNome.get(l.nomeSuitable)`) pra saber se a
+   * ficha era base de tamanho — e ele não via a grafia irmã. Agora a ficha que decidiu vem no
+   * próprio plano (`fichaId`), e as grafias que caem no MESMO canônico com o MESMO destino
+   * viram uma linha só. Conflito e IGNORADO não se juntam: conflito é pergunta, e ignorar é
+   * decisão por nome.
+   */
+  const porChave = new Map<string, LinhaProduto>()
+  for (const l of linhas) {
+    const p = noPlano.get(l.nomeSuitable)
+    let destino: DestinoNoEstoque
+    if (ignorados.has(l.nomeSuitable)) destino = 'IGNORADO'
+    else if (emConflito.has(l.nomeSuitable)) destino = 'CONFLITO'
+    else if (pendentes.has(l.nomeSuitable) || !p) destino = 'SEM_DESTINO'
+    else if (p.alvoTipo === 'REVENDA') destino = 'BAIXOU_REVENDA'
+    else if (p.fichaId && bases.has(p.fichaId)) destino = 'BAIXOU_BASE_E_SABORES'
+    else destino = 'BAIXOU_FICHA'
+    const chave = destino === 'IGNORADO'
+      ? `nome:${l.nomeSuitable}`
+      : `${canonicoDaGrafia(l.nomeSuitable)}|${destino}|${p?.alvoTipo ?? ''}:${p?.fichaId ?? p?.alvoNome ?? ''}`
+    const ja = porChave.get(chave)
+    if (ja) {
+      ja.unidades += l.quantidade
+      ja.valor = round2(ja.valor + l.valorTotal)
+      if (!ja.grafias.includes(l.nomeSuitable)) ja.grafias.push(l.nomeSuitable)
+      continue
+    }
+    porChave.set(chave, {
+      nome: l.nomeSuitable,
+      unidades: l.quantidade,
+      valor: round2(l.valorTotal),
+      destino,
+      destinoRotulo: ROTULO_DO_DESTINO[destino],
+      alvoNome: p?.alvoNome ?? null,
+      grafias: [l.nomeSuitable],
+      candidatas: emConflito.get(l.nomeSuitable) ?? [],
     })
-    // ⚠️ ordenado por VALOR (a referência), não por nome: é onde o dinheiro está
+  }
+  const produtos: LinhaProduto[] = [...porChave.values()]
+    // ⭐ o nome mostrado é o da grafia que JÁ estava mapeada (a irmã por onde a linha veio), senão a 1ª
+    .map((g) => {
+      const mapeada = g.grafias.find((n) => noPlano.get(n) && !noPlano.get(n)!.viaGrafia)
+      return mapeada ? { ...g, nome: mapeada } : g
+    })
     .sort((a, b) => b.valor - a.valor)
 
   const comFicha = new Set(mapaComp.filter((m) => m.fichaId).map((m) => m.nomeSuitable))
@@ -188,7 +224,8 @@ export async function lerDetalheDoDia(
       unidades,
       valor,
       linhas: linhas.length,
-      semDestino: produtos.filter((p) => p.destino === 'SEM_DESTINO').length,
+      // ⚠️ conflito também não tem destino: não baixa até o dono escolher
+      semDestino: produtos.filter((p) => p.destino === 'SEM_DESTINO' || p.destino === 'CONFLITO').length,
       ocorrencias: comp.reduce((s, c) => s + c.ocorrencias, 0),
       // ⚠️ só conta "sem ficha" o que É sabor — tamanho vazado não é pendência
       saboresSemFicha: sabores.filter((s) => s.ehSabor && !s.temFicha).length,

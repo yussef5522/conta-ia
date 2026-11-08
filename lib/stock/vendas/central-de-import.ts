@@ -24,6 +24,7 @@ import { totaisDoPdvPorDia } from './total-do-pdv'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { ehPizza, ehSaborDeVerdade, vereditoDoDia, ROTULO_DO_SELO, SELOS_QUE_PEDEM_ACAO, type SeloDoDia } from './razao-sabor-pizza'
 import { acharDiasRachados, type DiaRachado } from './dia-rachado'
+import { resolvedorDeGrafia, mapaQueDecide } from './grafia-canonica'
 
 const ISO = (d: Date) => d.toISOString().slice(0, 10)
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -166,7 +167,7 @@ export async function lerCentralDeImport(
       select: { data: true, nomeSuitable: true, ocorrencias: true, criadoEm: true },
     }),
     db.stockVendaArquivo.findMany({ where: { companyId, data: { gte: de, lt: ate } } }),
-    db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true } }),
+    db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true, itemId: true } }),
     db.user.findMany({ select: { id: true, name: true, email: true } }),
     db.vendaDiaria.findMany({
       where: { companyId, dataCompetencia: { lt: ate } },
@@ -184,7 +185,9 @@ export async function lerCentralDeImport(
     totaisDoPdvPorDia(companyId, de, ate, db),
   ])
   const nomeUser = new Map(users.map((u) => [u.id, (u.name ?? u.email).trim()]))
-  const temMapa = new Set(mapa.map((x) => x.nomeSuitable))
+  // ⭐ 08/11 — mapeado = a porta `resolvedorDeGrafia` (grafia exata OU irmã canônica de mesmo destino);
+  // a grafia em CONFLITO segue pendente. Antes era a string exata e contradizia a lista da revisão.
+  const resolver = resolvedorDeGrafia(mapa)
 
   // ─────────── agrega por dia ───────────
   type Acc = {
@@ -208,7 +211,7 @@ export async function lerCentralDeImport(
     a.unidades += l.quantidade
     a.linhas += 1
     if (ehPizza(l.nomeSuitable)) a.pizzas += l.quantidade
-    if (!temMapa.has(l.nomeSuitable)) a.semDestino += 1
+    if (!mapaQueDecide(resolver(l.nomeSuitable))) a.semDestino += 1
   }
   for (const c of comp) {
     const a = pega(ISO(c.data))

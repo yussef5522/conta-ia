@@ -16,6 +16,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { normalizarNome } from './grupo-complemento'
+import { resolvedorDeGrafia, type ResolucaoDeGrafia } from './grafia-canonica'
 
 /**
  * ⭐⭐⭐ A FAIXA DO DIA — e ela existe porque **os dois writers usam convenções
@@ -65,6 +66,10 @@ export interface LinhaDaRevisao {
   sugestao: SugestaoDeDestino | null
   /** quando IGNORADO: quem e quando (o rastro que a tela mostra) */
   ignoradoEm: string | null
+  /** ⭐ 08/11 (só PRODUTOS) — a grafia irmã por onde o vínculo veio; null = grafia exata */
+  viaGrafia?: string | null
+  /** ⛔ 08/11 (só PRODUTOS) — grafias irmãs com destinos DIFERENTES: a linha fica sem destino e mostra quais */
+  conflito?: string[] | null
 }
 
 export interface RevisaoDoImport {
@@ -189,7 +194,7 @@ export function sugerirDestino(
  * O rastro do "ignorado em DD/MM" cai pro `criadoEm` ali, e é honesto: naquele mapa a
  * decisão não é editável no lugar, ela é substituída.
  */
-interface MapaDaLinha { alvoTipo: string; fichaId: string | null; itemId: string | null; decididoEm: Date }
+interface MapaDaLinha { nomeSuitable: string; alvoTipo: string; fichaId: string | null; itemId: string | null; decididoEm: Date }
 
 /**
  * ⭐⭐ MONTA A REVISÃO de um dia. **Só LÊ.**
@@ -243,6 +248,21 @@ export async function montarRevisaoDeLinhas(
     : (await db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true, itemId: true, criadoEm: true } }))
         .map((m) => ({ nomeSuitable: m.nomeSuitable, alvoTipo: m.alvoTipo, fichaId: m.fichaId, itemId: m.itemId, decididoEm: m.criadoEm }))
   const mapa = new Map<string, MapaDaLinha>(mapaRows.map((m) => [m.nomeSuitable, m]))
+  /**
+   * ⭐⭐ 08/11 — PRODUTOS LEEM PELA GRAFIA CANÔNICA (a porta `resolvedorDeGrafia`). O PDV manda
+   * `Xis Completo` pro mesmo lanche que `XIS COMPLETO`; pela string exata a linha virava
+   * "sem destino" ao lado da irmã vinculada.
+   *
+   * ⚠️ COMPLEMENTOS seguem pela string exata, de propósito e sem mudança: neles a grafia
+   * canônica já é GRAVADA no mapa no import (`aplicar-agrupamento`, 08/09), então o mapa
+   * exato já é a leitura certa, e mexer aqui mudaria uma tela que está certa.
+   */
+  const resolver = relatorio === 'COMPLEMENTOS' ? null : resolvedorDeGrafia(mapaRows)
+  const resolverDaLinha = (nome: string): ResolucaoDeGrafia<MapaDaLinha> => {
+    if (resolver) return resolver(nome)
+    const m = mapa.get(nome)
+    return m ? { tipo: 'EXATA', mapa: m } : { tipo: 'SEM' }
+  }
 
   // ── o que cada ficha DESCONTA (o resumo que fica à vista na linha) ──
   const fichaIds = [...new Set([...mapa.values()].map((m) => m.fichaId).filter((x): x is string => !!x))]
@@ -302,12 +322,16 @@ export async function montarRevisaoDeLinhas(
 
   const linhas: LinhaDaRevisao[] = linhasCruas
     .map((l) => {
-      const m = mapa.get(l.nome)
+      const r = resolverDaLinha(l.nome)
+      const m = r.tipo === 'EXATA' || r.tipo === 'CANONICA' ? r.mapa : null
       if (!m) {
+        const conflito = r.tipo === 'CONFLITO' ? r.candidatas.map((c) => c.nomeSuitable) : null
         return {
           nome: l.nome, ocorrencias: l.ocorrencias, estado: 'SEM_VINCULO' as const,
           destinoId: null, destinoNome: null, baixa: [],
-          sugestao: sugerirDestino(l.nome, candidatos), ignoradoEm: null,
+          // ⛔ no conflito NÃO sugere: sugerir uma das fichas seria escolher por ele
+          sugestao: conflito ? null : sugerirDestino(l.nome, candidatos), ignoradoEm: null,
+          ...(conflito ? { conflito } : {}),
         }
       }
       if (m.alvoTipo === 'IGNORAR') {
@@ -326,6 +350,7 @@ export async function montarRevisaoDeLinhas(
         // ⚠️ revenda baixa o PRÓPRIO item ×1 — o resumo diz isso em vez de ficar vazio
         baixa: baixa.length ? baixa : (m.itemId ? [{ itemNome: nomeItem.get(m.itemId) ?? '(item)', qtd: 1 }] : []),
         sugestao: null, ignoradoEm: null,
+        ...(r.tipo === 'CANONICA' ? { viaGrafia: r.viaGrafia } : {}),
       }
     })
     // ⭐ o trabalho primeiro: sem vínculo no topo, e dentro dele o que mais vendeu

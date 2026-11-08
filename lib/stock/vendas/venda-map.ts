@@ -8,6 +8,7 @@ import { garantirFichaDeRevenda, FichaDeRevendaError } from './ficha-de-revenda'
 import { parseSuitable, type VendaLinhaSuitable } from './parse-suitable'
 import { type ResultadoDaSanidade } from './sanidade-do-import'
 import { medirSanidade } from './medir-sanidade'
+import { resolvedorDeGrafia, mapaQueDecide } from './grafia-canonica'
 import { exigirEscolha, EscolhaVaziaError } from '../texto-de-escolha'
 
 export interface LinhaResolvida extends VendaLinhaSuitable {
@@ -60,10 +61,11 @@ export async function previewImportSuitable(companyId: string, html: string, db:
   const fichaNome = new Map(todasFichas.map((f) => [f.id, nomeItem.get(f.itemProduzidoId) ?? '(produto)']))
   const fichas = fichasFinais
   const itens = itensRevenda
-  const mapaPorNome = new Map(mapa.map((m) => [m.nomeSuitable, m]))
+  // ⭐ 08/11 — a mesma porta do plano de baixa: grafia exata OU irmã canônica de mesmo destino
+  const resolver = resolvedorDeGrafia(mapa)
 
   const linhas: LinhaResolvida[] = parsed.linhas.map((l) => {
-    const m = mapaPorNome.get(l.produto)
+    const m = mapaQueDecide(resolver(l.produto))
     if (!m) return { ...l, mapeado: false, alvoTipo: null, alvoId: null, alvoNome: null }
     const alvoId = m.alvoTipo === 'FICHA' ? m.fichaId : m.itemId
     const alvoNome = m.alvoTipo === 'FICHA' ? fichaNome.get(m.fichaId ?? '') ?? '(ficha removida)' : nomeItem.get(m.itemId ?? '') ?? '(item removido)'

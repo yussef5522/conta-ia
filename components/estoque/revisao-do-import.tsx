@@ -28,6 +28,9 @@ export interface LinhaRevisaoDTO {
   baixa: { itemNome: string; qtd: number }[]
   sugestao: { fichaId: string; rotulo: string; porQue: string } | null
   ignoradoEm: string | null
+  /** ⭐ 08/11 — espelho de `LinhaDaRevisao` (lib/stock/vendas/revisao-do-import.ts) */
+  viaGrafia?: string | null
+  conflito?: string[] | null
 }
 export interface RevisaoDTO {
   data: string
@@ -350,10 +353,16 @@ export function RevisaoDoImport({
                   <span className="text-slate-600">
                     → {l.destinoNome}
                     {l.baixa.length > 0 && <span className="text-slate-400"> (baixa: {l.baixa.map((b) => `${b.itemNome} ×${b.qtd}`).join(' + ')})</span>}
+                    {/* ⭐ 08/11 — o vínculo veio pela grafia irmã (só caixa/acento/pontuação diferem) */}
+                    {l.viaGrafia && <span className="text-slate-400"> · mesma grafia de «{l.viaGrafia}»</span>}
                   </span>
                 )}
                 {l.estado === 'IGNORADO' && <span className="text-slate-500">→ fora do estoque (por você, em {l.ignoradoEm?.split('-').reverse().join('/')})</span>}
-                {l.estado === 'SEM_VINCULO' && !l.sugestao && <span className="text-amber-700">→ escolher destino</span>}
+                {/* ⛔ 08/11 — as grafias irmãs apontam pra fichas DIFERENTES: o sistema não escolhe */}
+                {l.estado === 'SEM_VINCULO' && l.conflito && (
+                  <span className="text-rose-700">→ conflito: {l.conflito.join(' × ')} apontam pra destinos diferentes — escolha um</span>
+                )}
+                {l.estado === 'SEM_VINCULO' && !l.sugestao && !l.conflito && <span className="text-amber-700">→ escolher destino</span>}
                 {/* ⭐⭐ A SUGESTÃO É MARCADA COMO SUGESTÃO — o clique é do dono */}
                 {l.estado === 'SEM_VINCULO' && l.sugestao && (
                   <span className="text-amber-800">

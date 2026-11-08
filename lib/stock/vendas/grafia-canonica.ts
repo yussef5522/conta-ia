@@ -24,6 +24,30 @@
 
 import { normalizarNome } from './grupo-complemento'
 
+/**
+ * ⭐⭐ O CANÔNICO DA GRAFIA — a chave do automático, pra COMPLEMENTOS e PRODUTOS (08/11/2026).
+ *
+ * É o `normalizarNome` (caixa, acento, espaço) **mais a pontuação**, por decisão do dono de
+ * 08/11: *"diferença SÓ de pontuação (hífen) também é o mesmo produto"*. O PDV manda
+ * `XIS - COMPLETO`, `XIS COMPLETO` e `Xis Completo` pro mesmo lanche, e
+ * `Pizza Grande (35cm)` pra `PIZZA GRANDE 35CM`.
+ *
+ * ⛔ O que continua DIFERENTE é a LETRA e o DÍGITO: tudo que é `[A-Z0-9]` fica. Um typo
+ * (`CARNEE`) ou um dígito (`4 QUEIJOS` × `5 QUEIJOS`) segue pedindo clique. E a pontuação vira
+ * ESPAÇO, não some: `1/2` vira `1 2`, que não colide com `12`.
+ *
+ * ⚠️ Nome só de pontuação dá chave vazia; aí volta o `normalizarNome`, pra que dois nomes
+ * diferentes feitos só de símbolo nunca virem "o mesmo".
+ *
+ * ⛔ `normalizarNome` NÃO mudou: ele serve ao cardápio de sabores e à busca. Quem pergunta
+ * "estas duas grafias são o mesmo item?" usa ESTA função, e é uma só.
+ */
+export function canonicoDaGrafia(n: string): string {
+  const base = normalizarNome(n)
+  const k = base.replace(/[^A-Z0-9]+/g, ' ').trim()
+  return k || base
+}
+
 export interface GrafiaPendente {
   nomeSuitable: string
   ocorrencias: number
@@ -62,12 +86,12 @@ export function agrupamentoAutomatico(
 ): AgrupamentoAutomatico[] {
   const porCanonico = new Map<string, GrafiaComFicha>()
   for (const m of jaMapeadas) {
-    const k = normalizarNome(m.nomeSuitable)
+    const k = canonicoDaGrafia(m.nomeSuitable)
     if (!porCanonico.has(k)) porCanonico.set(k, m)
   }
   const out: AgrupamentoAutomatico[] = []
   for (const p of pendentes) {
-    const irma = porCanonico.get(normalizarNome(p.nomeSuitable))
+    const irma = porCanonico.get(canonicoDaGrafia(p.nomeSuitable))
     // ⚠️ a própria grafia já mapeada não é "pendente"; se aparecer, ignora sem drama
     if (!irma || irma.nomeSuitable === p.nomeSuitable) continue
     out.push({
@@ -90,12 +114,81 @@ export function conflitosDeGrafia(
 ): { canonico: string; fichas: GrafiaComFicha[] }[] {
   const porCanonico = new Map<string, GrafiaComFicha[]>()
   for (const m of jaMapeadas) {
-    const k = normalizarNome(m.nomeSuitable)
+    const k = canonicoDaGrafia(m.nomeSuitable)
     porCanonico.set(k, [...(porCanonico.get(k) ?? []), m])
   }
   return [...porCanonico.entries()]
     .filter(([, ms]) => new Set(ms.map((m) => m.fichaId)).size > 1)
     .map(([canonico, fichas]) => ({ canonico, fichas }))
+}
+
+// ────────────────────────────────────────────────────────────────
+// 1b. O RESOLVEDOR — a mesma régua, aplicada na LEITURA (produtos, 08/11/2026)
+// ────────────────────────────────────────────────────────────────
+
+/** o que o resolvedor precisa de uma linha do mapa (produto: FICHA/REVENDA/IGNORAR) */
+export interface GrafiaMapeada {
+  nomeSuitable: string
+  alvoTipo: string
+  fichaId: string | null
+  itemId?: string | null
+}
+
+export type ResolucaoDeGrafia<T extends GrafiaMapeada> =
+  /** a grafia crua TEM linha no mapa — a decisão do dono pra este nome, intocada */
+  | { tipo: 'EXATA'; mapa: T }
+  /** a grafia crua não tem linha, mas uma irmã do mesmo canônico tem, e todas as irmãs apontam pro MESMO destino */
+  | { tipo: 'CANONICA'; mapa: T; viaGrafia: string }
+  /** ⛔ irmãs do mesmo canônico com destinos DIFERENTES: nunca escolher, mostrar */
+  | { tipo: 'CONFLITO'; candidatas: T[] }
+  | { tipo: 'SEM' }
+
+/** o destino que uma linha do mapa representa — dois iguais são "o mesmo lugar" */
+function destinoDe(m: GrafiaMapeada): string | null {
+  if (m.alvoTipo === 'FICHA' && m.fichaId) return `FICHA:${m.fichaId}`
+  if (m.alvoTipo === 'REVENDA' && m.itemId) return `REVENDA:${m.itemId}`
+  return null
+}
+
+/**
+ * ⭐⭐ A PORTA ÚNICA DA LEITURA DO MAPA DE PRODUTO (08/11/2026).
+ *
+ * O mapa continua guardando a string CRUA (N grafias → 1 destino); quem canonicaliza é o
+ * LOOKUP. ⛔ Nada aqui grava: fundir no dado faria o import de amanhã não reconhecer a grafia
+ * que sumiu (o mesmo aviso do `chaveDeApresentacao`, que vale igual pra produto).
+ *
+ * As regras, em ordem:
+ *   1. a grafia crua tem linha → EXATA (inclusive IGNORAR: ignorar é decisão por NOME);
+ *   2. senão, as irmãs do mesmo `canonicoDaGrafia` com destino (FICHA/REVENDA) decidem:
+ *      todas no mesmo destino → CANONICA; destinos diferentes → CONFLITO, e a linha NÃO
+ *      baixa até o dono escolher. ⛔ Escolher a primeira seria a adivinhação que a regra
+ *      proíbe, e no dado de 08/11 o caso existe: `XIS COMPLETO` e `XIS - COMPLETO` apontam
+ *      pra DUAS fichas ativas diferentes;
+ *   3. IGNORAR de uma irmã NÃO se propaga: ignorar `GRANDE` não diz nada de outra grafia;
+ *   4. nenhuma irmã → SEM.
+ */
+export function resolvedorDeGrafia<T extends GrafiaMapeada>(mapa: readonly T[]): (nome: string) => ResolucaoDeGrafia<T> {
+  const exato = new Map<string, T>()
+  const porCanonico = new Map<string, T[]>()
+  for (const m of mapa) {
+    if (!exato.has(m.nomeSuitable)) exato.set(m.nomeSuitable, m)
+    if (destinoDe(m) === null) continue
+    const k = canonicoDaGrafia(m.nomeSuitable)
+    porCanonico.set(k, [...(porCanonico.get(k) ?? []), m])
+  }
+  return (nome: string) => {
+    const e = exato.get(nome)
+    if (e) return { tipo: 'EXATA', mapa: e }
+    const irmas = porCanonico.get(canonicoDaGrafia(nome)) ?? []
+    if (irmas.length === 0) return { tipo: 'SEM' }
+    if (new Set(irmas.map(destinoDe)).size > 1) return { tipo: 'CONFLITO', candidatas: irmas }
+    return { tipo: 'CANONICA', mapa: irmas[0], viaGrafia: irmas[0].nomeSuitable }
+  }
+}
+
+/** a linha do mapa que DECIDE este nome (EXATA ou CANONICA); null = sem destino ou conflito */
+export function mapaQueDecide<T extends GrafiaMapeada>(r: ResolucaoDeGrafia<T>): T | null {
+  return r.tipo === 'EXATA' || r.tipo === 'CANONICA' ? r.mapa : null
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -203,5 +296,5 @@ export function chaveDeApresentacao(l: { destino: string; fichaId: string | null
   // a ver com um PEQUENO), e juntá-los esconderia o que exatamente foi ignorado.
   if (l.destino === 'IGNORAR') return `nome:${l.nomeSuitable}`
   // ⭐ PENDENTE agrupa por CANÔNICO — a mudança de 08/09.
-  return `canonico:${normalizarNome(l.nomeSuitable)}`
+  return `canonico:${canonicoDaGrafia(l.nomeSuitable)}`
 }

@@ -13,6 +13,7 @@ import { medirSanidade, SanidadeNaoConfirmadaError } from './medir-sanidade'
 import type { ResultadoDaSanidade } from './sanidade-do-import'
 import { criarMovimento, estornarMovimento } from '../movement'
 import { recomputeSaldoCache } from '../saldo'
+import { resolvedorDeGrafia, mapaQueDecide } from './grafia-canonica'
 import { custoDaBaixa, estadoParaBaixa, valorPrevistoDaBaixa } from './custo-da-baixa'
 import { BaixaComItemBarradoError, semOsPendentes, type ItemBarrado } from './itens-pendentes-da-baixa'
 import { MovementInvalidError } from '../movement'
@@ -149,11 +150,17 @@ export function explodir(alvo: { tipo: 'REVENDA'; itemId: string } | { tipo: 'FI
   }
 }
 
-export interface ProdutoBaixa { nome: string; quantidade: number; alvoTipo: 'FICHA' | 'REVENDA'; alvoNome: string; baixa: { itemId: string; nome: string; qtd: number; custoMedio: number | null }[] }
+export interface ProdutoBaixa { nome: string; quantidade: number; alvoTipo: 'FICHA' | 'REVENDA'; alvoNome: string; /** ⭐ 08/11 — a ficha que decidiu, e a grafia irmã por onde veio (null = grafia exata) */ fichaId?: string | null; viaGrafia?: string | null; baixa: { itemId: string; nome: string; qtd: number; custoMedio: number | null }[] }
 export interface PlanoVenda {
   data: string
   produtos: ProdutoBaixa[]
   pendentes: { nome: string; quantidade: number }[]
+  /**
+   * ⛔ 08/11 — GRAFIAS EM CONFLITO: o nome cru não tem linha no mapa e as irmãs do mesmo
+   * canônico apontam pra destinos DIFERENTES. Não baixa (continua também em `pendentes`, pra
+   * nenhum contador perder a linha) e a tela mostra as candidatas pra o dono escolher.
+   */
+  conflitos: { nome: string; quantidade: number; candidatas: string[] }[]
   fora: { nome: string; quantidade: number }[] // mapeado, mas o dono NÃO marcou pra este processamento
   /** ⭐ decisão do dono: não controla estoque. Não baixa e NÃO é pendente (14/09) */
   ignorados: { nome: string; quantidade: number }[]
@@ -191,7 +198,14 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
     medirSanidade(companyId, linhas.map((l) => ({ produto: l.produto, quantidade: l.quantidade })), db),
   ])
   const custoDeLeitura = (itemId: string) => estado.porItem.get(itemId)?.custoMedio ?? null
-  const mapaPorNome = new Map(mapa.map((m) => [m.nomeSuitable, m]))
+  /**
+   * ⭐⭐ 08/11 — A GRAFIA CANÔNICA CHEGA AOS PRODUTOS. O lookup era `mapaPorNome.get(l.produto)`,
+   * string EXATA: `Xis Completo` (o PDV às vezes manda assim) não casava com o `XIS COMPLETO`
+   * mapeado, virava pendente e NÃO BAIXAVA — 28 un em 15 dias, medido. A régua é a MESMA dos
+   * complementos (`canonicoDaGrafia`), e o conflito de destino nunca se resolve sozinho.
+   */
+  const resolver = resolvedorDeGrafia(mapa)
+  const conflitos: { nome: string; quantidade: number; candidatas: string[] }[] = []
   const incluirSet = incluir ? new Set(incluir) : null
   const nomeAlvo = (m: { alvoTipo: string; fichaId: string | null; itemId: string | null }) =>
     m.alvoTipo === 'FICHA' ? ctx.nomeItem.get(ctx.fichaById.get(m.fichaId ?? '')?.itemProduzidoId ?? '') ?? '(ficha)' : ctx.nomeItem.get(m.itemId ?? '') ?? '(item)'
@@ -206,8 +220,13 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
   const fichasUsadas = new Set<string>()
 
   for (const l of linhas) {
-    const m = mapaPorNome.get(l.produto)
-    if (!m) { pendentes.push({ nome: l.produto, quantidade: l.quantidade }); continue }
+    const r = resolver(l.produto)
+    const m = mapaQueDecide(r)
+    if (!m) {
+      pendentes.push({ nome: l.produto, quantidade: l.quantidade })
+      if (r.tipo === 'CONFLITO') conflitos.push({ nome: l.produto, quantidade: l.quantidade, candidatas: r.candidatas.map((c) => c.nomeSuitable) })
+      continue
+    }
     // ⛔ IGNORAR é DECISÃO, não ausência: não baixa, não volta pra fila, e aparece
     // nomeado no plano — "exclusão escondida é tão ruim quanto exclusão nenhuma" (25/08).
     if (m.alvoTipo === 'IGNORAR') { ignorados.push({ nome: l.produto, quantidade: l.quantidade }); continue }
@@ -217,11 +236,11 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
     else if (m.alvoTipo === 'REVENDA' && m.itemId) explodir({ tipo: 'REVENDA', itemId: m.itemId }, l.quantidade, ctx, acc, fichasUsadas)
     const baixa = [...acc.entries()].map(([itemId, qtd]) => ({ itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round6(qtd), custoMedio: custoDeLeitura(itemId) }))
     for (const [itemId, qtd] of acc) agregada.set(itemId, round6((agregada.get(itemId) ?? 0) + qtd))
-    produtos.push({ nome: l.produto, quantidade: l.quantidade, alvoTipo: m.alvoTipo as 'FICHA' | 'REVENDA', alvoNome: nomeAlvo(m), baixa })
+    produtos.push({ nome: l.produto, quantidade: l.quantidade, alvoTipo: m.alvoTipo as 'FICHA' | 'REVENDA', alvoNome: nomeAlvo(m), fichaId: m.fichaId, viaGrafia: r.tipo === 'CANONICA' ? r.viaGrafia : null, baixa })
   }
 
   return {
-    data, produtos, pendentes, fora, ignorados,
+    data, produtos, pendentes, conflitos, fora, ignorados,
     agregada: [...agregada.entries()].map(([itemId, qtd]) => ({ itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round6(qtd), custoMedio: custoDeLeitura(itemId), valor: valorPrevistoDaBaixa(itemId, round6(qtd), estado) })),
     totalUnidades: linhas.reduce((s, l) => s + l.quantidade, 0),
     totalMapeados: produtos.length,
@@ -401,13 +420,15 @@ export async function listProcessados(companyId: string, db: PrismaClient = defa
     const [movs, linhas, mapa] = await Promise.all([
       db.stockMovement.findMany({ where: { companyId, receiptId: imp.id, tipo: 'BAIXA_VENDA' }, select: { id: true, itemId: true, custoTotal: true } }),
       db.stockVendaLinha.findMany({ where: { companyId, importId: imp.id }, select: { nomeSuitable: true } }),
-      db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true } }),
+      db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true, itemId: true } }),
     ])
     // baixas ATIVAS (sem estorno) — custo total baixado
     const estornos = new Set((await db.stockMovement.findMany({ where: { companyId, tipo: 'ESTORNO', estornoDeId: { in: movs.map((m) => m.id) } }, select: { estornoDeId: true } })).map((e) => e.estornoDeId))
     const ativas = movs.filter((m) => !estornos.has(m.id))
-    const mapeados = new Set(mapa.map((m) => m.nomeSuitable))
-    const pendentes = new Set(linhas.filter((l) => !mapeados.has(l.nomeSuitable)).map((l) => l.nomeSuitable)).size
+    // ⭐ 08/11 — mapeado = a porta `resolvedorDeGrafia` (grafia exata OU irmã canônica de mesmo destino);
+    // a grafia em CONFLITO segue pendente. Antes era a string exata e contradizia a lista da revisão.
+    const resolver = resolvedorDeGrafia(mapa)
+    const pendentes = new Set(linhas.filter((l) => !mapaQueDecide(resolver(l.nomeSuitable))).map((l) => l.nomeSuitable)).size
     out.push({
       data: imp.data.toISOString().slice(0, 10), totalLinhas: imp.totalLinhas, totalUnidades: imp.totalUnidades,
       baixados: linhas.length - pendentes, itensBaixados: new Set(ativas.map((m) => m.itemId)).size,
