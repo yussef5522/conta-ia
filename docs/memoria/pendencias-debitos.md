@@ -194,3 +194,10 @@ Entra **depois** que o dono validar o cartão PF em prod (importar a fatura + ca
 - `baixa-venda.ts` `vendasPendentesDeMapa`: sem chamador.
 - `agrupamentoAutomatico` (complementos) ainda escolhe a 1ª irmã em caso de conflito. Prod tem 0 conflitos de complemento.
 - O preview do upload (`venda-map.ts`) não tem teste próprio.
+
+## 🔀 A MAÇANETA DO CONFLITO (08/11/2026)
+
+- O "escolher →" da linha CONFLITO (central e revisão) chamava `onMapearProduto` → trocava de aba e abria a central geral. Agora abre `ComparadorDeConflito` (`components/estoque/comparador-de-conflito.tsx`) → rota `vendas/conflito` → `lib/stock/vendas/conflito-de-grafia.ts`.
+- O gesto move as grafias irmãs pela porta `upsertVendaMap`, inativa pela `atualizarFicha` e audita (`AuditLog` action `RESOLVE_CONFLICT`). Não é `$transaction` (a porta do mapa não roda dentro de uma); é idempotente.
+- Consumidores medidos pra inativar: outras grafias, complementos, base do tamanho, ingrediente de ficha ativa (versão atual), ordens abertas. Inativar com consumidor exige `inativarMesmoComConsumidores`.
+- **Pendente:** os dias passados dos 3 conflitos continuam pro bloco de reprocesso (pg_dump + autorização).

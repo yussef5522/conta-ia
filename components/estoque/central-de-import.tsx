@@ -17,6 +17,7 @@ import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { baixarCsv } from '@/lib/format/csv-cliente'
 import type { CentralDeImport, DiaDaCentral } from '@/lib/stock/vendas/central-de-import'
 import type { DetalheDoDia } from '@/lib/stock/vendas/detalhe-do-dia'
+import { AcaoDoConflito, ComparadorDeConflito } from './comparador-de-conflito'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const num = (n: number) => n.toLocaleString('pt-BR')
@@ -116,6 +117,8 @@ export function CentralDeImportView({
   const [abaDet, setAbaDet] = useState<'prod' | 'sab'>('prod')
   const [busca, setBusca] = useState('')
   const [verTudo, setVerTudo] = useState(false)
+  /** ⭐ 08/11 — o nome cujo conflito de grafia está aberto no comparador */
+  const [conflito, setConflito] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setEstado('CARREGANDO')
@@ -580,13 +583,10 @@ export function CentralDeImportView({
                         <span className="text-right" style={{ color: 'var(--prod-secondary)' }}>{num(p.unidades)}</span>
                         <span className="text-right" style={{ color: 'var(--prod-primary)' }}>{brl(p.valor)}</span>
                         {p.destino === 'CONFLITO' ? (
-                          /* ⛔ 08/11 — o mesmo produto com fichas DIFERENTES nas grafias: o sistema não escolhe */
-                          <span className="text-right text-[12px] font-semibold" style={{ color: 'var(--fam-coral-ink)' }}
-                            title={`apontam pra destinos diferentes: ${p.candidatas.join(' · ')}`}>
-                            conflito: {p.candidatas.join(' × ')} —{' '}
-                            <span role="button" onClick={() => onMapearProduto(p.nome)} style={{ color: 'var(--fam-indigo-mid)' }}>
-                              escolher →
-                            </span>
+                          /* ⛔ 08/11 — o mesmo produto com fichas DIFERENTES nas grafias: o sistema não escolhe.
+                             ⭐ O "escolher →" abre o COMPARADOR (antes abria a central geral: porta sem nada atrás). */
+                          <span className="text-right">
+                            <AcaoDoConflito candidatas={p.candidatas} onEscolher={() => setConflito(p.nome)} />
                           </span>
                         ) : p.destino === 'SEM_DESTINO' ? (
                           <span className="text-right text-[12px] font-semibold" style={{ color: 'var(--fam-ambar-ink)' }}>
@@ -718,6 +718,15 @@ export function CentralDeImportView({
             )}
           </Cartao>
         </div>
+      )}
+      {/* ⭐ 08/11 — a maçaneta do conflito: escolher abre o comparador; resolvido, o dia relê */}
+      {conflito && (
+        <ComparadorDeConflito
+          empresaId={empresaId}
+          nome={conflito}
+          onFechar={() => setConflito(null)}
+          onResolvido={() => { setConflito(null); void carregar(); if (aberto) void abrirDetalhe(aberto) }}
+        />
       )}
     </div>
   )

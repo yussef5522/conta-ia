@@ -18,6 +18,7 @@ import { ancoraDaLinha, hrefDoEditor } from '@/lib/stock/vendas/volta-da-revisao
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import type { AcaoSemArgumento } from '@/lib/ui/acao-sem-argumento'
 import { PlanoVendaModal, type PlanoVM } from './plano-venda-modal'
+import { AcaoDoConflito, ComparadorDeConflito } from './comparador-de-conflito'
 
 export interface LinhaRevisaoDTO {
   nome: string
@@ -96,6 +97,8 @@ export function RevisaoDoImport({
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [preview, setPreview] = useState<{ mudam: { nome: string; frase: string }[]; inalterados: number } | null>(null)
   const [gravando, setGravando] = useState(false)
+  /** ⭐ 08/11 — o nome cujo conflito de grafia está aberto no comparador */
+  const [conflitoAberto, setConflitoAberto] = useState<string | null>(null)
   /** ⭐ o plano na forma do modal ÚNICO — o mesmo da tela de produtos (14/09) */
   const [plano, setPlano] = useState<PlanoVM | null>(null)
   const [modal, setModal] = useState(false)
@@ -360,7 +363,8 @@ export function RevisaoDoImport({
                 {l.estado === 'IGNORADO' && <span className="text-slate-500">→ fora do estoque (por você, em {l.ignoradoEm?.split('-').reverse().join('/')})</span>}
                 {/* ⛔ 08/11 — as grafias irmãs apontam pra fichas DIFERENTES: o sistema não escolhe */}
                 {l.estado === 'SEM_VINCULO' && l.conflito && (
-                  <span className="text-rose-700">→ conflito: {l.conflito.join(' × ')} apontam pra destinos diferentes — escolha um</span>
+                  /* ⭐ a maçaneta: o mesmo "escolher →" da central, abrindo o comparador */
+                  <AcaoDoConflito candidatas={l.conflito} onEscolher={() => setConflitoAberto(l.nome)} />
                 )}
                 {l.estado === 'SEM_VINCULO' && !l.sugestao && !l.conflito && <span className="text-amber-700">→ escolher destino</span>}
                 {/* ⭐⭐ A SUGESTÃO É MARCADA COMO SUGESTÃO — o clique é do dono */}
@@ -496,6 +500,14 @@ export function RevisaoDoImport({
           erro={erro}
           onConfirmar={(confirmouSanidade) => void gravar(confirmouSanidade)}
           onClose={() => setModal(false)}
+        />
+      )}
+      {conflitoAberto && (
+        <ComparadorDeConflito
+          empresaId={empresaId}
+          nome={conflitoAberto}
+          onFechar={() => setConflitoAberto(null)}
+          onResolvido={() => { setConflitoAberto(null); void carregar(); onMudou?.() }}
         />
       )}
     </div>
