@@ -22,6 +22,7 @@ import { getFicha, atualizarFicha } from '@/lib/stock/producao/fichas'
 import { canonicoDaGrafia, resolvedorDeGrafia } from './grafia-canonica'
 import { upsertVendaMap } from './venda-map'
 import { avisoDosConsumidores, type ConsumidoresDeFora } from './aviso-de-consumidores'
+import { diffDeFichas, type ComponenteDaFicha, type DiffDeFichas } from '@/lib/stock/producao/diff-de-fichas'
 
 export { avisoDosConsumidores, type ConsumidoresDeFora }
 
@@ -36,6 +37,8 @@ export interface FichaNoConflito {
   nome: string
   ativo: boolean
   ingredientes: number
+  /** ⭐ 09/11 — o MIOLO: os ingredientes da versão atual (nome · dose · custo médio) */
+  componentes: ComponenteDaFicha[]
   custoLote: number | null
   /** ISO — a mais recente entre a cabeça da ficha e a última versão */
   ultimaEdicao: string
@@ -52,6 +55,8 @@ export interface ComparadorDoConflito {
   nome: string
   canonico: string
   fichas: FichaNoConflito[]
+  /** ⭐ 09/11 — o diff calculado entre as DUAS fichas (A = fichas[0]); null com 3+ fichas */
+  diff: DiffDeFichas | null
 }
 
 function semConsumidores(c: ConsumidoresDeFora): boolean {
@@ -132,6 +137,7 @@ export async function lerComparadorDoConflito(
       nome: g.ficha.nomeProduzido,
       ativo: g.ficha.ativo,
       ingredientes: g.ficha.componentes.length,
+      componentes: g.ficha.componentes.map((c) => ({ itemId: c.itemId, nome: c.nome, qtdPlanejada: c.qtdPlanejada, unidade: c.unidade, custoMedio: c.custoMedio })),
       custoLote: g.ficha.custoLote,
       ultimaEdicao: datas[datas.length - 1],
       grafias,
@@ -140,7 +146,9 @@ export async function lerComparadorDoConflito(
       inativarSemAviso: semConsumidores(consumidores),
     })
   }
-  return { nome, canonico, fichas }
+  // ⭐ o diff vem da MESMA leitura que desenha os cards (um custo só, nunca dois)
+  const diff = fichas.length === 2 ? diffDeFichas(fichas[0], fichas[1]) : null
+  return { nome, canonico, fichas, diff }
 }
 
 export interface EscolhaDoConflito {

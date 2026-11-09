@@ -18,6 +18,8 @@ import { X, Loader2 } from 'lucide-react'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import type { ComparadorDoConflito } from '@/lib/stock/vendas/conflito-de-grafia'
 import { avisoDosConsumidores } from '@/lib/stock/vendas/aviso-de-consumidores'
+import { resumoDoDiff, type LadoDaLinha, type LinhaDoMiolo } from '@/lib/stock/producao/diff-de-fichas'
+import { FichaEditor } from './ficha-editor'
 
 /** ⭐ A URL da porta — a mesma função no componente e no teste da fiação */
 export const urlDoConflito = (empresaId: string, nome?: string) =>
@@ -48,9 +50,41 @@ export interface ComparadorViewProps {
   onAlternarInativar: (fichaId: string) => void
   onConfirmar: () => void
   onVoltar: () => void
+  /** ⭐ 09/11 — abre o EDITOR DE FICHA EXISTENTE (porta única) pra esta ficha */
+  onEditar: (fichaId: string) => void
 }
 
-export function ComparadorView({ dados, escolhida, inativar, gravando, erro, onEscolher, onAlternarInativar, onConfirmar, onVoltar }: ComparadorViewProps) {
+const doseTxt = (l: LadoDaLinha) => `${Number(l.qtd.toFixed(4)).toLocaleString('pt-BR')} ${l.unidade}`
+
+/**
+ * ⭐ UMA LINHA DO MIOLO, alinhada por item entre os dois cards. Igual fica quieto; dose
+ * divergente mostra as DUAS doses; ingrediente de uma só ganha o selo "só nesta" (e no
+ * outro card o lugar fica marcado "não tem", pra a linha continuar alinhada).
+ */
+function LinhaMiolo({ l, lado }: { l: LinhaDoMiolo; lado: 'a' | 'b' }) {
+  const meu = lado === 'a' ? l.a : l.b
+  const outro = lado === 'a' ? l.b : l.a
+  const so = (l.tipo === 'SO_A' && lado === 'a') || (l.tipo === 'SO_B' && lado === 'b')
+  const cor = l.tipo === 'IGUAL' ? 'text-slate-500' : 'font-semibold text-amber-800'
+  return (
+    <li data-testid="linha-do-miolo" data-tipo={l.tipo} className={`grid grid-cols-[1fr_auto] gap-x-2 py-0.5 ${l.tipo === 'IGUAL' ? '' : 'bg-amber-50'}`}>
+      {meu ? (
+        <>
+          <span className={cor}>
+            {l.nome} · {doseTxt(meu)}
+            {l.tipo === 'DOSE' && outro && <span className="font-normal text-amber-700"> (na outra: {doseTxt(outro)})</span>}
+            {so && <span data-testid="selo-so-nesta" className="ml-1 rounded bg-amber-200 px-1 text-[10px] font-semibold text-amber-900">só nesta</span>}
+          </span>
+          <span className={`tabular-nums ${cor}`}>{brl(meu.custo)}</span>
+        </>
+      ) : (
+        <span className="col-span-2 italic text-slate-400">{l.nome} — não tem</span>
+      )}
+    </li>
+  )
+}
+
+export function ComparadorView({ dados, escolhida, inativar, gravando, erro, onEscolher, onAlternarInativar, onConfirmar, onVoltar, onEditar }: ComparadorViewProps) {
   const venc = dados.fichas.find((f) => f.fichaId === escolhida) ?? null
   const perdedoras = venc ? dados.fichas.filter((f) => f.fichaId !== venc.fichaId) : []
   return (
@@ -58,8 +92,15 @@ export function ComparadorView({ dados, escolhida, inativar, gravando, erro, onE
       <p className="mb-3 text-xs text-slate-500">
         «{dados.nome}» é o mesmo produto de grafias que já apontam pra fichas diferentes. Fique com uma: todas as grafias passam a baixar por ela.
       </p>
+      {/* ⭐ 09/11 — O RESUMO DO DIFF, montado das linhas (não prosa); fecha ao centavo com o lote */}
+      {dados.diff && (
+        <div data-testid="resumo-do-diff" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+          {resumoDoDiff(dados.diff)}
+          {!dados.diff.fecha && dados.diff.diferencaLote != null && <span className="block text-rose-700">⚠ a soma das linhas não fecha com o custo do lote — confira os custos</span>}
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {dados.fichas.map((f) => {
+        {dados.fichas.map((f, i) => {
           const avisos = avisoDosConsumidores(f.consumidores)
           const marcada = f.fichaId === escolhida
           return (
@@ -73,12 +114,29 @@ export function ComparadorView({ dados, escolhida, inativar, gravando, erro, onE
                 <dt className="text-slate-400">vendas 30 dias</dt><dd className="tabular-nums">{f.vendasRecentes.unidades} un{f.vendasRecentes.ultimoDia ? ` (última ${dia(f.vendasRecentes.ultimoDia)})` : ''}</dd>
                 <dt className="text-slate-400">também usada em</dt><dd>{avisos.length ? avisos.join(' · ') : 'nada além deste produto'}</dd>
               </dl>
+              {/* ⭐ 09/11 — O MIOLO: as linhas na MESMA ordem nos dois cards (alinhadas por item) */}
+              <ul className="mt-2 border-t border-slate-100 pt-2">
+                {dados.diff
+                  ? dados.diff.linhas.map((l) => <LinhaMiolo key={l.itemId} l={l} lado={i === 0 ? 'a' : 'b'} />)
+                  : f.componentes.map((c) => (
+                    <li key={c.itemId} data-testid="linha-do-miolo" data-tipo="SEM_DIFF" className="text-slate-600">{c.nome} · {doseTxt({ qtd: c.qtdPlanejada, unidade: c.unidade, custo: null })}</li>
+                  ))}
+              </ul>
+              <button
+                type="button"
+                data-testid="editar-ficha"
+                disabled={gravando}
+                onClick={() => onEditar(f.fichaId)}
+                className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                editar esta ficha
+              </button>
               <button
                 type="button"
                 data-testid="ficar-com-esta"
                 disabled={!f.ativo || gravando}
                 onClick={() => onEscolher(f.fichaId)}
-                className={`mt-3 w-full rounded-lg px-3 py-2 text-xs font-semibold ${marcada ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-slate-700 hover:bg-slate-50'} disabled:opacity-50`}
+                className={`mt-2 w-full rounded-lg px-3 py-2 text-xs font-semibold ${marcada ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-slate-700 hover:bg-slate-50'} disabled:opacity-50`}
               >
                 {marcada ? '✓ escolhida' : 'ficar com esta'}
               </button>
@@ -128,6 +186,8 @@ export function ComparadorDeConflito({ empresaId, nome, onFechar, onResolvido }:
   const [inativar, setInativar] = useState<Set<string>>(new Set())
   const [gravando, setGravando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  /** ⭐ 09/11 — a ficha aberta no editor existente (por cima do comparador) */
+  const [editando, setEditando] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setEstado('CARREGANDO')
@@ -176,9 +236,28 @@ export function ComparadorDeConflito({ empresaId, nome, onFechar, onResolvido }:
           <ComparadorView
             dados={dados} escolhida={escolhida} inativar={inativar} gravando={gravando} erro={erro}
             onEscolher={escolher} onAlternarInativar={alternar} onConfirmar={() => void confirmar()} onVoltar={() => setEscolhida(null)}
+            onEditar={setEditando}
           />
         )}
       </div>
+      {/* ⭐⭐ 09/11 — EDITAR DALI: o EDITOR DE FICHA EXISTENTE (porta única — nunca um 2º editor).
+          Ao salvar, fecha e RELÊ o comparador: custos, miolo e diff vêm recalculados do servidor. */}
+      {editando && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl bg-white p-4 sm:rounded-2xl">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs text-slate-500">editando — ao salvar você volta pro comparador</span>
+              <button type="button" data-testid="fechar-editor" onClick={() => setEditando(null)} className="text-xs text-slate-500 underline">voltar sem salvar</button>
+            </div>
+            <FichaEditor
+              companyId={empresaId}
+              fichaId={editando}
+              voltarPara={`/empresas/${empresaId}/estoque/vendas`}
+              aoSalvar={() => { setEditando(null); void carregar() }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

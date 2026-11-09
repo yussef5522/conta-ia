@@ -201,3 +201,8 @@ Entra **depois** que o dono validar o cartão PF em prod (importar a fatura + ca
 - O gesto move as grafias irmãs pela porta `upsertVendaMap`, inativa pela `atualizarFicha` e audita (`AuditLog` action `RESOLVE_CONFLICT`). Não é `$transaction` (a porta do mapa não roda dentro de uma); é idempotente.
 - Consumidores medidos pra inativar: outras grafias, complementos, base do tamanho, ingrediente de ficha ativa (versão atual), ordens abertas. Inativar com consumidor exige `inativarMesmoComConsumidores`.
 - **Pendente:** os dias passados dos 3 conflitos continuam pro bloco de reprocesso (pg_dump + autorização).
+
+### Comparador v2 — miolo com diff (09/11/2026)
+- Diff puro em `lib/stock/producao/diff-de-fichas.ts` (custo de LEITURA de ficha; fora de `vendas/` por causa do guard "um dono pro custo da baixa"). Invariante: Σ linhas + arredondamento == custoLote A − B ao centavo; `fecha=false` acende aviso na tela.
+- "editar esta ficha" monta o `FichaEditor` existente num modal; `aoSalvar` relê o comparador. ⚠️ o "cancelar" do editor é um `<a href>` → volta pra Vendas (fecha o comparador); o "voltar sem salvar" do modal mantém.
+- Com 3+ fichas no conflito não há diff (só a lista de ingredientes).

@@ -23,6 +23,9 @@ vi.mock('@/lib/stock/require-stock', () => ({
 }))
 // ⚠️ importada DEPOIS do mock (o vi.mock é içado, mas a leitura fica explícita)
 import { GET, POST } from '@/app/api/empresas/[id]/estoque/vendas/conflito/route'
+// ⭐ 09/11 — a rota que o EDITOR DE FICHA EXISTENTE chama ao salvar (a porta do editar)
+import { PATCH as salvarFicha } from '@/app/api/empresas/[id]/estoque/fichas/[fichaId]/route'
+import { getFicha } from '@/lib/stock/producao/fichas'
 
 /** ⚠️ CNPJ exclusivo — 0 ocorrências no repo antes deste arquivo */
 const CNPJ = '08120812000108'
@@ -31,6 +34,7 @@ const EMAIL = 'macaneta-do-conflito@teste.local'
 const DIA = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10)
 let companyId = ''
 const f: Record<string, string> = {}
+const item: Record<string, string> = {}
 
 const LINHAS = [
   { produto: 'XIS COMPLETO', quantidade: 5, valorTotal: 250 },
@@ -60,6 +64,17 @@ beforeAll(async () => {
   const insumo = (await prisma.stockItem.create({
     data: { companyId, nome: 'PAO DE XIS', unidadeControle: 'UN', categoria: 'MATERIA_PRIMA', criadoVia: 'MANUAL' },
   })).id
+  item.pao = insumo
+  // ⭐ 09/11 — custo REAL (derivado do movimento, como em prod): pão R$ 1,237/UN, bacon R$ 41,333/KG
+  item.bacon = (await prisma.stockItem.create({
+    data: { companyId, nome: 'BACON', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'MANUAL' },
+  })).id
+  await prisma.stockMovement.createMany({
+    data: [
+      { companyId, itemId: item.pao, tipo: 'ENTRADA_NF', quantidade: 1000, custoUnitario: 1.237, custoTotal: 1237, origem: 'MANUAL' },
+      { companyId, itemId: item.bacon, tipo: 'ENTRADA_NF', quantidade: 30, custoUnitario: 41.333, custoTotal: 1239.99, origem: 'MANUAL' },
+    ],
+  })
   f.xisA = await fichaDe('XIS COMPLETO', insumo, 1)
   f.xisB = await fichaDe('XIS - COMPLETO', insumo, 2)
   f.lasanha = await fichaDe('LASANHA DE CARNE', insumo)
@@ -87,6 +102,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  await prisma.stockMovement.deleteMany({ where: { companyId } })
   await prisma.auditLog.deleteMany({ where: { companyId } })
   await prisma.stockBaseDoTamanho.deleteMany({ where: { companyId } })
   await prisma.stockVendaLinha.deleteMany({ where: { companyId } })
@@ -126,6 +142,39 @@ describe('o comparador (só leitura)', () => {
   it('⛔ nome que NÃO está em conflito → null (nunca um comparador vazio)', async () => {
     expect(await lerComparadorDoConflito(companyId, 'LASANHA DE CARNE', prisma)).toBeNull()
     expect(await lerComparadorDoConflito(companyId, 'lasanha de carne', prisma)).toBeNull()
+  })
+})
+
+describe('⭐ 09/11 — o MIOLO com diff, e o EDITAR pela porta do editor existente', () => {
+  it('⭐ o diff vem na rota: dose divergente do pão, e fecha com o custo do lote AO CENTAVO', async () => {
+    const j = await (await GET(req(urlDoConflito(companyId, 'Xis Completo')), ctx())).json()
+    const c = j.comparador
+    expect(c.diff.linhas).toEqual([expect.objectContaining({ itemId: item.pao, tipo: 'DOSE', a: expect.objectContaining({ qtd: c.fichas[0].componentes[0].qtdPlanejada }) })])
+    const lote = (id: string) => c.fichas.find((x: { fichaId: string }) => x.fichaId === id).custoLote
+    expect(lote(f.xisA)).toBe((await getFicha(companyId, f.xisA, prisma))!.ficha.custoLote)
+    expect(Math.round(c.diff.diferencaLote * 100)).toBe(Math.round((lote(c.diff.a.fichaId) - lote(c.diff.b.fichaId)) * 100))
+    expect(Math.round((c.diff.linhas.reduce((s: number, l: { diferenca: number }) => s + l.diferenca, 0) + c.diff.arredondamento) * 100))
+      .toBe(Math.round(c.diff.diferencaLote * 100))
+    expect(c.diff.fecha).toBe(true)
+  })
+
+  it('⭐⭐ EDITAR: salvar pela rota do editor (PATCH) → o comparador RELIDO traz custo e diff novos', async () => {
+    const custoAntes = (await getFicha(companyId, f.xisB, prisma))!.ficha.custoLote
+    // o dono abre a XIS - COMPLETO, baixa o pão pra 1 e põe bacon 0,05 KG
+    const r = await salvarFicha(req(`/api/empresas/${companyId}/estoque/fichas/${f.xisB}`, {
+      method: 'PATCH', body: JSON.stringify({ componentes: [{ itemId: item.pao, qtdPlanejada: 1, unidade: 'UN' }, { itemId: item.bacon, qtdPlanejada: 0.05, unidade: 'KG' }] }),
+    }), { params: Promise.resolve({ id: companyId, fichaId: f.xisB }) })
+    expect(r.status).toBe(200)
+    const c = (await (await GET(req(urlDoConflito(companyId, 'Xis Completo')), ctx())).json()).comparador
+    const b = c.fichas.find((x: { fichaId: string }) => x.fichaId === f.xisB)
+    expect(b.ingredientes).toBe(2)
+    // o custo é o que a PORTA da ficha diz agora (nunca uma conta refeita aqui), e mudou
+    expect(b.custoLote).toBe((await getFicha(companyId, f.xisB, prisma))!.ficha.custoLote)
+    expect(b.custoLote).not.toBe(custoAntes)
+    const bacon = c.diff.linhas.find((l: { itemId: string }) => l.itemId === item.bacon)
+    expect(bacon.tipo).toBe(c.diff.b.fichaId === f.xisB ? 'SO_B' : 'SO_A')
+    expect(c.diff.linhas.find((l: { itemId: string }) => l.itemId === item.pao).tipo).toBe('IGUAL')
+    expect(c.diff.fecha).toBe(true)
   })
 })
 
