@@ -1,0 +1,1224 @@
+{
+ "dia": "2026-11-08",
+ "produtos": [
+  {
+   "chave": "ficha:cmuddi14k0ymjinovdq790dnv",
+   "nome": "PIZZA GRANDE PRECINHO",
+   "nomesSuitable": [
+    "PIZZA GRANDE PRECINHO"
+   ],
+   "un": 102,
+   "vendeu": 4776.17,
+   "custoUn": 12.15,
+   "secao": "PIZZAS"
+  },
+  {
+   "chave": "ficha:cmtkzxukx000ek9upr67rj323",
+   "nome": "Combo Caçula",
+   "nomesSuitable": [
+    "Combo Caçula"
+   ],
+   "un": 51,
+   "vendeu": 3343.15,
+   "custoUn": 14.2,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmtjb822c00756j3nt5y710m2",
+   "nome": "XIS COMPLETO",
+   "nomesSuitable": [
+    "XIS COMPLETO"
+   ],
+   "un": 49,
+   "vendeu": 1392.69,
+   "custoUn": 8.25,
+   "secao": "XIS"
+  },
+  {
+   "chave": "ficha:cmtxal17h013x5apyii48o70l",
+   "nome": "MINI FRITAS",
+   "nomesSuitable": [
+    "MINI FRITAS"
+   ],
+   "un": 48,
+   "vendeu": 479.52,
+   "custoUn": 3.07,
+   "secao": "PORCOES"
+  },
+  {
+   "chave": "nome:MAIONESE CASEIRA",
+   "nome": "MAIONESE CASEIRA",
+   "nomesSuitable": [
+    "MAIONESE CASEIRA"
+   ],
+   "un": 31,
+   "vendeu": 61.69,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmts4qn7i00a612cse5qcy2gn",
+   "nome": "COCA LATA",
+   "nomesSuitable": [
+    "COCA LATA"
+   ],
+   "un": 30,
+   "vendeu": 270,
+   "custoUn": 3.03,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmts4gqy2000212cs9tybrt83",
+   "nome": "COCA COLA 2L",
+   "nomesSuitable": [
+    "COCA COLA 2L"
+   ],
+   "un": 25,
+   "vendeu": 450,
+   "custoUn": 8.92,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmtl2exen0002o3c65016iabz",
+   "nome": "PIZZA FAMILIA 45CM",
+   "nomesSuitable": [
+    "PIZZA FAMILIA 45CM"
+   ],
+   "un": 15,
+   "vendeu": 1910.76,
+   "custoUn": 18.51,
+   "secao": "PIZZAS"
+  },
+  {
+   "chave": "ficha:cmttbwemn001ut66h2rwmx6pe",
+   "nome": "PRATO PARMEGIANA DE FRANGO",
+   "nomesSuitable": [
+    "PRATO PARMEGIANA DE FRANGO"
+   ],
+   "un": 15,
+   "vendeu": 518.81,
+   "custoUn": 2.75,
+   "secao": "PRATOS"
+  },
+  {
+   "chave": "ficha:cmtl2fllb0009o3c6r0t41bf7",
+   "nome": "PIZZA GRANDE 35CM",
+   "nomesSuitable": [
+    "PIZZA GRANDE 35CM"
+   ],
+   "un": 13,
+   "vendeu": 1436.35,
+   "custoUn": 12.15,
+   "secao": "PIZZAS"
+  },
+  {
+   "chave": "ficha:cmts4hr6j000812csca6mvi39",
+   "nome": "COCA COLA 600ML",
+   "nomesSuitable": [
+    "COCA COLA 600ML"
+   ],
+   "un": 12,
+   "vendeu": 132,
+   "custoUn": 3.43,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmts4oqi6009u12csihs002zo",
+   "nome": "COCA ZERO 600ML",
+   "nomesSuitable": [
+    "COCA ZERO 600ML"
+   ],
+   "un": 9,
+   "vendeu": 99,
+   "custoUn": 3.43,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmtxe7sd6022dk53jfjvpnidx",
+   "nome": "PRATO PARMEGIANA",
+   "nomesSuitable": [
+    "PRATO PARMEGIANA"
+   ],
+   "un": 9,
+   "vendeu": 330.9,
+   "custoUn": 11.03,
+   "secao": "PRATOS"
+  },
+  {
+   "chave": "ficha:cmts4nis5009i12cs1g7yedzp",
+   "nome": "AGUA MINERAL SEM GAS",
+   "nomesSuitable": [
+    "AGUA MINERAL SEM GAS"
+   ],
+   "un": 8,
+   "vendeu": 40,
+   "custoUn": 1.39,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmts4pne900a012csyaeivqqa",
+   "nome": "COCA ZERO 2L",
+   "nomesSuitable": [
+    "COCA ZERO 2L"
+   ],
+   "un": 8,
+   "vendeu": 144,
+   "custoUn": 8.94,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmu33g0t503t812lzfuhy9yzi",
+   "nome": "Frango P",
+   "nomesSuitable": [
+    "Frango P"
+   ],
+   "un": 8,
+   "vendeu": 519.92,
+   "custoUn": 16.58,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MAIONESE CASEIRA COM ALHO",
+   "nome": "MAIONESE CASEIRA COM ALHO",
+   "nomesSuitable": [
+    "MAIONESE CASEIRA COM ALHO"
+   ],
+   "un": 8,
+   "vendeu": 15.92,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmtwf531y00funac19i4rorqy",
+   "nome": "PRATO ALAMINUTA",
+   "nomesSuitable": [
+    "PRATO ALAMINUTA"
+   ],
+   "un": 8,
+   "vendeu": 269.9,
+   "custoUn": 10.45,
+   "secao": "PRATOS"
+  },
+  {
+   "chave": "ficha:cmtxaybbt01mm5apyvkuueq5l",
+   "nome": "HAMBURGUER TRADICIONAL",
+   "nomesSuitable": [
+    "HAMBURGUER TRADICIONAL"
+   ],
+   "un": 7,
+   "vendeu": 237.93,
+   "custoUn": 9.17,
+   "secao": "BURGERS"
+  },
+  {
+   "chave": "ficha:cmtjal2fx00gcnluh99iqnd10",
+   "nome": "PIZZA PEQUENA 25CM",
+   "nomesSuitable": [
+    "PIZZA PEQUENA 25CM"
+   ],
+   "un": 7,
+   "vendeu": 431.61,
+   "custoUn": 6.52,
+   "secao": "PIZZAS"
+  },
+  {
+   "chave": "nome:AÇAÍ 400ML",
+   "nome": "AÇAÍ 400ML",
+   "nomesSuitable": [
+    "AÇAÍ 400ML"
+   ],
+   "un": 6,
+   "vendeu": 155.94,
+   "custoUn": null,
+   "secao": "DOCES"
+  },
+  {
+   "chave": "ficha:cmts4l5ww004s12csyb983781",
+   "nome": "AGUA MINERAL COM GAS",
+   "nomesSuitable": [
+    "AGUA MINERAL COM GAS"
+   ],
+   "un": 6,
+   "vendeu": 30,
+   "custoUn": 1.51,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmtxb1ppd01x95apy5dmtg69t",
+   "nome": "PRATO CHULETA",
+   "nomesSuitable": [
+    "PRATO CHULETA"
+   ],
+   "un": 6,
+   "vendeu": 200.93,
+   "custoUn": 12.6,
+   "secao": "PRATOS"
+  },
+  {
+   "chave": "ficha:cmttrkqui000213r8p19s4hfc",
+   "nome": "SKOL",
+   "nomesSuitable": [
+    "SKOL"
+   ],
+   "un": 6,
+   "vendeu": 126,
+   "custoUn": 5.82,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmts4wa5d00au12cs8l3vmpoq",
+   "nome": "XIS ACEBOLADO",
+   "nomesSuitable": [
+    "XIS ACEBOLADO"
+   ],
+   "un": 6,
+   "vendeu": 185.94,
+   "custoUn": 8.98,
+   "secao": "XIS"
+  },
+  {
+   "chave": "ficha:cmtxduaty0222k53jcjxcuzak",
+   "nome": "CACHORRO QUENTE DUPLO",
+   "nomesSuitable": [
+    "CACHORRO QUENTE DUPLO"
+   ],
+   "un": 5,
+   "vendeu": 124.95,
+   "custoUn": 6.26,
+   "secao": "LANCHES"
+  },
+  {
+   "chave": "ficha:cmttpcf210003gzj3qhs5ayay",
+   "nome": "FANTA LARANJA LATA",
+   "nomesSuitable": [
+    "FANTA LARANJA LATA"
+   ],
+   "un": 5,
+   "vendeu": 45,
+   "custoUn": 2.65,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmu33llus03tf12lzpvqgr1ve",
+   "nome": "Frango M",
+   "nomesSuitable": [
+    "Frango M"
+   ],
+   "un": 5,
+   "vendeu": 399.95,
+   "custoUn": 21.05,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmvkjb2od08c614p1dxjmyzjd",
+   "nome": "FRANGO+ MASSA AO MOLHO BRANCO +BRÓCOLIS",
+   "nomesSuitable": [
+    "FRANGO+ MASSA AO MOLHO BRANCO +BRÓCOLIS"
+   ],
+   "un": 5,
+   "vendeu": 89.95,
+   "custoUn": 0,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmttcoxr8002ht66hzu90ofig",
+   "nome": "PRATO STROGONOFF",
+   "nomesSuitable": [
+    "PRATO STROGONOFF"
+   ],
+   "un": 5,
+   "vendeu": 199.95,
+   "custoUn": 25.64,
+   "secao": "PRATOS"
+  },
+  {
+   "chave": "nome:AÇAÍ 250ML",
+   "nome": "AÇAÍ 250ML",
+   "nomesSuitable": [
+    "AÇAÍ 250ML"
+   ],
+   "un": 4,
+   "vendeu": 83.96,
+   "custoUn": null,
+   "secao": "DOCES"
+  },
+  {
+   "chave": "ficha:cmu338r2u03mk12lzv7q8156l",
+   "nome": "ADICIONE ANEIS DE CEBOLA",
+   "nomesSuitable": [
+    "ADICIONE ANEIS DE CEBOLA"
+   ],
+   "un": 4,
+   "vendeu": 39.96,
+   "custoUn": 3.22,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmts4o4qu009o12csgz4fr9ou",
+   "nome": "BURGER ONION SMOKED",
+   "nomesSuitable": [
+    "BURGER ONION SMOKED"
+   ],
+   "un": 4,
+   "vendeu": 171.96,
+   "custoUn": 10.25,
+   "secao": "BURGERS"
+  },
+  {
+   "chave": "nome:casquinha mista",
+   "nome": "casquinha mista",
+   "nomesSuitable": [
+    "casquinha mista"
+   ],
+   "un": 4,
+   "vendeu": 28,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmts4rn4s00ac12csgmb9c7df",
+   "nome": "COCA ZERO LATA",
+   "nomesSuitable": [
+    "COCA ZERO LATA"
+   ],
+   "un": 4,
+   "vendeu": 36,
+   "custoUn": 3.03,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmts4s4c900ai12csrd16xx5t",
+   "nome": "HEINEKEN",
+   "nomesSuitable": [
+    "HEINEKEN"
+   ],
+   "un": 4,
+   "vendeu": 100,
+   "custoUn": 9.74,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR FLOCOS",
+   "nome": "MILKSHAKE SABOR FLOCOS",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR FLOCOS"
+   ],
+   "un": 4,
+   "vendeu": 73,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR NEGRESCO",
+   "nome": "MILKSHAKE SABOR NEGRESCO",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR NEGRESCO"
+   ],
+   "un": 4,
+   "vendeu": 77,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmtxfqwky02a8k53jfuocvuc9",
+   "nome": "PIZZA CALABRESA CONGELADA",
+   "nomesSuitable": [
+    "PIZZA CALABRESA CONGELADA"
+   ],
+   "un": 4,
+   "vendeu": 99.96,
+   "custoUn": 6.54,
+   "secao": "PIZZAS"
+  },
+  {
+   "chave": "ficha:cmu33bd8t03mx12lzpyceq1n7",
+   "nome": "PORCAO FRITAS - P",
+   "nomesSuitable": [
+    "PORCAO FRITAS - P"
+   ],
+   "un": 4,
+   "vendeu": 151.96,
+   "custoUn": 6.14,
+   "secao": "PORCOES"
+  },
+  {
+   "chave": "ficha:cmtxb4wv501xj5apywcvrf2yt",
+   "nome": "XIS - FILE",
+   "nomesSuitable": [
+    "XIS - FILE"
+   ],
+   "un": 4,
+   "vendeu": 213.93,
+   "custoUn": 21.91,
+   "secao": "XIS"
+  },
+  {
+   "chave": "ficha:cmum4lwy7007srezomrdpefb5",
+   "nome": "AQUARIUS",
+   "nomesSuitable": [
+    "AQUARIUS"
+   ],
+   "un": 3,
+   "vendeu": 24,
+   "custoUn": 2.63,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmtxdf03o0166k53j1zxts16z",
+   "nome": "BURGER SUPER SMASH",
+   "nomesSuitable": [
+    "BURGER SUPER SMASH"
+   ],
+   "un": 3,
+   "vendeu": 146.96,
+   "custoUn": 18.78,
+   "secao": "BURGERS"
+  },
+  {
+   "chave": "ficha:cmtxaubmh01gc5apyvj1nfhni",
+   "nome": "FEIJAO",
+   "nomesSuitable": [
+    "FEIJAO"
+   ],
+   "un": 3,
+   "vendeu": 20.97,
+   "custoUn": 1.89,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmttbefho000it66hl2pqjl79",
+   "nome": "FRUKI 2L",
+   "nomesSuitable": [
+    "FRUKI 2L"
+   ],
+   "un": 3,
+   "vendeu": 54,
+   "custoUn": 6.21,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmts4ltgt004y12csws8wz80w",
+   "nome": "ORIGINAL",
+   "nomesSuitable": [
+    "ORIGINAL"
+   ],
+   "un": 3,
+   "vendeu": 72,
+   "custoUn": 8.03,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmtl16s9p000911zednhz1aql",
+   "nome": "PIZZA FAMILIA PRECINHO",
+   "nomesSuitable": [
+    "PIZZA FAMILIA PRECINHO"
+   ],
+   "un": 3,
+   "vendeu": 349.92,
+   "custoUn": 18.51,
+   "secao": "PIZZAS"
+  },
+  {
+   "chave": "ficha:cmtxaqnab014n5apy0352daua",
+   "nome": "PRATO ISQUINHAS",
+   "nomesSuitable": [
+    "PRATO ISQUINHAS"
+   ],
+   "un": 3,
+   "vendeu": 77.97,
+   "custoUn": 8.54,
+   "secao": "PRATOS"
+  },
+  {
+   "chave": "ficha:cmtxb77v001xt5apyg8b7o4p0",
+   "nome": "PRENSADO COMPLETO",
+   "nomesSuitable": [
+    "PRENSADO COMPLETO"
+   ],
+   "un": 3,
+   "vendeu": 92.97,
+   "custoUn": 7.2,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:BARBECUE",
+   "nome": "BARBECUE",
+   "nomesSuitable": [
+    "BARBECUE"
+   ],
+   "un": 2,
+   "vendeu": 3.98,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmtxdhw5v020ok53js1x30ire",
+   "nome": "BURGER DA CASA",
+   "nomesSuitable": [
+    "BURGER DA CASA"
+   ],
+   "un": 2,
+   "vendeu": 81.98,
+   "custoUn": 9.53,
+   "secao": "BURGERS"
+  },
+  {
+   "chave": "ficha:cmu337vmz03m912lzkgdgrkev",
+   "nome": "CACULA BOX HAMBURGUERES",
+   "nomesSuitable": [
+    "CACULA BOX HAMBURGUERES"
+   ],
+   "un": 2,
+   "vendeu": 199.98,
+   "custoUn": 31.99,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmuxjsj0s06yn12v8oqfebj05",
+   "nome": "CAÇULA BOX XIS",
+   "nomesSuitable": [
+    "CAÇULA BOX XIS"
+   ],
+   "un": 2,
+   "vendeu": 199.98,
+   "custoUn": 25.31,
+   "secao": "LANCHES"
+  },
+  {
+   "chave": "nome:CASCAO MISTO",
+   "nome": "CASCAO MISTO",
+   "nomesSuitable": [
+    "CASCAO MISTO"
+   ],
+   "un": 2,
+   "vendeu": 22,
+   "custoUn": null,
+   "secao": "DOCES"
+  },
+  {
+   "chave": "nome:FANTA ZERO LATA",
+   "nome": "FANTA ZERO LATA",
+   "nomesSuitable": [
+    "FANTA ZERO LATA"
+   ],
+   "un": 2,
+   "vendeu": 18,
+   "custoUn": null,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmttbhesr0010t66hfxlgguyh",
+   "nome": "FRUKI ZERO 600ML",
+   "nomesSuitable": [
+    "FRUKI ZERO 600ML"
+   ],
+   "un": 2,
+   "vendeu": 22,
+   "custoUn": 3.75,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmttpcfac000hgzj30azepuxt",
+   "nome": "HEINEKEN LONG ZERO",
+   "nomesSuitable": [
+    "HEINEKEN LONG ZERO"
+   ],
+   "un": 2,
+   "vendeu": 26,
+   "custoUn": 6.3,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "nome:MILKSHAKE OVONINHO",
+   "nome": "MILKSHAKE OVONINHO",
+   "nomesSuitable": [
+    "MILKSHAKE OVONINHO"
+   ],
+   "un": 2,
+   "vendeu": 45,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR CHOCOLATE",
+   "nome": "MILKSHAKE SABOR CHOCOLATE",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR CHOCOLATE"
+   ],
+   "un": 2,
+   "vendeu": 38,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MOLHO DO CHEFE",
+   "nome": "MOLHO DO CHEFE",
+   "nomesSuitable": [
+    "MOLHO DO CHEFE"
+   ],
+   "un": 2,
+   "vendeu": 7.98,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmttcgo4c002bt66hf585sbwp",
+   "nome": "PRATO ALMONDEGAS",
+   "nomesSuitable": [
+    "PRATO ALMONDEGAS"
+   ],
+   "un": 2,
+   "vendeu": 63.98,
+   "custoUn": 1.55,
+   "secao": "PRATOS"
+  },
+  {
+   "chave": "ficha:cmw5ed70n1cgz5qp5lkcek2jp",
+   "nome": "PRATO FILE MIGNON",
+   "nomesSuitable": [
+    "PRATO FILE MIGNON"
+   ],
+   "un": 2,
+   "vendeu": 120.97,
+   "custoUn": 16.88,
+   "secao": "PRATOS"
+  },
+  {
+   "chave": "ficha:cmtxeapee022ok53jfx7o40fn",
+   "nome": "PRATO STROGONOFF DE FRANGO",
+   "nomesSuitable": [
+    "PRATO STROGONOFF DE FRANGO"
+   ],
+   "un": 2,
+   "vendeu": 73.98,
+   "custoUn": 10.6,
+   "secao": "PRATOS"
+  },
+  {
+   "chave": "ficha:cmvkj8o5208bi14p1pqtwdkq0",
+   "nome": "PURE DE BATATA + CARNE MOIDA + LEGUMES",
+   "nomesSuitable": [
+    "PURE DE BATATA + CARNE MOIDA + LEGUMES"
+   ],
+   "un": 2,
+   "vendeu": 35.98,
+   "custoUn": 9.79,
+   "secao": "PORCOES"
+  },
+  {
+   "chave": "ficha:cmttblo6j001it66hvy747ce0",
+   "nome": "SPRITE LATA",
+   "nomesSuitable": [
+    "SPRITE LATA"
+   ],
+   "un": 2,
+   "vendeu": 18,
+   "custoUn": 2.64,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmtxbuea20070k6k47a145wp6",
+   "nome": "XIS - CALABRESA",
+   "nomesSuitable": [
+    "XIS - CALABRESA"
+   ],
+   "un": 2,
+   "vendeu": 69.98,
+   "custoUn": 7.54,
+   "secao": "XIS"
+  },
+  {
+   "chave": "ficha:cmtxbd9wo01yc5apycri1dotg",
+   "nome": "XIS - COMPLETO DUPLO",
+   "nomesSuitable": [
+    "XIS - COMPLETO DUPLO"
+   ],
+   "un": 2,
+   "vendeu": 85.98,
+   "custoUn": 11.81,
+   "secao": "XIS"
+  },
+  {
+   "chave": "nome:BILLY JACK",
+   "nome": "BILLY JACK",
+   "nomesSuitable": [
+    "BILLY JACK"
+   ],
+   "un": 1,
+   "vendeu": 1.99,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmtxd54mi01h2mb5uc17t2gqe",
+   "nome": "BURGER CHEDDAR",
+   "nomesSuitable": [
+    "BURGER CHEDDAR"
+   ],
+   "un": 1,
+   "vendeu": 38.99,
+   "custoUn": 8.65,
+   "secao": "BURGERS"
+  },
+  {
+   "chave": "ficha:cmtl1ljs80002rlt9dkumots6",
+   "nome": "BURGER SMASH",
+   "nomesSuitable": [
+    "BURGER SMASH"
+   ],
+   "un": 1,
+   "vendeu": 39.99,
+   "custoUn": 8.65,
+   "secao": "BURGERS"
+  },
+  {
+   "chave": "ficha:cmtxdsgvu021nk53j61v0gkyp",
+   "nome": "CACHORRO QUENTE",
+   "nomesSuitable": [
+    "CACHORRO QUENTE"
+   ],
+   "un": 1,
+   "vendeu": 22.99,
+   "custoUn": 5.45,
+   "secao": "LANCHES"
+  },
+  {
+   "chave": "nome:caçula (xis strogonoff de frango)",
+   "nome": "caçula (xis strogonoff de frango)",
+   "nomesSuitable": [
+    "caçula (xis strogonoff de frango)"
+   ],
+   "un": 1,
+   "vendeu": 49.38,
+   "custoUn": null,
+   "secao": "XIS"
+  },
+  {
+   "chave": "nome:CASQUINHA BAUNILHA",
+   "nome": "CASQUINHA BAUNILHA",
+   "nomesSuitable": [
+    "CASQUINHA BAUNILHA"
+   ],
+   "un": 1,
+   "vendeu": 7,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmttbfe0g000ot66h4u2xl8ps",
+   "nome": "FANTA LARANJA 2L",
+   "nomesSuitable": [
+    "FANTA LARANJA 2L"
+   ],
+   "un": 1,
+   "vendeu": 18,
+   "custoUn": 7.4,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmts4v6sf00ao12cse7ivf7hu",
+   "nome": "FANTA UVA 2L",
+   "nomesSuitable": [
+    "FANTA UVA 2L"
+   ],
+   "un": 1,
+   "vendeu": 18,
+   "custoUn": 7.4,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmttbiy7t0016t66h8dobj2bx",
+   "nome": "FANTA UVA LATA",
+   "nomesSuitable": [
+    "FANTA UVA LATA"
+   ],
+   "un": 1,
+   "vendeu": 9,
+   "custoUn": 2.64,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmu33o6ki03tq12lzdrej5gsc",
+   "nome": "Frango G",
+   "nomesSuitable": [
+    "Frango G"
+   ],
+   "un": 1,
+   "vendeu": 99.99,
+   "custoUn": 26.69,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmu33re0003u412lzgwujz1w0",
+   "nome": "FRITAS CHEDDAR E BACON - M",
+   "nomesSuitable": [
+    "FRITAS CHEDDAR E BACON - M"
+   ],
+   "un": 1,
+   "vendeu": 55.99,
+   "custoUn": 21.21,
+   "secao": "PORCOES"
+  },
+  {
+   "chave": "ficha:cmttrkr2q000713r897h5v9j1",
+   "nome": "FRUKI 600ML",
+   "nomesSuitable": [
+    "FRUKI 600ML"
+   ],
+   "un": 1,
+   "vendeu": 11,
+   "custoUn": 3.75,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmttbk2bx001ct66h366p3gef",
+   "nome": "FRUKI LATA ZERO",
+   "nomesSuitable": [
+    "FRUKI LATA ZERO"
+   ],
+   "un": 1,
+   "vendeu": 9,
+   "custoUn": 2.89,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmvkjabmi08c014p10vy8iwsu",
+   "nome": "MASSA +CARNE MOIDA + BRÓCOLIS",
+   "nomesSuitable": [
+    "MASSA +CARNE MOIDA + BRÓCOLIS"
+   ],
+   "un": 1,
+   "vendeu": 17.99,
+   "custoUn": 0,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE BANOFFE",
+   "nome": "MILKSHAKE BANOFFE",
+   "nomesSuitable": [
+    "MILKSHAKE BANOFFE"
+   ],
+   "un": 1,
+   "vendeu": 23,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE DIAMANTE NEGRO",
+   "nome": "MILKSHAKE DIAMANTE NEGRO",
+   "nomesSuitable": [
+    "MILKSHAKE DIAMANTE NEGRO"
+   ],
+   "un": 1,
+   "vendeu": 23,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR ABACAXI C/ HORTELA",
+   "nome": "MILKSHAKE SABOR ABACAXI C/ HORTELA",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR ABACAXI C/ HORTELA"
+   ],
+   "un": 1,
+   "vendeu": 20,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR BRIGADEIRO",
+   "nome": "MILKSHAKE SABOR BRIGADEIRO",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR BRIGADEIRO"
+   ],
+   "un": 1,
+   "vendeu": 19,
+   "custoUn": null,
+   "secao": "DOCES"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR CAPPUCINO",
+   "nome": "MILKSHAKE SABOR CAPPUCINO",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR CAPPUCINO"
+   ],
+   "un": 1,
+   "vendeu": 20,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR FRAMBOESA",
+   "nome": "MILKSHAKE SABOR FRAMBOESA",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR FRAMBOESA"
+   ],
+   "un": 1,
+   "vendeu": 20,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR KINDER OVO",
+   "nome": "MILKSHAKE SABOR KINDER OVO",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR KINDER OVO"
+   ],
+   "un": 1,
+   "vendeu": 20,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR LEITE CONDENSADO",
+   "nome": "MILKSHAKE SABOR LEITE CONDENSADO",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR LEITE CONDENSADO"
+   ],
+   "un": 1,
+   "vendeu": 19,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR MARACUJA",
+   "nome": "MILKSHAKE SABOR MARACUJA",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR MARACUJA"
+   ],
+   "un": 1,
+   "vendeu": 18,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR MORANGO",
+   "nome": "MILKSHAKE SABOR MORANGO",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR MORANGO"
+   ],
+   "un": 1,
+   "vendeu": 18,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MILKSHAKE SABOR NAPOLITANO",
+   "nome": "MILKSHAKE SABOR NAPOLITANO",
+   "nomesSuitable": [
+    "MILKSHAKE SABOR NAPOLITANO"
+   ],
+   "un": 1,
+   "vendeu": 20,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:MOLHO BACONNESE",
+   "nome": "MOLHO BACONNESE",
+   "nomesSuitable": [
+    "MOLHO BACONNESE"
+   ],
+   "un": 1,
+   "vendeu": 3.99,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmtxfs0dh02afk53jx2u9o5mb",
+   "nome": "PIZZA FRANGO COM CATUPIRY CONGELADA",
+   "nomesSuitable": [
+    "PIZZA FRANGO COM CATUPIRY CONGELADA"
+   ],
+   "un": 1,
+   "vendeu": 24.99,
+   "custoUn": 7.55,
+   "secao": "PIZZAS"
+  },
+  {
+   "chave": "ficha:cmu33pl0b03ty12lzvr6jszoj",
+   "nome": "PORCAO FRITAS - M",
+   "nomesSuitable": [
+    "PORCAO FRITAS - M"
+   ],
+   "un": 1,
+   "vendeu": 45.99,
+   "custoUn": 9.21,
+   "secao": "PORCOES"
+  },
+  {
+   "chave": "ficha:cmtxeggel0238k53jgio8h7f2",
+   "nome": "PRATO FILE DE FRANGO",
+   "nomesSuitable": [
+    "PRATO FILE DE FRANGO"
+   ],
+   "un": 1,
+   "vendeu": 34.99,
+   "custoUn": 8.73,
+   "secao": "PRATOS"
+  },
+  {
+   "chave": "ficha:cmts4xcls00b012csmwaxza27",
+   "nome": "SPRITE 2L",
+   "nomesSuitable": [
+    "SPRITE 2L"
+   ],
+   "un": 1,
+   "vendeu": 18,
+   "custoUn": 7.4,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmtsxqa8n00rtlxp5ly9lc2j9",
+   "nome": "SUCO DE PESSEGO",
+   "nomesSuitable": [
+    "SUCO DE PESSEGO"
+   ],
+   "un": 1,
+   "vendeu": 7,
+   "custoUn": 3.23,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "ficha:cmttbgb0m000ut66hb4x3t2sr",
+   "nome": "SUCO DELL VALE",
+   "nomesSuitable": [
+    "SUCO DELL VALE"
+   ],
+   "un": 1,
+   "vendeu": 7,
+   "custoUn": 3.24,
+   "secao": "BEBIDAS"
+  },
+  {
+   "chave": "nome:SUNDAE ABACAXI",
+   "nome": "SUNDAE ABACAXI",
+   "nomesSuitable": [
+    "SUNDAE ABACAXI"
+   ],
+   "un": 1,
+   "vendeu": 13,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:SUNDAE CHOCO BOLL",
+   "nome": "SUNDAE CHOCO BOLL",
+   "nomesSuitable": [
+    "SUNDAE CHOCO BOLL"
+   ],
+   "un": 1,
+   "vendeu": 13,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "nome:tele entrega",
+   "nome": "tele entrega",
+   "nomesSuitable": [
+    "tele entrega"
+   ],
+   "un": 1,
+   "vendeu": 0.01,
+   "custoUn": null,
+   "secao": "OUTROS"
+  },
+  {
+   "chave": "ficha:cmtxbswdu006pk6k4vjl6vdny",
+   "nome": "XIS - BACON",
+   "nomesSuitable": [
+    "XIS - BACON"
+   ],
+   "un": 1,
+   "vendeu": 48.98,
+   "custoUn": 9.51,
+   "secao": "XIS"
+  },
+  {
+   "chave": "ficha:cmtxccg7d00s9mb5uxtzgsukh",
+   "nome": "XIS - COXAO MOLE",
+   "nomesSuitable": [
+    "XIS - COXAO MOLE"
+   ],
+   "un": 1,
+   "vendeu": 41.99,
+   "custoUn": 15.66,
+   "secao": "XIS"
+  },
+  {
+   "chave": "ficha:cmtxcsity00temb5u3bbx8blu",
+   "nome": "XIS AZEITONA",
+   "nomesSuitable": [
+    "XIS AZEITONA"
+   ],
+   "un": 1,
+   "vendeu": 28.99,
+   "custoUn": 6.95,
+   "secao": "XIS"
+  },
+  {
+   "chave": "nome:Xis Completo",
+   "nome": "Xis Completo",
+   "nomesSuitable": [
+    "Xis Completo"
+   ],
+   "un": 1,
+   "vendeu": 55.96,
+   "custoUn": null,
+   "secao": "XIS"
+  }
+ ],
+ "secoes": [
+  {
+   "chave": "XIS",
+   "nome": "Xis",
+   "ordem": 1
+  },
+  {
+   "chave": "BURGERS",
+   "nome": "Burgers",
+   "ordem": 2
+  },
+  {
+   "chave": "LANCHES",
+   "nome": "Lanches",
+   "ordem": 3
+  },
+  {
+   "chave": "PORCOES",
+   "nome": "Porções e Fritas",
+   "ordem": 4
+  },
+  {
+   "chave": "FRANGO_FRITO",
+   "nome": "Frango Frito",
+   "ordem": 5
+  },
+  {
+   "chave": "PRATOS",
+   "nome": "Pratos",
+   "ordem": 6
+  },
+  {
+   "chave": "PIZZAS",
+   "nome": "Pizzas",
+   "ordem": 7
+  },
+  {
+   "chave": "BEBIDAS",
+   "nome": "Bebidas",
+   "ordem": 8
+  },
+  {
+   "chave": "DOCES",
+   "nome": "Doces e Sobremesas",
+   "ordem": 9
+  },
+  {
+   "chave": "OUTROS",
+   "nome": "Outros",
+   "ordem": 99
+  }
+ ],
+ "complementos": null
+}
