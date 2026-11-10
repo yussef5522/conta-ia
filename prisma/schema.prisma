@@ -5596,3 +5596,192 @@ model CustoFixoChips {
   @@unique([companyId, userId])
   @@map("custo_fixo_chips")
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// SUITAPI — O LAÇO (10/11/2026). A API da Suit vira a fonte oficial das vendas de PRODUTOS
+// a partir de 09/11 (decisão do dono). Estas tabelas ESPELHAM o que a API devolve, por id da
+// API, pra materializar o dia pela régua provada (lib/suit/regua-sombra.ts) e pra guarda
+// diária comparar.
+// ⛔ LGPD / lei V8: NENHUM dado pessoal de cliente é gravado (nome, telefone, endereço,
+//    motoboy, comentário, texto livre). Quem grava é a allowlist de lib/suit/espelho.ts.
+// ⛔ Dinheiro em CENTAVOS inteiros. ⛔ Nada aqui é apagado: pedido que some no PDV ganha
+//    `sumidoEm` + evento (SuitPedidoEvento), nunca DELETE.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+model SuitPedido {
+  id                String    @id @default(cuid())
+  companyId         String
+  apiId             Int
+  /// dia operacional pela régua: created_at (relógio da API = UTC) na janela D 06:00 → D+1 06:00
+  dia               String
+  status            String
+  orderType         String?
+  source            String?
+  displayNumber     String?
+  integrationCode   String?
+  criadoApiEm       DateTime
+  entregueApiEm     DateTime?
+  finalizadoApiEm   DateTime?
+  agendadoPara      DateTime?
+  agendado          Boolean   @default(false)
+  produtosCent      Int
+  entregaCent       Int
+  servicoCent       Int
+  descontoCent      Int
+  adicionalCent     Int
+  totalCent         Int
+  pago              Boolean
+  /// o que a RÉGUA conta deste pedido (itens vivos, status ≠ abandoned) — muda ⇒ "alterado"
+  impressao         String
+  /// hash de TUDO que a allowlist grava (pedido + itens + opções + pagamentos): igual ⇒ não reescreve
+  conteudo          String
+  vistoPrimeiroEm   DateTime  @default(now())
+  vistoUltimoEm     DateTime  @default(now())
+  /// a API passou a responder 404 pra este id (apagado no PDV). Nunca removido daqui.
+  sumidoEm          DateTime?
+  itens             SuitPedidoItem[]
+  pagamentos        SuitPedidoPagamento[]
+
+  @@unique([companyId, apiId])
+  @@index([companyId, dia])
+  @@map("suit_pedido")
+}
+
+model SuitPedidoItem {
+  id            String     @id @default(cuid())
+  companyId     String
+  pedidoId      String
+  pedido        SuitPedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  apiItemId     Int
+  /// nome do PRODUTO como a API manda (cru) — não é dado pessoal
+  nome          String
+  categoria     String?
+  quantidade    Float
+  unitarioCent  Int
+  precoCent     Int
+  baseCent      Int?
+  status        String?
+  pedidoEm      DateTime?
+  canceladoEm   DateTime?
+  pesoKg        Float?
+  porPeso       Boolean    @default(false)
+  promocional   Boolean    @default(false)
+  opcoes        SuitItemOpcao[]
+
+  @@unique([pedidoId, apiItemId])
+  @@index([companyId, pedidoId])
+  @@map("suit_pedido_item")
+}
+
+model SuitItemOpcao {
+  id           String         @id @default(cuid())
+  itemId       String
+  item         SuitPedidoItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  ordem        Int
+  grupo        String?
+  nome         String
+  unitarioCent Int
+  quantidade   Float
+  precoCent    Int
+
+  @@index([itemId])
+  @@map("suit_item_opcao")
+}
+
+/// as formas de pagamento DO PEDIDO (details.payment.methods)
+model SuitPedidoPagamento {
+  id          String     @id @default(cuid())
+  companyId   String
+  pedidoId    String
+  pedido      SuitPedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  ordem       Int
+  apiMetodoId Int?
+  codigo      Int?
+  tipo        String?
+  lancamento  String?
+  valorCent   Int
+  liquidado   Boolean    @default(false)
+
+  @@index([companyId, pedidoId])
+  @@map("suit_pedido_pagamento")
+}
+
+/// os lançamentos financeiros do PDV (financial/payments/list) — COM taxa (fee) e líquido (net).
+/// ⛔ `description` (texto livre) e `bank_account.name` NÃO são gravados.
+model SuitPagamento {
+  id             String    @id @default(cuid())
+  companyId      String
+  apiId          Int
+  entryId        Int?
+  /// start_date da API que trouxe a linha (dia do caixa, BRT)
+  diaCaixa       String
+  /// dia operacional pela régua (created_at na janela 06h→06h UTC)
+  dia            String
+  tipo           String
+  status         String
+  receita        Boolean
+  administrativo Boolean
+  conciliado     Boolean
+  valorCent      Int
+  taxaCent       Int
+  liquidoCent    Int
+  metodoTipo     String?
+  metodoApiId    Int?
+  contaApiId     Int?
+  billId         Int?
+  caixaId        Int?
+  turnoCaixaId   Int?
+  criadoApiEm    DateTime
+  recebidoEm     String?
+  vistoUltimoEm  DateTime  @default(now())
+
+  @@unique([companyId, apiId])
+  @@index([companyId, dia])
+  @@map("suit_pagamento")
+}
+
+/// pedido que SUMIU (404) ou cuja contribuição na régua MUDOU depois de gravado.
+/// Depois da materialização vira aviso pro dono: manter ou atualizar o dia.
+model SuitPedidoEvento {
+  id                 String    @id @default(cuid())
+  companyId          String
+  pedidoId           String
+  apiId              Int
+  dia                String
+  /// APAGADO | ALTERADO
+  tipo               String
+  detectadoEm        DateTime  @default(now())
+  impressaoAntes     String
+  impressaoDepois    String?
+  deltaCent          Int
+  deltaUn            Float
+  /// o dia já tinha sido entregue à esteira quando o evento aconteceu
+  depoisDaMaterializacao Boolean
+  /// MANTER | ATUALIZAR — decisão do dono; null = pendente
+  decisao            String?
+  decididoEm         DateTime?
+  decididoPorId      String?
+
+  @@index([companyId, dia])
+  @@index([companyId, decisao])
+  @@map("suit_pedido_evento")
+}
+
+/// o dia de vendas ENTREGUE à esteira pela API (a guarda anti-duplicata do XLS lê esta tabela).
+model SuitDiaMaterializado {
+  id              String    @id @default(cuid())
+  companyId       String
+  dia             String
+  /// MATERIALIZADO | AGUARDANDO_DONO (a esteira fez uma pergunta: sanidade / item barrado)
+  status          String
+  importId        String?
+  pedidos         Int
+  linhas          Int
+  unidades        Float
+  totalCent       Int
+  motivo          String?
+  materializadoEm DateTime  @default(now())
+  atualizadoEm    DateTime  @default(now())
+
+  @@unique([companyId, dia])
+  @@map("suit_dia_materializado")
+}

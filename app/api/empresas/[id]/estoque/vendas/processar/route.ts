@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
-import { montarPlanoVenda, processarVendas, reprocessarDia, montarPlanoReprocesso } from '@/lib/stock/vendas/baixa-venda'
+import { montarPlanoVenda, processarVendas, reprocessarDia, montarPlanoReprocesso, exigirDiaSemApi, DiaDaApiError } from '@/lib/stock/vendas/baixa-venda'
 import { SuitableParseError } from '@/lib/stock/vendas/parse-suitable'
 import { SanidadeNaoConfirmadaError } from '@/lib/stock/vendas/medir-sanidade'
 import { BaixaComItemBarradoError } from '@/lib/stock/vendas/itens-pendentes-da-baixa'
@@ -41,6 +41,8 @@ const schema = z.object({
    * só vale se bater com uma das opções que a pergunta ofereceu.
    */
   confirmouDia: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** ⛔ o dono confirmou subir o arquivo POR CIMA de um dia que já entrou pela Suit */
+  sobrescreverDiaDaApi: z.boolean().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -50,7 +52,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const user = a.user
   const parsed = schema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }, { status: 400 })
-  const { data, html, confirmar, reprocessar, incluir, confirmouSanidade, itensPendentes, nomeArquivo, confirmouDia } = parsed.data
+  const { data, html, confirmar, reprocessar, incluir, confirmouSanidade, itensPendentes, nomeArquivo, confirmouDia, sobrescreverDiaDaApi } = parsed.data
   try {
     /**
      * ⛔⛔ **A LEI DA DATA, pela porta ÚNICA** — a MESMA que o import de complementos chama
@@ -76,7 +78,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ plano: r.plano, reprocesso: true, estornaItens: r.estornaItens })
     }
     if (!html) return NextResponse.json({ erro: 'Envie o arquivo do dia.' }, { status: 400 })
-    if (confirmar) return NextResponse.json({ ok: true, recibo: await processarVendas(companyId, dia, html, user.sub, prisma, incluir ?? null, confirmouSanidade ?? false, itensPendentes ?? [], nomeArquivo) })
+    // ⛔ já no PLANO (antes do dono confirmar): dia que a Suit entregou avisa ANTES de qualquer coisa
+    await exigirDiaSemApi(companyId, dia, sobrescreverDiaDaApi ?? false, prisma)
+    if (confirmar) return NextResponse.json({ ok: true, recibo: await processarVendas(companyId, dia, html, user.sub, prisma, incluir ?? null, confirmouSanidade ?? false, itensPendentes ?? [], nomeArquivo, sobrescreverDiaDaApi ?? false) })
     return NextResponse.json({ plano: await montarPlanoVenda(companyId, dia, html, prisma, incluir ?? null) })
   } catch (e) {
     /** ⭐ 409 = PERGUNTA (o desenho da sanidade): a tela mostra os dois botões e o dono decide */
@@ -86,6 +90,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         { status: 409 },
       )
     }
+    if (e instanceof DiaDaApiError) return NextResponse.json({ erro: e.message, code: e.code, dia: e.data }, { status: 409 })
     if (e instanceof SuitableParseError) return NextResponse.json({ erro: e.message }, { status: 422 })
     // ⭐ 409 = "pergunta", não "erro": a tela mostra os números e o dono decide. Reenviar
     // com confirmouSanidade:true passa — é o desenho do dono (pergunta, nunca recusa cega).

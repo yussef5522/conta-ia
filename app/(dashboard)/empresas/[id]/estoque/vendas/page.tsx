@@ -21,6 +21,7 @@ import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { fraseDoErro } from '@/lib/http/frase-do-erro'
 import { PerguntaDoDia, type VeredictoDoDia } from '@/components/estoque/pergunta-do-dia'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
+import { FaixaDaSuit, PerguntaDiaDaSuit } from '@/components/estoque/faixa-da-suit'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
 interface Preview { linhas: Linha[]; totalUnidades: number; totalProdutos: number; naoMapeados: number; opcoes: { fichas: { id: string; nome: string; tipo: string }[]; itens: { id: string; nome: string }[] } }
@@ -123,6 +124,10 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   const [barrados, setBarrados] = useState<{ itens: { itemId: string; nome: string; motivo: string }[]; seguem: number } | null>(null)
   const [recibo, setRecibo] = useState<Recibo | null>(null)
   const [processando, setProcessando] = useState(false)
+  // SUITAPI (10/11): o arquivo de PRODUTOS virou PORTA DE EMERGÊNCIA — escondido, não removido
+  const [emergencia, setEmergencia] = useState(false)
+  const [perguntaApi, setPerguntaApi] = useState<string | null>(null)
+  const [sobreApi, setSobreApi] = useState(false)
   const [processados, setProcessados] = useState<Dia[]>([])
   // ⚠️ ajustar um vínculo na revisão de complementos muda o ESTADO do dia ("precisa
   // reprocessar") — a lista tem que recarregar, senão a tela fica contando o mundo velho.
@@ -197,14 +202,16 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
    * o ponto: deixar o dono ver o plano do dia ERRADO e só então perguntar seria dar a ele um
    * motivo pra confiar no número antes de a dúvida aparecer.
    */
-  const abrirPreview = async (confirmouDia?: string) => {
+  const abrirPreview = async (confirmouDia?: string, sobre: boolean = sobreApi) => {
     setErroProc(null)
     if (!data) { setErroProc('Escolha a data das vendas antes de processar.'); return }
     setProcessando(true)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html, data, confirmar: false, incluir: null, confirmouDia: respostaDoDia(confirmouDia) }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html, data, confirmar: false, incluir: null, confirmouDia: respostaDoDia(confirmouDia), sobrescreverDiaDaApi: sobre || undefined }) })
       const j = await r.json().catch(() => null)
       if (r.status === 409 && j?.code === 'CONFIRME_O_DIA') { setPerguntaDia(j.dia as VeredictoDoDia); return }
+      if (r.status === 409 && j?.code === 'DIA_DA_API') { setPerguntaApi(String(j.dia)); return }
+      setPerguntaApi(null)
       if (!r.ok) { setErroProc(j?.erro ?? 'Não consegui montar o preview.'); return }
       setPerguntaDia(null)
       /**
@@ -245,7 +252,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
        */
       const body = modoReprocesso
         ? { data: modoReprocesso, reprocessar: true, confirmar: true, confirmouSanidade }
-        : { html, data, confirmar: true, incluir: null, confirmouSanidade, nomeArquivo: nomeArquivo || undefined, confirmouDia: respostaDoDia() }
+        : { html, data, confirmar: true, incluir: null, confirmouSanidade, nomeArquivo: nomeArquivo || undefined, confirmouDia: respostaDoDia(), sobrescreverDiaDaApi: sobreApi || undefined }
       // ⚠️ o confirmar grava: teto MAIOR (60 s), porque desistir cedo de uma gravação que
       // está acontecendo é pior que esperar — mas ele TERMINA, com erro visível.
       const rr = await fetchComTimeout<{ recibo: Recibo }>(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), timeoutMs: 60_000 })
@@ -309,7 +316,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       // igual. Era o 2º caminho sem a resposta — a REGRA 4 o achou antes de ele morder.
       const body = modoReprocesso
         ? { data: modoReprocesso, reprocessar: true, confirmar: true, confirmouSanidade: true, itensPendentes: barrados.itens.map((b) => b.itemId) }
-        : { html, data, confirmar: true, incluir: null, confirmouSanidade: true, itensPendentes: barrados.itens.map((b) => b.itemId), nomeArquivo: nomeArquivo || undefined, confirmouDia: respostaDoDia() }
+        : { html, data, confirmar: true, incluir: null, confirmouSanidade: true, itensPendentes: barrados.itens.map((b) => b.itemId), nomeArquivo: nomeArquivo || undefined, confirmouDia: respostaDoDia(), sobrescreverDiaDaApi: sobreApi || undefined }
       const rr = await fetchComTimeout<{ recibo: Recibo }>(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), timeoutMs: 60_000 })
       if (rr.ok && rr.data) {
         setRecibo(rr.data.recibo); setPlano(null); setModoReprocesso(null); setBarrados(null)
@@ -341,12 +348,19 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         </StatCardGrid>
       )}
 
+      <FaixaDaSuit id={id} />
+
       {/* abas */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200">
         <button onClick={() => setAba('central')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'central' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}>A central</button>
-        <button onClick={() => setAba('importar')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'importar' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}>Importar dia</button>
+        {(aba === 'importar' || emergencia) && (
+          <button onClick={() => setAba('importar')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'importar' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}>Arquivo de produtos (emergência)</button>
+        )}
         <button onClick={() => setAba('complementos')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'complementos' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}><Layers className="mr-1 inline h-3.5 w-3.5" />Complementos</button>
         <button onClick={() => setAba('manual')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'manual' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}><Store className="mr-1 inline h-3.5 w-3.5" />Lançamento manual</button>
+        {!emergencia && aba !== 'importar' && (
+          <button data-testid="porta-de-emergencia" onClick={() => { setEmergencia(true); setAba('importar') }} className="-mb-px ml-auto px-2 py-2 text-[11px] text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline">Porta de emergência: subir arquivo de produtos</button>
+        )}
       </div>
 
       {aba === 'central' ? (
@@ -469,6 +483,9 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
                   * ⭐ A PERGUNTA DO DIA mora AQUI, colada no gesto que a levantou (a lição do
                   * card que nascia no rodapé em 10/09). Responder reenvia o MESMO preview.
                   */}
+                {perguntaApi && (
+                  <PerguntaDiaDaSuit dia={perguntaApi} onSubir={() => { setSobreApi(true); setPerguntaApi(null); void abrirPreview(undefined, true) }} onCancelar={() => { setPerguntaApi(null); setSobreApi(false) }} />
+                )}
                 {perguntaDia && (
                   <PerguntaDoDia
                     veredicto={perguntaDia}

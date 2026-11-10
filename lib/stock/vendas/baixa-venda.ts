@@ -260,9 +260,12 @@ export async function montarPlanoVenda(companyId: string, data: string, html: st
 export interface ReciboVenda { importId: string; data: string; baixados: number; itensBaixados: number; pendentes: number; valorBaixado: number }
 
 /** EXECUTA a partir do HTML (import novo do dia). */
-export async function processarVendas(companyId: string, data: string, html: string, userId: string | undefined, db: PrismaClient = defaultPrisma, incluir: string[] | null = null, confirmouSanidade = false, itensPendentes: string[] = [], nomeArquivo?: string): Promise<ReciboVenda> {
+export async function processarVendas(companyId: string, data: string, html: string, userId: string | undefined, db: PrismaClient = defaultPrisma, incluir: string[] | null = null, confirmouSanidade = false, itensPendentes: string[] = [], nomeArquivo?: string, sobrescreverDiaDaApi = false): Promise<ReciboVenda> {
+  // ⛔ ANTES de ler/gravar qualquer coisa: dia que a Suit já entregou não leva XLS por cima calado
+  await exigirDiaSemApi(companyId, data, sobrescreverDiaDaApi, db)
   const { resultado } = await lerComQuarentena({ companyId, relatorio: 'PRODUTOS', html, data, userId }, parseSuitable, db)
   const recibo = await gravarVenda(companyId, data, resultado.linhas, incluir, userId, db, confirmouSanidade, itensPendentes)
+  if (sobrescreverDiaDaApi) await marcarXlsPorCima(companyId, data, db)
   /**
    * ⭐ O Σ DO ARQUIVO passa a ser GUARDADO (08/10) — era a lacuna que o retrato achou.
    *
@@ -281,6 +284,84 @@ export async function processarVendas(companyId: string, data: string, html: str
     }, db)
   }
   return recibo
+}
+
+type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
+
+/** ⭐ AS LINHAS DO DIA têm UM escritor (10/11): o `gravarVenda` e o dia da API que espera o
+ *  dono passam pelo mesmo lugar — `mapeadoNoImport` é o MESMO critério nos dois. */
+async function gravarLinhasDoImport(tx: Tx | PrismaClient, companyId: string, importId: string, dataDate: Date, linhas: LinhaVenda[]): Promise<void> {
+  await tx.stockVendaLinha.deleteMany({ where: { companyId, importId } })
+  const mapaNomes = new Set((await tx.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true } })).map((m) => m.nomeSuitable))
+  await tx.stockVendaLinha.createMany({ data: linhas.map((l) => ({ companyId, importId, data: dataDate, nomeSuitable: l.produto, quantidade: l.quantidade, valorTotal: l.valorTotal, mapeadoNoImport: mapaNomes.has(l.produto) })) })
+}
+
+/** "SuitAPI · pedidos de D" — o nome do "arquivo" do dia que entrou pela API (StockVendaArquivo) */
+export const nomeArquivoDaApi = (data: string) => `SuitAPI · pedidos de ${data}`
+
+function registrarSomaDaApi(companyId: string, data: string, linhas: LinhaVenda[], db: PrismaClient) {
+  return registrarArquivoDoImport({
+    companyId, data, relatorio: 'PRODUTOS', nomeArquivo: nomeArquivoDaApi(data),
+    linhasArquivo: linhas.length,
+    somaQuantidade: linhas.reduce((t, l) => t + l.quantidade, 0),
+    somaValor: Math.round(linhas.reduce((t, l) => t + l.valorTotal, 0) * 100) / 100,
+    userId: undefined,
+  }, db)
+}
+
+/**
+ * ⭐ O DIA QUE ENTRA PELA SUITAPI (10/11/2026) — a MESMA esteira do XLS, sem o HTML.
+ * Mesmo `gravarVenda` (plano → sanidade → baixa → linhas), com o que o dono escolheria por
+ * padrão: `incluir = null` (todos os mapeados) e NENHUMA pergunta respondida por ele —
+ * ⛔ `confirmouSanidade = false` e `itensPendentes = []` são FIXOS: a máquina nunca responde
+ * pelo dono. Se a esteira perguntar, a exceção sobe e quem chama deixa o dia esperando ele.
+ */
+export async function processarLinhasDaApi(companyId: string, data: string, linhas: LinhaVenda[], db: PrismaClient = defaultPrisma): Promise<ReciboVenda> {
+  const recibo = await gravarVenda(companyId, data, linhas, null, undefined, db, false, [])
+  await registrarSomaDaApi(companyId, data, linhas, db)
+  return recibo
+}
+
+/**
+ * O dia da API em que a esteira PERGUNTOU (sanidade / item barrado): grava o import e as linhas
+ * SEM baixa — o mesmo estado que o lançamento manual deixa quando a sanidade pergunta — e a
+ * resposta é do dono, na tela de sempre (reprocessar o dia, com o diálogo de sempre).
+ */
+export async function gravarDiaDaApiSemBaixa(companyId: string, data: string, linhas: LinhaVenda[], db: PrismaClient = defaultPrisma): Promise<string> {
+  const dataDate = new Date(`${data}T12:00:00`)
+  const totalUnidades = linhas.reduce((s, l) => s + l.quantidade, 0)
+  const importId = await db.$transaction(async (tx) => {
+    const imp = await tx.stockVendaImport.upsert({
+      where: { companyId_data: { companyId, data: dataDate } },
+      create: { companyId, data: dataDate, totalLinhas: linhas.length, totalUnidades, status: 'CONFIRMADO', criadoPorId: null },
+      update: { totalLinhas: linhas.length, totalUnidades },
+    })
+    await gravarLinhasDoImport(tx, companyId, imp.id, dataDate, linhas)
+    return imp.id
+  })
+  await registrarSomaDaApi(companyId, data, linhas, db)
+  return importId
+}
+
+/** ⛔ O XLS NÃO PASSA POR CIMA DO DIA DA API sem o dono dizer (10/11/2026). */
+export class DiaDaApiError extends Error {
+  readonly code = 'DIA_DA_API'
+  constructor(readonly data: string) {
+    super(`As vendas de ${data.split('-').reverse().join('/')} já entraram sozinhas pela Suit. Subir o arquivo por cima troca o dia inteiro pelo do arquivo — confirme se é isso mesmo.`)
+    this.name = 'DiaDaApiError'
+  }
+}
+
+/** a guarda anti-duplicata: dia já entregue pela API recusa o XLS sem confirmação explícita */
+export async function exigirDiaSemApi(companyId: string, data: string, sobrescrever: boolean, db: PrismaClient = defaultPrisma): Promise<void> {
+  const m = await db.suitDiaMaterializado.findUnique({ where: { companyId_dia: { companyId, dia: data } }, select: { id: true, status: true } })
+  if (!m || m.status === 'XLS_POR_CIMA') return
+  if (!sobrescrever) throw new DiaDaApiError(data)
+}
+
+/** ⚠️ só DEPOIS que o XLS entrou de fato — se ele falhar, o dia segue sendo da API */
+async function marcarXlsPorCima(companyId: string, data: string, db: PrismaClient): Promise<void> {
+  await db.suitDiaMaterializado.updateMany({ where: { companyId, dia: data, NOT: { status: 'XLS_POR_CIMA' } }, data: { status: 'XLS_POR_CIMA', motivo: 'o dono subiu o arquivo por cima do dia da Suit', atualizadoEm: new Date() } })
 }
 
 /** DRY-RUN do reprocesso: o que vai acontecer se refizer um dia já importado (com o mapa
@@ -381,9 +462,7 @@ async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[]
     if (barrados.length) throw new BaixaComItemBarradoError(barrados, aBaixar.filter((x) => x.qtd > 0).length - barrados.length)
 
     // linhas (todas) pra pendentes/reprocessar — reescreve
-    await tx.stockVendaLinha.deleteMany({ where: { companyId, importId: imp.id } })
-    const mapaNomes = new Set((await tx.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true } })).map((m) => m.nomeSuitable))
-    await tx.stockVendaLinha.createMany({ data: linhas.map((l) => ({ companyId, importId: imp.id, data: dataDate, nomeSuitable: l.produto, quantidade: l.quantidade, valorTotal: l.valorTotal, mapeadoNoImport: mapaNomes.has(l.produto) })) })
+    await gravarLinhasDoImport(tx, companyId, imp.id, dataDate, linhas)
     return imp.id
   })
 
