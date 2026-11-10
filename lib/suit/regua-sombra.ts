@@ -4,10 +4,14 @@
 // A régua foi provada ao centavo em 07/11/2026 (725 un · R$ 26.266,10, 435 pedidos):
 //   1. pedido com status `abandoned` FICA FORA (transferred, cancelled, accepted e delivered entram);
 //   2. item com `cancelled_at` FICA FORA;
-//   3. DIA OPERACIONAL = D 06:00 → D+1 06:00, horário local da loja (a API devolve hora local
-//      sem fuso — "naive" — então a janela é string local, nunca conversão de UTC).
+//   3. DIA OPERACIONAL = D 06:00 → D+1 06:00 NO RELÓGIO DA API. ⚠️ A doc da Suit diz "horário
+//      local da loja", mas o MEDIDO (09/11 23:37 de Brasília → pedidos com created_at 02:31 de
+//      10/11) é UTC sem fuso: 06:00 da API = 03:00 de Brasília. A régua bateu no relógio da API,
+//      então a janela é a string da API, sem conversão nenhuma.
 // ⛔ `/api/order/summary/products/` NÃO serve: ele só conta delivered+accepted (deu 708 un ×
 //    725 do XLS no mesmo dia — os 9 `transferred`). A fonte é o details, item por item.
+
+import { normalizarNome } from '../stock/vendas/grupo-complemento'
 
 export const STATUS_FORA_DA_REGUA = 'abandoned'
 export const HORA_VIRADA_DIA = '06:00:00'
@@ -40,8 +44,13 @@ export function janelaDia(dia: string): { from: string; to: string } {
   return { from: `${dia}T${HORA_VIRADA_DIA}`, to: `${somarDias(dia, 1)}T05:59:59.999999` }
 }
 
+/**
+ * A chave do produto nos DOIS lados = a porta da casa (`normalizarNome`: acento, caixa, espaço).
+ * ⛔ Caso real 08/11: a API manda "HAMBURGUER  TRADICIONAL" (espaço duplo) e o XLS gravou com um
+ * só — trim+maiúscula dava DIVERGE com os totais idênticos ao centavo.
+ */
 export function normNome(s: string): string {
-  return s.trim().toUpperCase()
+  return normalizarNome(s)
 }
 
 /** dinheiro em centavos inteiros — ⛔ número não-finito é ERRO, nunca vira 0 (ausência ≠ zero) */
@@ -156,8 +165,9 @@ export function mesclarState(conteudo: string, linha: string): string {
 
 /**
  * Quais dias rodar: os `n` mais recentes, a partir de `inicio`, ainda SEM veredito e JÁ FECHADOS
- * (D+1 06:00 local já passou). `agoraLocal` = "YYYY-MM-DDTHH:mm:ss" no horário do Brasil — o
- * relógio só escolhe QUAIS dias olhar; nunca decide o veredito.
+ * (D+1 06:00 de Brasília já passou). `agoraLocal` = "YYYY-MM-DDTHH:mm:ss" no horário do Brasil.
+ * O dia da API fecha às 03:00 de Brasília (relógio dela é UTC), então comparar 06:00 de Brasília
+ * é CONSERVADOR: nunca roda um dia ainda aberto. O relógio só escolhe QUAIS dias; nunca o veredito.
  */
 export function diasPendentes(state: Map<string, string>, agoraLocal: string, inicio: string, n = 3): string[] {
   const out: string[] = []

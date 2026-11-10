@@ -56,6 +56,15 @@ describe('régua da prova-sombra (provada em 07/11)', () => {
     )
   })
 
+  it('grafia: espaço duplo, caixa e acento são o MESMO produto (caso real 08/11: "HAMBURGUER  TRADICIONAL")', () => {
+    const a = agregarApi([{ id: 1, status: 'delivered', items: [item('HAMBURGUER  TRADICIONAL', 7, '237.93'), item('Suco de  Pêssego', 1, '7.00')] }])
+    const x = agregarXls([
+      { nomeSuitable: 'HAMBURGUER TRADICIONAL', quantidade: 7, valorTotal: 237.93 },
+      { nomeSuitable: 'SUCO DE PESSEGO', quantidade: 1, valorTotal: 7 },
+    ])
+    expect(veredito('2026-11-08', a, x)).toBe('2026-11-08 BATE 8un R$244,93 transferred=0')
+  })
+
   it('1 centavo de diferença já é DIVERGE (nada de tolerância escondida)', () => {
     const xls = XLS_CERTO.map((l) => (l.nomeSuitable === 'COCA COLA 2L' ? { ...l, valorTotal: 36.01 } : l))
     expect(veredito('2026-11-07', agregarApi(PEDIDOS), agregarXls(xls))).toMatch(/ DIVERGE COCA COLA 2L · 0un · -R\$0,01 /)
