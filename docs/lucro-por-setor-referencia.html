@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lucro por Setor — referência v8 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════════
+  LUCRO POR SETOR — ARQUIVO DE REFERÊNCIA OFICIAL v8 — APROVADA PELO DONO 09/11/2026
+  ESTE ARQUIVO É LEI quando aprovado: tokens 1:1 com a cara do sistema,
+  comentários = leis numeradas (S0–S19), <script> = especificação.
+  Vive em docs/lucro-por-setor-referencia.html.
+═══════════════════════════════════════════════════════════════════════
+
+  S0 · UMA FÁBRICA SÓ. Custo de cada item vem da MESMA porta de fichas
+      de "Quem paga a casa". Esta tela SOMA por setor/dia/produto;
+      nunca recalcula custo por conta própria.
+
+  S1 · O SELETOR É SÓ DIA. Chips de dias COM dado (HOJE entra com o
+      que já tem, selo "até HH:MM") + 📅 escolher. Sem estado vazio
+      decorativo.
+
+  S2 · NÚMEROS MANDAM. Prosa proibida nos cards.
+
+  S3 · UM CARD POR SETOR — setores REAIS do dono (S11): 🍕 PIZZAS ·
+      🍔 XIS · 🥪 LANCHES · 🥙 PRENSADOS · 🍽 PRATOS · 🍗 FRANGO FRITO ·
+      🥤 BEBIDAS. Card: VENDEU (R$+un) · CUSTO · LUCRO grande ·
+      margem % · selo de cobertura (S4). Clicou → detalhe.
+
+  S4 · HONESTIDADE DO CUSTO. Item sem ficha NUNCA entra no custo por
+      estimativa. Selo verde "fichas 100%" ou âmbar "N un sem ficha →"
+      com a lista (qtd) e atalho criar/mapear da revisão.
+
+  S5 · PIZZA EM CAMADAS: CAMADA 1 = produto-tamanho como o PDV vende,
+      cada um com ficha de base (massa + sacolas de queijo + molho +
+      caixa). CAMADA 2 = SABORES somados do dia, cada um com ficha.
+      Custo do setor = bases + sabores.
+
+  S6 · QUADRANTE: ⭐ vende muito e lucra bem · 🐴 vende muito, lucra
+      pouco · 💎 lucra muito, vende pouco (candidata a promo) · 🐶
+      repensar. Corte: medianas de un e margem REAL do setor.
+
+  S7 · VEREDITO EM REAIS contra a RÉGUA (mediana dos 4 mesmos
+      dias-da-semana anteriores, sem promo): VALEU/NÃO VALEU ± R$,
+      com "vender pouco e caro teria dado R$ X".
+
+  S8 · HOJE é parcial (selo no chip) e não fecha veredito.
+
+  S9 · Dia sem import = "importa o dia →", nunca zero mentiroso.
+
+  S10· MOBILE PRIMEIRO (ver S18).
+
+  S11· SETORES SÃO DO DONO (grupos editáveis ✎, família dos grupos do
+      Radar/Consumo). Produto sem setor cai em "SEM SETOR" visível.
+
+  S12· NÚMEROS DESTE ARQUIVO = AMOSTRA com a cara da casa (xis custo
+      8,39 real). Cada pino vira teste contra a porta única no sprint.
+
+  S13· TUDO CLICÁVEL E AJUSTÁVEL AQUI: linha abre A FICHA ALI MESMO —
+      dose −/+, ✕ tira, busca adiciona (dose padrão) — recalculando
+      em cascata: ficha → linha → setor → lucro → veredito. Gravação
+      pela PORTA ÚNICA do editor de fichas; nunca segundo editor.
+
+  S14· PROMO É DETECTADA: preço abaixo do usual do produto (mediana 4
+      semanas) ou linha PRECINHO/PROMO acima do padrão → cartão
+      "🏷 PROMO DETECTADA — estudar ↓" clicável. Dia sem promo: nada.
+      O dono pode marcar/desmarcar na mão.
+
+  S15· TELA MUDA, TELA LIMPA (LEI DA CASA, todas as telas). Nenhuma
+      frase didática, legenda corrida ou "dica" no corpo. Explicação
+      SÓ atrás de ⓘ. Número de lei nunca aparece na interface.
+
+  S16· LINHA É COLUNA, NUNCA FRASE. Grade fixa alinhada, nome 700,
+      número tabular à direita, cabecinha de coluna caps 9,5px.
+
+  S17· (v7) A MESA DIZ O CUSTO INTEIRO. Cada produto da mesa mostra o
+      custo VERDADEIRO = base + sabores QUE FORAM NELE (os com ficha),
+      e a margem REAL sai disso. CLICAR NO PRODUTO abre o que foi
+      dentro dele: base + cada sabor (qtd × ficha) + sem-ficha em
+      âmbar + VENDEU/CUSTO/LUCRO do produto — é assim que se estuda
+      "só o GRANDE PRECINHO" numa promoção. Sabor não ganha linha
+      própria na mesa (não tem preço próprio); traço "—" proibido.
+
+  S18· (v7) CELULAR NUNCA ESCONDE DINHEIRO. Coluna não some: vira
+      segunda linha do item com rótulo pequeno (VENDEU · CUSTO ·
+      MARGEM). Esconder custo foi medido como defeito pelo dono.
+
+  S19· O DADO POR PRODUTO VEM DO PEDIDO, E SE PROVA: o arquivo do PDV
+      traz cada sabor amarrado ao item do pedido (pedido → produto →
+      sabores). A tela usa SÓ esse vínculo real; a Camada 2 é a soma.
+      Todo número desce até a origem: "ver pedidos →" dentro do item
+      lista os pedidos reais (nº, hora, sabores) que formaram o
+      número. Dia cujo import não guardou o laço mostra só o total do
+      setor — NUNCA se inventa quebra por produto sem dado.
+
+  S20· (v8, ordem do dono) NUNCA MISTURAR UNIDADE E TOTAL NA MESMA
+      LINHA. Colunas lado a lado são da MESMA grandeza: VENDEU total ×
+      CUSTO total (ou un × un, nunca cruzado). "Preço 34,90 · custo
+      61,70" lê-se como prejuízo — régua mista é defeito, não opção.
+-->
+<style>
+:root{
+  --bg:#F3F5FA; --card:#FFFFFF; --card-2:#F6F7FC;
+  --linha:#E3E7F2; --linha-forte:#C9D0E3;
+  --tinta:#0A0F1E; --tinta-2:#46516B; --tinta-3:#8B94AD;
+  --acao:#4F46E5; --acao-quente:#6D28D9; --acao-50:#EEF0FE; --acao-tinta:#3730A3;
+  --verde:#0E9F6E; --verde-chao:#07654A; --verde-50:#E4F7EF; --verde-tinta:#065F46;
+  --coral:#E2544A; --coral-chao:#9F2D25; --coral-50:#FDECEA; --coral-tinta:#8C251E;
+  --ambar:#D97706; --ambar-50:#FCF0DC; --ambar-tinta:#7C4A03;
+  --r-painel:16px; --r-cartao:12px; --r-pilula:999px;
+  --sombra:0 1px 2px rgba(10,15,30,.06),0 2px 6px rgba(10,15,30,.05);
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+:root:not([data-theme="light"]){ color-scheme:light dark; }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0B0E1C; --card:#141829; --card-2:#1A1F33;
+  --linha:#242A41; --linha-forte:#333B58;
+  --tinta:#EDF0FB; --tinta-2:#9AA3C0; --tinta-3:#5E6683;
+  --acao:#818CF8; --acao-50:#23264F; --acao-tinta:#C7CBFF;
+  --verde:#34D399; --verde-50:#0C2E24; --verde-tinta:#8CEAC8;
+  --coral:#F87168; --coral-50:#3A1917; --coral-tinta:#FFB4AE;
+  --ambar:#F59E0B; --ambar-50:#352508; --ambar-tinta:#FCD38D;
+  --sombra:none;
+}}
+:root[data-theme="dark"]{
+  --bg:#0B0E1C; --card:#141829; --card-2:#1A1F33;
+  --linha:#242A41; --linha-forte:#333B58;
+  --tinta:#EDF0FB; --tinta-2:#9AA3C0; --tinta-3:#5E6683;
+  --acao:#818CF8; --acao-50:#23264F; --acao-tinta:#C7CBFF;
+  --verde:#34D399; --verde-50:#0C2E24; --verde-tinta:#8CEAC8;
+  --coral:#F87168; --coral-50:#3A1917; --coral-tinta:#FFB4AE;
+  --ambar:#F59E0B; --ambar-50:#352508; --ambar-tinta:#FCD38D;
+  --sombra:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tinta);font-family:var(--font)}
+body{padding:14px 16px 60px;max-width:1060px;margin:0 auto}
+h1{font-size:21px;margin:4px 0 10px;letter-spacing:-.02em}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 6px}
+.chip{border:1px solid var(--linha-forte);background:var(--card);color:var(--tinta-2);
+  border-radius:var(--r-pilula);padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer}
+.chip.on{background:var(--acao);border-color:var(--acao);color:#fff}
+.selo-parcial{font-size:10.5px;font-weight:800;margin-left:5px;opacity:.85}
+.promo-card{display:flex;align-items:center;gap:10px;background:var(--acao-50);
+  border:1px solid var(--acao);border-radius:var(--r-cartao);padding:10px 14px;
+  margin:8px 0 14px;font-size:13px;color:var(--acao-tinta);font-weight:700;cursor:pointer;flex-wrap:wrap}
+.promo-card .tag{background:var(--acao);color:#fff;border-radius:var(--r-pilula);
+  padding:2px 10px;font-size:11px;font-weight:800}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:12px}
+.setor{background:var(--card);border:1px solid var(--linha-forte);border-radius:var(--r-painel);
+  box-shadow:var(--sombra);padding:13px 15px;cursor:pointer}
+.setor.sel{outline:2px solid var(--acao);outline-offset:1px}
+.setor .nome{font-size:13.5px;font-weight:800;display:flex;gap:7px}
+.setor .lin{display:flex;justify-content:space-between;font-size:12px;color:var(--tinta-2);margin-top:6px}
+.setor .lin b{color:var(--tinta);font-variant-numeric:tabular-nums}
+.setor .lucro{font-size:23px;font-weight:800;letter-spacing:-.02em;margin-top:8px;font-variant-numeric:tabular-nums}
+.setor .lucro.pos{color:var(--verde)} .setor .lucro.neg{color:var(--coral)}
+.pill{font-size:11px;font-weight:800;border-radius:var(--r-pilula);padding:2px 9px;display:inline-block}
+.pill.marg{background:var(--acao-50);color:var(--acao-tinta)}
+.cob{margin-top:8px;font-size:11px;font-weight:700;border-radius:var(--r-pilula);
+  padding:4px 10px;display:inline-block;cursor:pointer}
+.cob.ok{background:var(--verde-50);color:var(--verde-tinta)}
+.cob.gap{background:var(--ambar-50);color:var(--ambar-tinta)}
+.painel{background:var(--card);border:1px solid var(--linha-forte);border-radius:var(--r-painel);
+  box-shadow:var(--sombra);padding:16px;margin-top:16px}
+.painel h2{font-size:15px;margin:0 0 10px}
+.camada{background:var(--card-2);border:1px solid var(--linha);border-radius:var(--r-cartao);
+  padding:11px 13px;margin-top:10px}
+.camada .t{font-size:12px;font-weight:800;color:var(--tinta-2);letter-spacing:.04em;margin-bottom:7px}
+/* S16 · grades */
+.head{display:grid;gap:10px;font-size:9.5px;font-weight:800;letter-spacing:.07em;
+  color:var(--tinta-3);text-transform:uppercase;padding:0 0 6px;border-bottom:2px solid var(--linha-forte)}
+.head span.r{text-align:right}
+.row{padding:0;border-bottom:1px solid var(--linha);cursor:pointer}
+.row:last-child{border-bottom:0}
+.cab{display:grid;gap:10px;align-items:center;padding:8px 0}
+.g5 .head,.g5 .cab{grid-template-columns:46px 1fr 92px 96px 18px}
+.g6 .head,.g6 .cab{grid-template-columns:46px 1fr 104px 100px 88px 34px}
+.qtd{font-weight:800;font-size:13.5px;background:var(--card);border:1px solid var(--linha-forte);
+  border-radius:8px;text-align:center;padding:4px 0;font-variant-numeric:tabular-nums}
+.nm{font-weight:700;font-size:13.5px;letter-spacing:-.01em;line-height:1.25}
+.apoio{font-size:12px;color:var(--tinta-3);text-align:right;font-variant-numeric:tabular-nums}
+.forte{font-weight:800;font-size:13.5px;text-align:right;font-variant-numeric:tabular-nums}
+.mg{justify-self:end;font-size:11.5px;font-weight:800;border-radius:var(--r-pilula);
+  padding:3px 10px;background:var(--acao-50);color:var(--acao-tinta);font-variant-numeric:tabular-nums}
+.badge{font-size:16px;text-align:center}
+.chev{color:var(--tinta-3);font-size:10px;text-align:right}
+.row.sem .qtd{background:var(--ambar-50);border-color:var(--ambar);color:var(--ambar-tinta)}
+.row.sem .nm,.row.sem .forte{color:var(--ambar-tinta)}
+.tagp{background:var(--acao);color:#fff;border-radius:var(--r-pilula);padding:1px 8px;
+  font-size:10px;font-weight:800;margin-left:7px;vertical-align:1px}
+.btn-mini{font-size:11px;font-weight:800;color:var(--acao);background:var(--acao-50);
+  border:0;border-radius:var(--r-pilula);padding:3px 10px;cursor:pointer;margin-left:8px}
+/* S13 · ficha aberta na linha */
+.ficha{background:var(--card);border:1px dashed var(--linha-forte);border-radius:var(--r-cartao);
+  margin:7px 0 4px;padding:9px 11px;cursor:default}
+.ficha .q{color:var(--tinta-3);font-size:11px;margin-left:5px;font-weight:400}
+.ficha .v{font-weight:700;font-variant-numeric:tabular-nums;min-width:64px;text-align:right;font-size:12px}
+.ficha .ing{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;
+  padding:4px 0;border-bottom:1px solid var(--linha)}
+.ficha .ing:last-child{border-bottom:0}
+.ficha .dose{display:flex;align-items:center;gap:6px}
+.ficha .dose button{width:22px;height:22px;border-radius:6px;border:1px solid var(--linha-forte);
+  background:var(--card-2);color:var(--tinta);font-weight:800;cursor:pointer;font-size:13px}
+.ficha .dose b{min-width:70px;text-align:center;font-variant-numeric:tabular-nums;font-size:12px}
+.ficha .x{width:22px;height:22px;border-radius:6px;border:1px solid var(--linha-forte);
+  background:var(--coral-50);color:var(--coral-tinta);font-weight:800;cursor:pointer;font-size:11px}
+.ficha .rodape{display:flex;justify-content:space-between;font-size:12px;font-weight:800;
+  margin-top:7px;padding-top:6px;border-top:1px solid var(--linha-forte)}
+.add{margin-top:8px;padding-top:7px;border-top:1px dashed var(--linha-forte)}
+.add input{width:100%;border:1px solid var(--linha-forte);border-radius:8px;padding:7px 10px;
+  font-size:13px;background:var(--card-2);color:var(--tinta);font-family:var(--font)}
+.add .opt{display:block;width:100%;text-align:left;border:0;background:none;color:var(--tinta);
+  font-size:12.5px;padding:6px 4px;border-bottom:1px solid var(--linha);cursor:pointer;font-family:var(--font)}
+.add .opt b{color:var(--acao-tinta)} .add .opt:hover{background:var(--acao-50)}
+/* S17 · o que foi dentro do produto */
+.dentro{background:var(--card);border:1px dashed var(--linha-forte);border-radius:var(--r-cartao);
+  margin:7px 0 6px;padding:9px 11px;cursor:default}
+.dentro .lin2{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;
+  border-bottom:1px solid var(--linha);font-variant-numeric:tabular-nums}
+.dentro .lin2:last-of-type{border-bottom:0}
+.dentro .lin2 .q{color:var(--tinta-3);font-size:11px;margin-left:5px}
+.dentro .lin2.sf{color:var(--ambar-tinta);font-weight:700}
+.dentro .fecho{display:flex;justify-content:space-between;font-size:12.5px;font-weight:800;
+  margin-top:6px;padding-top:6px;border-top:1px solid var(--linha-forte);font-variant-numeric:tabular-nums}
+.dentro .fecho.lucro{color:var(--verde);border:0;margin-top:2px;padding-top:0}
+.tot{display:flex;justify-content:space-between;font-size:14px;font-weight:800;
+  margin-top:10px;padding-top:9px;border-top:2px solid var(--linha-forte);font-variant-numeric:tabular-nums}
+/* S15 · ⓘ */
+.i{width:17px;height:17px;border-radius:50%;border:1px solid var(--linha-forte);
+  background:var(--card-2);color:var(--tinta-3);font-size:11px;font-weight:700;
+  cursor:pointer;vertical-align:2px;margin-left:6px;line-height:1}
+.pop{display:block;font-size:11.5px;color:var(--tinta-2);background:var(--card-2);
+  border:1px solid var(--linha);border-radius:var(--r-cartao);padding:8px 11px;
+  margin:6px 0 2px;line-height:1.6;font-weight:400}
+.veredito{border-radius:var(--r-cartao);padding:13px 15px;margin-top:12px;font-size:13.5px}
+.veredito.ok{background:var(--verde-50);border:1px solid var(--verde);color:var(--verde-tinta)}
+.veredito.ruim{background:var(--coral-50);border:1px solid var(--coral);color:var(--coral-tinta)}
+.veredito b{font-size:17px}
+.v-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:9px;margin-top:10px}
+.v-cel{background:var(--card);border:1px solid var(--linha);border-radius:var(--r-cartao);
+  padding:8px 10px;font-size:12px;color:var(--tinta-2)}
+.v-cel b{display:block;font-size:15px;color:var(--tinta);font-variant-numeric:tabular-nums}
+.oculto{display:none}
+/* S18 · celular: coluna vira 2ª linha com rótulo — dinheiro nunca some */
+.rot{display:none}
+@media(max-width:620px){
+  body{padding:10px 12px 50px}
+  .grid{grid-template-columns:1fr 1fr}
+  .g5 .head,.g6 .head{display:none}
+  .g5 .cab{grid-template-columns:38px 1fr 18px;grid-template-areas:"un nm ch" "st st st"}
+  .g6 .cab{grid-template-columns:38px 1fr 34px;grid-template-areas:"un nm bg" "st st st"}
+  .g5 .qtd,.g6 .qtd{grid-area:un}
+  .g5 .nm,.g6 .nm{grid-area:nm}
+  .g5 .chev{grid-area:ch}
+  .g6 .badge{grid-area:bg}
+  .stats{grid-area:st;display:flex;gap:14px;flex-wrap:wrap;padding-top:2px}
+  .stats .apoio,.stats .forte{text-align:left;font-size:12.5px}
+  .stats .mg{justify-self:start}
+  .rot{display:inline;font-size:9px;font-weight:800;letter-spacing:.06em;
+    color:var(--tinta-3);text-transform:uppercase;margin-right:4px}
+}
+@media(min-width:621px){ .stats{display:contents} }
+</style>
+</head>
+<body>
+
+<h1>Lucro por Setor</h1>
+
+<div class="chips" id="dias"></div>
+<div id="promoDet"></div>
+<div class="grid" id="setores"></div>
+<div class="painel oculto" id="detalhe"></div>
+<div class="painel oculto" id="mesa"></div>
+<div class="painel" id="promo"></div>
+
+<script>
+/* ═══════ ESPECIFICAÇÃO v7 (S12: amostra com a cara da casa; xis 8,39 real) ═══════ */
+const fmt=v=>v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+/* S13 · fichas editáveis aqui; gravação real = porta única do editor */
+const FICHAS={
+  'PIZZA PEQUENA 25CM':{ing:[['massa bolinha',1,'UN',1.10],['sacola queijo',1,'UN',7.20],['molho de pizza',0.08,'KG',9.80],['caixa 25cm',1,'UN',1.20]]},
+  'PIZZA GRANDE 35CM' :{ing:[['massa bolinha',2,'UN',1.10],['sacola queijo',2,'UN',7.20],['molho de pizza',0.10,'KG',9.80],['caixa 35cm',1,'UN',1.60]]},
+  'GRANDE PRECINHO'   :{ing:[['massa bolinha',2,'UN',1.10],['sacola queijo',2,'UN',7.20],['molho de pizza',0.10,'KG',9.80],['caixa 35cm',1,'UN',1.60]],promo:true},
+  'PIZZA FAMILIA 45CM':{ing:[['massa bolinha',3,'UN',1.10],['sacola queijo',3,'UN',7.20],['molho de pizza',0.14,'KG',9.80],['caixa 45cm',1,'UN',2.00]]},
+  'CALABRESA':{ing:[['calabresa fatiada',0.15,'KG',32.00],['cebola',0.06,'KG',3.50],['azeitona fatiada',0.03,'KG',29.67]]},
+  '4 QUEIJOS':{ing:[['catupiry',0.10,'KG',38.00],['cheddar',0.08,'KG',35.00],['gorgonzola',0.04,'KG',31.00]]},
+  'FRANGO C/ CATUPIRY':{ing:[['frango desfiado',0.14,'KG',28.00],['catupiry',0.07,'KG',38.00]]},
+  'NAPOLITANA':{ing:[['presunto fatiado',0.05,'KG',26.00],['tomate',0.10,'KG',5.50],['orégano',0.01,'KG',35.00]]},
+  'PORTUGUESA':{ing:[['presunto fatiado',0.06,'KG',26.00],['ovo cozido',1,'UN',0.80],['cebola',0.05,'KG',3.50],['ervilha',0.04,'KG',11.50],['azeitona fatiada',0.03,'KG',29.67]]},
+  'BORDA MUSSARELA':{ing:[['porção queijo 130g',0.67,'UN',3.88]]},
+  'PORTUGUESA ESPECIAL':null,'STROGONOFF DE CARNE':null,
+};
+const custoFicha=n=>{const f=FICHAS[n];return f? f.ing.reduce((a,[,d,,p])=>a+d*p,0):null};
+/* pino: PIZZA GRANDE 35CM = 19,18 */
+
+const CATALOGO=[['bacon fatiado',38.00,'KG'],['milho verde',11.25,'KG'],['ervilha',11.50,'KG'],
+ ['tomate',5.50,'KG'],['catupiry',38.00,'KG'],['cheddar',35.00,'KG'],['calabresa fatiada',32.00,'KG'],
+ ['ovo cozido',0.80,'UN'],['porção queijo 130g',3.88,'UN'],['azeitona fatiada',29.67,'KG'],
+ ['palmito',24.00,'KG'],['orégano',35.00,'KG']];
+let buscaEm=null;
+
+const PRECO_USUAL={'PIZZA PEQUENA 25CM':34.90,'PIZZA GRANDE 35CM':59.90,'GRANDE PRECINHO':44.90,'PIZZA FAMILIA 45CM':84.90};
+
+/* S19 · sabores amarrados ao PRODUTO (como o PDV manda) — Camada 2 é a soma */
+const DIAS={
+ 'HOJE · seg 09/11':{parcial:'até 21h',setores:{
+   '🍕 PIZZAS':{produtos:[
+     ['PIZZA PEQUENA 25CM',2,34.90,[['CALABRESA',1],['NAPOLITANA',1]]],
+     ['PIZZA GRANDE 35CM',7,59.90,[['CALABRESA',3],['FRANGO C/ CATUPIRY',3],['PORTUGUESA ESPECIAL',1],['BORDA MUSSARELA',2]]],
+     ['PIZZA FAMILIA 45CM',3,84.90,[['NAPOLITANA',1]]]]},
+   '🍔 XIS':{vendeu:893.10,un:39,custo:327.21,semFicha:[]},
+   '🥪 LANCHES':{vendeu:186.00,un:7,custo:64.10,semFicha:[]},
+   '🥙 PRENSADOS':{vendeu:198.00,un:10,custo:71.20,semFicha:[]},
+   '🍽 PRATOS':{vendeu:312.40,un:9,custo:139.80,semFicha:[]},
+   '🍗 FRANGO FRITO':{vendeu:356.00,un:11,custo:161.90,semFicha:[]},
+   '🥤 BEBIDAS':{vendeu:402.50,un:49,custo:249.60,semFicha:[]} },
+  regua:{'🍕 PIZZAS':{vendeu:2480.00,un:35,custo:1132.00}}},
+ 'SÁB 08/11':{setores:{
+   '🍕 PIZZAS':{produtos:[
+     ['PIZZA PEQUENA 25CM',6,34.90,[['CALABRESA',3],['NAPOLITANA',2],['FRANGO C/ CATUPIRY',1]]],
+     ['PIZZA GRANDE 35CM',9,59.90,[['CALABRESA',4],['4 QUEIJOS',3],['PORTUGUESA',2],['BORDA MUSSARELA',5]]],
+     ['GRANDE PRECINHO',32,44.90,[['CALABRESA',11],['FRANGO C/ CATUPIRY',9],['NAPOLITANA',5],['PORTUGUESA ESPECIAL',5],['STROGONOFF DE CARNE',2],['BORDA MUSSARELA',7]]],
+     ['PIZZA FAMILIA 45CM',12,84.90,[['4 QUEIJOS',4],['FRANGO C/ CATUPIRY',1],['NAPOLITANA',2],['PORTUGUESA',2],['PORTUGUESA ESPECIAL',2],['STROGONOFF DE CARNE',1],['BORDA MUSSARELA',2]]]]},
+   '🍔 XIS':{vendeu:2152.60,un:94,custo:788.66,semFicha:[]},
+   '🥪 LANCHES':{vendeu:486.00,un:18,custo:171.00,semFicha:[]},
+   '🥙 PRENSADOS':{vendeu:618.00,un:31,custo:221.40,semFicha:[['PRENSADO ESPECIAL',4]]},
+   '🍽 PRATOS':{vendeu:731.60,un:22,custo:318.20,semFicha:[]},
+   '🍗 FRANGO FRITO':{vendeu:892.00,un:26,custo:402.30,semFicha:[]},
+   '🥤 BEBIDAS':{vendeu:964.30,un:118,custo:598.10,semFicha:[]} },
+  regua:{'🍕 PIZZAS':{vendeu:2610.00,un:38,custo:1198.00}}},
+ 'QUI 06/11':{setores:{
+   '🍕 PIZZAS':{produtos:[
+     ['PIZZA PEQUENA 25CM',4,34.90,[['CALABRESA',2],['NAPOLITANA',1],['FRANGO C/ CATUPIRY',1]]],
+     ['PIZZA GRANDE 35CM',19,59.90,[['CALABRESA',7],['4 QUEIJOS',3],['FRANGO C/ CATUPIRY',4],['NAPOLITANA',3],['PORTUGUESA',2],['PORTUGUESA ESPECIAL',2],['BORDA MUSSARELA',4]]],
+     ['PIZZA FAMILIA 45CM',9,84.90,[['FRANGO C/ CATUPIRY',1],['NAPOLITANA',1],['PORTUGUESA',1],['BORDA MUSSARELA',2]]]]},
+   '🍔 XIS':{vendeu:2318.20,un:101,custo:847.39,semFicha:[]},
+   '🥪 LANCHES':{vendeu:412.00,un:15,custo:143.80,semFicha:[]},
+   '🥙 PRENSADOS':{vendeu:574.00,un:28,custo:198.90,semFicha:[['PRENSADO ESPECIAL',3]]},
+   '🍽 PRATOS':{vendeu:688.00,un:20,custo:301.10,semFicha:[]},
+   '🍗 FRANGO FRITO':{vendeu:810.00,un:24,custo:365.70,semFicha:[]},
+   '🥤 BEBIDAS':{vendeu:1041.80,un:127,custo:645.90,semFicha:[]} },
+  regua:{'🍕 PIZZAS':{vendeu:2480.00,un:35,custo:1132.00}}},
+};
+
+/* S17 · a conta do PRODUTO: base + sabores dele (com ficha) */
+function contaProduto([nome,q,preco,sabores]){
+  let custo=q*custoFicha(nome), semFicha=[];
+  for(const [sab,qs] of sabores||[]){
+    const cf=custoFicha(sab);
+    if(cf==null)semFicha.push([sab,qs]); else custo+=qs*cf;
+  }
+  return {nome,q,preco,vendeu:q*preco,custo,semFicha,
+          m:100*((q*preco-custo)/(q*preco)),promo:!!FICHAS[nome].promo,sabores:sabores||[]};
+}
+function contaPizza(p){
+  let vendeu=0,un=0,custo=0,semFicha=[];
+  for(const prod of p.produtos){const c=contaProduto(prod);
+    vendeu+=c.vendeu;un+=c.q;custo+=c.custo;semFicha.push(...c.semFicha);}
+  const agg={};for(const [s,q] of semFicha)agg[s]=(agg[s]||0)+q;
+  return {vendeu,un,custo,semFicha:Object.entries(agg)};
+}
+/* Camada 2 = soma dos sabores por produto (S19: uma fonte) */
+function saboresDoDia(p){
+  const agg={};
+  for(const [,,,sabs] of p.produtos)for(const [s,q] of sabs||[])agg[s]=(agg[s]||0)+q;
+  return Object.entries(agg).sort((a,b)=>b[1]-a[1]);
+}
+const contaSetor=s=>s.produtos?contaPizza(s):{vendeu:s.vendeu,un:s.un,custo:s.custo,semFicha:s.semFicha};
+
+function detectaPromo(dia){
+  const p=dia.setores['🍕 PIZZAS'];if(!p)return null;
+  for(const [nome,q,preco] of p.produtos){
+    const f=FICHAS[nome];
+    if((f&&f.promo&&q>=10)||preco<PRECO_USUAL[nome]-0.01)
+      return {nome,q,preco,usual:PRECO_USUAL['PIZZA GRANDE 35CM']};
+  }
+  return null;
+}
+
+/* ═══════ RENDER ═══════ */
+let diaAtual='SÁB 08/11',setorAberto='🍕 PIZZAS',fichaAberta=null,itemAberto=null;
+const $=id=>document.getElementById(id);
+
+function render(){
+  $('dias').innerHTML=Object.keys(DIAS).map(d=>{
+    const parc=DIAS[d].parcial?`<span class="selo-parcial">· ${DIAS[d].parcial}</span>`:'';
+    return `<button class="chip ${d===diaAtual?'on':''}" onclick="trocaDia('${d}')">${d}${parc}</button>`;
+  }).join('')+`<button class="chip">📅 escolher…</button>`;
+  const dia=DIAS[diaAtual];
+
+  const pr=detectaPromo(dia);
+  $('promoDet').innerHTML=pr?`<div class="promo-card" onclick="estudaPromo('${pr.nome}')">
+    <span class="tag">🏷 PROMO DETECTADA</span> ${pr.nome} a R$ ${fmt(pr.preco)}
+    <span style="font-weight:600;color:var(--tinta-2)">(normal R$ ${fmt(pr.usual)})</span> · ${pr.q} un — estudar ↓</div>`:'';
+
+  let html='';
+  for(const [nome,s] of Object.entries(dia.setores)){
+    const c=contaSetor(s),lucro=c.vendeu-c.custo,marg=100*lucro/c.vendeu;
+    const cob=c.semFicha.length===0?`<span class="cob ok">fichas 100% ✓</span>`
+      :`<span class="cob gap" onclick="event.stopPropagation();abreGaps('${nome}')">⚠ ${c.semFicha.reduce((a,[,q])=>a+q,0)} un sem ficha →</span>`;
+    html+=`<div class="setor ${nome===setorAberto?'sel':''}" onclick="abreSetor('${nome}')">
+      <div class="nome">${nome}</div>
+      <div class="lin"><span>vendeu</span><b>R$ ${fmt(c.vendeu)} · ${c.un} un</b></div>
+      <div class="lin"><span>custo (fichas)</span><b>R$ ${fmt(c.custo)}</b></div>
+      <div class="lucro ${lucro>=0?'pos':'neg'}">R$ ${fmt(lucro)}</div>
+      <span class="pill marg">margem ${marg.toFixed(1)}%</span> ${cob}</div>`;
+  }
+  $('setores').innerHTML=html;
+  renderDetalhe(dia);renderPromo(dia);
+}
+
+function blocoFicha(nome){
+  const f=FICHAS[nome];if(!f)return'';
+  const ings=f.ing.map(([n,d,u,p],i)=>`<div class="ing"><span>${n}<span class="q">R$ ${fmt(p)}/${u}</span></span>
+    <span class="dose"><button onclick="event.stopPropagation();dose('${nome}',${i},-1)">−</button>
+    <b>${u==='UN'?d+' UN':fmt(d)+' '+u}</b>
+    <button onclick="event.stopPropagation();dose('${nome}',${i},1)">+</button>
+    <span class="v">R$ ${fmt(d*p)}</span>
+    <button class="x" onclick="event.stopPropagation();tiraIng('${nome}',${i})">✕</button></span></div>`).join('');
+  const add=buscaEm===nome
+    ?`<div class="add"><input placeholder="buscar insumo…" autofocus onclick="event.stopPropagation()" oninput="filtra(this)">
+      ${CATALOGO.map(([n,p,u],i)=>`<button class="opt" onclick="event.stopPropagation();addIng('${nome}',${i})"><b>+</b> ${n} · R$ ${fmt(p)}/${u}</button>`).join('')}</div>`
+    :`<div class="add"><button class="btn-mini" onclick="event.stopPropagation();abreBusca('${nome}')">+ adicionar ingrediente</button></div>`;
+  return `<div class="ficha" onclick="event.stopPropagation()">${ings}
+    <div class="rodape"><span>custo da ficha</span><span>R$ ${fmt(custoFicha(nome))}</span></div>${add}</div>`;
+}
+function dose(nome,i,s){const g=FICHAS[nome].ing[i];const p=g[2]==='UN'?1:0.01;
+  g[1]=Math.max(0,+(g[1]+s*p).toFixed(2));render();}
+function tiraIng(nome,i){FICHAS[nome].ing.splice(i,1);render();}
+function abreBusca(nome){buscaEm=nome;render();}
+function filtra(inp){const q=inp.value.toLowerCase();
+  [...inp.parentElement.querySelectorAll('.opt')].forEach(b=>
+    b.style.display=b.textContent.toLowerCase().includes(q)?'block':'none');}
+function addIng(nome,idx){const [n,p,u]=CATALOGO[idx];
+  FICHAS[nome].ing.push([n,u==='UN'?1:0.05,u,p]);buscaEm=null;render();}
+
+function renderDetalhe(dia){
+  const s=dia.setores[setorAberto];
+  if(!s||!s.produtos){$('detalhe').classList.add('oculto');$('mesa').classList.add('oculto');return;}
+  const c=contaPizza(s);
+  let base=`<div class="head"><span>UN</span><span>TAMANHO</span><span class="r">VENDEU</span><span class="r">CUSTO BASE</span><span></span></div>`;
+  for(const [nome,q,preco] of s.produtos){
+    const aberta=fichaAberta===nome;
+    base+=`<div class="row" onclick="abreFicha('${nome}')"><div class="cab">
+      <span class="qtd">${q}</span>
+      <span class="nm">${nome}${FICHAS[nome].promo?'<span class="tagp">PROMO</span>':''}</span>
+      <span class="stats"><span class="apoio" style="font-weight:700;color:var(--tinta)"><span class="rot">vendeu</span>R$ ${fmt(q*preco)}</span>
+      <span class="forte"><span class="rot">custo base</span>R$ ${fmt(q*custoFicha(nome))}</span></span>
+      <span class="chev">${aberta?'▲':'▼'}</span></div>${aberta?blocoFicha(nome):''}</div>`;
+  }
+  let sab=`<div class="head"><span>UN</span><span>SABOR</span><span class="r">FICHA</span><span class="r">CUSTO</span><span></span></div>`;
+  for(const [nome,q] of saboresDoDia(s)){
+    const cf=custoFicha(nome),aberta=fichaAberta===nome;
+    sab+= cf==null
+      ?`<div class="row sem"><div class="cab">
+        <span class="qtd">${q}</span>
+        <span class="nm">${nome}<button class="btn-mini">criar ficha →</button></span>
+        <span class="stats"><span class="apoio"></span><span class="forte">sem ficha</span></span>
+        <span class="chev"></span></div></div>`
+      :`<div class="row" onclick="abreFicha('${nome}')"><div class="cab">
+        <span class="qtd">${q}</span>
+        <span class="nm">${nome}</span>
+        <span class="stats"><span class="apoio"><span class="rot">ficha</span>R$ ${fmt(cf)}</span>
+        <span class="forte"><span class="rot">custo</span>R$ ${fmt(q*cf)}</span></span>
+        <span class="chev">${aberta?'▲':'▼'}</span></div>${aberta?blocoFicha(nome):''}</div>`;
+  }
+  $('detalhe').classList.remove('oculto');
+  $('detalhe').innerHTML=`<h2>🍕 Pizzas<button class="i" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('oculto')">i</button><span class="pop oculto">custo da pizza = base do tamanho (massa, queijo, molho, caixa) + ficha de cada sabor · clique numa linha pra abrir e ajustar a ficha</span></h2>
+    <div class="camada g5"><div class="t">CAMADA 1 · O QUE VENDEU, POR TAMANHO</div>${base}</div>
+    <div class="camada g5"><div class="t">CAMADA 2 · SABORES DO DIA</div>${sab}</div>
+    <div class="tot"><span>CUSTO TOTAL DAS PIZZAS</span><span>R$ ${fmt(c.custo)}</span></div>
+    <div class="tot" style="border:0;margin-top:2px"><span>VENDEU</span><span>R$ ${fmt(c.vendeu)}</span></div>
+    <div class="tot" style="border:0;margin-top:2px;color:var(--verde)"><span>LUCRO DO SETOR</span><span>R$ ${fmt(c.vendeu-c.custo)}</span></div>`;
+  renderMesa(s);
+}
+
+/* S17 · mesa: custo inteiro do produto + abre o que foi dentro dele */
+function blocoDentro(c){
+  const basas=`<div class="lin2"><span>base ${c.nome}<span class="q">× ${c.q}</span></span><span>R$ ${fmt(c.q*custoFicha(c.nome))}</span></div>`;
+  const sabs=c.sabores.map(([s,q])=>{const cf=custoFicha(s);
+    return cf==null
+      ?`<div class="lin2 sf"><span>⚠ ${s}<span class="q">× ${q}</span><button class="btn-mini">criar ficha →</button></span><span>sem ficha</span></div>`
+      :`<div class="lin2"><span>${s}<span class="q">× ${q} · ficha R$ ${fmt(cf)}</span></span><span>R$ ${fmt(q*cf)}</span></div>`;}).join('');
+  return `<div class="dentro" onclick="event.stopPropagation()">${basas}${sabs}
+    <div class="fecho"><span>VENDEU</span><span>R$ ${fmt(c.vendeu)}</span></div>
+    <div class="fecho"><span>CUSTO</span><span>R$ ${fmt(c.custo)}</span></div>
+    <div class="fecho lucro"><span>LUCRO DO ITEM</span><span>R$ ${fmt(c.vendeu-c.custo)}</span></div>
+    <div style="margin-top:7px"><button class="btn-mini" style="margin:0" onclick="event.stopPropagation();verPedidos('${c.nome}')">ver pedidos →</button></div></div>`;
+}
+function renderMesa(s){
+  const linhas=s.produtos.map(contaProduto);
+  const med=a=>{const x=[...a].sort((p,q)=>p-q);return x.length?x[Math.floor((x.length-1)/2)]:0};
+  const unMed=med(linhas.map(l=>l.q)),mgMed=med(linhas.map(l=>l.m));
+  const badge=l=>l.q>=unMed?(l.m>=mgMed?'⭐':'🐴'):(l.m>=mgMed?'💎':'🐶');
+  $('mesa').classList.remove('oculto');
+  $('mesa').innerHTML=`<h2>Itens do setor<button class="i" onclick="this.nextElementSibling.classList.toggle('oculto')">i</button><span class="pop oculto">custo e margem aqui são INTEIROS: base + sabores que foram no item · clique no item pra abrir o que foi dentro dele · ⭐ vende muito e lucra bem · 🐴 vende muito, lucra pouco — cuidado em promoção · 💎 lucra muito, vende pouco — candidata a promoção · 🐶 nem um nem outro</span></h2>
+    <div class="camada g6"><div class="head"><span>UN</span><span>ITEM</span><span class="r">VENDEU</span><span class="r">CUSTO</span><span class="r">MARGEM</span><span></span></div>
+    ${linhas.map(l=>{const aberta=itemAberto===l.nome;
+      return `<div class="row" onclick="abreItem('${l.nome}')"><div class="cab">
+      <span class="qtd">${l.q}</span>
+      <span class="nm">${l.nome}${l.promo?'<span class="tagp">PROMO</span>':''}${l.semFicha.length?' <span style="color:var(--ambar-tinta);font-size:11px;font-weight:800">⚠</span>':''}</span>
+      <span class="stats"><span class="apoio" style="font-weight:700;color:var(--tinta)"><span class="rot">vendeu</span>R$ ${fmt(l.vendeu)}</span>
+      <span class="forte"><span class="rot">custo</span>R$ ${fmt(l.custo)}</span>
+      <span class="mg">${l.m.toFixed(1)}%</span></span>
+      <span class="badge">${badge(l)} <span class="chev">${aberta?'▲':'▼'}</span></span></div>
+      ${aberta?blocoDentro(l):''}</div>`;}).join('')}</div>`;
+}
+
+function renderPromo(dia){
+  const r=dia.regua['🍕 PIZZAS'];
+  if(!r||dia.parcial){$('promo').innerHTML='';$('promo').style.display='none';return;}
+  $('promo').style.display='';
+  const c=contaPizza(dia.setores['🍕 PIZZAS']);
+  const lucroDia=c.vendeu-c.custo,lucroReg=r.vendeu-r.custo,delta=lucroDia-lucroReg,valeu=delta>=0;
+  $('promo').innerHTML=`<h2>Veredito — 🍕 ${diaAtual}<button class="i" onclick="this.nextElementSibling.classList.toggle('oculto')">i</button><span class="pop oculto">comparado com a régua: a mediana dos 4 mesmos dias-da-semana anteriores, sem promoção · dia parcial não fecha veredito</span></h2>
+    <div class="v-grid">
+      <div class="v-cel">vendeu<b>${c.un} un <span style="font-size:12px;color:var(--tinta-3)">(régua ${r.un})</span></b></div>
+      <div class="v-cel">entrou<b>R$ ${fmt(c.vendeu)}</b></div>
+      <div class="v-cel">custou<b>R$ ${fmt(c.custo)}</b></div>
+      <div class="v-cel">lucro do dia<b>R$ ${fmt(lucroDia)}</b></div></div>
+    <div class="veredito ${valeu?'ok':'ruim'}">
+      ${valeu?'✓ A PROMOÇÃO VALEU':'✗ A PROMOÇÃO NÃO VALEU'} —
+      <b>R$ ${valeu?'+':''}${fmt(delta)}</b> de lucro vs um dia normal
+      <div style="font-size:12.5px;margin-top:5px">vender pouco e caro (dia normal) daria R$ ${fmt(lucroReg)} · ${valeu?'a promo deu':'a promo deu só'} R$ ${fmt(lucroDia)}</div></div>`;
+}
+
+function trocaDia(d){diaAtual=d;fichaAberta=null;itemAberto=null;buscaEm=null;render()}
+function abreSetor(n){setorAberto=n;fichaAberta=null;itemAberto=null;buscaEm=null;render()}
+function abreFicha(n){fichaAberta=fichaAberta===n?null:n;buscaEm=null;render()}
+function abreItem(n){itemAberto=itemAberto===n?null:n;render()}
+function estudaPromo(nome){itemAberto=nome;render();
+  requestAnimationFrame(()=>$('mesa').scrollIntoView({behavior:'smooth'}));}
+/* S19 · a prova: todo número desce até o pedido (amostra) */
+function verPedidos(nome){
+  const c=contaProduto(DIAS[diaAtual].setores['🍕 PIZZAS'].produtos.find(p=>p[0]===nome));
+  const ex=[['#4821','19:42'],['#4838','20:05'],['#4846','20:18'],['#4871','21:02']];
+  const linhas=[];let i=0;
+  for(const [s,q] of c.sabores){for(let k=0;k<Math.min(q,1);k++){
+    const [num,hora]=ex[i++%ex.length];
+    linhas.push(num+' · '+hora+' · 1× '+nome+' → '+s);}}
+  alert('PEDIDOS DE '+nome+' ('+diaAtual+') — amostra:\n\n'+linhas.join('\n')+
+    '\n… ('+c.q+' pedidos no total)\n\nNa tela real: a lista completa, do import do dia,\ncada sabor amarrado ao item do pedido como o PDV mandou.');
+}
+function abreGaps(n){
+  const c=contaSetor(DIAS[diaAtual].setores[n]);
+  alert('SEM FICHA em '+n+':\n\n'+c.semFicha.map(([nome,q])=>'⚠ '+nome+' × '+q+'  → criar/mapear').join('\n'));
+}
+render();
+</script>
+</body>
+</html>
