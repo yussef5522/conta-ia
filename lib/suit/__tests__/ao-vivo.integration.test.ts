@@ -1,7 +1,7 @@
 // VENDAS AO VIVO — as contas da lei (docs/vendas-ao-vivo-referencia.html v3) viram teste.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
-import { reguaDoRitmo, ritmo, minutosNoStatus, montarAoVivo, portaoDaContagem, quemFechou, seloDaGuarda, canalDe, minutoOperacional, type PedidoDaRegua } from '../ao-vivo'
+import { reguaDoRitmo, ritmo, minutosNoStatus, abertaHa, janelaDoEixo, horaOperacional, montarAoVivo, portaoDaContagem, quemFechou, seloDaGuarda, canalDe, minutoOperacional, type PedidoDaRegua } from '../ao-vivo'
 import { fecharDiaNaMao, FechandoAgoraError } from '../fechar-dia'
 import { tentarTravar, soltar } from '../trava-arquivo'
 import { gravarPedido } from '../sync'
@@ -110,7 +110,7 @@ describe('⛔ V8 · o DTO da tela NÃO TEM campo de cliente (nem pra ler)', () =
     const andar = (o: unknown) => { if (Array.isArray(o)) o.forEach(andar); else if (o && typeof o === 'object') for (const [k, v] of Object.entries(o)) { chaves.add(k); andar(v) } }
     andar(dto)
     expect([...chaves].sort()).toEqual([
-      'agora', 'alerta', 'atual', 'atualizado', 'canais', 'canal', 'cent', 'chave', 'conta', 'curva', 'dia', 'feed', 'fechado', 'hoje', 'hojeCent', 'hora', 'id', 'itens', 'linhaDoTempo', 'minutos', 'naCozinha', 'nome', 'num', 'pagamento', 'pedidos', 'prontos', 'q', 'regua', 'reguaCent', 'ritmoPct', 'rotulo', 'sabores', 'selo', 'semana', 'semanas', 'status', 'taxaDia', 'ticketCent', 'tipicoCent', 'tipicoDiaCent', 'tipo', 'totalCent', 'valorCent', 'vendidoCent',
+      'agora', 'alerta', 'atual', 'atualizado', 'canais', 'canal', 'cent', 'chave', 'conta', 'curva', 'dia', 'feed', 'fechado', 'hoje', 'hojeCent', 'hora', 'id', 'itens', 'linhaDoTempo', 'minutos', 'aberta', 'naCozinha', 'nome', 'num', 'pagamento', 'pedidos', 'prontos', 'q', 'regua', 'reguaCent', 'ritmoPct', 'rotulo', 'sabores', 'selo', 'semana', 'semanas', 'status', 'taxaDia', 'ticketCent', 'tipicoCent', 'tipicoDiaCent', 'tipo', 'totalCent', 'valorCent', 'vendidoCent',
     ].sort())
   })
 })
@@ -183,5 +183,59 @@ describe('⛔ o PORTÃO da contagem', () => {
   it('venda só ABANDONADA não tranca', async () => {
     await gravarPedido(prisma, companyId, cru(1, antes(20), 'abandoned'), AGORA)
     expect((await portaoDaContagem(prisma, companyId, AGORA)).liberada).toBe(true)
+  })
+})
+
+// ─── emendas do dono (11/11) ─────────────────────────────────────────────────────────────
+describe('E2 · o eixo da curva é o DIA INTEIRO desde a primeira hora', () => {
+  it('pura: união das horas, contínua da primeira à última; sem dado nenhum → só a hora atual', () => {
+    expect(janelaDoEixo([8, 9, 10, 11, 5, 22, 14], 11)).toEqual({ ini: 5, fim: 22 })
+    expect(janelaDoEixo([], 11)).toEqual({ ini: 11, fim: 11 })
+  })
+  it('caso real de 11/11 14:57: hoje só 3h de venda, mas o eixo vai das 08h à 01h do esqueleto dos 7 dias', async () => {
+    const emHoraOp = (dia: string, h: number, min = 10) => new Date(Date.parse(`${dia}T00:00:00Z`) + ((h + 6) * 60 + min) * 60_000)
+    const d7 = somarDias(D, -7)
+    await gravarPedido(prisma, companyId, cru(50, emHoraOp(d7, 5), 'delivered'), AGORA) // 08h de Brasília
+    await gravarPedido(prisma, companyId, cru(51, emHoraOp(d7, 22), 'delivered'), AGORA) // 01h da madrugada
+    await gravarPedido(prisma, companyId, cru(52, emHoraOp(somarDias(D, -3), 12), 'abandoned'), AGORA) // abandonado não estica o eixo
+    const hojeH: number[] = []
+    for (const [k, min] of [10, 70, 130].entries()) {
+      const t = antes(min)
+      if (diaOperacional(iso(t)) !== D) continue
+      await gravarPedido(prisma, companyId, cru(60 + k, t, 'delivered'), AGORA)
+      hojeH.push(horaOperacional(t))
+    }
+    const d = await montarAoVivo(prisma, companyId, AGORA, { atualizado: null, guarda: new Map() })
+    const ini = Math.min(5, ...hojeH), fim = Math.max(22, ...hojeH)
+    const rot = (h: number) => `${String((h + 3) % 24).padStart(2, '0')}h`
+    expect(d.curva.map((c) => c.hora)).toEqual(Array.from({ length: fim - ini + 1 }, (_, k) => rot(ini + k)))
+    const hAtual = horaOperacional(AGORA)
+    for (const [k, c] of d.curva.entries()) {
+      const h = ini + k
+      if (h > hAtual) expect(c.hojeCent, c.hora).toBeNull() // o futuro fica vazio, nunca zero
+      else expect(c.hojeCent, c.hora).not.toBeNull()
+    }
+    expect(d.curva.filter((c) => c.atual).length).toBe(hAtual >= ini && hAtual <= fim ? 1 : 0)
+    expect(d.agora).toMatch(/^\d{2}:\d{2}$/) // o traço "agora" mostra HH:MM completo
+  })
+})
+
+describe('E3 · salão (mesa/comanda) não tem cronômetro de alarme', () => {
+  it('pura: "aberta há" só no salão ativo', () => {
+    const t0 = em('2026-11-11T15:00:00Z')
+    expect(abertaHa('accepted', 'salon', t0, em('2026-11-11T16:15:00Z'))).toBe('aberta há 1h15')
+    expect(abertaHa('ready', 'salon', t0, em('2026-11-11T15:40:00Z'))).toBe('aberta há 40min')
+    expect(abertaHa('delivered', 'salon', t0, em('2026-11-11T16:15:00Z'))).toBeNull()
+    expect(abertaHa('accepted', 'delivery', t0, em('2026-11-11T16:15:00Z'))).toBeNull()
+    expect(abertaHa('accepted', 'number', t0, em('2026-11-11T16:15:00Z'))).toBeNull() // totem segue com cronômetro
+  })
+  it('no feed: mesa aberta há 75min = sem minutos e "aberta há 1h15"; tele segue com cronômetro', async () => {
+    await gravarPedido(prisma, companyId, cru(70, antes(75), 'accepted', { order_type: 'salon', source: 'self_checkout' }), AGORA)
+    await gravarPedido(prisma, companyId, cru(71, antes(30), 'accepted'), AGORA)
+    const d = await montarAoVivo(prisma, companyId, AGORA, { atualizado: null, guarda: new Map() })
+    const mesa = d.feed.find((p) => p.id === 70), tele = d.feed.find((p) => p.id === 71)
+    if (diaOperacional(iso(antes(75))) === D) expect(mesa).toMatchObject({ minutos: null, aberta: 'aberta há 1h15' })
+    else expect(mesa).toBeUndefined() // a virada das 03:00 caiu no meio: a mesa é do dia anterior
+    expect(tele).toMatchObject({ minutos: 30, aberta: null })
   })
 })

@@ -11,6 +11,7 @@
 //    - motivo do cancelamento: texto livre, fora da allowlist (LGPD) — o cancelado aparece riscado,
 //      com a hora do cancelamento, sem motivo.
 
+import { formatarDuracao } from '@/lib/format/duracao'
 import type { PrismaClient } from '@prisma/client'
 import { somarDias } from './regua-sombra'
 import { diaOperacional } from './espelho'
@@ -57,6 +58,21 @@ export function minutosNoStatus(status: string, linhaDoTempo: { hora: Date }[], 
   if (!(STATUS_ATIVOS as readonly string[]).includes(status) || linhaDoTempo.length === 0) return null
   const ultimo = linhaDoTempo[linhaDoTempo.length - 1].hora
   return Math.max(0, Math.floor((agora.getTime() - ultimo.getTime()) / 60_000))
+}
+
+/** E3 (11/11) · salão (mesa/comanda) não tem cronômetro de alarme: "aberta há 1h15", neutro. Só ativo. */
+export function abertaHa(status: string, orderType: string | null, criado: Date, agora: Date): string | null {
+  if (orderType !== 'salon' || !(STATUS_ATIVOS as readonly string[]).includes(status)) return null
+  const m = Math.max(0, Math.floor((agora.getTime() - criado.getTime()) / 60_000))
+  return `aberta há ${formatarDuracao(m)}`
+}
+
+/** E2 (11/11) · o eixo da curva é o DIA INTEIRO: da primeira à última hora operacional da UNIÃO
+ *  (horas com venda nos últimos 7 dias + horas da régua + horas de hoje). Só dado real; vazio → só a hora atual. */
+export function janelaDoEixo(horas: Iterable<number>, hAtual: number): { ini: number; fim: number } {
+  const hs = [...horas].filter((h) => h >= 0 && h < 24)
+  if (!hs.length) return { ini: hAtual, fim: hAtual }
+  return { ini: Math.min(...hs), fim: Math.max(...hs) }
 }
 
 /** mediana (pares → média dos dois do meio) */
@@ -113,7 +129,7 @@ export function seloDaGuarda(linha: string | undefined): 'conferido' | 'divergiu
 
 export interface ItemDTO { q: number; nome: string; cent: number; sabores: string[] }
 export interface PedidoDTO {
-  id: number; num: string; hora: string; canal: string; status: string; rotulo: string; minutos: number | null
+  id: number; num: string; hora: string; canal: string; status: string; rotulo: string; minutos: number | null; aberta: string | null
   conta: boolean; itens: ItemDTO[]; valorCent: number; linhaDoTempo: { rotulo: string; hora: string }[]
   pagamento: { tipo: string; valorCent: number }[]
 }
@@ -161,15 +177,20 @@ export async function montarAoVivo(db: PrismaClient, companyId: string, agora: D
   const r = reguaDoRitmo(anteriores, corte)
   const rt = ritmo(vendidoCent, r.tipicoCent)
 
-  // curva: hoje por hora operacional (até a hora atual) + a linha da régua quando existe
+  // curva (E2): o eixo é o DIA INTEIRO — união das horas com venda (7 dias) + régua + hoje
   const hAtual = horaOperacional(agora)
   const porHora = new Array(24).fill(0)
   for (const p of contam) porHora[horaOperacional(p.criadoApiEm)] += valor(p)
-  const primeira = contam.length ? Math.min(...contam.map((p) => horaOperacional(p.criadoApiEm))) : hAtual
-  const ultimaComRegua = r.porHoraCent ? Math.max(...r.porHoraCent.map((v, h) => (v > 0 ? h : 0))) : 0
+  const ultimos7 = await db.suitPedido.findMany({
+    where: { companyId, dia: { in: Array.from({ length: 7 }, (_, k) => somarDias(dia, -(k + 1))) }, sumidoEm: null, status: { notIn: ['abandoned', 'cancelled'] } },
+    select: { criadoApiEm: true },
+  })
+  const horasDoEixo = new Set<number>(ultimos7.map((p) => horaOperacional(p.criadoApiEm)))
+  r.porHoraCent?.forEach((v, h) => { if (v > 0) horasDoEixo.add(h) })
+  for (const p of comVenda) horasDoEixo.add(horaOperacional(p.criadoApiEm))
+  const eixo = janelaDoEixo(horasDoEixo, hAtual)
   const curva: AoVivoDTO['curva'] = []
-  for (let h = Math.min(primeira, r.porHoraCent ? r.porHoraCent.findIndex((v) => v > 0) : primeira); h <= Math.max(hAtual, ultimaComRegua); h++) {
-    if (h < 0) continue
+  for (let h = eixo.ini; h <= eixo.fim; h++) {
     curva.push({ hora: `${String((h + 3) % 24).padStart(2, '0')}h`, hojeCent: fechado || h <= hAtual ? porHora[h] : null, reguaCent: r.porHoraCent ? r.porHoraCent[h] : null, atual: h === hAtual && !fechado })
   }
 
@@ -196,7 +217,9 @@ export async function montarAoVivo(db: PrismaClient, companyId: string, agora: D
       canal: canalDe(p.source, p.orderType).chave,
       status: p.sumidoEm ? 'apagado' : p.status,
       rotulo: p.sumidoEm ? 'APAGADO' : ROTULO_STATUS[p.status] ?? p.status.toUpperCase(),
-      minutos: p.sumidoEm ? null : minutosNoStatus(p.status, linha, agora),
+      // E3: salão (mesa/comanda) não tem cronômetro de alarme — tom neutro "aberta há"
+      minutos: p.sumidoEm || p.orderType === 'salon' ? null : minutosNoStatus(p.status, linha, agora),
+      aberta: p.sumidoEm ? null : abertaHa(p.status, p.orderType, p.criadoApiEm, agora),
       conta: contaNoVendido({ status: p.status, sumido: !!p.sumidoEm }) && p.status !== 'cancelled',
       itens: itensVivos.map((i) => ({ q: i.quantidade, nome: i.nome, cent: i.precoCent, sabores: [...i.opcoes].sort((a, b) => a.ordem - b.ordem).map((o) => o.nome) })),
       valorCent: p.status === 'cancelled' ? p.itens.reduce((t, i) => t + i.precoCent, 0) : valor(p),

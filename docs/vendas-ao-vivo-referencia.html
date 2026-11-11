@@ -93,6 +93,24 @@
       às 03:10: pedido que mudar ou sumir de madrugada vira aviso
       nominal, nunca silêncio. O carimbo diz quem fechou (dono às
       HH:MM · automático 03:10). Explicação só atrás do ⓘ (S15).
+
+  ── EMENDAS APROVADAS PELO DONO (11/11/2026, vistas na tela em prod) ──
+  E1· LARGURA (V0): o max-width:1060px deste arquivo é da PÁGINA SOLTA
+      do mock. Dentro do app a tela PREENCHE a área útil de conteúdo
+      (o respiro lateral é o do shell, igual às telas de dados da casa);
+      KPIs em auto-fit ganham colunas; curva e feed esticam. Celular
+      (S18) inalterado.
+  E2· EIXO DA CURVA = DIA INTEIRO, SEMPRE (V2): o eixo é o esqueleto
+      fixo do dia de operação desde a primeira hora — janela = UNIÃO
+      das horas com venda nos últimos 7 dias no espelho + as horas da
+      régua (quando existe) + as horas de hoje (dado real, nada
+      inventado, S19), contínua da primeira à última. Hora ainda sem
+      venda fica vazia; o traço "agora" caminha e o rótulo dele mostra
+      HH:MM completo (nunca cortado na borda).
+  E3· CRONÔMETRO SÓ ONDE MINUTO PARADO É PROBLEMA (V3): pedido de
+      SALÃO (mesa/comanda, order_type salon) aberto há 75min é almoço,
+      não atraso — status SEM minutos; em tom neutro "aberta há 1h15".
+      Tele, retirada, apps e totem seguem com o cronômetro.
 -->
 <style>
 :root{

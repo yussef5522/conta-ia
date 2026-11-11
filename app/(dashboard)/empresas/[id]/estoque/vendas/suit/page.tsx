@@ -191,7 +191,7 @@ function Linha({ p, canal, aberto, novo, onClick }: { p: PedidoDTO; canal: strin
     <div className={`row ${riscado ? 'cancelado' : ''} ${novo ? 'novo' : ''}`} onClick={onClick}>
       <div className="cab">
         <span className="num">{p.num}<span className="cbadge">{canal}</span></span>
-        <span className="sH"><span className="hora"><span className="rot">hora</span>{p.hora}</span></span>
+        <span className="sH"><span className="hora"><span className="rot">hora</span>{p.hora}{p.aberta && <span className="aberta" data-testid="aberta"> · {p.aberta}</span>}</span></span>
         <span className="itens">{prim ? `${prim.q}× ${prim.nome}` : '—'}{p.itens.length > 1 && <span className="mais"> +{p.itens.length - 1}</span>}</span>
         <span className={`st ${cls}`}>{p.rotulo}{p.minutos != null ? ` · ${p.minutos}min` : ''}</span>
         <span className="sV"><span className="val"><span className="rot">valor</span>{brl(p.valorCent)}</span></span>
@@ -243,8 +243,8 @@ function Curva({ d }: { d: AoVivoDTO }) {
       })}
       {temRegua && <polyline points={pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')} fill="none" stroke="var(--prod-muted)" strokeWidth="2" strokeLinejoin="round" opacity=".85" />}
       {temRegua && pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="2.6" fill="var(--prod-muted)" />)}
-      {iAg >= 0 && (() => { const x = iAg * bw + bw * (minutoAgora / 60); return (
-        <g><line x1={x} y1="4" x2={x} y2={base} stroke="var(--prod-coral)" strokeWidth="1.5" strokeDasharray="4 4" /><text x={x} y={base + 38} fontSize="10" fontWeight="800" fill="var(--fam-coral-ink)" textAnchor="middle">agora {d.agora}</text></g>
+      {iAg >= 0 && (() => { const x = iAg * bw + bw * (minutoAgora / 60); const ancora = x > W - 60 ? 'end' : x < 60 ? 'start' : 'middle'; return (
+        <g><line x1={x} y1="4" x2={x} y2={base} stroke="var(--prod-coral)" strokeWidth="1.5" strokeDasharray="4 4" /><text x={x} y={base + 38} fontSize="10" fontWeight="800" fill="var(--fam-coral-ink)" textAnchor={ancora} data-testid="rotulo-agora">agora {d.agora}</text></g>
       ) })()}
     </svg>
   )
@@ -259,7 +259,7 @@ const CSS = `
   --coral:var(--prod-coral);--coral-50:var(--prod-coral-bg);--coral-tinta:var(--fam-coral-ink);
   --ambar:var(--prod-ambar);--ambar-50:var(--prod-ambar-bg);--ambar-tinta:var(--fam-ambar-ink);
   --r-painel:var(--prod-r-painel);--r-cartao:var(--prod-r-cartao);--r-pilula:999px;--sombra:var(--prod-sombra);
-  background:var(--prod-bg);color:var(--tinta);padding:14px 16px 60px;max-width:1060px;margin:0 auto}
+  background:var(--prod-bg);color:var(--tinta);padding:0 0 60px} /* E1 (11/11): preenche a área útil do app; o respiro lateral é o do shell */
 .vv h1{font-size:21px;margin:4px 0 2px;letter-spacing:-.02em;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .vv .topo{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .vv .central{font-size:11.5px;color:var(--tinta-3);text-decoration:none}
@@ -295,6 +295,7 @@ const CSS = `
 .vv .cab{display:grid;gap:10px;align-items:center;padding:9px 0;grid-template-columns:150px 50px 1fr 128px 96px 18px;transition:background .12s}
 .vv .num{font-weight:800;font-size:13px;font-variant-numeric:tabular-nums}
 .vv .hora{font-size:12px;color:var(--tinta-3);font-variant-numeric:tabular-nums}
+.vv .aberta{font-weight:600;color:var(--tinta-3)} /* E3: neutro, nunca pílula */
 .vv .itens{font-size:13px;font-weight:600;line-height:1.3}
 .vv .itens .mais{color:var(--tinta-3);font-weight:600;font-size:12px}
 .vv .st{justify-self:end;font-size:10.5px;font-weight:800;border-radius:var(--r-pilula);padding:3px 10px;letter-spacing:.02em}
@@ -327,7 +328,7 @@ const CSS = `
 .vv .pop{display:block;font-size:11.5px;color:var(--tinta-2);background:var(--card-2);border:1px solid var(--linha);border-radius:var(--r-cartao);padding:8px 11px;margin:6px 0 2px;line-height:1.6;font-weight:400}
 .vv .rot{display:none}
 @media(max-width:640px){
-  .vv{padding:10px 12px 50px}
+  .vv{padding:0 0 50px}
   .vv .head{display:none}
   .vv .cab{grid-template-columns:auto 1fr auto;gap:5px 10px;grid-template-areas:"num itens ch" "h stp v"}
   .vv .num{grid-area:num}.vv .itens{grid-area:itens}.vv .chev{grid-area:ch}
