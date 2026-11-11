@@ -109,10 +109,11 @@ export type ResultadoMaterializacao =
  * Entrega o dia D à esteira. Quem chama já sincronizou D por COMPLETO (detalhe de todos).
  * `reentregar` = o dono mandou ATUALIZAR o dia por causa de um evento (apagado/alterado).
  */
-export async function materializarDia(db: PrismaClient, companyId: string, dia: string, agora: Date, opts: { reentregar?: boolean; substituirXls?: boolean } = {}): Promise<ResultadoMaterializacao> {
+export async function materializarDia(db: PrismaClient, companyId: string, dia: string, agora: Date, opts: { reentregar?: boolean; substituirXls?: boolean; fechadoNaMao?: boolean } = {}): Promise<ResultadoMaterializacao> {
   exigirFusoDaCasa()
   if (dia < CORTE_API) throw new DiaForaDoCorteError(dia)
-  exigirDiaFechado(dia, agora)
+  // V11 · o dono fechou o caixa: o dia ABERTO entra na hora (quem chama garante que é o dia corrente)
+  if (!opts.fechadoNaMao) exigirDiaFechado(dia, agora)
   const ja = await db.suitDiaMaterializado.findUnique({ where: { companyId_dia: { companyId, dia } } })
   if (ja && !opts.reentregar) return { status: 'JA_FEITO' }
   if (ja && ja.status === 'XLS_POR_CIMA') throw new DiaJaTemImportError(dia)

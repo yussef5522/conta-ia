@@ -43,6 +43,17 @@ describe('⛔ a trava GET-only da SuitAPI é ESTRUTURAL (a porta única explode 
     expect(vistos.filter((v) => v.startsWith('POST')).length).toBe(1)
   })
 
+  it('lista que vem incompleta 1× (pedido novo no meio da paginação) é refeita e fecha', async () => {
+    let chamadas = 0
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === SUIT_URL_TOKEN) return resp(200, { access_token: 't' })
+      chamadas++
+      return chamadas === 1 ? resp(200, { count: 2, results: [{ id: 1 }] }) : chamadas === 2 ? resp(200, { count: 2, results: [] }) : resp(200, { count: 2, results: [{ id: 1 }, { id: 2 }] })
+    })
+    const c = criarClienteSuitLeitura('x', { fetchImpl, dormir: async () => {}, espacoMs: 0, credencial: { id: 'a', secret: 'b' } })
+    expect((await c.listar('a', 'b')).map((p) => p.id)).toEqual([1, 2])
+  })
+
   it('lista incompleta é ERRO, nunca parcial', async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if (url === SUIT_URL_TOKEN) return resp(200, { access_token: 't' })

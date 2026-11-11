@@ -34,7 +34,7 @@ export function FaixaDaSuit({ id }: { id: string }) {
       {e.ultimaLeitura && <span className="tabular-nums text-slate-500">última leitura {new Date(e.ultimaLeitura).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}</span>}
       {ult && <span className="tabular-nums">{fmtDia(ult.dia)}: {ROTULO[ult.status] ?? ult.status} · {brl(ult.totalCent)} · {ult.unidades} un</span>}
       <Link href={`/empresas/${id}/estoque/vendas/suit`} className={`ml-auto inline-flex h-7 items-center rounded-md px-2.5 font-medium ${pend ? 'bg-amber-500 text-white hover:bg-amber-600' : 'border border-emerald-300 hover:bg-emerald-100'}`}>
-        {pend ? `Decidir ${pend} pedido${pend > 1 ? 's' : ''} que mudou na Suit` : 'Ver dias da Suit'}
+        {pend ? `Decidir ${pend} pedido${pend > 1 ? 's' : ''} que mudou na Suit` : 'Vendas ao vivo'}
       </Link>
     </div>
   )

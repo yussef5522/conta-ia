@@ -113,6 +113,11 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
   const [decisoes, setDecisoes] = useState<Record<string, { decisao: string; motivo: string | null; decididoPorNome: string | null }>>({})
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/contagem`).then((r) => r.json()).then((j) => setQ(j.quadro ?? null)).catch(() => setQ(null))
+  // V11 · o PORTÃO (vendas ao vivo): dia com venda ainda aberto → "feche o dia antes de contar"
+  const [portao, setPortao] = useState<{ liberada: boolean; dia: string | null } | null>(null)
+  useEffect(() => {
+    fetch(`/api/empresas/${id}/estoque/contagem/portao`).then((r) => (r.ok ? r.json() : null)).then((j) => setPortao(j)).catch(() => setPortao(null))
+  }, [id])
   useEffect(() => { carregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // o histórico só é buscado quando o dono abre a revisão — a contagem não precisa dele
@@ -165,6 +170,8 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
        * PERGUNTA ESPECÍFICA (20/09) — ele vem com o número provável, e a tela oferece
        * *"usar 166"* em 1 toque em vez de só perguntar se é isso mesmo.
        */
+      // V11 · o servidor também tranca: o dia abriu de novo (venda nova) → o portão volta pra tela
+      if (r.status === 409 && j.code === 'DIA_ABERTO') { setPortao({ liberada: false, dia: j.dia ?? null }); return }
       if (r.status === 409 && (j.code === 'FREIO' || j.code === 'FREIO_ESCALA')) {
         setFreio({ itemId, qtd, msg: j.erro, opts, sugestao: j.grandeza ?? null })
         return
@@ -235,7 +242,17 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
   if (q === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--prod-muted)' }} /></div>
   if (!q) return <div className="p-6 text-sm" style={{ color: 'var(--prod-muted)' }}>Não consegui carregar a contagem.</div>
 
+  const portaoFechado = !!portao && !portao.liberada
+  const avisoFecheODia = (
+    <div data-testid="feche-o-dia" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--prod-r-cartao)] border px-4 py-3 text-sm font-semibold"
+      style={{ borderColor: 'var(--prod-ambar)', background: 'var(--prod-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
+      <span>Feche o dia antes de contar.</span>
+      <a href={`/empresas/${id}/estoque/vendas/suit`} className="rounded-full px-4 py-2 text-xs font-extrabold" style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>Fechar o dia</a>
+    </div>
+  )
+
   // ── sem sessão aberta ──
+  if (!q.contagem && portaoFechado) return <div className="mx-auto max-w-3xl p-4">{avisoFecheODia}</div>
   if (!q.contagem) {
     const primeira = q.linhas.every((l) => l.ultimaContagemEm == null)
     return (
@@ -334,7 +351,7 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
       )}
 
       {modo === 'contar' ? (
-        atual ? (
+        portaoFechado ? avisoFecheODia : atual ? (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
             <Card><CardContent className="py-6">
               <CartaoContar

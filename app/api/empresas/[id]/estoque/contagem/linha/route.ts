@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db'
 import { requireStock } from '@/lib/stock/require-stock'
 import { contarLinha, ContagemError } from '@/lib/stock/contagem'
 import { respostaDeErroDoEstoque } from '@/lib/stock/erro-da-tela'
+import { portaoDaContagem } from '@/lib/suit/ao-vivo'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -36,6 +37,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!auth.ok) return auth.res
   const parsed = schema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: 'Informe a contagem, o item e a quantidade contada.' }, { status: 400 })
+  // ⛔ V11 · o PORTÃO: dia com venda ainda aberto → não conta (fecha o dia antes de contar)
+  const portao = await portaoDaContagem(prisma, companyId, new Date())
+  if (!portao.liberada) return NextResponse.json({ erro: 'Feche o dia antes de contar.', code: 'DIA_ABERTO', dia: portao.dia }, { status: 409 })
   try {
     const r = await contarLinha({ companyId, ...parsed.data, userId: auth.userId, userName: auth.userName }, prisma)
     return NextResponse.json(r)

@@ -108,13 +108,14 @@ export type ResultadoComplementos =
  * Entrega os complementos do dia D à esteira (o funil único). Quem chama já espelhou D por
  * COMPLETO. ⛔ Dia com XLS de complementos não é tocado (o passado do estoque não se mexe).
  */
-export async function materializarComplementosDia(db: PrismaClient, companyId: string, dia: string, agora: Date): Promise<ResultadoComplementos> {
+export async function materializarComplementosDia(db: PrismaClient, companyId: string, dia: string, agora: Date, opts: { fechadoNaMao?: boolean; reentregar?: boolean } = {}): Promise<ResultadoComplementos> {
   exigirFusoDaCasa()
   if (dia < CORTE_COMPLEMENTOS) throw new ComplementosForaDoCorteError(dia)
-  exigirDiaFechado(dia, agora)
+  if (!opts.fechadoNaMao) exigirDiaFechado(dia, agora)
   const g = await complementosGravados(db, companyId, dia)
-  if (g.daApi) return { status: 'JA_FEITO' }
-  if (g.linhas.length > 0 || g.temArquivo) throw new ComplementosJaTemXlsError(dia)
+  if (g.daApi && !opts.reentregar) return { status: 'JA_FEITO' }
+  if (!g.daApi && opts.reentregar) return { status: 'JA_FEITO' } // dia de XLS: nunca reprocessa
+  if (!g.daApi && (g.linhas.length > 0 || g.temArquivo)) throw new ComplementosJaTemXlsError(dia)
   const r = linhasDeComplementoDaRegua(await lerDoEspelho(db, companyId, dia))
   const rec = await confirmarLinhasDeComplemento(companyId, dia, r.linhas, undefined, db, 'DIA', nomeArquivoComplementosApi(dia))
   return { status: 'MATERIALIZADO', linhas: r.linhas.length, ocorrencias: r.ocorrencias, totalCent: r.totalCent, baixou: !!rec.baixa, avisoBaixa: rec.avisoBaixa, baixaFalhou: rec.baixaFalhou }

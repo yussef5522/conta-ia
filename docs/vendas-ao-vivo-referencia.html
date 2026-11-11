@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vendas ao Vivo — referência v3 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════════
+  VENDAS AO VIVO — ARQUIVO DE REFERÊNCIA v3 — APROVADA PELO DONO
+  (11/11/2026 01:51). Este arquivo é LEI: tokens, leis V0–V11 e
+  especificação valem 1:1 pra tela real.
+  v2 = v1 + botão FECHAR O DIA (lei V11) + selo da semana agora é da
+  guarda diária (a prova-sombra aposentou junto com o XLS).
+  v3 = revisão contra os líderes (Toast hoje-vs-típico · Square visão
+  de pedidos em tempo real · KDS): dinheiro vira HERÓI; a régua na
+  curva vira LINHA (barras = hoje) com grade de R$, marca de "agora"
+  e hora atual declarada parcial; status ativo mostra MINUTOS
+  decorridos; canais ganham R$ (V4 estava violada no desenho);
+  contagem preparo/rua passa a ser CALCULADA da amostra (estava
+  escrita à mão e errada); horários da amostra corrigidos (nada
+  acontece depois de "agora"); hover no feed; data no título;
+  linha do celular REFEITA (v1 empilhava hora/status/valor um em
+  cima do outro — agora é "hora · status · valor" numa linha, S18).
+  Tokens 1:1 com a cara do sistema · comentários = leis V0–V11 ·
+  <script> = especificação. Herda S15–S20 da lei "Lucro por Setor v8"
+  (tela limpa · linha é coluna · sem traço · celular não esconde
+  dinheiro · unidade nunca mistura com total). Vive em
+  docs/vendas-ao-vivo-referencia.html quando aprovada.
+═══════════════════════════════════════════════════════════════════════
+
+  V0 · FONTE ÚNICA: as tabelas do sincronizador SuitAPI (pedido → itens
+      → sabores → pagamentos), gravadas pelo laço real. Nunca XLS,
+      nunca summary. Uma fábrica (princípio S0).
+
+  V1 · AO VIVO DE VERDADE, HONESTO: o sincronizador lê a API a cada
+      1–2 min; a tela mostra "atualizado HH:MM" ao lado do título.
+      HOJE é parcial por definição e NUNCA entra em régua de ninguém.
+      Na curva, a HORA ATUAL aparece mais clara e com a marca de
+      "agora" — hora pela metade nunca se veste de hora inteira.
+
+  V2 · RITMO É COMPARAÇÃO JUSTA: hoje-até-agora SEMPRE contra a
+      mediana dos mesmos dias-da-semana NO MESMO CORTE DE HORÁRIO
+      (sábado 21h × sábados típicos ATÉ 21h). Dia corrido contra dia
+      inteiro é mentira de régua — proibido.
+
+  V3 · O FEED É PEDIDO POR PEDIDO: nº, hora, canal, itens com sabores,
+      valor, status com linha do tempo real (aceito → preparo → saiu →
+      entregue, da API). Pedido CANCELADO aparece riscado com o
+      motivo — nunca some da lista (número que some é número que
+      mente). Pedido novo pulsa 1 vez e pronto. Status ATIVO mostra
+      os MINUTOS decorridos ("PREPARO · 9min") — pedido parado é
+      problema de cozinha, e a tela aponta antes do cliente ligar
+      (padrão Square/KDS).
+
+  V4 · CANAL vem da origem da API (salão · tele · iFood · Aiqfome…),
+      cada um com R$ e pedidos. Canal é filtro de 1 toque no feed.
+
+  V5 · O DETALHE DO PEDIDO mostra o dinheiro inteiro: forma de
+      pagamento, TAXA da maquininha e LÍQUIDO (fee/net da API) —
+      além dos itens com sabores e da linha do tempo.
+
+  V6 · A SEMANA: 7 dias, cada um contra a própria régua, com o selo
+      "✓ conferido" da GUARDA DIÁRIA (Suitable × CAIXAOS bateu ao
+      centavo, produto e sabor). O selo é permanente: todo dia
+      fechado exibe sua conferência.
+
+  V7 · ALERTA DE RITMO: abaixo da régua além do limiar (padrão 15%,
+      ajustável), um aviso âmbar/coral com a conta declarada — nunca
+      um susto sem número. Mesmo juiz pode mandar o push/e-mail
+      (infra dos alarmes existentes).
+
+  V8 · CLIENTE É SAGRADO: nome/telefone/endereço NUNCA aparecem nesta
+      tela (nem mascarados). Pedido se identifica por nº + hora +
+      canal. LGPD e regra da casa.
+
+  V9 · Herda S15–S20 integralmente (ⓘ no lugar de prosa; grades
+      alinhadas; mesa sem traço; celular nunca esconde dinheiro;
+      unidade nunca ao lado de total).
+
+  V10· TRANSPARÊNCIA DOS STATUS RAROS: pedido transferred/abandoned
+      aparece com seu status real e fora dos totais conforme a régua
+      provada — com ⓘ explicando a regra. Nada é escondido "pra
+      ficar bonito".
+
+  V11· FECHAR O DIA É UM GESTO (pedido do dono, 11/11): fechou o
+      caixa na Suitable → botão "Fechar o dia" aqui. O sistema
+      materializa o dia NA HORA (produtos E sabores, pela mesma
+      esteira das 03:10), dá as baixas de ficha, carimba
+      "✓ dia fechado às HH:MM" e LIBERA A CONTAGEM DIÁRIA (a tela
+      de contagem só aceita digitação com o dia fechado — dia
+      aberto mostra "feche o dia antes de contar"). Sem clique,
+      fecha sozinho às 03:10, como hoje. A guarda SEMPRE re-confere
+      às 03:10: pedido que mudar ou sumir de madrugada vira aviso
+      nominal, nunca silêncio. O carimbo diz quem fechou (dono às
+      HH:MM · automático 03:10). Explicação só atrás do ⓘ (S15).
+-->
+<style>
+:root{
+  --bg:#F3F5FA; --card:#FFFFFF; --card-2:#F6F7FC;
+  --linha:#E3E7F2; --linha-forte:#C9D0E3;
+  --tinta:#0A0F1E; --tinta-2:#46516B; --tinta-3:#8B94AD;
+  --acao:#4F46E5; --acao-quente:#6D28D9; --acao-50:#EEF0FE; --acao-tinta:#3730A3;
+  --verde:#0E9F6E; --verde-chao:#07654A; --verde-50:#E4F7EF; --verde-tinta:#065F46;
+  --coral:#E2544A; --coral-chao:#9F2D25; --coral-50:#FDECEA; --coral-tinta:#8C251E;
+  --ambar:#D97706; --ambar-50:#FCF0DC; --ambar-tinta:#7C4A03;
+  --r-painel:16px; --r-cartao:12px; --r-pilula:999px;
+  --sombra:0 1px 2px rgba(10,15,30,.06),0 2px 6px rgba(10,15,30,.05);
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+:root:not([data-theme="light"]){ color-scheme:light dark; }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0B0E1C; --card:#141829; --card-2:#1A1F33;
+  --linha:#242A41; --linha-forte:#333B58;
+  --tinta:#EDF0FB; --tinta-2:#9AA3C0; --tinta-3:#5E6683;
+  --acao:#818CF8; --acao-50:#23264F; --acao-tinta:#C7CBFF;
+  --verde:#34D399; --verde-50:#0C2E24; --verde-tinta:#8CEAC8;
+  --coral:#F87168; --coral-50:#3A1917; --coral-tinta:#FFB4AE;
+  --ambar:#F59E0B; --ambar-50:#352508; --ambar-tinta:#FCD38D;
+  --sombra:none;
+}}
+:root[data-theme="dark"]{
+  --bg:#0B0E1C; --card:#141829; --card-2:#1A1F33;
+  --linha:#242A41; --linha-forte:#333B58;
+  --tinta:#EDF0FB; --tinta-2:#9AA3C0; --tinta-3:#5E6683;
+  --acao:#818CF8; --acao-50:#23264F; --acao-tinta:#C7CBFF;
+  --verde:#34D399; --verde-50:#0C2E24; --verde-tinta:#8CEAC8;
+  --coral:#F87168; --coral-50:#3A1917; --coral-tinta:#FFB4AE;
+  --ambar:#F59E0B; --ambar-50:#352508; --ambar-tinta:#FCD38D;
+  --sombra:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tinta);font-family:var(--font)}
+body{padding:14px 16px 60px;max-width:1060px;margin:0 auto}
+h1{font-size:21px;margin:4px 0 2px;letter-spacing:-.02em;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.topo{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.fechar{font-size:12.5px;font-weight:800;letter-spacing:.01em;background:var(--acao);color:#fff;
+  border:0;border-radius:var(--r-pilula);padding:9px 18px;cursor:pointer;box-shadow:var(--sombra)}
+.fechar:hover{background:var(--acao-quente)}
+.fechado{font-size:11.5px;font-weight:800;color:var(--verde-tinta);background:var(--verde-50);
+  border-radius:var(--r-pilula);padding:6px 13px;display:inline-flex;align-items:center;gap:6px;
+  font-variant-numeric:tabular-nums}
+.vivo{font-size:11px;font-weight:800;color:var(--verde-tinta);background:var(--verde-50);
+  border-radius:var(--r-pilula);padding:4px 11px;display:inline-flex;align-items:center;gap:6px}
+.vivo .dot{width:7px;height:7px;border-radius:50%;background:var(--verde);animation:pulsa 2s infinite}
+@keyframes pulsa{50%{opacity:.35}}
+.painel{background:var(--card);border:1px solid var(--linha-forte);border-radius:var(--r-painel);
+  box-shadow:var(--sombra);padding:16px;margin-top:14px}
+.painel h2{font-size:15px;margin:0 0 10px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:14px}
+.kpi{background:var(--card);border:1px solid var(--linha-forte);border-radius:var(--r-painel);
+  box-shadow:var(--sombra);padding:13px 15px}
+.kpi .r{font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--tinta-3);text-transform:uppercase}
+.kpi b{display:block;font-size:24px;font-weight:800;letter-spacing:-.02em;margin-top:4px;
+  font-variant-numeric:tabular-nums}
+.kpi.hero b{font-size:32px;letter-spacing:-.03em}
+.kpi .sub{font-size:11.5px;color:var(--tinta-3);margin-top:2px;font-variant-numeric:tabular-nums}
+.ritmo{font-size:12px;font-weight:800;border-radius:var(--r-pilula);padding:4px 11px;display:inline-block;margin-top:6px}
+.ritmo.up{background:var(--verde-50);color:var(--verde-tinta)}
+.ritmo.down{background:var(--coral-50);color:var(--coral-tinta)}
+.alerta{display:flex;gap:10px;align-items:center;background:var(--ambar-50);border:1px solid var(--ambar);
+  border-radius:var(--r-cartao);padding:10px 14px;margin-top:12px;font-size:13px;color:var(--ambar-tinta);font-weight:700}
+.canais{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.canal{border:1px solid var(--linha-forte);background:var(--card);border-radius:var(--r-pilula);
+  padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--tinta-2)}
+.canal b{color:var(--tinta);font-variant-numeric:tabular-nums}
+.canal.on{background:var(--acao);border-color:var(--acao);color:#fff}
+.canal.on b{color:#fff}
+svg{width:100%;height:auto;display:block}
+/* feed (S16) */
+.head{display:grid;gap:10px;font-size:9.5px;font-weight:800;letter-spacing:.07em;
+  color:var(--tinta-3);text-transform:uppercase;padding:0 0 6px;border-bottom:2px solid var(--linha-forte);
+  grid-template-columns:118px 50px 1fr 128px 96px 18px}
+.head span.r{text-align:right}
+.row{padding:0;border-bottom:1px solid var(--linha);cursor:pointer}
+.row:last-child{border-bottom:0}
+.row>.cab{transition:background .12s}
+.row:hover>.cab{background:var(--card-2)}
+.hcount{font-size:11px;font-weight:700;color:var(--tinta-3);margin-left:8px;font-variant-numeric:tabular-nums}
+.data{font-size:12px;font-weight:700;color:var(--tinta-3)}
+.cab{display:grid;gap:10px;align-items:center;padding:9px 0;
+  grid-template-columns:118px 50px 1fr 128px 96px 18px}
+.num{font-weight:800;font-size:13px;font-variant-numeric:tabular-nums}
+.hora{font-size:12px;color:var(--tinta-3);font-variant-numeric:tabular-nums}
+.itens{font-size:13px;font-weight:600;line-height:1.3}
+.itens .mais{color:var(--tinta-3);font-weight:600;font-size:12px}
+.st{justify-self:end;font-size:10.5px;font-weight:800;border-radius:var(--r-pilula);padding:3px 10px;letter-spacing:.02em}
+.st.aceito{background:var(--acao-50);color:var(--acao-tinta)}
+.st.preparo{background:var(--ambar-50);color:var(--ambar-tinta)}
+.st.saiu{background:var(--acao-50);color:var(--acao-tinta)}
+.st.entregue{background:var(--verde-50);color:var(--verde-tinta)}
+.st.cancelado{background:var(--coral-50);color:var(--coral-tinta)}
+.st.transferido{background:var(--card-2);color:var(--tinta-2);border:1px solid var(--linha-forte)}
+.val{font-weight:800;font-size:13.5px;text-align:right;font-variant-numeric:tabular-nums}
+.chev{color:var(--tinta-3);font-size:10px;text-align:right}
+.row.cancelado .itens,.row.cancelado .val{text-decoration:line-through;color:var(--tinta-3)}
+.row.novo{animation:chega 1.6s ease-out 1}
+@keyframes chega{0%{background:var(--acao-50)}100%{background:transparent}}
+.cbadge{font-size:10px;font-weight:800;border-radius:6px;padding:2px 7px;background:var(--card-2);
+  border:1px solid var(--linha);color:var(--tinta-2);margin-left:7px;vertical-align:1px}
+/* detalhe do pedido */
+.det{background:var(--card-2);border:1px dashed var(--linha-forte);border-radius:var(--r-cartao);
+  margin:7px 0 8px;padding:10px 12px;cursor:default}
+.det .lin{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;
+  border-bottom:1px solid var(--linha);font-variant-numeric:tabular-nums}
+.det .lin:last-of-type{border-bottom:0}
+.det .sab{color:var(--tinta-3);font-size:11.5px;padding-left:16px}
+.det .bloco{font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--tinta-3);
+  text-transform:uppercase;margin:9px 0 3px}
+.tl{display:flex;gap:0;flex-wrap:wrap;margin-top:4px}
+.tl span{font-size:11px;font-weight:700;color:var(--tinta-2);display:flex;align-items:center;font-variant-numeric:tabular-nums}
+.tl span em{font-style:normal;color:var(--tinta-3);margin:0 7px;font-size:10px}
+.fecho{display:flex;justify-content:space-between;font-size:12.5px;font-weight:800;
+  margin-top:7px;padding-top:6px;border-top:1px solid var(--linha-forte);font-variant-numeric:tabular-nums}
+/* semana */
+.semana{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:9px;margin-top:4px}
+.dia{background:var(--card-2);border:1px solid var(--linha);border-radius:var(--r-cartao);padding:9px 11px}
+.dia .d{font-size:10.5px;font-weight:800;color:var(--tinta-3);text-transform:uppercase;letter-spacing:.05em}
+.dia b{display:block;font-size:14.5px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+.dia .vs{font-size:11px;font-weight:800;margin-top:2px}
+.dia .vs.up{color:var(--verde-tinta)} .dia .vs.down{color:var(--coral-tinta)}
+.dia .ok{font-size:10px;font-weight:800;color:var(--verde-tinta);margin-top:3px}
+.dia .pend{font-size:10px;font-weight:700;color:var(--tinta-3);margin-top:3px}
+.dia.hj{outline:2px solid var(--acao);outline-offset:1px}
+.i{width:17px;height:17px;border-radius:50%;border:1px solid var(--linha-forte);
+  background:var(--card-2);color:var(--tinta-3);font-size:11px;font-weight:700;
+  cursor:pointer;vertical-align:2px;margin-left:6px;line-height:1}
+.pop{display:block;font-size:11.5px;color:var(--tinta-2);background:var(--card-2);
+  border:1px solid var(--linha);border-radius:var(--r-cartao);padding:8px 11px;
+  margin:6px 0 2px;line-height:1.6;font-weight:400}
+.oculto{display:none}
+.rot{display:none}
+@media(max-width:640px){
+  body{padding:10px 12px 50px}
+  .head{display:none}
+  .cab{grid-template-columns:auto 1fr auto;gap:5px 10px;
+    grid-template-areas:"num itens ch" "h stp v"}
+  .num{grid-area:num}.itens{grid-area:itens}.chev{grid-area:ch}
+  .sH{grid-area:h;display:flex;align-items:center}
+  .st{grid-area:stp;justify-self:start;align-self:center}
+  .sV{grid-area:v;display:flex;justify-content:flex-end;align-items:center}
+  .rot{display:inline;font-size:9px;font-weight:800;letter-spacing:.06em;
+    color:var(--tinta-3);text-transform:uppercase;margin-right:4px}
+}
+@media(min-width:641px){ .sH,.sV{display:contents} }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <h1>Vendas <span class="data">sáb 08/11</span> <span class="vivo"><span class="dot"></span> AO VIVO · atualizado 21:37</span></h1>
+  <span id="diaAcao"></span>
+</div>
+<span class="pop oculto" id="popFechar">fechou o caixa na Suitable, fecha aqui: o sistema puxa o dia inteiro agora (produtos e sabores), dá as baixas no estoque e libera a contagem diária · sem clicar, fecha sozinho às 03:10 · a guarda re-confere às 03:10 e avisa se algum pedido mudar de madrugada</span>
+
+<div class="kpis" id="kpis"></div>
+<div id="alerta"></div>
+
+<div class="painel">
+  <h2>A curva do dia<button class="i" onclick="this.nextElementSibling.classList.toggle('oculto')">i</button><span class="pop oculto">barras = hoje, hora a hora (a hora atual fica mais clara: ainda está pela metade) · linha com pontos = teu sábado típico (mediana dos 4 anteriores) · o traço vertical marca "agora" · a comparação de ritmo usa sempre o mesmo corte de horário</span></h2>
+  <div id="curva"></div>
+</div>
+
+<div class="painel">
+  <h2>Pedidos<span class="hcount">últimos 8 · 58 no dia</span><button class="i" onclick="this.nextElementSibling.classList.toggle('oculto')">i</button><span class="pop oculto">pedido por pedido, direto do PDV (~1 min de atraso) · status ativo mostra há quantos minutos está ali · cancelado fica riscado com motivo, nunca some · clique abre itens, sabores, pagamento com taxa e a linha do tempo · cliente não aparece nesta tela (nº + hora + canal identificam)</span></h2>
+  <div class="canais" id="canais"></div>
+  <div class="head"><span>Nº</span><span>HORA</span><span>ITENS</span><span class="r">STATUS</span><span class="r">VALOR</span><span></span></div>
+  <div id="feed"></div>
+</div>
+
+<div class="painel">
+  <h2>A semana<button class="i" onclick="this.nextElementSibling.classList.toggle('oculto')">i</button><span class="pop oculto">cada dia contra a própria régua (mediana dos 4 mesmos dias-da-semana) · ✓ conferido = a guarda bateu Suitable × CAIXAOS ao centavo, produto e sabor · hoje só ganha veredito depois de fechado</span></h2>
+  <div class="semana" id="semana"></div>
+</div>
+
+<script>
+/* ═══ ESPECIFICAÇÃO v1 — amostra com a cara da casa (sáb 08/11, 21:37) ═══ */
+const fmt=v=>v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const HORA_AGORA='21:37';
+
+/* V2 · régua do ritmo: mediana dos 4 sábados anteriores, POR HORA (corte justo) */
+const REGUA_HORA={ '11':180,'12':420,'13':310,'14':150,'15':120,'16':160,'17':240,
+  '18':520,'19':880,'20':1050,'21':760,'22':430,'23':190 };
+/* hoje, por hora, até agora */
+const HOJE_HORA={ '11':210,'12':460,'13':290,'14':170,'15':150,'16':200,'17':310,
+  '18':640,'19':1010,'20':1230,'21':510 };   /* 21h parcial (até :37) */
+
+const CANAIS={salao:'🏠 Salão',tele:'🛵 Tele',ifood:'iFood',aiqfome:'Aiqfome'};
+
+/* V3 · feed (amostra): nº · hora · canal · status · itens[{q,nome,sabores[],preco}] · pag */
+const FEED=[
+ {num:'#512',hora:'21:36',canal:'ifood',status:'aceito',novo:true,
+  itens:[{q:1,nome:'PIZZA GRANDE PRECINHO',sab:['CALABRESA','BORDA MUSSARELA'],preco:44.90}],
+  pag:{forma:'iFood (repasse)',taxa:5.84,liq:39.06},
+  tl:[['aceito','21:36']]},
+ {num:'#511',hora:'21:31',canal:'salao',status:'preparo',
+  itens:[{q:2,nome:'XIS COMPLETO',sab:[],preco:22.90},{q:1,nome:'COCA COLA 2L',sab:[],preco:14.00}],
+  pag:{forma:'crédito Stone',taxa:1.89,liq:57.91},
+  tl:[['aceito','21:31'],['preparo','21:33']]},
+ {num:'#510',hora:'21:24',canal:'tele',status:'saiu',
+  itens:[{q:1,nome:'PIZZA FAMILIA 45CM',sab:['4 QUEIJOS','FRANGO C/ CATUPIRY'],preco:84.90}],
+  pag:{forma:'pix',taxa:0,liq:84.90},
+  tl:[['aceito','21:24'],['preparo','21:26'],['saiu','21:32']]},
+ {num:'#509',hora:'21:18',canal:'salao',status:'entregue',
+  itens:[{q:1,nome:'Combo Caçula',sab:[],preco:49.90},{q:1,nome:'MINI FRITAS',sab:[],preco:12.00}],
+  pag:{forma:'débito Stone',taxa:0.68,liq:61.22},
+  tl:[['aceito','21:18'],['preparo','21:20'],['entregue','21:35']]},
+ {num:'#508',hora:'21:11',canal:'aiqfome',status:'entregue',
+  itens:[{q:1,nome:'XIS CALABRESA',sab:[],preco:24.90}],
+  pag:{forma:'Aiqfome (repasse)',taxa:2.99,liq:21.91},
+  tl:[['aceito','21:11'],['preparo','21:13'],['saiu','21:26'],['entregue','21:34']]},
+ {num:'#507',hora:'21:05',canal:'tele',status:'cancelado',motivo:'cliente desistiu',
+  itens:[{q:1,nome:'PIZZA GRANDE 35CM',sab:['PORTUGUESA'],preco:59.90}],
+  pag:null, tl:[['aceito','21:05'],['cancelado','21:09']]},
+ {num:'#506',hora:'20:58',canal:'salao',status:'transferido',
+  itens:[{q:1,nome:'CACHORRO QUENTE',sab:[],preco:16.00}],
+  pag:{forma:'dinheiro',taxa:0,liq:16.00},
+  tl:[['aceito','20:58'],['transferido','21:02']]},
+ {num:'#505',hora:'20:51',canal:'ifood',status:'entregue',
+  itens:[{q:1,nome:'PIZZA GRANDE PRECINHO',sab:['FRANGO C/ CATUPIRY','BORDA MUSSARELA'],preco:44.90},
+         {q:1,nome:'GUARANA 2L',sab:[],preco:12.00}],
+  pag:{forma:'iFood (repasse)',taxa:7.39,liq:49.51},
+  tl:[['aceito','20:51'],['preparo','20:53'],['saiu','21:14'],['entregue','21:33']]},
+];
+
+/* V6 · semana (amostra) — selo da prova-sombra */
+const SEMANA=[
+ {d:'DOM 02',v:5890.40,vs:+4,ok:true},{d:'SEG 03',v:3210.10,vs:-2,ok:true},
+ {d:'TER 04',v:3690.00,vs:+6,ok:true},{d:'QUA 05',v:3480.50,vs:+1,ok:true},
+ {d:'QUI 06',v:4113.80,vs:+3,ok:true},{d:'SEX 07',v:6220.90,vs:+9,ok:true},
+ {d:'SÁB 08 · hoje',v:null,vs:null,hoje:true},
+];
+
+/* ═══ contas da especificação ═══ */
+const horas=Object.keys(REGUA_HORA);
+const somaAte=(m,h)=>horas.filter(x=>x<=h).reduce((a,x)=>a+(m[x]||0),0);
+const mins=h=>{const[a,b]=h.split(':').map(Number);return a*60+b};
+/* V3 · minutos no status ativo: agora − hora do último status (só aceito/preparo/na rua) */
+const ATIVOS=['aceito','preparo','saiu'];
+const decorrido=p=>ATIVOS.includes(p.status)?mins(HORA_AGORA)-mins(p.tl[p.tl.length-1][1]):null;
+function kpisDoDia(){
+  const h=HORA_AGORA.slice(0,2);
+  const hoje=somaAte(HOJE_HORA,h);
+  const regua=somaAte(REGUA_HORA,h);            /* V2: mesmo corte */
+  const ped=FEED.filter(p=>p.status!=='cancelado'&&p.status!=='transferido');
+  const nPed=58;                                 /* amostra: total do dia até agora */
+  return {hoje,regua,ritmo:100*(hoje-regua)/regua,nPed,ticket:hoje/nPed};
+}
+
+/* V11 · fechar o dia: null = aberto (fecha sozinho às 03:10) */
+let DIA_FECHADO=null;
+function fecharDia(){ DIA_FECHADO=HORA_AGORA; render(); }
+
+/* ═══ RENDER ═══ */
+let canalSel=null,pedidoAberto=null;
+const $=id=>document.getElementById(id);
+
+function renderDia(){
+  $('diaAcao').innerHTML=(DIA_FECHADO
+    ? `<span class="fechado">✓ dia fechado às ${DIA_FECHADO} · contagem liberada</span>`
+    : `<button class="fechar" onclick="fecharDia()">Fechar o dia</button>`)
+    +`<button class="i" onclick="document.getElementById('popFechar').classList.toggle('oculto')">i</button>`;
+}
+
+function render(){
+  const k=kpisDoDia();
+  renderDia();
+  const emPreparo=FEED.filter(p=>p.status==='preparo'||p.status==='aceito').length;
+  const naRua=FEED.filter(p=>p.status==='saiu').length;
+  $('kpis').innerHTML=`
+    <div class="kpi hero"><span class="r">${DIA_FECHADO?'vendeu hoje · fechado':'vendeu até '+HORA_AGORA}</span><b>R$ ${fmt(k.hoje)}</b>
+      <span class="ritmo ${k.ritmo>=0?'up':'down'}">${k.ritmo>=0?'+':''}${k.ritmo.toFixed(0)}% vs sábado típico até ${HORA_AGORA.slice(0,2)}h</span></div>
+    <div class="kpi"><span class="r">pedidos</span><b>${k.nPed}</b><span class="sub">${emPreparo} na cozinha · ${naRua} na rua</span></div>
+    <div class="kpi"><span class="r">ticket médio</span><b>R$ ${fmt(k.ticket)}</b></div>
+    <div class="kpi"><span class="r">sábado típico até ${HORA_AGORA.slice(0,2)}h</span><b>R$ ${fmt(k.regua)}</b><span class="sub">mediana dos 4 anteriores</span></div>`;
+  $('alerta').innerHTML = k.ritmo < -15
+    ? `<div class="alerta">⚠ Dia ${Math.abs(k.ritmo).toFixed(0)}% abaixo do teu sábado típico até agora (R$ ${fmt(k.hoje)} × R$ ${fmt(k.regua)})</div>`:'';
+  renderCurva();renderCanais();renderFeed();renderSemana();
+}
+
+function renderCurva(){
+  const W=1000,H=206,n=horas.length,bw=W/n,base=160;
+  const max=Math.max(...horas.map(h=>Math.max(REGUA_HORA[h]||0,HOJE_HORA[h]||0)))*1.1;
+  const hAtual=HORA_AGORA.slice(0,2);
+  let s='';
+  /* grade suave com R$ — barra sem eixo é número no escuro */
+  [0.5,1].forEach(f=>{const y=base-150*f, v=Math.round(max*f/50)*50;
+    s+=`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="var(--linha)" stroke-width="1"/>`+
+       `<text x="${W-4}" y="${y+13}" font-size="10" fill="var(--tinta-3)" text-anchor="end" font-family="var(--font)">R$ ${v}</text>`;});
+  /* barras = hoje (hora atual mais clara: ainda pela metade — V1) */
+  horas.forEach((h,i)=>{
+    const hj=(HOJE_HORA[h]||0)/max*150;
+    if(HOJE_HORA[h]!=null)
+      s+=`<rect x="${(i*bw+5).toFixed(1)}" y="${(base-hj).toFixed(1)}" width="${(bw-10).toFixed(1)}" height="${hj.toFixed(1)}" rx="5" fill="var(--acao)"${h===hAtual&&!DIA_FECHADO?' opacity=".45"':''}/>`;
+    s+=`<text x="${(i*bw+bw/2).toFixed(1)}" y="${base+20}" font-size="11" fill="var(--tinta-3)" text-anchor="middle" font-family="var(--font)"${h===hAtual?' font-weight="800"':''}>${h}h</text>`;
+  });
+  /* linha com pontos = teu sábado típico (régua) */
+  const pts=horas.map((h,i)=>[i*bw+bw/2, base-(REGUA_HORA[h]||0)/max*150]);
+  s+=`<polyline points="${pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}" fill="none" stroke="var(--tinta-3)" stroke-width="2" stroke-linejoin="round" opacity=".85"/>`;
+  pts.forEach(p=>{s+=`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.6" fill="var(--tinta-3)"/>`;});
+  /* traço "agora" na posição exata dos minutos */
+  const iAg=horas.indexOf(hAtual);
+  if(iAg>=0){const x=iAg*bw+bw*(Number(HORA_AGORA.slice(3))/60);
+    s+=`<line x1="${x.toFixed(1)}" y1="4" x2="${x.toFixed(1)}" y2="${base}" stroke="var(--coral)" stroke-width="1.5" stroke-dasharray="4 4"/>`+
+       `<text x="${x.toFixed(1)}" y="${base+38}" font-size="10" font-weight="800" fill="var(--coral-tinta)" text-anchor="middle" font-family="var(--font)">${DIA_FECHADO?'fechou':'agora'} ${HORA_AGORA}</text>`;}
+  $('curva').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="vendas por hora">${s}</svg>`;
+}
+
+function renderCanais(){
+  const tot={};let geral=0;
+  for(const p of FEED){ if(p.status==='cancelado'||p.status==='transferido')continue;
+    const v=p.itens.reduce((a,i)=>a+i.q*i.preco,0);
+    tot[p.canal]=(tot[p.canal]||{v:0,n:0}); tot[p.canal].v+=v; tot[p.canal].n++; geral+=v; }
+  $('canais').innerHTML=`<button class="canal ${canalSel==null?'on':''}" onclick="filtraCanal(null)">Todos</button>`+
+    Object.entries(CANAIS).map(([k,nome])=>{
+      const t=tot[k]||{v:0,n:0};
+      return `<button class="canal ${canalSel===k?'on':''}" onclick="filtraCanal('${k}')">${nome} <b>${t.n}</b> · R$ ${fmt(t.v)}</button>`;}).join('');
+}
+
+function stPill(p){
+  const nomes={aceito:'ACEITO',preparo:'PREPARO',saiu:'NA RUA',entregue:'ENTREGUE',
+    cancelado:'CANCELADO',transferido:'TRANSFERIDO'};
+  const d=decorrido(p);
+  return `<span class="st ${p.status}">${nomes[p.status]}${d!=null?` · ${d}min`:''}</span>`;
+}
+function renderFeed(){
+  const lista=FEED.filter(p=>canalSel==null||p.canal===canalSel);
+  $('feed').innerHTML=lista.map(p=>{
+    const v=p.itens.reduce((a,i)=>a+i.q*i.preco,0);
+    const prim=p.itens[0], resto=p.itens.length-1;
+    const aberto=pedidoAberto===p.num;
+    return `<div class="row ${p.status==='cancelado'?'cancelado':''} ${p.novo?'novo':''}" onclick="abrePedido('${p.num}')">
+      <div class="cab">
+        <span class="num">${p.num}<span class="cbadge">${CANAIS[p.canal].replace(/^..\s/,'')}</span></span>
+        <span class="sH"><span class="hora"><span class="rot">hora</span>${p.hora}</span></span>
+        <span class="itens">${prim.q}× ${prim.nome}${resto>0?` <span class="mais">+${resto}</span>`:''}</span>
+        ${stPill(p)}
+        <span class="sV"><span class="val"><span class="rot">valor</span>R$ ${fmt(v)}</span></span>
+        <span class="chev">${aberto?'▲':'▼'}</span>
+      </div>${aberto?detPedido(p,v):''}</div>`;}).join('');
+}
+function detPedido(p,v){
+  const itens=p.itens.map(i=>`<div class="lin"><span>${i.q}× ${i.nome}</span><span>R$ ${fmt(i.q*i.preco)}</span></div>`+
+    i.sab.map(s=>`<div class="sab">— ${s}</div>`).join('')).join('');
+  const tl=`<div class="tl">${p.tl.map(([st,h],i)=>`<span>${i>0?'<em>→</em>':''}${st} ${h}</span>`).join('')}</div>`;
+  const pag=p.pag
+    ?`<div class="bloco">PAGAMENTO</div>
+      <div class="lin"><span>${p.pag.forma}</span><span>R$ ${fmt(v)}</span></div>
+      <div class="lin"><span>taxa</span><span>− R$ ${fmt(p.pag.taxa)}</span></div>
+      <div class="fecho"><span>LÍQUIDO</span><span>R$ ${fmt(p.pag.liq)}</span></div>`
+    :`<div class="bloco">PAGAMENTO</div><div class="lin"><span>cancelado — ${p.motivo}</span><span>sem cobrança</span></div>`;
+  return `<div class="det" onclick="event.stopPropagation()">
+    <div class="bloco">ITENS</div>${itens}
+    <div class="bloco">LINHA DO TEMPO</div>${tl}
+    ${pag}</div>`;
+}
+
+function renderSemana(){
+  /* V11: dia fechado mostra o total e compara com a régua do dia INTEIRO (dia acabou, comparação honesta) */
+  const tHoje=somaAte(HOJE_HORA,'23'), rDia=somaAte(REGUA_HORA,'23');
+  $('semana').innerHTML=SEMANA.map(d=>{
+    const v = d.hoje ? (DIA_FECHADO?tHoje:null) : d.v;
+    const vs = d.hoje ? (DIA_FECHADO?100*(tHoje-rDia)/rDia:null) : d.vs;
+    const selo = d.hoje
+      ? (DIA_FECHADO?`<span class="ok">✓ fechado às ${DIA_FECHADO}</span>`:'<span class="pend">em andamento</span>')
+      : (d.ok?'<span class="ok">✓ conferido</span>':'<span class="pend">conferindo…</span>');
+    return `<div class="dia ${d.hoje?'hj':''}">
+    <span class="d">${d.d}</span>
+    <b>${v==null?'R$ …':'R$ '+fmt(v)}</b>
+    ${vs==null?'':`<span class="vs ${vs>=0?'up':'down'}">${vs>=0?'+':''}${vs.toFixed(0)}% vs régua</span>`}
+    ${selo}
+  </div>`}).join('');
+}
+
+function filtraCanal(c){canalSel=c;pedidoAberto=null;render()}
+function abrePedido(n){pedidoAberto=pedidoAberto===n?null:n;render()}
+render();
+</script>
+</body>
+</html>

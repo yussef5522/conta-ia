@@ -58,6 +58,17 @@ export async function gravarPedido(db: PrismaClient, companyId: string, cru: Ped
       await tx.suitPedidoItem.create({ data: { companyId, pedidoId: p.id, ...item, opcoes: { create: opcoes } } })
     }
     if (l.pagamentos.length) await tx.suitPedidoPagamento.createMany({ data: l.pagamentos.map((pg) => ({ companyId, pedidoId: p.id, ...pg })) })
+    // ⭐ V11: pedido que NASCE num dia já entregue (fechado na mão antes da virada) — nunca silêncio
+    if (!antes && posMaterializacao && l.pedido.impressao !== 'FORA') {
+      const d = contribuicao(l.pedido.impressao)
+      await tx.suitPedidoEvento.create({
+        data: {
+          companyId, pedidoId: p.id, apiId: cru.id, dia: l.pedido.dia, tipo: 'NOVO', detectadoEm: agora,
+          impressaoAntes: 'FORA', impressaoDepois: l.pedido.impressao, deltaCent: d.cent, deltaUn: d.un,
+          depoisDaMaterializacao: true, decisao: null,
+        },
+      })
+    }
     if (antes && antes.impressao !== l.pedido.impressao) {
       const a = contribuicao(antes.impressao)
       const d = contribuicao(l.pedido.impressao)

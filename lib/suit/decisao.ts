@@ -6,6 +6,8 @@
 import { readFileSync } from 'node:fs'
 import type { PrismaClient } from '@prisma/client'
 import { materializarDia, type ResultadoMaterializacao } from './materializar'
+import { materializarComplementosDia } from './complementos'
+import { CORTE_COMPLEMENTOS } from './cortes'
 import { avisarEventos, SYNC_PARADO_MIN } from './guarda'
 
 export type Decisao = 'MANTER' | 'ATUALIZAR'
@@ -14,6 +16,8 @@ export async function decidirDia(db: PrismaClient, companyId: string, dia: strin
   const pend = await db.suitPedidoEvento.findMany({ where: { companyId, dia, depoisDaMaterializacao: true, decisao: null }, select: { id: true } })
   if (pend.length === 0) return { eventos: 0, reentrega: null }
   const reentrega = decisao === 'ATUALIZAR' ? await materializarDia(db, companyId, dia, agora, { reentregar: true }) : null
+  // os SABORES do dia acompanham (só se o dia deles veio da Suit — dia de XLS nunca reprocessa)
+  if (decisao === 'ATUALIZAR' && dia >= CORTE_COMPLEMENTOS) await materializarComplementosDia(db, companyId, dia, agora, { reentregar: true, fechadoNaMao: true })
   await db.suitPedidoEvento.updateMany({ where: { id: { in: pend.map((p) => p.id) } }, data: { decisao, decididoEm: agora, decididoPorId: userId } })
   await avisarEventos(db, companyId)
   return { eventos: pend.length, reentrega }

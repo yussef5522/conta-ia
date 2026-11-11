@@ -88,11 +88,18 @@ export async function cicloDoLaco(
   }
 
   let guarda: ResultadoGuarda | null = null
+  // V11 · dia fechado NA MÃO (antes da virada): a guarda re-confere JÁ às 03:10, não às 07h —
+  // pedido que mudou, sumiu ou nasceu de madrugada vira aviso nominal na hora
+  const naMao = await db.suitDiaMaterializado.findMany({ where: { companyId, dia: { gte: CORTE_API, lt: hoje } }, select: { dia: true, materializadoEm: true } })
+  for (const m of naMao) {
+    if (guarda || guardaJaFeita(m.dia) || agora.getTime() < fechamentoDe(m.dia).getTime() || m.materializadoEm.getTime() >= fechamentoDe(m.dia).getTime()) continue
+    guarda = await guardarDia(db, cliente, companyId, m.dia, agora)
+  }
   const dg = diaDaGuarda(agora)
   const dgEntregue = !!dg && (entregues.has(dg) || fechados.some((f) => f.dia === dg && f.resultado.status !== 'ERRO'))
-  if (dg && dg >= CORTE_API && dgEntregue && !guardaJaFeita(dg)) {
+  if (!guarda && dg && dg >= CORTE_API && dgEntregue && !guardaJaFeita(dg)) {
     guarda = await guardarDia(db, cliente, companyId, dg, agora)
-  } else {
+  } else if (!guarda) {
     await avisarEventos(db, companyId)
   }
   return { vivo, fechados, complementos, guarda }

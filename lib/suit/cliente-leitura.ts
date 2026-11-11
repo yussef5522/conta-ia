@@ -174,7 +174,23 @@ export function criarClienteSuitLeitura(
     throw new SuitErro(`GET ${caminho} → esgotou as tentativas`)
   }
 
+  /**
+   * ⭐ a lista é refeita INTEIRA (até 3×) quando vem incompleta: pedido novo no meio da paginação
+   * empurra um id de página e a contagem fecha N × N+1 (medido em prod, 10/11, hora de movimento).
+   * ⛔ Continua sendo ERRO se não fechar — lista parcial nunca vira verdade.
+   */
   async function listar(from: string, to: string): Promise<PedidoDaLista[]> {
+    let ultimo: unknown
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      try { return await listarUmaVez(from, to) } catch (e) {
+        if (!(e instanceof SuitErro) || !/incompleta/.test(e.message)) throw e
+        ultimo = e
+      }
+    }
+    throw ultimo
+  }
+
+  async function listarUmaVez(from: string, to: string): Promise<PedidoDaLista[]> {
     type Pagina = { count: number; results: PedidoDaLista[] }
     const porId = new Map<number, PedidoDaLista>()
     let count = -1
