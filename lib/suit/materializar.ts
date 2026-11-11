@@ -19,8 +19,8 @@ import { SanidadeNaoConfirmadaError } from '../stock/vendas/medir-sanidade'
 import { BaixaComItemBarradoError } from '../stock/vendas/itens-pendentes-da-baixa'
 import { STATUS_FORA_DA_REGUA, somarDias, HORA_VIRADA_DIA } from './regua-sombra'
 
-/** ⛔ a API é a fonte oficial a partir DESTE dia (decisão do dono, 10/11). ≤08/11 é XLS. */
-export const CORTE_API = '2026-11-09'
+import { CORTE_API } from './cortes'
+export { CORTE_API }
 /** o fechamento espera 10 min depois da virada (06:00 UTC = 03:00 BRT) */
 export const MARGEM_FECHAMENTO_MIN = 10
 

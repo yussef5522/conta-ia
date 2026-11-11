@@ -13,7 +13,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { parseSuitable, COLUNAS_COMPLEMENTOS } from './parse-suitable'
+import { parseSuitable, COLUNAS_COMPLEMENTOS, type VendaLinhaSuitable } from './parse-suitable'
 import { lerComQuarentena } from './quarentena-venda'
 import { prateleiraDeComplementos, type LinhaPrateleira } from './complemento-map'
 import { SABORES_DO_CARDAPIO, grupoPeloCardapio } from './grupo-complemento'
@@ -98,6 +98,9 @@ const MIN_EVIDENCIA_CARDAPIO = 10
 // coisas aqui fecharia um ciclo de import. Re-exportadas pra não quebrar quem já importava.
 export { importIdDe, ehLinhaDePeriodo, type ModoImportComplemento } from './identidade-import-complemento'
 
+/** a linha que os DOIS produtores entregam (XLS: Descrição · Quantidade · Valor total) */
+export type LinhaDeComplemento = Pick<VendaLinhaSuitable, 'produto' | 'quantidade' | 'valorTotal'>
+
 const diaUtc = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00.000Z`)
 
 /** PREVIEW — não grava nada. Mostra o que entraria e o estado do mapeamento. */
@@ -110,6 +113,19 @@ export async function previewComplementos(
   const { resultado: p } = await lerComQuarentena(
     { companyId, relatorio: 'COMPLEMENTOS', html, data }, (h) => parseSuitable(h, COLUNAS_COMPLEMENTOS), db,
   )
+  return previewLinhasDeComplemento(companyId, data, p.linhas, db, modo)
+}
+
+/**
+ * ⭐⭐ O FUNIL ÚNICO DOS COMPLEMENTOS (11/11/2026). Dois PRODUTORES de linhas — o parser do
+ * HTML do XLS (acima) e a régua da SuitAPI (lib/suit/complementos.ts) — e UM consumidor: tudo
+ * daqui pra baixo (prateleira, revisão, plano de baixa) recebe o MESMO formato dos dois.
+ */
+export async function previewLinhasDeComplemento(
+  companyId: string, data: string, linhasDoProdutor: readonly LinhaDeComplemento[], db: PrismaClient = defaultPrisma,
+  modo: ModoImportComplemento = 'DIA',
+): Promise<PrevisaoComplementos> {
+  const p = { linhas: linhasDoProdutor }
 
   const linhas = p.linhas.map((l) => ({ nomeSuitable: l.produto, ocorrencias: l.quantidade }))
   const prateleira = await prateleiraDeComplementos(companyId, linhas, db)
@@ -201,6 +217,8 @@ export async function confirmarComplementos(
    * reprocesso não têm arquivo, e inventar um nome seria pior que a ausência.
    */
   nomeArquivo?: string,
+  /** ⛔ o dono confirmou subir o arquivo POR CIMA de um dia que a Suit já entregou */
+  sobrescreverDiaDaApi = false,
 ): Promise<{
   importId: string; linhas: number; ocorrencias: number; substituiu: boolean; modo: ModoImportComplemento
   /** ⭐ o que a baixa fez logo em seguida — `null` quando não havia o que baixar */
@@ -220,9 +238,43 @@ export async function confirmarComplementos(
 }> {
   // ⭐ porta ÚNICA: guarda o arquivo (falhe ou feche) e a recusa de "0 linhas" ENSINA
   //    — antes ela morria no throw e diagnosticar exigia pedir o .xls de volta.
+  await exigirComplementoSemApi(companyId, data, sobrescreverDiaDaApi, db)
   const { resultado: p } = await lerComQuarentena(
     { companyId, relatorio: 'COMPLEMENTOS', html, data }, (h) => parseSuitable(h, COLUNAS_COMPLEMENTOS), db,
   )
+  return confirmarLinhasDeComplemento(companyId, data, p.linhas, userId, db, modo, nomeArquivo)
+}
+
+/** o arquivo de complementos que a SuitAPI "soltou" (StockVendaArquivo.nomeArquivo) */
+export const ehArquivoDaApi = (nome: string | null | undefined) => !!nome && nome.startsWith('SuitAPI')
+
+/** ⛔ PORTA DE EMERGÊNCIA (11/11): XLS de complementos num dia que a Suit já entregou → recusa sem confirmação */
+export class ComplementosDaApiError extends Error {
+  readonly code = 'DIA_DA_API'
+  constructor(readonly data: string) {
+    super(`Os sabores de ${data.split('-').reverse().join('/')} já entraram sozinhos pela Suit. Subir o arquivo por cima troca o dia inteiro pelo do arquivo — confirme se é isso mesmo.`)
+    this.name = 'ComplementosDaApiError'
+  }
+}
+
+export async function exigirComplementoSemApi(companyId: string, data: string, sobrescrever: boolean, db: PrismaClient = defaultPrisma): Promise<void> {
+  if (sobrescrever) return
+  const arq = await db.stockVendaArquivo.findFirst({
+    where: { companyId, relatorio: 'COMPLEMENTOS', data: { gte: diaUtc(data), lt: new Date(diaUtc(data).getTime() + 86_400_000) } },
+    select: { nomeArquivo: true },
+  })
+  if (ehArquivoDaApi(arq?.nomeArquivo)) throw new ComplementosDaApiError(data)
+}
+
+export type ReciboDeComplementos = Awaited<ReturnType<typeof confirmarLinhasDeComplemento>>
+
+/** ⭐ o consumidor ÚNICO da gravação — o XLS e a SuitAPI chegam aqui com as mesmas linhas */
+export async function confirmarLinhasDeComplemento(
+  companyId: string, data: string, linhasDoProdutor: readonly LinhaDeComplemento[], userId?: string, db: PrismaClient = defaultPrisma,
+  modo: ModoImportComplemento = 'DIA',
+  nomeArquivo?: string,
+) {
+  const p = { linhas: linhasDoProdutor }
   const dia = diaUtc(data)
 
   // o mapa DE COMPLEMENTOS (não o de produtos) diz o que já tem destino

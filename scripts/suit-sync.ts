@@ -59,6 +59,11 @@ async function main() {
       try {
         const r0 = cliente.requisicoes()
         const c = await cicloDoLaco(db, cliente, CACULA, new Date(), (dia) => !!lerState(ler(STATE_GUARDA)).get(dia), nomeDoErro)
+        for (const f of c.complementos) {
+          const txt = JSON.stringify(f.resultado)
+          if (ultimoFechamento.get(`c:${f.dia}`) !== txt) console.log(`[suit-sync ${agoraTxt()}] COMPLEMENTOS ${f.dia} → ${txt}`)
+          ultimoFechamento.set(`c:${f.dia}`, txt)
+        }
         for (const f of c.fechados) {
           const txt = JSON.stringify(f.resultado)
           if (ultimoFechamento.get(f.dia) !== txt) console.log(`[suit-sync ${agoraTxt()}] FECHAMENTO ${f.dia} → ${txt}`)

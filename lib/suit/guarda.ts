@@ -15,6 +15,7 @@ import type { ClienteSuitLeitura, PedidoCru } from './cliente-leitura'
 import { agregarApi, type PedidoApi } from './regua-sombra'
 import { sincronizarJanela, sincronizarLancamentos, janelaOperacional } from './sync'
 import { registrarAviso, resolverAviso, reconciliarOrigem } from '../avisos/central'
+import { linhasDeComplementoDaRegua, deCrus, complementosGravados } from './complementos'
 
 export const ORIGEM_EVENTO = 'SUIT_PEDIDO_MUDOU'
 export const ORIGEM_GUARDA = 'SUIT_GUARDA_DIVERGE'
@@ -31,6 +32,8 @@ export interface ResultadoGuarda {
   a: { veredito: 'BATE' | 'DIVERGE' | 'SEM_DIA'; apiCent: number; apiUn: number; esteiraCent: number; esteiraUn: number; eventosCent: number; restoCent: number; restoUn: number }
   b: { veredito: 'FECHA' | 'DIVERGE'; lancamentosCent: number; taxaCent: number; aPrazoCent: number; pedidosCent: number; reguaCent: number; entregaCent: number; descontoCent: number; adicionalCent: number; servicoCent: number; restoCent: number }
   c: { pendentes: number; deltaCent: number }
+  /** COMPLEMENTOS: a régua sobre a API de agora × o que a esteira tem (XLS ou API) — ao centavo e nome a nome */
+  comp: { veredito: 'BATE' | 'DIVERGE' | 'SEM_DIA'; origem: 'API' | 'XLS' | null; apiOcc: number; apiCent: number; esteiraOcc: number; esteiraCent: number; nomesDiferem: number }
   requisicoes: number
 }
 
@@ -63,6 +66,22 @@ export async function guardarDia(db: PrismaClient, base: ClienteSuitLeitura, com
   const restoUn = Math.round((api.un - esteiraUn - eventosUn) * 1000) / 1000
   const a = { veredito: (!mat ? 'SEM_DIA' : restoCent === 0 && restoUn === 0 ? 'BATE' : 'DIVERGE') as ResultadoGuarda['a']['veredito'], apiCent: api.cent, apiUn: api.un, esteiraCent, esteiraUn, eventosCent, restoCent, restoUn }
 
+  // (comp) complementos: a régua dos sabores sobre a API de AGORA × o gravado na esteira
+  const crusDoDia = [...vistos.values()].filter((d): d is PedidoCru => !!d && d.created_at >= from && d.created_at <= to)
+  const rc = linhasDeComplementoDaRegua(deCrus(crusDoDia))
+  const gc = await complementosGravados(db, companyId, dia)
+  const gravM = new Map<string, [number, number]>()
+  for (const l of gc.linhas) { const cur = gravM.get(l.nomeSuitable) ?? [0, 0]; cur[0] += l.ocorrencias; cur[1] += Math.round(l.valorTotal * 100); gravM.set(l.nomeSuitable, cur) }
+  const apiM = new Map(rc.linhas.map((l) => [l.produto, [l.quantidade, Math.round(l.valorTotal * 100)] as [number, number]]))
+  const nomesDiferem = [...new Set([...gravM.keys(), ...apiM.keys()])].filter((k) => { const a = apiM.get(k) ?? [0, 0]; const g2 = gravM.get(k) ?? [0, 0]; return a[0] !== g2[0] || a[1] !== g2[1] }).length
+  const esteiraOcc = [...gravM.values()].reduce((t, v) => t + v[0], 0)
+  const esteiraCentC = [...gravM.values()].reduce((t, v) => t + v[1], 0)
+  const comp: ResultadoGuarda['comp'] = {
+    veredito: !gc.linhas.length && !gc.temArquivo ? 'SEM_DIA' : nomesDiferem === 0 ? 'BATE' : 'DIVERGE',
+    origem: gc.daApi ? 'API' : gc.temArquivo || gc.linhas.length ? 'XLS' : null,
+    apiOcc: rc.ocorrencias, apiCent: rc.totalCent, esteiraOcc, esteiraCent: esteiraCentC, nomesDiferem,
+  }
+
   // (b) dinheiro: lançamentos × pedidos vivos (sem abandoned/cancelled, sem apagados)
   const lanc = await db.suitPagamento.findMany({ where: { companyId, dia, receita: true, administrativo: false }, select: { tipo: true, status: true, valorCent: true, taxaCent: true } })
   const vendas = lanc.filter((l) => !LANCAMENTO_NAO_VENDA.has(l.tipo))
@@ -86,18 +105,18 @@ export async function guardarDia(db: PrismaClient, base: ClienteSuitLeitura, com
   }
 
   await avisarEventos(db, companyId)
-  if (a.veredito === 'DIVERGE' || b.veredito === 'DIVERGE') {
+  if (a.veredito === 'DIVERGE' || b.veredito === 'DIVERGE' || comp.veredito === 'DIVERGE') {
     await registrarAviso({
       companyId, setor: 'estoque', severidade: 'vermelho', origem: ORIGEM_GUARDA, alvo: dia,
       titulo: `Conferir as vendas de ${diaBr(dia)} com a Suit`,
-      corpo: `A conferência da manhã não fechou: ${a.veredito === 'DIVERGE' ? `as vendas da Suit somam ${brl(a.apiCent)} e o sistema recebeu ${brl(a.esteiraCent)}` : `o caixa da Suit soma ${brl(b.lancamentosCent)} e os pedidos somam ${brl(b.pedidosCent)}`}. Nada foi mudado sozinho.`,
+      corpo: `A conferência da manhã não fechou: ${a.veredito === 'DIVERGE' ? `as vendas da Suit somam ${brl(a.apiCent)} e o sistema recebeu ${brl(a.esteiraCent)}` : comp.veredito === 'DIVERGE' ? `os sabores da Suit somam ${comp.apiOcc} (${brl(comp.apiCent)}) e o sistema recebeu ${comp.esteiraOcc} (${brl(comp.esteiraCent)})` : `o caixa da Suit soma ${brl(b.lancamentosCent)} e os pedidos somam ${brl(b.pedidosCent)}`}. Nada foi mudado sozinho.`,
       oQueFazer: 'Abrir as vendas do dia e comparar com o relatório da Suit antes de confiar no estoque desse dia.',
       acaoRotulo: 'Ver vendas do dia', acaoHref: `/empresas/${companyId}/estoque/vendas`,
     }, db)
   } else {
     await resolverAviso(companyId, ORIGEM_GUARDA, dia, db)
   }
-  return { dia, a, b, c: { pendentes: pend.length, deltaCent: eventosCent }, requisicoes: base.requisicoes() }
+  return { dia, a, b, c: { pendentes: pend.length, deltaCent: eventosCent }, comp, requisicoes: base.requisicoes() }
 }
 
 /** (c) um aviso por DIA com evento pendente; dia sem pendência → aviso resolvido */
@@ -141,5 +160,6 @@ export async function verificarBatimento(db: PrismaClient, companyId: string, ul
 export function linhaDoState(r: ResultadoGuarda): string {
   return `${r.dia} a=${r.a.veredito} api=${brl(r.a.apiCent)}/${r.a.apiUn}un esteira=${brl(r.a.esteiraCent)}/${r.a.esteiraUn}un eventos=${brl(r.a.eventosCent)} resto=${brl(r.a.restoCent)} · ` +
     `b=${r.b.veredito} lanc=${brl(r.b.lancamentosCent)} pedidos=${brl(r.b.pedidosCent)} [régua ${brl(r.b.reguaCent)} +entrega ${brl(r.b.entregaCent)} −desc ${brl(r.b.descontoCent)} +adic ${brl(r.b.adicionalCent)} +serv ${brl(r.b.servicoCent)}] taxa=${brl(r.b.taxaCent)} aprazo=${brl(r.b.aPrazoCent)} resto=${brl(r.b.restoCent)} · ` +
-    `c=${r.c.pendentes} pendente(s) ${brl(r.c.deltaCent)}`
+    `c=${r.c.pendentes} pendente(s) ${brl(r.c.deltaCent)} · ` +
+    `comp=${r.comp.veredito}${r.comp.origem ? `(${r.comp.origem})` : ''} api=${r.comp.apiOcc}/${brl(r.comp.apiCent)} esteira=${r.comp.esteiraOcc}/${brl(r.comp.esteiraCent)} nomes≠${r.comp.nomesDiferem}`
 }

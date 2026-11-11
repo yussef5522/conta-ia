@@ -33,7 +33,6 @@ export function FaixaDaSuit({ id }: { id: string }) {
       <span className="font-medium">{e.parado ? 'A Suit parou de mandar as vendas' : 'Vendas de produtos entram sozinhas pela Suit'}</span>
       {e.ultimaLeitura && <span className="tabular-nums text-slate-500">última leitura {new Date(e.ultimaLeitura).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}</span>}
       {ult && <span className="tabular-nums">{fmtDia(ult.dia)}: {ROTULO[ult.status] ?? ult.status} · {brl(ult.totalCent)} · {ult.unidades} un</span>}
-      <span className="text-slate-500">· complementos seguem pelo arquivo</span>
       <Link href={`/empresas/${id}/estoque/vendas/suit`} className={`ml-auto inline-flex h-7 items-center rounded-md px-2.5 font-medium ${pend ? 'bg-amber-500 text-white hover:bg-amber-600' : 'border border-emerald-300 hover:bg-emerald-100'}`}>
         {pend ? `Decidir ${pend} pedido${pend > 1 ? 's' : ''} que mudou na Suit` : 'Ver dias da Suit'}
       </Link>
@@ -41,11 +40,21 @@ export function FaixaDaSuit({ id }: { id: string }) {
   )
 }
 
+/** a faixa dos SABORES (complementos) na aba deles — a mesma cara da dos produtos */
+export function FaixaDosSabores({ desde }: { desde: string }) {
+  return (
+    <div data-testid="faixa-dos-sabores" className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+      <Zap className="h-4 w-4 shrink-0" />
+      <span className="font-medium">Sabores entram sozinhos pela Suit desde {desde}</span>
+    </div>
+  )
+}
+
 /** a pergunta quando o dono tenta subir o arquivo de PRODUTOS num dia que a Suit já entregou */
-export function PerguntaDiaDaSuit({ dia, onSubir, onCancelar }: { dia: string; onSubir: () => void; onCancelar: () => void }) {
+export function PerguntaDiaDaSuit({ dia, onSubir, onCancelar, oQue = 'vendas' }: { dia: string; onSubir: () => void; onCancelar: () => void; oQue?: string }) {
   return (
     <div data-testid="pergunta-dia-da-suit" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-      <p className="font-medium">As vendas de {dia.split('-').reverse().join('/')} já entraram sozinhas pela Suit.</p>
+      <p className="font-medium">{oQue === 'vendas' ? 'As vendas' : 'Os sabores'} de {dia.split('-').reverse().join('/')} já {oQue === 'vendas' ? 'entraram sozinhas' : 'entraram sozinhos'} pela Suit.</p>
       <p className="mt-1 text-xs">Subir o arquivo por cima troca o dia inteiro pelo do arquivo (o estoque do dia é refeito). Só faça isso se a Suit estiver errada.</p>
       <div className="mt-2 flex flex-wrap gap-2">
         <button onClick={onSubir} className="h-8 rounded-md bg-amber-600 px-3 text-xs font-medium text-white hover:bg-amber-700">Subir o arquivo por cima</button>

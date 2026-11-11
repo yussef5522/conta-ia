@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
-import { previewComplementos, confirmarComplementos, prateleiraGravada, ImportComplementoError } from '@/lib/stock/vendas/import-complementos'
+import { previewComplementos, confirmarComplementos, prateleiraGravada, ImportComplementoError, exigirComplementoSemApi, ComplementosDaApiError } from '@/lib/stock/vendas/import-complementos'
 import { exigirDiaDecidido, DiaNaoConfirmadoError } from '@/lib/stock/vendas/lei-da-data'
 import { irmaoDoPar } from '@/lib/stock/vendas/registrar-arquivo'
 
@@ -31,6 +31,8 @@ const importSchema = z.object({
   modo: z.enum(['DIA', 'PERIODO']).optional(),
   /** ⭐ o nome do arquivo da dropzone (08/10) — o outro lado da conferência Σ do dia */
   nomeArquivo: z.string().trim().min(1).max(300).optional(),
+  /** ⛔ o dono confirmou subir o arquivo POR CIMA de um dia cujos sabores a Suit já entregou */
+  sobrescreverDiaDaApi: z.boolean().optional(),
 })
 
 /** A prateleira, sem precisar de upload — abre do que já está gravado. */
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (a.erro) return a.erro
   const parsed = importSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }, { status: 400 })
-  const { data, html, confirmar, modo, nomeArquivo, confirmouDia } = parsed.data
+  const { data, html, confirmar, modo, nomeArquivo, confirmouDia, sobrescreverDiaDaApi } = parsed.data
   try {
     /**
      * ⛔⛔ **A LEI DA DATA, pela porta ÚNICA** (16/10). Ela roda **no preview E no confirm**:
@@ -70,8 +72,10 @@ export async function POST(request: NextRequest, { params }: Params) {
           })
     // ⚠️ o modo vai TAMBÉM pro preview: é ele que decide o `importId`, e sem isso o resumo
     // da baixa sairia calculado contra a chave errada (dia × período).
+    // ⛔ já no PLANO: dia cujos sabores a Suit entregou avisa ANTES de qualquer coisa
+    await exigirComplementoSemApi(companyId, dia, sobrescreverDiaDaApi ?? false, prisma)
     if (!confirmar) return NextResponse.json(await previewComplementos(companyId, dia, html, prisma, modo ?? 'DIA'))
-    return NextResponse.json(await confirmarComplementos(companyId, dia, html, a.user!.sub, prisma, modo ?? 'DIA', nomeArquivo))
+    return NextResponse.json(await confirmarComplementos(companyId, dia, html, a.user!.sub, prisma, modo ?? 'DIA', nomeArquivo, sobrescreverDiaDaApi ?? false))
   } catch (e) {
     /**
      * ⭐ 409 = **PERGUNTA**, nunca "erro" — o desenho do `SanidadeNaoConfirmadaError` (05/09):
@@ -84,6 +88,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         { status: 409 },
       )
     }
+    if (e instanceof ComplementosDaApiError) return NextResponse.json({ erro: e.message, code: e.code, dia: e.data }, { status: 409 })
     if (e instanceof ImportComplementoError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e
   }

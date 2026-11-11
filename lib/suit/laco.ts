@@ -9,6 +9,7 @@ import type { ClienteSuitLeitura } from './cliente-leitura'
 import { sincronizarJanela, sincronizarLancamentos, relogioDaApi, janelaOperacional, type RelatorioSync } from './sync'
 import { materializarDia, fechamentoDe, CORTE_API, DiaJaTemImportError, type ResultadoMaterializacao } from './materializar'
 import { guardarDia, avisarEventos, type ResultadoGuarda } from './guarda'
+import { materializarComplementosDia, complementosGravados, CORTE_COMPLEMENTOS, ComplementosJaTemXlsError, type ResultadoComplementos } from './complementos'
 import { diaOperacional } from './espelho'
 import { somarDias } from './regua-sombra'
 
@@ -20,6 +21,8 @@ export const DIAS_DE_RECUPERACAO = 7
 export interface Ciclo {
   vivo: RelatorioSync
   fechados: Array<{ dia: string; resultado: ResultadoMaterializacao | { status: 'ERRO'; erro: string } }>
+  /** os COMPLEMENTOS do dia (sabores/bordas/adicionais) — mesma hora, mesma esteira de sempre */
+  complementos: Array<{ dia: string; resultado: ResultadoComplementos | { status: 'ERRO'; erro: string } }>
   guarda: ResultadoGuarda | null
 }
 
@@ -63,6 +66,27 @@ export async function cicloDoLaco(
     }
   }
 
+  // ⭐ COMPLEMENTOS (11/11): todo dia fechado ≥ corte cujos sabores ainda não estão na esteira.
+  // ⛔ Dia com XLS de complementos: recusa pelo BANCO, antes de gastar a API, e nunca reprocessa.
+  const complementos: Ciclo['complementos'] = []
+  const sincronizadosAgora = new Set(fechados.map((f) => f.dia))
+  const inicioC = [CORTE_COMPLEMENTOS, somarDias(hoje, -DIAS_DE_RECUPERACAO)].sort().at(-1)!
+  for (let dia = inicioC; dia < hoje; dia = somarDias(dia, 1)) {
+    if (agora.getTime() < fechamentoDe(dia).getTime()) continue
+    const g = await complementosGravados(db, companyId, dia)
+    if (g.daApi) continue
+    if (g.linhas.length > 0 || g.temArquivo) { complementos.push({ dia, resultado: { status: 'ERRO', erro: nomeDoErro(new ComplementosJaTemXlsError(dia)) } }); continue }
+    try {
+      if (!sincronizadosAgora.has(dia)) {
+        const { from, to } = janelaOperacional(dia)
+        await sincronizarJanela(db, cliente, companyId, from, to, agora, true)
+      }
+      complementos.push({ dia, resultado: await materializarComplementosDia(db, companyId, dia, agora) })
+    } catch (e) {
+      complementos.push({ dia, resultado: { status: 'ERRO', erro: nomeDoErro(e) } })
+    }
+  }
+
   let guarda: ResultadoGuarda | null = null
   const dg = diaDaGuarda(agora)
   const dgEntregue = !!dg && (entregues.has(dg) || fechados.some((f) => f.dia === dg && f.resultado.status !== 'ERRO'))
@@ -71,5 +95,5 @@ export async function cicloDoLaco(
   } else {
     await avisarEventos(db, companyId)
   }
-  return { vivo, fechados, guarda }
+  return { vivo, fechados, complementos, guarda }
 }

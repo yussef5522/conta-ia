@@ -21,7 +21,8 @@ import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { fraseDoErro } from '@/lib/http/frase-do-erro'
 import { PerguntaDoDia, type VeredictoDoDia } from '@/components/estoque/pergunta-do-dia'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
-import { FaixaDaSuit, PerguntaDiaDaSuit } from '@/components/estoque/faixa-da-suit'
+import { FaixaDaSuit, PerguntaDiaDaSuit, FaixaDosSabores } from '@/components/estoque/faixa-da-suit'
+import { CORTE_COMPLEMENTOS, diaCurto } from '@/lib/suit/cortes'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
 interface Preview { linhas: Linha[]; totalUnidades: number; totalProdutos: number; naoMapeados: number; opcoes: { fichas: { id: string; nome: string; tipo: string }[]; itens: { id: string; nome: string }[] } }
@@ -725,8 +726,12 @@ function ImportComplementos({ id, onImportado, data, setData }: {
   const [busy, setBusy] = useState(false)
   const [modal, setModal] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  // SUITAPI (11/11): o arquivo de complementos virou PORTA DE EMERGÊNCIA — escondido, não removido
+  const [emergencia, setEmergencia] = useState(false)
+  const [perguntaApi, setPerguntaApi] = useState<string | null>(null)
+  const [sobreApi, setSobreApi] = useState(false)
 
-  const chamar = async (confirmar: boolean, conteudo?: string, confirmouDia?: string): Promise<{ revisao?: RevisaoDTO } | null> => {
+  const chamar = async (confirmar: boolean, conteudo?: string, confirmouDia?: string, sobre: boolean = sobreApi): Promise<{ revisao?: RevisaoDTO } | null> => {
     const corpo = conteudo ?? html
     if (!data) { setErro('Escolha a data do relatório — o arquivo do Suitable não traz o período.'); return null }
     if (!corpo) { setErro('Escolha o arquivo do relatório de complementos.'); return null }
@@ -734,7 +739,7 @@ function ImportComplementos({ id, onImportado, data, setData }: {
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/vendas/complementos`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data, html: corpo, confirmar, modo, nomeArquivo: nomeArquivo || undefined, confirmouDia }),
+        body: JSON.stringify({ data, html: corpo, confirmar, modo, nomeArquivo: nomeArquivo || undefined, confirmouDia, sobrescreverDiaDaApi: sobre || undefined }),
       })
       const j = await r.json().catch(() => null)
       /**
@@ -743,6 +748,8 @@ function ImportComplementos({ id, onImportado, data, setData }: {
        * ter que escolher o arquivo de novo.
        */
       if (r.status === 409 && j?.code === 'CONFIRME_O_DIA') { setPerguntaDia(j.dia as VeredictoDoDia); return null }
+      if (r.status === 409 && j?.code === 'DIA_DA_API') { setPerguntaApi(String(j.dia)); return null }
+      setPerguntaApi(null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui ler o arquivo.'); return null }
       setPerguntaDia(null)
       if (confirmouDia) setData(confirmouDia)
@@ -778,6 +785,13 @@ function ImportComplementos({ id, onImportado, data, setData }: {
 
   return (
     <div className="space-y-3">
+      <FaixaDosSabores desde={diaCurto(CORTE_COMPLEMENTOS)} />
+      {perguntaApi && (
+        <PerguntaDiaDaSuit dia={perguntaApi} oQue="sabores" onSubir={() => { setSobreApi(true); setPerguntaApi(null); void chamar(false, undefined, undefined, true) }} onCancelar={() => { setPerguntaApi(null); setSobreApi(false) }} />
+      )}
+      {!emergencia ? (
+        <button data-testid="porta-de-emergencia-sabores" onClick={() => setEmergencia(true)} className="text-[11px] text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline">Porta de emergência: subir arquivo de complementos</button>
+      ) : (
       <Card><CardContent className="space-y-3 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs text-slate-500">
@@ -815,6 +829,7 @@ function ImportComplementos({ id, onImportado, data, setData }: {
           />
         )}
       </CardContent></Card>
+      )}
 
       {/* ⭐⭐⭐ UMA VITRINE (14/09) — o "relatório velho pós-upload" MORREU.
           **O dono:** *"o relatório feio antigo que não edita nada"*. Ele e a revisão
