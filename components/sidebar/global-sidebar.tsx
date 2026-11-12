@@ -423,6 +423,21 @@ export function GlobalSidebar({ onNavigate, naGaveta }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
+        {/*
+          ⭐ 12/11/2026 — LUCRO POR SETOR (ordem do dono): mora no FINANCEIRO, logo abaixo de
+          "Quem paga a casa" — é a mesma pergunta (quem dá lucro), aberta por setor e por item.
+          ⚠️ `stock.view` = a MESMA permissão da rota (/estoque/lucro-setor): quem vê a porta abre a sala.
+        */}
+        {empresaAtiva && (
+          <SidebarItem
+            perm="stock.view"
+            icon={PieChart}
+            label="Lucro por setor"
+            href={`/empresas/${empresaAtiva}/estoque/lucro-setor`}
+            isActive={/^\/empresas\/[^/]+\/estoque\/lucro-setor/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
         {!soEstoque && (
         <SidebarItem
           perm="transaction.view"
@@ -606,15 +621,6 @@ export function GlobalSidebar({ onNavigate, naGaveta }: GlobalSidebarProps) {
               label="Real vs Teórico"
               href={`/empresas/${empresaAtiva}/estoque/real-vs-teorico`}
               isActive={/^\/empresas\/[^/]+\/estoque\/real-vs-teorico/.test(pathname)}
-              onClick={onNavigate}
-            />
-            {/* ⭐ LUCRO POR SETOR (12/11) — lei docs/lucro-por-setor-referencia.html v11 */}
-            <SidebarItem
-          perm="stock.view"
-              icon={PieChart}
-              label="Lucro por setor"
-              href={`/empresas/${empresaAtiva}/estoque/lucro-setor`}
-              isActive={/^\/empresas\/[^/]+\/estoque\/lucro-setor/.test(pathname)}
               onClick={onNavigate}
             />
             {/* ⛔ "Boletos p/ pagar" SAIU da sidebar (30/08) — DÍVIDA MORA NUM LUGAR SÓ.

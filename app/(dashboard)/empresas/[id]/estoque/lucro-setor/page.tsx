@@ -10,7 +10,7 @@ import { Fragment, use, useCallback, useEffect, useMemo, useRef, useState } from
 import Link from 'next/link'
 import { formatBRL } from '@/lib/format/money'
 import type { TelaDTO, ItemDTO, SetorDTO, FaltaFicha, PedidoDoItemDTO } from '@/lib/lucro-setor/tela'
-import { eseConta, vereditoDoEse, lerPreco } from '@/lib/lucro-setor/estudo'
+import { eseConta, vereditoDoEse, lerPreco, paineisDoDia } from '@/lib/lucro-setor/estudo'
 import { FichaNaLinha, type AlvoDaFicha } from '@/components/estoque/ficha-na-linha'
 
 const SEMANA = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB']
@@ -261,8 +261,8 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
         {grupos.map(([s, xs]) => <optgroup key={s.secao} label={nomeSetor(s)}>{xs.map((i) => <option key={i.chave} value={i.chave}>{i.nome}</option>)}</optgroup>)}
       </select>
     )
-    const topo = <div className="t estudo-t">ESTUDO DO ITEM {sel}{e.promo && <span className="tagp">PROMO</span>}</div>
-    const vendeuHoje = <div className="v-cel">vendeu hoje · a {formatBRL(e.preco)}<b>{un(e.q)} un · {formatBRL(e.vendeu)}</b></div>
+    const topo = <div className="t estudo-t">ESTUDO DO ITEM {sel}{e.promo && <span className="tagp">PROMO</span>}{paineis.seloParcial && <span className="selo-dia" data-testid="estudo-parcial">{paineis.seloParcial}</span>}</div>
+    const vendeuHoje = <div className="v-cel">vendeu hoje{paineis.seloParcial ? ` · ${paineis.seloParcial}` : ''} · a {formatBRL(e.preco)}<b>{un(e.q)} un · {formatBRL(e.vendeu)}</b></div>
     if (e.semBase || e.lucro == null) {
       return (
         <div className="camada" data-testid="estudo">{topo}
@@ -296,7 +296,7 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
           <span className="v-cel ese-c">pra empatar hoje<b data-testid="ese-empate">{r.empate != null ? `${r.empate} un` : '·'}</b></span>
           <span className="v-cel ese-c">régua dias normais{regua && regua.nomeCheio !== e.nome ? ` (${regua.nomeCheio})` : ''}<b data-testid="ese-regua">{regua?.un != null ? `${un(regua.un)} un` : 'em formação'}</b></span>
         </div>
-        {v && r.lucroCheio != null && (
+        {v && r.lucroCheio != null && paineis.vereditoDoEse(regua?.un ?? null) && (
           <div className={`veredito ${v.ok ? 'ok' : 'ruim'}`} data-testid="ese-veredito">
             {v.titulo} — <b>+{formatBRL(v.valor)}{v.ok ? '' : ' a mais'}</b>
             <div className="vsub">{un(regua!.un!)} un a {formatBRL(preco)} dariam {formatBRL(r.lucroCheio)} · hoje deu {formatBRL(e.lucro)}</div>
@@ -306,14 +306,16 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
     )
   }
 
-  const renderPromo = () => {
-    // S8 · dia parcial não fecha veredito (nem estuda: o dia ainda não terminou)
-    if (d.parcial || !d.temLaco || !d.itens.length) return null
+  // ⭐ E1 (12/11) · veredito do setor e estudo do item são painéis SEPARADOS — a decisão é `paineisDoDia`
+  const paineis = paineisDoDia(d)
+  const renderVeredito = () => {
+    // S7/S8 · o veredito do setor: só dia FECHADO, com régua (intocado)
     const vd = d.veredito
     const sv = vd ? setores.find((s) => s.secao === vd.secao) : null
+    if (!paineis.vereditoSetor || !vd || !sv) return null
     return (
       <div className="painel" data-testid="promo">
-        {vd && sv && (
+        {(
           <>
             <h2>Veredito — {nomeSetor(sv)} {ddmm(d.dia)}<Info>comparado com a régua: a mediana dos 4 mesmos dias-da-semana anteriores, sem promoção · dia parcial não fecha veredito · no E SE, o custo é o custo real por unidade do item (base + sabores que saíram) e a régua é quantas unidades do produto a preço cheio saem num dia típico sem promo · lucro com sabor sem ficha é &quot;pelo menos&quot;: só muda quando a ficha nascer</Info></h2>
             <div className="v-grid">
@@ -332,10 +334,11 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
               )}
           </>
         )}
-        {renderEstudo()}
       </div>
     )
   }
+  // ⭐ E1 (12/11) · o ESTUDO aparece TODO dia com itens — parcial leva o selo "até HH:MM"
+  const renderPainelEstudo = () => (paineis.estudo ? <div className="painel" data-testid="painel-estudo">{renderEstudo()}</div> : null)
 
   return (
     <div className="ls">
@@ -385,7 +388,8 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
 
       {sAberto && renderDetalhe(sAberto)}
       {sAberto && renderMesa(sAberto)}
-      {renderPromo()}
+      {renderVeredito()}
+      {renderPainelEstudo()}
       {erro && <div className="painel">{erro}</div>}
     </div>
   )
@@ -495,6 +499,7 @@ const CSS = `
 .ls .ese .money{display:inline-flex;align-items:center;gap:5px;font-weight:800;font-size:15px;background:var(--card-2);border:1.5px solid var(--acao);border-radius:10px;padding:7px 11px}
 .ls .ese input{width:76px;border:0;background:none;color:var(--tinta);font-family:inherit;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;outline:none;text-align:right}
 .ls .ese .ese-c{flex:1 1 120px}
+.ls .selo-dia{font-size:10.5px;font-weight:800;color:var(--tinta-2);background:var(--card);border:1px solid var(--linha-forte);border-radius:var(--r-pilula);padding:2px 9px}
 .ls .selit{border:1px solid var(--linha-forte);background:var(--card);color:var(--tinta);border-radius:10px;padding:6px 10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;max-width:100%}
 .ls .rot{display:none}
 @media(max-width:620px){

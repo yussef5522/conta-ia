@@ -92,6 +92,22 @@ describe('Lucro por Setor · a tela bate com a lei v11', () => {
     for (const q of ['⭐', '🐴', '💎', '🐶']) expect(ESTUDO).toContain(q)
   })
 
+  it('E1 (12/11) · a emenda está NA LEI e a tela obedece: o estudo é painel próprio, nunca preso ao veredito nem ao parcial', () => {
+    expect(LEI).toContain('EMENDAS APROVADAS PELO DONO (12/11/2026')
+    expect(LEI).toContain('E1 · O ESTUDO DO ITEM APARECE TODO DIA')
+    expect(LEI).toContain('E2 · LUGAR NO MENU')
+    // o painel do estudo decide SÓ por `paineis.estudo` (a porta `paineisDoDia`)
+    const corpo = TELA.slice(TELA.indexOf('const renderPainelEstudo'), TELA.indexOf('\n', TELA.indexOf('const renderPainelEstudo')))
+    expect(corpo).toMatch(/paineis\.estudo \?/)
+    expect(corpo).not.toMatch(/parcial|veredito/)
+    // e o estudo NÃO mora dentro do painel do veredito
+    const ver = TELA.slice(TELA.indexOf('const renderVeredito'), TELA.indexOf('const renderPainelEstudo'))
+    expect(ver).not.toContain('renderEstudo()')
+    expect(TELA).toMatch(/\{renderVeredito\(\)\}\s*\{renderPainelEstudo\(\)\}/)
+    // o selo do parcial vai ao lado do estudo
+    expect(TELA).toContain('data-testid="estudo-parcial"')
+  })
+
   it('S21 · a conta do empate é a da lei (ceil(lucro ÷ lucro por un)) e o campo começa no preço de HOJE (S23)', () => {
     expect(LEI).toContain('Math.ceil(e.lucro/lucroUn)')
     expect(ESTUDO).toMatch(/Math\.ceil\(e\.lucro \/ lucroUn/)

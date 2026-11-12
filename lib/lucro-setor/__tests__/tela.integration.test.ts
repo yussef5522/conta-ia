@@ -18,7 +18,7 @@ import { linhasDaRegua, lerPedidosDoDia } from '@/lib/suit/materializar'
 import type { PedidoCru } from '@/lib/suit/cliente-leitura'
 import fixture from '@/lib/suit/__fixtures__/dia-2026-11-08.json'
 import { lerTelaDoDia, pedidosDoItem, montarDoLaco, diasDaRegua, reguaDeUn, emPromo, type TelaDTO, type Historico } from '../tela'
-import { eseConta, vereditoDoEse, quadrantes, medianaDaLei, lerPreco, ehNomeDePromo, gemeoDe } from '../estudo'
+import { eseConta, vereditoDoEse, quadrantes, medianaDaLei, lerPreco, ehNomeDePromo, gemeoDe, paineisDoDia } from '../estudo'
 import { corpoDaCriacao, corpoDaEdicao, moverDose, custoAoVivo, recusa } from '../ficha-na-linha'
 import { atualizarFicha } from '@/lib/stock/producao/fichas'
 
@@ -321,6 +321,40 @@ describe('Lucro por Setor · a tela do dia REAL (15/11 = o sábado 08/11 da Suit
     expect(t.hoje).toBe(DIA)
     expect(t.parcial).toMatch(/^até \d{2}:\d{2}$/)
     expect(t.veredito).toBeNull()
+  })
+
+  it('E1 (12/11) · o caso REAL de HOJE (11/11 00:23): parcial e sem régua — o ESTUDO aparece e as contas vivem', () => {
+    // o que a tela de produção devolveu pra PIZZA GRANDE PRECINHO às 00:23 (sonda read-only, 12/11)
+    const hoje = { parcial: 'até 00:23', temLaco: true, itens: [{}], veredito: null }
+    const p = paineisDoDia(hoje)
+    expect(p.estudo).toBe(true)
+    expect(p.seloParcial).toBe('até 00:23')
+    expect(p.vereditoSetor).toBe(false) // S8 intocado: parcial não fecha veredito do setor
+    expect(p.vereditoDoEse(null)).toBe(false) // sem régua: "em formação", sem veredito do E SE
+    expect(p.vereditoDoEse(14)).toBe(false) // e com régua, num dia pela metade, também não
+    const r = eseConta({ lucro: 997.41, custoUn: 697.1 / 40, cheioUn: null }, 39.99)
+    expect(r.lucroUn).toBeCloseTo(22.5625, 4) // lucro/un no preço digitado
+    expect(r.empate).toBe(45) // un pra empatar
+    expect(eseConta({ lucro: 997.41, custoUn: 697.1 / 40, cheioUn: null }, 59.9).empate).toBe(24)
+    // dia FECHADO com régua: aí sim os dois vereditos
+    const fechado = paineisDoDia({ parcial: null, temLaco: true, itens: [{}], veredito: {} })
+    expect([fechado.estudo, fechado.vereditoSetor, fechado.vereditoDoEse(13), fechado.vereditoDoEse(null)]).toEqual([true, true, true, false])
+    // dia sem laço: não há item pra estudar (S19)
+    expect(paineisDoDia({ parcial: null, temLaco: false, itens: [], veredito: null }).estudo).toBe(false)
+  })
+
+  it('E1 · no banco: HOJE parcial devolve o estudo pronto (padrão + régua por item) e o painel abre', async () => {
+    const mat = await prisma.suitDiaMaterializado.findUniqueOrThrow({ where: { companyId_dia: { companyId, dia: DIA } } })
+    await prisma.suitDiaMaterializado.delete({ where: { id: mat.id } })
+    try {
+      const t = await lerTelaDoDia(companyId, DIA, new Date('2026-11-16T01:30:00Z'), prisma)
+      expect(t.parcial).toMatch(/^até \d{2}:\d{2}$/)
+      expect(paineisDoDia(t).estudo).toBe(true)
+      expect(t.estudo.padrao).not.toBeNull()
+      expect(Object.keys(t.estudo.reguas).length).toBe(t.itens.length)
+    } finally {
+      await prisma.suitDiaMaterializado.create({ data: { companyId, dia: DIA, status: 'MATERIALIZADO', pedidos: 0, linhas: 0, unidades: 0, totalCent: 0 } })
+    }
   })
 
   it('montarDoLaco é PURO: o mesmo laço dá o mesmo dia (sem relógio, sem banco)', () => {

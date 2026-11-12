@@ -105,3 +105,29 @@ export function lerPreco(v: string): number | null {
   const p = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t)
   return Number.isFinite(p) && p > 0 ? p : null
 }
+
+/**
+ * ⭐⭐ QUAIS PAINÉIS O DIA MOSTRA — a decisão, num lugar só (emenda E1 do dono, 12/11/2026).
+ *
+ * ⛔ O ESTUDO DO ITEM APARECE TODO DIA que tem item no laço — inclusive HOJE parcial e item sem
+ *    régua. Ele morava dentro do painel do veredito, que se esconde em dia parcial/sem régua:
+ *    o dono abriu HOJE e o estudo não estava lá.
+ *  • veredito do SETOR (S7/S8, intocado): só dia FECHADO, com promo e com o veredito montado;
+ *  • estudo: sempre que há itens do laço; no parcial leva o selo "até HH:MM" (hora pela metade
+ *    nunca se veste de dia cheio) e o veredito do E SE fica fora (S8: parcial não fecha veredito);
+ *  • veredito do E SE: só com régua E dia fechado — sem régua a célula diz "em formação".
+ */
+export function paineisDoDia(d: { parcial: string | null; temLaco: boolean; itens: readonly unknown[]; veredito: unknown | null }): {
+  vereditoSetor: boolean
+  estudo: boolean
+  seloParcial: string | null
+  vereditoDoEse: (cheioUn: number | null) => boolean
+} {
+  const fechado = d.parcial == null
+  return {
+    vereditoSetor: fechado && d.temLaco && d.veredito != null,
+    estudo: d.temLaco && d.itens.length > 0,
+    seloParcial: d.parcial,
+    vereditoDoEse: (cheioUn) => fechado && cheioUn != null,
+  }
+}
