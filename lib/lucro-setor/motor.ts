@@ -26,12 +26,13 @@
  */
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { hubCardapio, custoDeUmaUnidade } from '@/lib/stock/cardapio/hub'
+import { hubCardapio, custoDeUmaUnidade, type LinhaCardapio } from '@/lib/stock/cardapio/hub'
 import { montarCtx } from '@/lib/stock/vendas/baixa-venda'
 import { custoMedioPorItem } from '@/lib/stock/saldo'
 import { secoesPorNome, secaoDaLinha } from '@/lib/stock/cardapio/secoes-db'
 import { gruposVigentes, type GrupoComplemento } from '@/lib/stock/vendas/grupo-complemento'
 import { janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
+import { diaUtc } from '@/lib/stock/vendas/dia-dispensado'
 import { setorDoComplemento, SEM_SETOR, NOME_SEM_SETOR } from './complemento-setor'
 
 // ─── entradas do núcleo puro ────────────────────────────────────────────────────────────
@@ -271,6 +272,32 @@ export async function lucroPorSetorDoDia(
   return montarSetores(await lerEntradasDoDia(companyId, dia, db))
 }
 
+/**
+ * ⭐ A PORTA DE CUSTO DO SETOR-DIA (12/11) — produto e complemento, um lugar só. A tela (laço
+ * pedido→item→sabores, `tela.ts`) usa ESTA mesma, nunca uma cópia: o custo da linha do motor
+ * e o custo do item da tela não podem divergir por régua.
+ */
+export function portaDeCusto(ctx: Awaited<ReturnType<typeof montarCtx>>, custoDe: Map<string, number | null>) {
+  const fichasValidas = new Set(ctx.componentesByFicha.keys())
+  return {
+    produto(l: Pick<LinhaCardapio, 'destinoTipo' | 'fichaId' | 'status' | 'itemId'>): CustoDaPorta {
+      if (l.status === 'IGNORADO') return null
+      if (l.destinoTipo === 'FICHA' && l.fichaId && l.status !== 'SEM_FICHA' && fichasValidas.has(l.fichaId)) {
+        return custoDeUmaUnidade({ tipo: 'FICHA', fichaId: l.fichaId }, ctx, custoDe).custo
+      }
+      if (l.destinoTipo === 'REVENDA' && l.itemId) {
+        return custoDeUmaUnidade({ tipo: 'REVENDA', itemId: l.itemId }, ctx, custoDe).custo
+      }
+      return null
+    },
+    complemento(alvo: ComplementoDoDia['alvo'], fichaId: string | null): CustoDaPorta {
+      return alvo === 'FICHA' && fichaId && fichasValidas.has(fichaId)
+        ? custoDeUmaUnidade({ tipo: 'FICHA', fichaId }, ctx, custoDe).custo
+        : null
+    },
+  }
+}
+
 /** Lê do banco tudo o que o núcleo puro precisa — e todo custo sai daqui, pela porta. */
 export async function lerEntradasDoDia(
   companyId: string,
@@ -288,23 +315,18 @@ export async function lerEntradasDoDia(
     custoMedioPorItem(db, companyId),
     secoesPorNome(companyId, db),
     db.stockCardapioSecao.findMany({ where: { companyId, ativo: true }, select: { chave: true, nome: true, ordem: true } }),
+    // ⛔ (12/11) o complemento NÃO se lê pela janela SP: o funil grava `data = diaUtc(dia)`
+    // (dia 00:00Z = 21:00 do dia ANTERIOR em Brasília). Pela janela 03:00Z→03:00Z o motor lia
+    // o relatório do dia SEGUINTE — medido em prod: 10/11 sem sabor nenhum, 09/11 com os 376 de 10/11.
     db.stockVendaComplementoLinha.findMany({
-      where: { companyId, data: { gte: de, lt: ate } },
+      where: { companyId, data: diaUtc(dia) },
       select: { nomeSuitable: true, ocorrencias: true },
     }),
     db.stockVendaComplementoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true } }),
   ])
 
-  const fichasValidas = new Set(ctx.componentesByFicha.keys())
-  const custoDoProduto = (l: (typeof hub.linhas)[number]): CustoDaPorta => {
-    if (l.destinoTipo === 'FICHA' && l.fichaId && l.status !== 'SEM_FICHA' && fichasValidas.has(l.fichaId)) {
-      return custoDeUmaUnidade({ tipo: 'FICHA', fichaId: l.fichaId }, ctx, custoDe).custo
-    }
-    if (l.destinoTipo === 'REVENDA' && l.itemId) {
-      return custoDeUmaUnidade({ tipo: 'REVENDA', itemId: l.itemId }, ctx, custoDe).custo
-    }
-    return null
-  }
+  const porta = portaDeCusto(ctx, custoDe)
+  const custoDoProduto = porta.produto
 
   // ⚠️ o ignorado do CARDÁPIO (produto) segue a decisão do dono e entra como SEM CUSTO no seu
   //    setor — some do custo, mas a venda dele NÃO some do dia (K1 conta tudo que o PDV vendeu).
@@ -312,7 +334,7 @@ export async function lerEntradasDoDia(
     .filter((l) => l.vendasQtd !== 0 || l.vendasValor !== 0)
     .map((l) => ({
       chave: l.chave, nome: l.nome, nomesSuitable: l.nomesSuitable, un: l.vendasQtd, vendeu: l.vendasValor,
-      custoUn: l.status === 'IGNORADO' ? null : custoDoProduto(l),
+      custoUn: custoDoProduto(l),
       secao: secaoGravada(l.nomesSuitable, gravadas, l.nome),
     }))
 
@@ -325,10 +347,7 @@ export async function lerEntradasDoDia(
     complementos = [...porNome].map(([nome, oc]) => {
       const m = mapa.get(nome)
       const alvo: ComplementoDoDia['alvo'] = m?.alvoTipo === 'IGNORAR' ? 'IGNORAR' : m?.alvoTipo === 'FICHA' && m.fichaId ? 'FICHA' : 'SEM_MAPA'
-      const custoUn =
-        alvo === 'FICHA' && m?.fichaId && fichasValidas.has(m.fichaId)
-          ? custoDeUmaUnidade({ tipo: 'FICHA', fichaId: m.fichaId }, ctx, custoDe).custo
-          : null
+      const custoUn = porta.complemento(alvo, m?.fichaId ?? null)
       return { nomeSuitable: nome, ocorrencias: oc, alvo, custoUn, grupo: grupos.get(nome)?.grupo ?? 'OUTRO' }
     })
   }

@@ -4,6 +4,7 @@ import { criarFicha } from '@/lib/stock/producao/fichas'
 import { upsertVendaMap } from '@/lib/stock/vendas/venda-map'
 import { lucroPorSetorDoDia } from '../motor'
 import { SEM_SETOR } from '../complemento-setor'
+import { diaUtc } from '@/lib/stock/vendas/dia-dispensado'
 
 // O motor contra o banco: fichas reais, custo médio do ledger, a porta `custoDeUmaUnidade`.
 // O cenário tem os 4 casos que um 2º caminho de custo erraria: combo = produto final DENTRO de
@@ -58,7 +59,10 @@ beforeAll(async () => {
   const venda = async (dia: string, linhas: [string, number, number][], compl: [string, number][]) => {
     const imp = await prisma.stockVendaImport.create({ data: { companyId, data: new Date(`${dia}T15:00:00.000Z`), totalLinhas: linhas.length, totalUnidades: linhas.reduce((a, l) => a + l[1], 0) } })
     await prisma.stockVendaLinha.createMany({ data: linhas.map(([nomeSuitable, quantidade, valorTotal]) => ({ companyId, importId: imp.id, data: imp.data, nomeSuitable, quantidade, valorTotal })) })
-    if (compl.length) await prisma.stockVendaComplementoLinha.createMany({ data: compl.map(([nomeSuitable, ocorrencias]) => ({ companyId, importId: imp.id, data: imp.data, nomeSuitable, ocorrencias })) })
+    // ⛔ (12/11) a data do complemento é a do FUNIL REAL (`diaUtc` = dia 00:00Z, confirmarLinhasDeComplemento),
+    // NÃO a do produto (T15:00Z). A fixture antiga usava a do produto e escondia o motor lendo
+    // o complemento do dia SEGUINTE (janela SP 03:00Z→03:00Z) — medido em prod: 10/11 sem sabor, 09/11 com os de 10/11.
+    if (compl.length) await prisma.stockVendaComplementoLinha.createMany({ data: compl.map(([nomeSuitable, ocorrencias]) => ({ companyId, importId: `comp-${companyId}-${dia}`, data: diaUtc(dia), nomeSuitable, ocorrencias })) })
   }
   await venda(DIA, [['XIS COMPLETO', 10, 300], ['COMBO CACULA', 2, 90], ['XIS OVO', 2, 50], ['PIZZA GRANDE', 4, 200], ['COCA LATA', 3, 27], ['PRODUTO NOVO', 1, 10]],
     [['CALABRESA', 5], ['BORDA CATUPIRY', 2], ['REFRI DO COMBO', 3], ['GRANDE', 4]])
@@ -120,10 +124,12 @@ describe('motor do setor-dia contra o banco', () => {
     expect(r.totais.custo).toBe(35 + 19 + 15 + 52.5 + 18)
   })
 
+  // ⚠️ (12/11) contado POR EMPRESA: a suíte roda arquivos em paralelo e outro teste criando seção
+  // em OUTRA empresa fazia este "só lê" ficar vermelho sem o motor ter escrito nada.
   it('só lê: nenhuma linha nova em lugar nenhum', async () => {
-    const antes = await Promise.all([prisma.stockCardapioSecao.count(), prisma.stockCardapioProdutoSecao.count(), prisma.stockMovement.count(), prisma.stockVendaComplementoGrupo.count()])
+    const antes = await Promise.all([prisma.stockCardapioSecao.count({ where: { companyId } }), prisma.stockCardapioProdutoSecao.count({ where: { companyId } }), prisma.stockMovement.count({ where: { companyId } }), prisma.stockVendaComplementoGrupo.count({ where: { companyId } })])
     await lucroPorSetorDoDia(companyId, DIA, prisma)
-    const depois = await Promise.all([prisma.stockCardapioSecao.count(), prisma.stockCardapioProdutoSecao.count(), prisma.stockMovement.count(), prisma.stockVendaComplementoGrupo.count()])
+    const depois = await Promise.all([prisma.stockCardapioSecao.count({ where: { companyId } }), prisma.stockCardapioProdutoSecao.count({ where: { companyId } }), prisma.stockMovement.count({ where: { companyId } }), prisma.stockVendaComplementoGrupo.count({ where: { companyId } })])
     expect(depois).toEqual(antes)
   })
 })

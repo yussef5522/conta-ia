@@ -52,6 +52,7 @@ import {
   ChefHat,
   Home,
   Radar as RadarIcon,
+  PieChart,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
@@ -605,6 +606,15 @@ export function GlobalSidebar({ onNavigate, naGaveta }: GlobalSidebarProps) {
               label="Real vs Teórico"
               href={`/empresas/${empresaAtiva}/estoque/real-vs-teorico`}
               isActive={/^\/empresas\/[^/]+\/estoque\/real-vs-teorico/.test(pathname)}
+              onClick={onNavigate}
+            />
+            {/* ⭐ LUCRO POR SETOR (12/11) — lei docs/lucro-por-setor-referencia.html v11 */}
+            <SidebarItem
+          perm="stock.view"
+              icon={PieChart}
+              label="Lucro por setor"
+              href={`/empresas/${empresaAtiva}/estoque/lucro-setor`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/lucro-setor/.test(pathname)}
               onClick={onNavigate}
             />
             {/* ⛔ "Boletos p/ pagar" SAIU da sidebar (30/08) — DÍVIDA MORA NUM LUGAR SÓ.
