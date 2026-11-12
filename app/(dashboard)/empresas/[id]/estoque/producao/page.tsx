@@ -21,6 +21,8 @@ import { LogoDaReceita } from '@/components/estoque/logo-da-receita'
 import { SeloDaConferencia } from '@/components/estoque/selo-da-conferencia'
 import { ConferenciaDoDia } from '@/components/estoque/conferencia-do-dia'
 import { usePermissoes } from '@/lib/hooks/use-permissoes'
+import { TarefasDoDia } from '@/components/estoque/tarefas-do-dia'
+import { rotuloDasConcluidas } from '@/lib/stock/producao/rotulos-do-painel'
 /**
  * ⭐⭐ O PEDIDO NA TELA e a pílula "% do pedido" têm DONO ÚNICO (05/10) — a tela não arredonda
  * nem divide por conta própria. Quatro telas mostram pedido; quatro `Math.round` divergiriam.
@@ -381,7 +383,7 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
           <CardMetrica familia="azul" Icone={ChefHat} rotulo="Na bancada"
             valor={formatBRL(painel.valorEmProducao)}
             sub={painel.valorEmProducao > 0 ? 'insumo fora da prateleira' : 'nada parado agora'} />
-          <CardMetrica familia="verde" Icone={CheckCircle2} rotulo="Concluídas hoje"
+          <CardMetrica familia="verde" Icone={CheckCircle2} rotulo={rotuloDasConcluidas(periodo, custom)}
             valor={String(painel.concluidasNoPeriodo)}
             sub={`${formatBRL(painel.valorProduzidoNoPeriodo)} produzidos`} />
           {/**
@@ -525,6 +527,9 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
           ─────────────────────────────────────────────────────────────────────── */}
       <ConferenciaDoDia id={id} podeGerenciar={podePerm('stock.manage')} carregandoPerm={carregandoPerm}
         onMudou={() => void carregar()} />
+
+      {/* ⭐⭐ (lei v7 M2) NOVA TAREFA — trabalho sem estoque que cai na hora no tablet */}
+      {!carregandoPerm && <TarefasDoDia id={id} podeOperar={podePerm('stock.operate')} podeLiberar={podePerm('stock.manage')} />}
 
       {ordens.length === 0 && !novo ? (
         <div className="flex flex-col items-center gap-2 rounded-xl p-10 text-center"

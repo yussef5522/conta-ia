@@ -39,6 +39,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   const etapa = await prisma.stockOrdemEtapa.findFirst({
     where: { id: parsed.data.etapaId, companyId }, select: { ordemId: true },
   })
+  // ⛔ (12/11, lei v7 M2) TAREFA: FINALIZAR em um toque — nunca grandeza, nunca lote
+  const ehTarefa = etapa ? (await prisma.stockTarefa.count({ where: { id: etapa.ordemId, companyId } })) > 0 : false
+  if (ehTarefa && parsed.data.qtdGerada != null) return NextResponse.json({ erro: 'Tarefa não fecha lote — é só apertar FINALIZAR.' }, { status: 409 })
 
   /**
    * ⛔⛔ A PERGUNTA DA GRANDEZA VEM ANTES DE FINALIZAR A ETAPA (19/09).

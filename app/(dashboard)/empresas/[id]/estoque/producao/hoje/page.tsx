@@ -355,7 +355,7 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
               {d.pessoas.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-white px-[18px] py-5 text-center text-sm text-slate-500">
                   Nenhuma pessoa ativa cadastrada.
-                  <a href={`/empresas/${id}/equipe`} className="ml-1 text-[color:var(--prod-accent)] underline underline-offset-2">cadastrar equipe →</a>
+                  <a href="/equipe?filtro=cozinha" className="ml-1 text-[color:var(--prod-accent)] underline underline-offset-2">cadastrar equipe →</a>
                 </div>
               ) : (
                 /* ⭐ grade de cards, o molde do "Por Pessoa": no notebook cabem dois por

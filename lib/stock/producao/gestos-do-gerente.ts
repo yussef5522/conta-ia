@@ -54,14 +54,17 @@ export async function resolverEstadoDasEtapas(
   const ids = etapas.map((e) => e.id)
   const ordemIds = [...new Set(etapas.map((e) => e.ordemId))]
 
-  const [ordens, encerradas, gerentes, pedidos] = await Promise.all([
+  const [ordens, tarefas, encerradas, gerentes, pedidos] = await Promise.all([
     db.stockProductionOrder.findMany({ where: { companyId, id: { in: ordemIds } }, select: { id: true, estado: true } }),
+    // ⭐ (12/11, lei v7 M2) a etapa de uma TAREFA tem o cabeçalho em `stock_tarefa`: cancelada
+    // lá = "ordem cancelada" aqui — o MESMO desfecho, pela MESMA régua (solta a pessoa, cala o alarme)
+    db.stockTarefa.findMany({ where: { companyId, id: { in: ordemIds } }, select: { id: true, canceladaEm: true } }),
     db.stockEtapaEncerrada.findMany({ where: { companyId, etapaId: { in: ids } }, select: { etapaId: true, motivo: true } }),
     db.stockEtapaFinalizadaGerente.findMany({ where: { companyId, etapaId: { in: ids } }, select: { etapaId: true, finalizadaPorId: true, emNomeDeId: true } }),
     db.stockEtapaPedidoFinalizar.findMany({ where: { companyId, etapaId: { in: ids }, atendidoEm: null }, select: { etapaId: true, pedidoEm: true } }),
   ])
 
-  const estadoOrdem = new Map(ordens.map((o) => [o.id, o.estado]))
+  const estadoOrdem = new Map<string, string>([...ordens.map((o) => [o.id, o.estado] as const), ...tarefas.filter((t) => t.canceladaEm).map((t) => [t.id, 'CANCELADA'] as const)])
   const encMap = new Map(encerradas.map((e) => [e.etapaId, e.motivo as 'ORDEM_CONCLUIDA' | 'ORDEM_CANCELADA']))
   const gerMap = new Map(gerentes.map((g) => [g.etapaId, g]))
   const pedMap = new Map(pedidos.map((p) => [p.etapaId, p.pedidoEm]))

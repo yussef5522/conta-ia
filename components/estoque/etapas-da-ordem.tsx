@@ -27,6 +27,7 @@ import { formatarDuracao } from '@/lib/format/duracao'
 import { textoDoCronometro, desvioDoAparelho } from '@/lib/stock/producao/cronometro'
 import { quemProduziuNasEtapas } from '@/lib/stock/producao/quem-produziu'
 import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
+import { usePermissoes } from '@/lib/hooks/use-permissoes'
 
 interface Etapa {
   id: string; posicao: number; nome: string
@@ -74,6 +75,15 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberQuemProduziu,
       e a lista discordarem sobre quais etapas estão abertas. */
   aoSaberAbertas?: (abertas: { nome: string; executorNome: string | null }[]) => void
 }) {
+  /**
+   * ⭐ (lei v7 M5, 12/11) O CONTROLE QUE O PAPEL NÃO USA NÃO APARECE — o mesmo gate das rotas:
+   * designar = `stock.operate` (PATCH /etapas); plano e gestos do gerente = `stock.manage`.
+   * Antes a "Consulta" via "+ quem faz" e levava 403 depois do clique.
+   * ⚠️ REGRA 9: hook no TOPO do componente.
+   */
+  const { pode, carregando: carregandoPerm } = usePermissoes(id)
+  const podeDesignar = !carregandoPerm && pode('stock.operate')
+  const podeGerir = !carregandoPerm && pode('stock.manage')
   const [etapas, setEtapas] = useState<Etapa[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState<string | null>(null)
@@ -336,7 +346,7 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberQuemProduziu,
                             >
                               no relógio
                             </span>
-                          ) : (
+                          ) : podeDesignar && (
                             <button
                               onClick={() => designar(e.id, e.participantes.filter((x) => x.colaboradorId !== pa.colaboradorId).map((x) => x.colaboradorId))}
                               disabled={salvando === e.id}
@@ -349,7 +359,7 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberQuemProduziu,
                       ))}
                       {/* ⚠️ o "+" some quando a vaga acaba: o teto de 2 aparece como AUSÊNCIA
                           de opção, não como erro depois do clique. */}
-                      {e.participantes.length < 2 && (
+                      {podeDesignar && e.participantes.length < 2 && (
                         <select
                           value=""
                           onChange={(ev) => { if (ev.target.value) designar(e.id, [...e.participantes.map((x) => x.colaboradorId), ev.target.value]) }}
@@ -387,7 +397,7 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberQuemProduziu,
                           {e.visibilidade}
                         </span>
                       )}
-                      <label className="inline-flex items-center gap-1" style={{ color: 'var(--prod-muted)' }}>
+                      {podeGerir && <label className="inline-flex items-center gap-1" style={{ color: 'var(--prod-muted)' }}>
                         dia
                         {/* ⚠️ vazio = o dia da ORDEM (o caso comum, tudo no mesmo dia) */}
                         <input
@@ -398,9 +408,9 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberQuemProduziu,
                           style={{ border: '1px solid var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
                         />
                         {!e.diaPrevisto && <span>= o da ordem</span>}
-                      </label>
+                      </label>}
                       {/* ⛔ LIBERAR É ESCOLHA, nunca o padrão por omissão: o silêncio não publica */}
-                      {e.participantes.length === 0 && (
+                      {podeGerir && e.participantes.length === 0 && (
                         <button
                           onClick={() => plano(e.id, { liberadaParaEquipe: !e.liberadaParaEquipe })}
                           disabled={salvando === e.id}
@@ -435,7 +445,7 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberQuemProduziu,
                             ⚠️ "Pedir" vem PRIMEIRO e é o caminho preferido: ela aperta com o PIN
                             dela e o tempo é DELA, medido de verdade. "Finalizar pelo gerente" é a
                             saída de quando ela não está mais lá — e custa o tempo (a apurar). */}
-                        <span className="flex items-center gap-1.5">
+                        {podeGerir && <span className="flex items-center gap-1.5">
                           {e.pedidoEmAberto ? (
                             <span
                               className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium"
@@ -458,7 +468,7 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberQuemProduziu,
                             style={{ border: '1px solid var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
                             <UserCheck className="h-3 w-3" /> finalizar por ela
                           </button>
-                        </span>
+                        </span>}
                       </>
                     ) : (
                       /* ⭐ AGUARDANDO também é um dos 5 estados — ganha o chip, em tom neutro:

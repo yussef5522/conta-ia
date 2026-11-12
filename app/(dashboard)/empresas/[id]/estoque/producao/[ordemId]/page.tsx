@@ -417,7 +417,8 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
             {ordem.nomeProduzido}
           </h1>
           <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
-            {ordem.escalaReceitas}× a receita (v{ordem.versaoFicha}) · {fmtDia(ordem.dataProducao)}
+            {/* ⛔ (lei v7 M5) o "{escala}× a receita" saiu: quem manda são as UNIDADES do PEDIDO, ao lado */}
+            v{ordem.versaoFicha} · {fmtDia(ordem.dataProducao)}
             {ordem.setorNome ? ` · ${ordem.setorNome}` : ''}
           </p>
         </div>

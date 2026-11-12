@@ -29,6 +29,7 @@ import { HORAS_ATE_ALARME } from './etapas'
 import { resolverEstadoDasEtapas } from './gestos-do-gerente'
 import { rotuloDoEstado, trabalhoConcluido, type EstadoDaEtapa } from './estado-da-etapa'
 import { conclusoesVigentes } from './conclusoes-vigentes'
+import { tarefasDosIds } from './tarefa'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -221,6 +222,8 @@ export async function diaAoVivo(
       })
     : []
   const itemDaOrdem = new Map(ordens.map((o) => [o.id, itens.find((i) => i.id === o.itemProduzidoId)]))
+  /** ⭐ (12/11, lei v7 M2) etapa de TAREFA: o "produto" é o nome da tarefa (+ instrução) — sem item */
+  const tarefaDa = await tarefasDosIds(input.companyId, etapas.map((e) => e.ordemId), db)
 
   // ⭐ O LOTE PENDURA NO TOQUE QUE O GEROU: cada conclusão vai pra a etapa finalizada mais
   // recente ANTES dela. ⚠️ Não é "a última etapa da ordem" — com produção PARCIAL a mesma
@@ -296,7 +299,7 @@ export async function diaAoVivo(
       etapaId: e.id,
       ordemId: e.ordemId,
       nome: e.nome,
-      produto: item?.nome ?? '',
+      produto: item?.nome ?? (tarefaDa.get(e.ordemId) ? [tarefaDa.get(e.ordemId)!.nome, tarefaDa.get(e.ordemId)!.instrucao].filter(Boolean).join(' · ') : ''),
       posicao: e.posicao,
       ehUltima: ehUltimaEtapa(e.ordemId, e.posicao),
       designados: designadosDaEtapa.get(e.id) ?? (e.colaboradorId ? [e.colaboradorId] : []),

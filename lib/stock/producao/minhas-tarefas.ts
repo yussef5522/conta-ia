@@ -21,6 +21,8 @@ import { participantesDaEtapa, registrarInicio, registrarFim, desfazerInicio } f
 import { etapasEmAndamentoDoColaborador, somenteEmAndamento } from './em-andamento'
 import { validarEntrada, MAX_PARTICIPANTES } from './dupla-na-etapa'
 import { diaDaEtapa, pessoaVeAEtapa, nomeadosDaEtapa } from './plano-da-etapa'
+import { pedidoDaOrdem } from './pedido-da-ordem'
+import { tarefasVivasAte, type TipoDoTrabalho } from './tarefa'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -67,6 +69,18 @@ export interface MinhaTarefa {
    * `null` quando o lote inteiro é do mesmo dia.
    */
   continuacao: { etapaAnterior: string; dia: string; quem: string | null } | null
+  /** ⭐⭐ (12/11, lei v7 M2) PRODUCAO = etapa de ordem (fecha lote na última); TAREFA = trabalho sem estoque */
+  tipo: TipoDoTrabalho
+  /** ⭐ a instrução da TAREFA ("5 LATAS") — em destaque âmbar no cartão. `null` na produção */
+  instrucao: string | null
+  /**
+   * ⭐⭐ (lei v7 M1) O ALVO EM UNIDADES: "100 UN · 2 receitas" — o mesmo número que ela conta no
+   * "Quantos saíram?". Sai da PORTA do pedido (`pedidoDaOrdem`: declarado, ou receitas ×
+   * rendimento). ⛔ `null` quando não dá pra dizer (ordem ainda na pergunta) — nunca zero.
+   */
+  unidades: number | null
+  /** ⭐ (lei v7 M1) etapa em dupla: o(s) nome(s) do(s) colega(s) — "com Edmar". `null` sozinha */
+  colega: string | null
 }
 
 /**
@@ -109,20 +123,27 @@ export async function minhasTarefasDeHoje(
         ...(ordensDeEtapaPlanejada.length ? [{ id: { in: [...new Set(ordensDeEtapaPlanejada)] } }] : []),
       ],
     },
-    select: { id: true, itemProduzidoId: true, escalaReceitas: true, dataProducao: true },
+    select: { id: true, itemProduzidoId: true, escalaReceitas: true, dataProducao: true, fichaId: true, versaoFicha: true, estado: true },
   })
-  if (!ordens.length) return []
+  /** ⭐⭐ (12/11, lei v7 M2) as TAREFAS vivas entram na MESMA lista, pela MESMA régua de etapa */
+  const tarefas = await tarefasVivasAte(companyId, agora, db)
+  if (!ordens.length && !tarefas.length) return []
+  const tarefaDe = new Map(tarefas.map((t) => [t.id, t]))
 
-  const [etapas, itens] = await Promise.all([
+  const [etapas, itens, metas, versoes] = await Promise.all([
     db.stockOrdemEtapa.findMany({
-      where: { companyId, ordemId: { in: ordens.map((o) => o.id) } },
+      where: { companyId, ordemId: { in: [...ordens.map((o) => o.id), ...tarefas.map((t) => t.id)] } },
       orderBy: [{ ordemId: 'asc' }, { posicao: 'asc' }],
     }),
     db.stockItem.findMany({ where: { companyId, id: { in: ordens.map((o) => o.itemProduzidoId) } }, select: { id: true, nome: true, unidadeControle: true } }),
+    db.stockOrdemMeta.findMany({ where: { companyId, ordemId: { in: ordens.map((o) => o.id) } }, select: { ordemId: true, unidades: true } }),
+    db.stockFichaVersao.findMany({ where: { companyId, fichaId: { in: [...new Set(ordens.map((o) => o.fichaId))] } }, select: { fichaId: true, versao: true, loteBase: true } }),
   ])
   const nomeItem = new Map(itens.map((i) => [i.id, i.nome]))
   const unidadeItem = new Map(itens.map((i) => [i.id, i.unidadeControle]))
   const porOrdem = new Map(ordens.map((o) => [o.id, o]))
+  const metaDe = new Map(metas.map((m) => [m.ordemId, m.unidades]))
+  const loteBaseDe = new Map(versoes.map((v) => [`${v.fichaId}#${v.versao}`, v.loteBase]))
   const [planos, participantes, pessoas] = await Promise.all([
     db.stockEtapaPlano.findMany({ where: { companyId, etapaId: { in: etapas.map((e) => e.id) } }, select: { etapaId: true, diaPrevisto: true, liberadaParaEquipe: true } }),
     db.stockOrdemEtapaParticipante.findMany({ where: { companyId, etapaId: { in: etapas.map((e) => e.id) } }, select: { etapaId: true, colaboradorId: true } }),
@@ -145,10 +166,13 @@ export async function minhasTarefasDeHoje(
   const out: MinhaTarefa[] = []
   for (const e of etapas) {
     if (e.finalizadoEm) continue // feita não é tarefa
-    const o0 = porOrdem.get(e.ordemId)!
+    const tarefa = tarefaDe.get(e.ordemId) ?? null
+    const o0 = porOrdem.get(e.ordemId)
+    if (!tarefa && !o0) continue
     const pl = planoDaEtapa(e)
-    // ⭐⭐ A ETAPA APARECE NO DIA DELA — não no da ordem (15/09)
-    if (diaDaEtapa(pl, diaEmSaoPaulo(o0.dataProducao)) !== hoje) continue
+    // ⭐⭐ A ETAPA APARECE NO DIA DELA — não no da ordem (15/09). ⭐ A TAREFA já veio filtrada
+    // (dia ≤ hoje, não cancelada): prazo vencido segue à vista até alguém fazer.
+    if (o0 && diaDaEtapa(pl, diaEmSaoPaulo(o0.dataProducao)) !== hoje) continue
     /**
      * ⛔⛔ SEM NOME NÃO VAI PRO TABLET (15/09) — ordem do dono: *"sem nome = rascunho MEU"*.
      * Até 14/09 a etapa SOLTA aparecia pra TODO MUNDO e qualquer um iniciava; o dono punha
@@ -185,12 +209,32 @@ export async function minhasTarefasDeHoje(
     // ⚠️ "última" é sobre a ORDEM inteira, não sobre o que sobrou pra fazer: a lista já
     // filtrou as finalizadas, então contar aqui daria "última" pra qualquer etapa sozinha.
     const maiorPosicao = Math.max(...etapas.filter((x) => x.ordemId === e.ordemId).map((x) => x.posicao))
-    const o = porOrdem.get(e.ordemId)!
+    // ⭐ (lei v7 M1) o colega da dupla — quem mais está NESTA etapa (designado ou já no relógio)
+    const colegas = [...new Set([...(partsDe.get(e.id) ?? []), ...(e.executorId ? [e.executorId] : [])])]
+      .filter((id) => id !== colaboradorId).map((id) => nomePessoa.get(id)).filter((x): x is string => !!x)
+    const colega = colegas.length ? colegas.join(' e ') : null
+    if (tarefa) {
+      // ⛔⛔ TAREFA: sem produto, sem receita, sem lote — `ultima` é FALSE por construção, então
+      // o tablet nunca abre o "Quantos saíram?" e o FINALIZAR é um toque (lei v7 M2)
+      out.push({
+        etapaId: e.id, ordemId: e.ordemId, posicao: e.posicao, nome: e.nome,
+        produto: tarefa.nome, unidadeProduto: '', escalaReceitas: 0,
+        estado: res.estado, iniciadoEm: e.iniciadoEm?.toISOString() ?? null,
+        minutos: minutosDaEtapa(e, agora, res.estado),
+        esperandoEtapaAnterior: null, minha, pedidoPraFinalizar: res.pedidoEmAberto,
+        ultima: false, continuacao: null,
+        tipo: 'TAREFA', instrucao: tarefa.instrucao, unidades: null, colega,
+      })
+      continue
+    }
+    const o = o0!
+    const pedido = pedidoDaOrdem({ meta: metaDe.get(o.id) ?? null, escala: o.escalaReceitas, loteBase: loteBaseDe.get(`${o.fichaId}#${o.versaoFicha}`) ?? 0, estado: o.estado })
     out.push({
       etapaId: e.id, ordemId: e.ordemId, posicao: e.posicao, nome: e.nome,
       produto: nomeItem.get(o.itemProduzidoId) ?? '(produto)',
       unidadeProduto: unidadeItem.get(o.itemProduzidoId) ?? '',
       escalaReceitas: o.escalaReceitas,
+      tipo: 'PRODUCAO', instrucao: null, unidades: pedido.unidades, colega,
       estado: res.estado,
       iniciadoEm: e.iniciadoEm?.toISOString() ?? null,
       minutos: minutosDaEtapa(e, agora, res.estado),
@@ -221,6 +265,10 @@ export async function iniciarTarefa(
   const etapa = await db.stockOrdemEtapa.findFirst({ where: { id: input.etapaId, companyId: input.companyId } })
   if (!etapa) throw new TarefaError('Tarefa não encontrada.')
   if (etapa.finalizadoEm) throw new TarefaError('Essa tarefa já foi finalizada.')
+  // ⛔ (12/11, lei v7 M2) TAREFA cancelada pelo escritório não começa — a lista já a esconde,
+  // e a rota recusa também (trava só visual não é trava, 06/09)
+  const cab = await db.stockTarefa.findFirst({ where: { id: etapa.ordemId, companyId: input.companyId }, select: { canceladaEm: true } })
+  if (cab?.canceladaEm) throw new TarefaError('Essa tarefa foi cancelada pelo escritório.')
   // ⭐⭐ A DUPLA (08/09/2026): "outra pessoa já está nessa tarefa" deixou de ser recusa —
   // uma etapa aceita até DUAS pessoas, cada uma com o relógio dela. O que continua sendo
   // recusado é a MESMA pessoa iniciar duas vezes e a TERCEIRA entrar (teto na gravação).

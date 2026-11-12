@@ -6354,3 +6354,22 @@ contains("pao") → 0      contains("PAO") → 1
 
 **FALTA (REGRA 2):** o dono importar a fatura real e casar o pagamento em prod.
 
+
+## ⭐⭐ PRODUÇÃO — A LEI v7 VIRA SISTEMA (12/11/2026)
+
+Lei: `docs/producao-referencia.html` (v7 APROVADA; G1–G12 intocáveis, M1–M6 as mudanças).
+- **M2 TAREFA, tipo próprio** — tabela `stock_tarefa` (migration 100% aditiva `20261112180000_stock_tarefa`,
+  CHECK nome não-vazio e cancelada-com-autor). A EXECUÇÃO é uma linha de `stock_ordem_etapa` com
+  `ordemId = tarefa.id`: INICIAR/FINALIZAR/dupla/recado/uma-por-pessoa são a MESMA porta da produção.
+  ⛔ Tarefa nunca fecha lote: recusa na lib (`finalizarEConcluirDoTablet`) E na rota do tablet, antes de
+  escrever. Cancelada = `canceladaEm`, que o `resolverEstadoDasEtapas` lê como ordem cancelada (solta a
+  pessoa). Escritório: cartão "Nova tarefa" no painel (`components/estoque/tarefas-do-dia.tsx`);
+  "liberada pra equipe" exige `stock.manage` (o mesmo gate do plano da etapa).
+  ⚠️ Fica FORA do relatório por pessoa (mede unidades ÷ tempo; tarefa não tem unidade) — decisão do dono.
+- **Gambiarras aposentadas** (desativar, nunca apagar — `aposentarReceitaQueEraTarefa`, não `excluirFicha`):
+  ABRIR MILHO, ABRIR ERVILHA, ENCHER TUBO KETCHUP.
+- **M1** "100 UN · 2 receitas" (pela porta `pedidoDaOrdem`) + "com {colega}" no cartão e no cronômetro.
+- **M3** morreu o "Sobrou material?…". **M5** vassoura: "×" do subtítulo, "Concluídas" segue o filtro,
+  links do Radar/cadastrar equipe, controles de designar/plano/gestos por permissão.
+- Testes: `tarefa-tipo-proprio.integration.test.ts` (18) + `__tests__/regras-ui/producao-lei-v7.test.ts` (10);
+  12 replantios mordem.

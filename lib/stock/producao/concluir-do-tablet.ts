@@ -158,6 +158,13 @@ export async function finalizarEConcluirDoTablet(
 ): Promise<{ concluida: { qtdGerada: number; custoUnitarioReal: number | null } | null }> {
   return naTransacao(db, async (tx) => {
     const t = tx as unknown as PrismaClient // os leitores antigos tipam PrismaClient; o client transacional serve a todos
+    // ⛔⛔ (12/11, lei v7 M2) TAREFA NUNCA FECHA LOTE: sem "quantos saíram", sem consumo, sem
+    // entrada. Pedir lote numa tarefa é recusado ANTES de qualquer escrita (tudo ou nada, G5).
+    if (input.qtdGerada != null) {
+      const alvo = await tx.stockOrdemEtapa.findFirst({ where: { id: input.etapaId, companyId: input.companyId }, select: { ordemId: true } })
+      const ehTarefa = alvo ? await tx.stockTarefa.count({ where: { id: alvo.ordemId, companyId: input.companyId } }) : 0
+      if (ehTarefa) throw new OrdemError('Tarefa não fecha lote — é só apertar FINALIZAR.')
+    }
     await finalizarTarefa({ companyId: input.companyId, etapaId: input.etapaId, colaboradorId: input.colaboradorId, agora: input.agora }, t)
     if (!input.qtdGerada) return { concluida: null }
     const etapa = await tx.stockOrdemEtapa.findFirst({ where: { id: input.etapaId, companyId: input.companyId }, select: { ordemId: true } })

@@ -138,7 +138,7 @@ export function MesaDaCozinhaUI({ mesa }: { mesa: MesaParaTela }) {
       <Mod
         span={5}
         titulo="RADAR DA COZINHA"
-        link={{ rotulo: 'fila', href: `${E}/estoque/producao/conferencia` }}
+        link={{ rotulo: 'fila', href: `${E}/estoque/producao#conferencia-do-dia` }}
       >
         <RadarDaMesa
           linhas={mesa.radar}

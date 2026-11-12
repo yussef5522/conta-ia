@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Produção — referência v7 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════════
+  PRODUÇÃO — ARQUIVO DE REFERÊNCIA v7 — APROVADA PELO DONO
+  (v6 aprovada 12/11 14:51; v7 = v6 + retrato FIEL da tela "Receita
+  de produção" que JÁ EXISTE — onde se define quantos gramas de cada
+  insumo a produção desconta (rende, validade, ingredientes, dose) —
+  SEM NENHUMA MUDANÇA NELA; inclui a guarda de dose fora do padrão
+  já no ar desde o conserto de 12/11. Se o dono vetar o retrato,
+  volta-se à v6.) Este arquivo é LEI: leis G1–G12 (preservação) e
+  M1–M6 (mudanças) + <script> com as contas-pino valem 1:1.
+  v6 = pente do dono (14:50): ZERO PROSA NA TELA (lei S15 da casa,
+  que vale pro sistema todo) — morrem o título-explicação do
+  escritório ("o que muda…"), os números de lei na interface (G9,
+  M2) e a legenda da navegação da amostra. Tela mostra coisa, não
+  conversa; explicação vive nos comentários deste arquivo.
+  v5 = pente do dono (14:40): M4 VETADO — a Sugestão de produção
+  continua como é HOJE (só mínimo de estoque), sem venda típica e
+  sem designar na sugestão. O painel "vassoura" sai da amostra: os
+  consertos M5 são só de código, invisíveis, e seguem valendo.
+  Nascida do DOSSIÊ das telas reais (12/11) + 4 decisões do dono.
+  ESCOPO (decisão do dono): EVOLUIR as telas atuais — a estrutura que
+  a equipe já sabe usar fica; nada de revolução. Os textos entre
+  aspas são os REAIS do sistema; o que é novo está marcado nas leis.
+  As abas no topo são SÓ navegação da amostra: no sistema real são
+  telas separadas (Janela da Cozinha escura ≠ escritório claro).
+
+  ═══ O QUE SE PRESERVA (os 12 ouros do dossiê — lei de pedra) ═══
+  G1 PIN é assinatura: 4 dígitos, entra sozinho no 4º, "PIN não
+     confere." sempre igual (ninguém sonda PINs).
+  G2 Produto GRANDE "lido de longe" e UM botão gigante por tela.
+  G3 Cronômetro honesto: conta do toque real no servidor, corrige o
+     relógio do aparelho, não fecha nada sozinho.
+  G4 "Quantos saíram?" SEMPRE vazio — a previsão sugere, nunca
+     preenche. Quem sabe o número é quem contou.
+  G5 Quem executa fecha o lote, num ato só (tudo ou nada).
+  G6 Rascunho × "liberada pra equipe": escolha explícita do
+     encarregado; liberada = "se você pegar, fica registrado no seu
+     nome".
+  G7 O servidor impõe a ordem: uma tarefa por pessoa, etapa só
+     depois da anterior, dupla de no máximo 2.
+  G8 Gerente age sem fingir: "pedir pra finalizar" (recado roxo no
+     tablet) antes de "finalizar por ela" (tempo fica "a apurar").
+  G9 Pedido em UNIDADES com a prateleira ao lado ("dá ✓" / "faltam N
+     KG" a cada dígito) — quantidade NÃO se escolhe na criação
+     (regra de 11/10), se escolhe na Ordem.
+  G10 Quatro olhos: quem fez não confere a própria; correção pede
+     motivo.
+  G11 Recusa sempre com frase + "Nada foi gravado — dá pra tentar de
+     novo" (conserto de 12/11).
+  G12 Medir tarefa, não presença: "os nomes existem para conversar,
+     não para expor".
+
+  ═══ AS MUDANÇAS (decisões do dono, 12/11) ═══
+  M1 CARTÃO E CRONÔMETRO MOSTRAM O ALVO E O COLEGA: além de "2
+     receitas", as UNIDADES finais ("100 UN · 2 receitas") — o mesmo
+     número que ela conta no "Quantos saíram?". Etapa em dupla
+     mostra "com {colega}". (antes o tablet escondia os dois)
+  M2 TAREFA VIRA TIPO PRÓPRIO: criada no escritório (nome +
+     instrução tipo "5 LATAS" + quem/liberada + prazo). Na Janela da
+     Cozinha é um cartão igual aos outros — INICIAR → cronômetro →
+     FINALIZAR em um toque — mas SEM estoque: sem separação, sem
+     "quantos saíram", sem lote. As receitas-gambiarra (ABRIR MILHO
+     0,0001 KG) são migradas pra tarefas e aposentadas.
+  M3 O TEXTO DA SOBRA MORRE: "Sobrou material? … ele fecha ajustando
+     a sobra" prometia ajuste que não existe. Sai da tela. A
+     separação já é na conta exata (o sistema diz os kg pra 100 un);
+     sobra rara continua sendo gesto do gerente ("devolver").
+  M4 [VETADO PELO DONO, 12/11 14:40] a sugestão com venda típica
+     não entra: "não é prático nem vai ajudar". A Sugestão de
+     produção CONTINUA COMO É HOJE: itens abaixo do mínimo de
+     estoque, botão "produzir {F} {un}". Nada muda nela.
+  M5 VASSOURA DO DOSSIÊ (só código, NADA em tela — o dono tirou o
+     painel da amostra): "{escala}× a receita" sai do subtítulo da
+     Ordem (unidades mandam); "Concluídas hoje" respeita o filtro;
+     links mortos consertados (fila do Radar, cadastrar equipe);
+     controles de designar somem pra quem não pode.
+  M6 NÚMEROS E TEXTOS DA AMOSTRA: cada conta no <script> é pino de
+     teste no sprint. Tema escuro da cozinha = o real (slate-900,
+     verde emerald, cronômetro âmbar, recado roxo, erro rosa).
+-->
+<style>
+:root{
+  /* cozinha (tema real, escuro) */
+  --koz-bg:#0F172A; --koz-card:#1E293B; --koz-card2:#273449;
+  --koz-linha:#334155; --koz-tinta:#F1F5F9; --koz-tinta2:#94A3B8;
+  --koz-verde:#10B981; --koz-verde-esc:#059669;
+  --koz-ambar:#FBBF24; --koz-rosa:#FDA4AF; --koz-rosa-bg:#3F1D2B;
+  --koz-roxo:#7C3AED; --koz-roxo-bg:#2E1065;
+  /* escritório (tema real, claro) */
+  --esc-bg:#F3F5FA; --esc-card:#FFFFFF; --esc-linha:#C9D0E3;
+  --esc-tinta:#0A0F1E; --esc-tinta2:#46516B; --esc-tinta3:#8B94AD;
+  --esc-indigo:#4F46E5; --esc-indigo50:#EEF0FE; --esc-indigo-t:#3730A3;
+  --esc-verde:#0E9F6E; --esc-verde50:#E4F7EF; --esc-verde-t:#065F46;
+  --esc-ambar50:#FCF0DC; --esc-ambar-t:#7C4A03;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--koz-bg);color:var(--koz-tinta);font-family:var(--font)}
+body{padding:0 0 40px}
+/* navegação da AMOSTRA (não existe no real) */
+.nav{position:sticky;top:0;z-index:5;display:flex;gap:7px;flex-wrap:wrap;
+  padding:10px 14px;background:rgba(15,23,42,.97);border-bottom:1px solid var(--koz-linha)}
+.nav button{border:1px solid var(--koz-linha);background:var(--koz-card);color:var(--koz-tinta2);
+  border-radius:999px;padding:7px 14px;font-size:12px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.nav button.on{background:var(--koz-verde);border-color:var(--koz-verde);color:#06281D}
+.nav .tag{font-size:10px;color:var(--koz-tinta2);align-self:center;margin-left:4px}
+.ecra{display:none;max-width:560px;margin:0 auto;padding:22px 18px}
+.ecra.on{display:block}
+/* ─── PIN ─── */
+.pin-wrap{text-align:center;padding-top:30px}
+.pin-wrap h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+.pin-wrap .sub{color:var(--koz-tinta2);font-size:15px;margin-bottom:26px}
+.bolas{display:flex;gap:14px;justify-content:center;margin-bottom:30px}
+.bola{width:16px;height:16px;border-radius:50%;background:var(--koz-card2);border:1px solid var(--koz-linha)}
+.bola.ok{background:var(--koz-verde);border-color:var(--koz-verde)}
+.teclado{display:grid;grid-template-columns:repeat(3,80px);gap:12px;justify-content:center}
+.teclado button{width:80px;height:80px;border-radius:16px;border:1px solid var(--koz-linha);
+  background:var(--koz-card);color:var(--koz-tinta);font-size:26px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.teclado button.fn{font-size:14px;color:var(--koz-tinta2)}
+.pin-erro{color:var(--koz-rosa);font-weight:700;font-size:14px;margin-top:16px;min-height:20px}
+/* ─── lista de tarefas ─── */
+.oi{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
+.oi b{font-size:22px}
+.oi a{color:var(--koz-tinta2);font-size:13px;text-decoration:underline;cursor:pointer}
+.dataex{color:var(--koz-tinta2);font-size:13.5px;margin-bottom:16px}
+.rotulo{font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--koz-tinta2);
+  text-transform:uppercase;margin:14px 0 8px}
+.tcard{background:var(--koz-card);border:1px solid var(--koz-linha);border-radius:18px;
+  padding:16px;margin-bottom:12px}
+.tcard .etapa{font-size:11px;font-weight:800;letter-spacing:.07em;color:var(--koz-tinta2);text-transform:uppercase}
+.tcard .prod{font-size:26px;font-weight:800;line-height:1.15;margin:4px 0 2px;letter-spacing:-.01em}
+.tcard .alvo{font-size:15px;font-weight:700;color:var(--koz-tinta2)}
+.tcard .alvo b{color:var(--koz-tinta)}
+.selo-tarefa{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.06em;
+  background:var(--koz-card2);border:1px solid var(--koz-linha);color:var(--koz-tinta2);
+  border-radius:999px;padding:3px 10px;margin-bottom:6px}
+.instr{font-size:30px;font-weight:800;color:var(--koz-ambar);margin:2px 0}
+.dupla{font-size:13px;font-weight:700;color:var(--koz-tinta2);margin-top:4px}
+.dupla b{color:var(--koz-tinta)}
+.recado{background:var(--koz-roxo-bg);border:1px solid var(--koz-roxo);border-radius:12px;
+  padding:10px 12px;font-size:13.5px;line-height:1.45;margin:10px 0 2px}
+.liberada{font-size:12.5px;color:var(--koz-tinta2);margin-top:6px;font-style:normal}
+.btn-ini{width:100%;min-height:56px;border:0;border-radius:14px;background:var(--koz-verde);
+  color:#06281D;font-size:18px;font-weight:800;cursor:pointer;margin-top:12px;font-family:var(--font)}
+.btn-ini:disabled{background:var(--koz-card2);color:var(--koz-tinta2);cursor:default}
+.vazio{color:var(--koz-tinta2);text-align:center;padding:30px 0;line-height:1.7}
+/* ─── cronômetro ─── */
+.cron-wrap{text-align:center;padding-top:8px}
+.cron-topo{display:flex;justify-content:space-between;font-size:13px;color:var(--koz-tinta2);margin-bottom:26px}
+.cron-topo a{color:var(--koz-tinta2);text-decoration:underline;cursor:pointer}
+.cron-etapa{font-size:12px;font-weight:800;letter-spacing:.08em;color:var(--koz-tinta2);text-transform:uppercase}
+.cron-prod{font-size:28px;font-weight:800;margin:6px 0 2px}
+.cron-alvo{font-size:15px;color:var(--koz-tinta2);font-weight:700}
+.cron-alvo b{color:var(--koz-tinta)}
+.cronometro{font-size:64px;font-weight:800;color:var(--koz-ambar);font-variant-numeric:tabular-nums;
+  margin:22px 0 2px;letter-spacing:-.02em}
+.desde{font-size:13px;color:var(--koz-tinta2)}
+.btn-fim{width:100%;min-height:62px;border:0;border-radius:16px;background:var(--koz-verde);
+  color:#06281D;font-size:19px;font-weight:800;cursor:pointer;margin-top:26px;font-family:var(--font)}
+.nao-turno{display:inline-block;margin-top:18px;color:var(--koz-tinta2);font-size:13px;
+  text-decoration:underline;cursor:pointer}
+/* ─── quantos saíram ─── */
+.volta{color:var(--koz-tinta2);font-size:14px;text-decoration:underline;cursor:pointer}
+.qs-tit{font-size:24px;font-weight:800;margin:18px 0 2px}
+.qs-sub{color:var(--koz-tinta2);font-size:14px;margin-bottom:14px}
+.qs-campo{width:100%;background:var(--koz-card);border:2px solid var(--koz-linha);border-radius:16px;
+  color:var(--koz-tinta);font-size:38px;font-weight:800;text-align:center;padding:14px;
+  font-variant-numeric:tabular-nums;font-family:var(--font)}
+.qs-campo::placeholder{color:var(--koz-tinta2);font-size:20px;font-weight:700}
+.consumo{background:var(--koz-card);border:1px solid var(--koz-linha);border-radius:14px;
+  padding:12px 14px;margin:14px 0}
+.consumo .t{font-size:11px;font-weight:800;letter-spacing:.07em;color:var(--koz-tinta2);
+  text-transform:uppercase;margin-bottom:8px}
+.consumo .lin{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;
+  font-variant-numeric:tabular-nums}
+.parcial{display:flex;gap:10px;align-items:center;font-size:14px;color:var(--koz-tinta2);margin:12px 0}
+.parcial input{width:22px;height:22px}
+.aviso-qs{background:#3A2A08;border:1px solid var(--koz-ambar);border-radius:12px;
+  color:#FCD34D;font-size:13.5px;line-height:1.5;padding:11px 13px;margin:12px 0}
+.aviso-qs .ops{display:flex;gap:9px;margin-top:9px;flex-wrap:wrap}
+.aviso-qs button{border:1px solid var(--koz-ambar);background:transparent;color:#FCD34D;
+  border-radius:10px;min-height:42px;padding:0 14px;font-size:13px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.aviso-qs button.solid{background:var(--koz-ambar);color:#3A2A08}
+/* ─── feito ─── */
+.feito-wrap{text-align:center;padding-top:36px}
+.circulo{width:92px;height:92px;border-radius:50%;background:var(--koz-verde);color:#06281D;
+  font-size:46px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 18px}
+.feito-wrap h2{font-size:24px;margin:0 0 4px}
+.feito-dur{color:var(--koz-verde);font-size:20px;font-weight:800;margin:6px 0}
+.feito-sub{color:var(--koz-tinta2);font-size:14.5px;line-height:1.7}
+/* ─── escritório (claro) ─── */
+.esc{background:var(--esc-bg);color:var(--esc-tinta);border-radius:20px;padding:18px 16px;max-width:680px;margin:0 auto}
+.esc h2{font-size:16px;margin:0 0 4px}
+.esc .nota{font-size:12px;color:var(--esc-tinta3);margin-bottom:12px}
+.painel-e{background:var(--esc-card);border:1px solid var(--esc-linha);border-radius:14px;
+  padding:14px;margin-bottom:12px}
+.painel-e h3{font-size:13.5px;margin:0 0 10px}
+.sug{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;padding:9px 0;
+  border-bottom:1px solid #E3E7F2}
+.sug:last-child{border-bottom:0}
+.sug .nm{font-weight:700;flex:1 1 180px}
+.sug .d{color:var(--esc-tinta3);font-variant-numeric:tabular-nums}
+.sug .d b{color:var(--esc-tinta)}
+.sug select{min-height:38px;border:1px solid var(--esc-linha);border-radius:10px;background:var(--esc-card);
+  color:var(--esc-tinta);font-size:12.5px;font-weight:700;font-family:var(--font);padding:0 8px}
+.sug .bt{min-height:38px;border:0;border-radius:10px;background:var(--esc-indigo);color:#fff;
+  font-size:12.5px;font-weight:800;cursor:pointer;padding:0 13px;font-family:var(--font)}
+.sug .bt.ok{background:var(--esc-verde);cursor:default}
+.cria-t{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cria-t input{min-height:42px;border:1px solid var(--esc-linha);border-radius:10px;background:var(--esc-card);
+  color:var(--esc-tinta);font-size:13px;font-weight:700;font-family:var(--font);padding:0 11px}
+.cria-t .longo{flex:1 1 200px}.cria-t .medio{width:140px}
+.cria-t select{min-height:42px;border:1px solid var(--esc-linha);border-radius:10px;background:var(--esc-card);
+  color:var(--esc-tinta);font-size:12.5px;font-weight:700;font-family:var(--font);padding:0 8px}
+.cria-t .bt{min-height:42px;border:0;border-radius:10px;background:var(--esc-verde);color:#fff;
+  font-size:13px;font-weight:800;cursor:pointer;padding:0 15px;font-family:var(--font)}
+.criada{font-size:12.5px;font-weight:800;color:var(--esc-verde-t);background:var(--esc-verde50);
+  border-radius:999px;padding:6px 12px;display:inline-block;margin-top:9px}
+@media(max-width:420px){ .teclado{grid-template-columns:repeat(3,72px)} .teclado button{width:72px;height:72px} }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <button class="on" onclick="vai('pin',this)">PIN</button>
+  <button onclick="vai('lista',this)">Tarefas</button>
+  <button onclick="vai('cron',this)">Cronômetro</button>
+  <button onclick="vai('lote',this)">Fechar o lote</button>
+  <button onclick="vai('feito',this)">Feito</button>
+  <button onclick="vai('esc',this)">Escritório</button>
+</div>
+
+<!-- ─────────── PIN (igual ao real) ─────────── -->
+<div class="ecra on" id="e-pin"><div class="pin-wrap">
+  <h1>Quem está trabalhando?</h1>
+  <div class="sub">digite seu PIN de 4 dígitos</div>
+  <div class="bolas" id="bolas"></div>
+  <div class="teclado" id="teclado"></div>
+  <div class="pin-erro" id="pin-erro"></div>
+</div></div>
+
+<!-- ─────────── LISTA (real + M1/M2) ─────────── -->
+<div class="ecra" id="e-lista">
+  <div class="oi"><b>Oi, Michele</b><a onclick="vai('pin')">sair</a></div>
+  <div class="dataex">quinta-feira, 12 de novembro</div>
+  <div class="rotulo">Suas tarefas de hoje</div>
+
+  <div class="tcard">
+    <div class="etapa">ABRIR E BOLEAR</div>
+    <div class="prod">MEIA BOLINHA DE MASSA</div>
+    <div class="alvo"><b>100 UN</b> · 2 receitas</div>
+    <div class="recado">O gerente pediu pra você finalizar esta tarefa — se terminou, aperte FINALIZAR.</div>
+    <button class="btn-ini" onclick="vai('cron')">INICIAR</button>
+  </div>
+
+  <div class="tcard">
+    <span class="selo-tarefa">TAREFA</span>
+    <div class="prod">ABRIR LATAS DE ERVILHA</div>
+    <div class="instr">5 LATAS</div>
+    <button class="btn-ini" onclick="vai('cron')">INICIAR</button>
+  </div>
+
+  <div class="tcard">
+    <div class="etapa">FRITAR E PORCIONAR</div>
+    <div class="prod">PORÇÃO CALABRESA 85g</div>
+    <div class="alvo"><b>40 UN</b> · 2 receitas</div>
+    <div class="dupla">com <b>Edmar</b></div>
+    <button class="btn-ini" onclick="vai('cron')">INICIAR</button>
+  </div>
+
+  <div class="tcard">
+    <div class="etapa">MONTAR E EMBALAR</div>
+    <div class="prod">PIZZA CONGELADA CALABRESA</div>
+    <div class="alvo"><b>20 UN</b> · 1 receita</div>
+    <div class="liberada">liberada pra equipe — se você pegar, fica registrado no seu nome</div>
+    <button class="btn-ini" disabled>aguardando “FRITAR E PORCIONAR”</button>
+  </div>
+</div>
+
+<!-- ─────────── CRONÔMETRO (real + M1) ─────────── -->
+<div class="ecra" id="e-cron"><div class="cron-wrap">
+  <div class="cron-topo"><span>Michele</span><a onclick="vai('pin')">sair</a></div>
+  <div class="cron-etapa">ABRIR E BOLEAR</div>
+  <div class="cron-prod">MEIA BOLINHA DE MASSA</div>
+  <div class="cron-alvo"><b>100 UN</b> · 2 receitas</div>
+  <div class="cronometro" id="cron">12:07</div>
+  <div class="desde">rodando desde 13:48</div>
+  <button class="btn-fim" onclick="vai('lote')">FINALIZAR E FECHAR O LOTE</button>
+  <span class="nao-turno">não é meu turno</span>
+</div></div>
+
+<!-- ─────────── QUANTOS SAÍRAM (real + M3: sem o texto da sobra) ─────────── -->
+<div class="ecra" id="e-lote">
+  <span class="volta" onclick="vai('cron')">← voltar</span>
+  <div class="qs-tit">Quantos saíram?</div>
+  <div class="qs-sub">MEIA BOLINHA DE MASSA · última etapa: ABRIR E BOLEAR · em <b>UN</b></div>
+  <input class="qs-campo" id="qs" placeholder="conte e digite" inputmode="numeric" oninput="qsMexeu(this.value)">
+  <div class="consumo">
+    <div class="t">VAI CONSUMIR</div>
+    <div class="lin"><span>FARINHA ESPECIAL</span><span>8,40 KG</span></div>
+    <div class="lin"><span>FERMENTO</span><span>0,24 KG</span></div>
+    <div class="lin"><span>AZEITE</span><span>0,30 L</span></div>
+  </div>
+  <label class="parcial"><input type="checkbox"> produção parcial (o resto sai depois)</label>
+  <div class="aviso-qs" id="aviso-qs" style="display:none">
+    «MEIA BOLINHA DE MASSA»: <b id="qs-eco"></b> UN dá <b>3 vezes</b> o rendimento dos últimos 5 lotes desta receita. Parece grama lido como quilo? O provável é <b>98</b>.
+    <div class="ops"><button onclick="usaProvavel()">usar 98 UN</button><button class="solid" onclick="vai('feito')">é isso mesmo, pode fechar</button></div>
+  </div>
+  <button class="btn-fim" onclick="vai('feito')">FINALIZAR E FECHAR O LOTE</button>
+</div>
+
+<!-- ─────────── FEITO (real) ─────────── -->
+<div class="ecra" id="e-feito"><div class="feito-wrap">
+  <div class="circulo">✓</div>
+  <h2>Tarefa finalizada</h2>
+  <div class="feito-sub">ABRIR E BOLEAR</div>
+  <div class="feito-dur">1h05</div>
+  <div class="feito-sub">lote fechado · 98 saíram<br>próxima: “ABRIR LATAS DE ERVILHA”</div>
+  <button class="btn-fim" style="max-width:320px" onclick="vai('lista')">voltar às tarefas</button>
+</div></div>
+
+<!-- ─────────── ESCRITÓRIO: só o que MUDA (M2/M4/M5) ─────────── -->
+<div class="ecra" id="e-esc"><div class="esc">
+  <div class="painel-e">
+    <h3>Nova ordem de produção</h3>
+    <div class="cria-t">
+      <select id="o-ficha" onchange="ordemFicha(this.value)">
+        <option>PORÇÃO CALABRESA 85g</option>
+        <option>MEIA BOLINHA DE MASSA</option>
+      </select>
+      <input class="medio" value="12/11/2026" aria-label="data de produção">
+      <select><option>Setor: —</option><option>Cozinha</option></select>
+      <button class="bt" style="background:var(--esc-indigo)" onclick="ordemCriar()">Criar ordem →</button>
+    </div>
+    <div id="o-pedido" style="display:none;margin-top:12px;border-top:1px dashed var(--esc-linha);padding-top:12px">
+      <div style="font-size:14px;font-weight:800">Quantas unidades produzir?</div>
+      <div style="font-size:12px;color:var(--esc-tinta3);margin:2px 0 8px">a prateleira está do lado: digite e confira o que vai sair</div>
+      <input class="medio" id="o-qtd" inputmode="numeric" placeholder="0" oninput="ordemQtd(this.value)" style="font-size:20px;font-weight:800;text-align:center;width:110px">
+      <div id="o-tabela" style="margin-top:10px"></div>
+      <div id="o-confirma" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <div class="painel-e">
+    <h3>Receita de produção</h3>
+    <div class="cria-t" style="margin-bottom:10px">
+      <select id="r-prod" onchange="recTroca(this.value)">
+        <option>PORÇÃO CALABRESA 85g</option>
+        <option>SACOLA QUEIJO 135g</option>
+      </select>
+      <span style="font-size:12px;font-weight:700;color:var(--esc-tinta3)">rende</span>
+      <input class="medio" style="width:70px;text-align:center" value="20"> <span style="font-size:12px;font-weight:700;color:var(--esc-tinta3)">UN · validade</span>
+      <input class="medio" style="width:60px;text-align:center" value="30"> <span style="font-size:12px;font-weight:700;color:var(--esc-tinta3)">dias</span>
+    </div>
+    <div id="r-ings"></div>
+    <div id="r-aviso"></div>
+    <div style="margin-top:8px"><button class="bt" style="background:var(--esc-indigo)">+ adicionar ingrediente</button></div>
+    <div style="font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--esc-tinta3);text-transform:uppercase;margin:12px 0 6px">Etapas <span style="text-transform:none;font-weight:700;letter-spacing:0">— opcional, só quando muda a mão</span></div>
+    <div style="font-size:13px;font-weight:700">FRITAR E PORCIONAR</div>
+  </div>
+
+  <div class="painel-e">
+    <h3>Nova tarefa</h3>
+    <div class="cria-t">
+      <input class="longo" id="t-nome" placeholder="o que fazer? ex.: ABRIR LATAS DE MILHO">
+      <input class="medio" id="t-instr" placeholder="instrução, ex.: 3 LATAS">
+      <select id="t-quem"><option value="">quem faz?</option><option>Michele</option><option>Edmar</option><option>Jessica</option><option>Lucas</option><option>Barbara</option><option value="livre">liberada pra equipe</option></select>
+      <button class="bt" onclick="criaTarefa()">CRIAR TAREFA</button>
+    </div>
+    <div id="t-ok"></div>
+  </div>
+
+</div></div>
+
+<script>
+/* ═══ ESPECIFICAÇÃO v4 — contas e regras testáveis (amostra 12/11) ═══ */
+/* M1 · unidades = receitas × rendimento da receita */
+const unidades=(receitas,rende)=>receitas*rende;
+/* pino: 2 receitas × 50 = 100 UN (massa) · 2 × 20 = 40 UN (calabresa) */
+/* G3 · cronômetro mm:ss; passado de 60min segue em minutos (75:12) */
+const cronFmt=seg=>{const m=Math.floor(seg/60),s=seg%60;
+  return String(m)+':'+String(s).padStart(2,'0')};
+/* M2 · tarefa NUNCA tem caminho de lote */
+const TIPOS={PRODUCAO:{fechaLote:true},TAREFA:{fechaLote:false}};
+/* M4 VETADO · a Sugestão de produção fica como é hoje (mínimo de estoque) */
+
+/* ═══ render da amostra ═══ */
+const $=id=>document.getElementById(id);
+function vai(e,btn){
+  document.querySelectorAll('.ecra').forEach(x=>x.classList.remove('on'));
+  $('e-'+e).classList.add('on');
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  window.scrollTo(0,0);
+}
+/* PIN: 4º dígito entra sozinho (G1) */
+let pin='';
+function tecla(t){
+  if(t==='limpar'){pin='';desenhaBolas();return}
+  if(t==='apagar'){pin=pin.slice(0,-1);desenhaBolas();return}
+  if(pin.length>=4)return;
+  pin+=t;desenhaBolas();
+  if(pin.length===4){ /* amostra: qualquer PIN entra como Michele */
+    setTimeout(()=>{pin='';desenhaBolas();vai('lista');},180);}
+}
+function desenhaBolas(){
+  $('bolas').innerHTML=[0,1,2,3].map(i=>`<div class="bola ${i<pin.length?'ok':''}"></div>`).join('');
+  $('pin-erro').textContent='';
+}
+$('teclado').innerHTML=[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="tecla('${n}')">${n}</button>`).join('')
+ +`<button class="fn" onclick="tecla('limpar')">limpar</button><button onclick="tecla('0')">0</button><button class="fn" onclick="tecla('apagar')">⌫</button>`;
+desenhaBolas();
+/* cronômetro vivo (amostra) */
+let seg=727;setInterval(()=>{seg++;const c=$('cron');if(c)c.textContent=cronFmt(seg);},1000);
+/* quantos saíram: aviso de implausível (amostra: >150 dispara) */
+function qsMexeu(v){const n=parseInt(v)||0;
+  $('aviso-qs').style.display=n>150?'block':'none';
+  $('qs-eco').textContent=n;}
+function usaProvavel(){$('qs').value=98;qsMexeu(98);}
+/* escritório: nova ordem como é hoje (G9 — quantidade na ORDEM, prateleira ao lado) */
+const RECEITAS_PROD={
+ 'PORÇÃO CALABRESA 85g':{porUn:[['CALABRESA PEÇA',0.085,'KG'],['PAPEL ACOPLADO',1,'UN']],
+   prat:{'CALABRESA PEÇA':3.2,'PAPEL ACOPLADO':500}},
+ 'MEIA BOLINHA DE MASSA':{porUn:[['FARINHA ESPECIAL',0.084,'KG'],['FERMENTO',0.0024,'KG']],
+   prat:{'FARINHA ESPECIAL':6.0,'FERMENTO':0.5}},
+};
+let fichaSel='PORÇÃO CALABRESA 85g';
+function ordemFicha(f){fichaSel=f;$('o-pedido').style.display='none';}
+function ordemCriar(){$('o-pedido').style.display='block';$('o-qtd').value='';
+  $('o-tabela').innerHTML='';$('o-confirma').innerHTML='';}
+function ordemQtd(v){
+  const n=parseInt(v)||0,r=RECEITAS_PROD[fichaSel];
+  if(!n){$('o-tabela').innerHTML='';$('o-confirma').innerHTML='';return}
+  let faltas=0;
+  const linhas=r.porUn.map(([ins,dose,un])=>{
+    const tira=dose*n,tem=r.prat[ins],ok=tem>=tira;if(!ok)faltas++;
+    const f3=x=>un==='UN'?String(Math.round(x)):x.toFixed(un==='KG'?2:2).replace('.',',');
+    return `<div class="sug" style="padding:6px 0"><span class="nm" style="flex:1 1 140px">${ins}</span>
+      <span class="d">vai tirar <b>${f3(tira)} ${un}</b> · na prateleira <b>${f3(tem)} ${un}</b></span>
+      <span style="font-weight:800;font-size:12.5px;color:${ok?'var(--esc-verde-t)':'#9F2D25'}">${ok?'dá ✓':'faltam '+f3(tira-tem)+' '+un}</span></div>`;}).join('');
+  $('o-tabela').innerHTML=linhas+(faltas?`<div style="font-size:12px;color:var(--esc-ambar-t);background:var(--esc-ambar50);border-radius:10px;padding:8px 11px;margin-top:8px">Faltam ${faltas} insumo(s) — dá pra confirmar assim mesmo; a separação registra o que sair e o saldo fica negativo até a compra entrar.</div>`:'');
+  $('o-confirma').innerHTML=`<button class="bt" style="background:var(--esc-indigo)" onclick="ordemConfirma(${n})">Confirmar pedido · ${n} UN</button>`;
+}
+function ordemConfirma(n){
+  $('o-confirma').innerHTML=`<span class="criada">✓ ordem PLANEJADA · ${fichaSel} · ${n} UN — agora é separar e designar as etapas, como hoje</span>`;
+}
+
+/* escritório: Receita de produção (tela que JÁ existe — retrato fiel, nada muda)
+   É AQUI que se diz quantos gramas de cada insumo a produção desconta do estoque.
+   A guarda de dose fora do padrão (conserto de 12/11) vive aqui: >10× acima ou
+   abaixo do histórico pede confirmação antes → depois. pino: fora(1.7,0.0001)=true */
+const RECEITAS_ED={
+ 'PORÇÃO CALABRESA 85g':[['CALABRESA PEÇA',1.700,'KG'],['PAPEL ACOPLADO',20,'UN']],
+ 'SACOLA QUEIJO 135g':[['QUEIJO MUSSARELA PEÇA',2.700,'KG'],['SACOLA PLÁSTICA',20,'UN']],
+};
+const doseFora=(antes,depois)=>depois>0&&(depois>antes*10||depois<antes/10);
+let recSel='PORÇÃO CALABRESA 85g';
+function recTroca(p){recSel=p;renderRec();}
+function renderRec(){
+  $('r-aviso').innerHTML='';
+  $('r-ings').innerHTML=RECEITAS_ED[recSel].map(([ins,dose,un],i)=>
+   `<div class="sug" style="padding:7px 0"><span class="nm">${ins}</span>
+     <input class="medio" style="width:92px;text-align:center;font-variant-numeric:tabular-nums"
+       value="${String(dose).replace('.',',')}" onchange="recDose(${i},this)">
+     <span style="font-size:12px;font-weight:800;color:var(--esc-tinta3)">${un} por receita</span>
+     <button class="bt" style="background:transparent;color:#9F2D25;border:1px solid var(--esc-linha)">✕</button></div>`).join('');
+}
+function recDose(i,el){
+  const antes=RECEITAS_ED[recSel][i][1];
+  const v=parseFloat(String(el.value).replace(',','.'));
+  if(!isFinite(v)||v<=0){el.value=String(antes).replace('.',',');return}
+  if(doseFora(antes,v)){
+    $('r-aviso').innerHTML=`<div style="font-size:12.5px;color:var(--esc-ambar-t);background:var(--esc-ambar50);border-radius:10px;padding:9px 12px;margin-top:8px">
+      ${RECEITAS_ED[recSel][i][0]}: <b>${String(antes).replace('.',',')} → ${el.value}</b> — fora do padrão do histórico desta ficha.
+      <button class="bt" style="background:var(--esc-indigo);margin-left:8px" onclick="recConfirma(${i},${v})">confirmar assim</button>
+      <button class="bt" style="background:transparent;color:var(--esc-tinta2);border:1px solid var(--esc-linha);margin-left:6px" onclick="renderRec()">manter ${String(antes).replace('.',',')}</button></div>`;
+    el.value=String(antes).replace('.',',');
+    return;
+  }
+  RECEITAS_ED[recSel][i][1]=v;renderRec();
+}
+function recConfirma(i,v){RECEITAS_ED[recSel][i][1]=v;renderRec();}
+renderRec();
+
+/* escritório: criar tarefa (M2) */
+function criaTarefa(){
+  const n=$('t-nome').value.trim(),q=$('t-quem').value;
+  if(!n||!q)return;
+  $('t-ok').innerHTML=`<span class="criada">✓ “${n.toUpperCase()}${$('t-instr').value?' · '+$('t-instr').value.toUpperCase():''}” → tablet ${q==='livre'?'(liberada pra equipe)':'de '+q}</span>`;
+  $('t-nome').value='';$('t-instr').value='';
+}
+</script>
+</body>
+</html>

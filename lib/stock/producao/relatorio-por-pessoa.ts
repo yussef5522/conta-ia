@@ -112,7 +112,11 @@ export async function relatorioPorPessoa(
   const canceladas = await db.stockProductionOrder.findMany({
     where: { companyId: input.companyId, estado: 'CANCELADA' }, select: { id: true },
   })
-  const foraDoRelatorio = canceladas.map((o) => o.id)
+  // ⚠️ (12/11, lei v7 M2) TAREFA fica FORA deste relatório: ele mede produção (unidades ÷ tempo),
+  // e tarefa não tem unidade — somar o tempo dela aqui baixaria o "rende" de quem abriu latas.
+  // O tempo dela está gravado (G12) e aparece no HOJE ao vivo; o lugar dela num relatório é decisão do dono.
+  const tarefasIds = (await db.stockTarefa.findMany({ where: { companyId: input.companyId }, select: { id: true } })).map((t) => t.id)
+  const foraDoRelatorio = [...canceladas.map((o) => o.id), ...tarefasIds]
 
   const etapas = await db.stockOrdemEtapa.findMany({
     where: {

@@ -5785,3 +5785,28 @@ model SuitDiaMaterializado {
   @@unique([companyId, dia])
   @@map("suit_dia_materializado")
 }
+
+// ⭐⭐ TAREFA — TIPO PRÓPRIO (lei v7 M2, 12/11/2026). "ABRIR LATAS DE ERVILHA · 5 LATAS".
+//
+// ⛔⛔ TAREFA NÃO TEM ESTOQUE: sem ficha, sem separação, sem "quantos saíram", sem lote. É SÓ
+// o trabalho: nome + instrução + quem + dia. O CABEÇALHO mora aqui; a EXECUÇÃO é uma linha de
+// `stock_ordem_etapa` com `ordemId = id desta tarefa` (posição 0) — o MESMO relógio, o MESMO
+// PIN, a MESMA dupla, o MESMO recado do gerente da produção (G3/G6/G7/G8/G12). Porta única:
+// nenhuma segunda janela de INICIAR/FINALIZAR.
+// ⚠️ Estado DERIVADO, nunca coluna: cancelada = `canceladaEm`; feita = a etapa finalizada.
+model StockTarefa {
+  id             String    @id @default(cuid())
+  companyId      String
+  nome           String
+  /// a instrução livre que a cozinha lê em destaque ("5 LATAS")
+  instrucao      String?
+  /// o dia da tarefa (meio-dia de São Paulo, como o resto do módulo)
+  dia            DateTime
+  criadoPorId    String?
+  criadoEm       DateTime  @default(now())
+  canceladaEm    DateTime?
+  canceladaPorId String?
+
+  @@index([companyId, dia])
+  @@map("stock_tarefa")
+}

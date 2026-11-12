@@ -69,10 +69,13 @@ describe('⭐⭐ 1. CABEÇALHO — logo 48 do dono único, nome 19px, pedido em 
     expect(t, 'nem a lib pura de cara direto').not.toMatch(/caraDaReceita\(/)
   })
 
-  it('⭐ o nome é 19px e a sublinha diz escala · versão · data', () => {
+  // ⚠️ (12/11) a lei v7 (docs/producao-referencia.html, M5) TIROU o "{escala}× a receita" da sublinha:
+  // quem manda são as UNIDADES do pedido, ao lado. A sublinha fica versão · data.
+  it('⭐ o nome é 19px e a sublinha diz versão · data (sem o × — lei v7 M5)', () => {
     const t = tela()
     expect(t).toMatch(/text-\[19px\] font-medium/)
-    expect(t).toMatch(/× a receita \(v\{ordem\.versaoFicha\}\)/)
+    expect(t).toMatch(/v\{ordem\.versaoFicha\} · \{fmtDia\(ordem\.dataProducao\)\}/)
+    expect(t).not.toMatch(/× a receita \(v\{ordem\.versaoFicha\}\)/)
   })
 
   it('⭐ o PEDIDO em 24px tabular, REDONDO pelo dono único', () => {

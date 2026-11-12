@@ -32,6 +32,36 @@ type Tarefa = MinhaTarefa
 interface Consumo { itemId: string; nome: string; qtd: number; unidade: string }
 import { relogioDaTarefa, desvioDoAparelho } from '@/lib/stock/producao/cronometro'
 import type { MinhaTarefa } from '@/lib/stock/producao/minhas-tarefas'
+import { alvoDoCartao } from '@/lib/stock/producao/cartao-da-cozinha'
+
+/**
+ * ⭐⭐ (lei v7 M1/M2) O MIOLO DO CARTÃO — o mesmo na lista e no cronômetro.
+ * PRODUÇÃO: etapa (rótulo) · produto GRANDE · "100 UN · 2 receitas" · "com {colega}".
+ * TAREFA: selo TAREFA · nome GRANDE · instrução em destaque âmbar. ⛔ Nada de dinheiro.
+ */
+function MioloDoCartao({ t, grande }: { t: Tarefa; grande: string }) {
+  if (t.tipo === 'TAREFA') {
+    return (
+      <>
+        <span className="inline-block rounded-full border border-slate-600 bg-[#273449] px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider text-slate-400" data-testid="selo-tarefa">TAREFA</span>
+        <p className={`mt-1 ${grande} font-semibold leading-tight text-slate-50`}>{t.produto}</p>
+        {t.instrucao && <p className="mt-0.5 text-[30px] font-extrabold leading-tight text-amber-400" data-testid="instrucao">{t.instrucao}</p>}
+        {t.colega && <p className="mt-1 text-[13px] font-bold text-slate-400">com <b className="text-slate-100">{t.colega}</b></p>}
+      </>
+    )
+  }
+  const alvo = alvoDoCartao(t)
+  return (
+    <>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{t.nome}</p>
+      <p className={`mt-1 ${grande} font-semibold leading-tight text-slate-50`}>{t.produto}</p>
+      <p className="mt-1 text-[15px] font-bold text-slate-400" data-testid="alvo">
+        {alvo.unidades && <><b className="text-slate-100">{alvo.unidades}</b> · </>}{alvo.receitas}
+      </p>
+      {t.colega && <p className="mt-1 text-[13px] font-bold text-slate-400" data-testid="colega">com <b className="text-slate-100">{t.colega}</b></p>}
+    </>
+  )
+}
 
 export default function CozinhaPage({ params }: { params: Promise<{ empresaId: string }> }) {
   const { empresaId } = use(params)
@@ -173,7 +203,7 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
           </p>
         )}
         {proxima
-          ? <p className="mt-6 text-sm text-slate-400">próxima: {proxima.nome}</p>
+          ? <p className="mt-6 text-sm text-slate-400">próxima: “{proxima.tipo === 'TAREFA' ? proxima.produto : proxima.nome}”</p>
           : <p className="mt-6 text-sm text-slate-400">não tem mais nada pra você hoje</p>}
         <button onClick={() => setFeito(null)}
           className="mt-8 rounded-xl bg-slate-800 px-6 py-3 text-sm text-slate-200 active:bg-slate-700">voltar às tarefas</button>
@@ -207,7 +237,8 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
           />
 
           {/* ⚠️ O QUE VAI SER CONSUMIDO, à vista: finalizar aqui consome TUDO que foi
-              separado. Quem está na cozinha não pesa sobra — se sobrou, não finaliza. */}
+              separado. ⛔ (lei v7 M3) a frase da sobra MORREU: prometia um ajuste que não
+              existe. Nada entra no lugar (S15); sobra rara é gesto do gerente ("devolver"). */}
           {consumo === null ? (
             <p className="mt-5 text-xs text-slate-500">carregando o que foi separado…</p>
           ) : consumo.length === 0 ? (
@@ -224,9 +255,6 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                Sobrou material? <strong>Não finalize</strong> — chame o encarregado, ele fecha ajustando a sobra.
-              </p>
             </div>
           )}
 
@@ -293,10 +321,8 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
           <button onClick={sair} className="text-sm text-slate-500">sair</button>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center text-center">
-          {/* mesma hierarquia da lista: o produto grande, a etapa como rótulo */}
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{emAndamento.nome}</p>
-          <p className="mt-1 max-w-md text-[28px] font-semibold leading-tight text-slate-50">{emAndamento.produto}</p>
-          <p className="mt-1 text-sm text-slate-400">{emAndamento.escalaReceitas} receitas</p>
+          {/* mesma hierarquia da lista: o produto grande, a etapa como rótulo (lei v7 M1: com o alvo e o colega) */}
+          <div className="max-w-md"><MioloDoCartao t={emAndamento} grande="text-[28px]" /></div>
           <p className="mt-8 text-6xl font-semibold tabular-nums text-amber-400">{texto}</p>
           {relogioTorto && (
             <p className="mt-2 max-w-xs text-xs text-amber-300">
@@ -375,9 +401,7 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
                   tablet dizia "porcao" e não dizia porção DE QUÊ. A etapa virou rótulo:
                   ela diz o QUE FAZER, e isso cabe em letra pequena; o produto diz COM O QUE,
                   e é ele que se confunde entre dez sabores parecidos. */}
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{t.nome}</p>
-              <p className="mt-1 text-[26px] font-semibold leading-tight text-slate-50">{t.produto}</p>
-              <p className="mt-1 text-sm text-slate-400">{t.escalaReceitas} receitas</p>
+              <MioloDoCartao t={t} grande="text-[26px]" />
               {t.pedidoPraFinalizar && (
                 <p className="mt-2 rounded-xl bg-[#534AB7]/20 px-3 py-2 text-xs text-[#c7bdff]">
                   O gerente pediu pra você finalizar esta tarefa — se terminou, aperte FINALIZAR.

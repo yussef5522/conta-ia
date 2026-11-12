@@ -23,7 +23,7 @@ const TABELAS_POR_COMPANY = [
   'stockContagemItem', 'stockContagem', 'stockSaida', 'stockEtiqueta',
   'stockImpressaoJob', 'stockImpressora', 'stockEtiquetaModelo',
   'stockVendaLinha', 'stockVendaImport', 'stockVendaProdutoMap',
-  'stockProducaoConclusao', 'stockProductionOrder',
+  'stockProducaoConclusao', 'stockProductionOrder', 'stockTarefa',
   'stockFichaComponente', 'stockFichaVersao', 'stockFicha',
   'stockEntradaManualItem', 'stockEntradaManual',
   'stockPayableLink', 'stockPayableSuggestion', 'stockParcelaCombinada',
