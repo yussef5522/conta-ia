@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { concluir } from '@/lib/stock/producao/conclusao'
 import { OrdemError } from '@/lib/stock/producao/ordens'
+import { respostaDeErroDoEstoque } from '@/lib/stock/erro-da-tela'
 
 interface Params { params: Promise<{ id: string; ordemId: string }> }
 
@@ -18,6 +19,8 @@ const schema = z.object({
   // qualquer coisa, e aí o campo deixa de valer quando o desvio for de verdade.
   motivoDesvio: z.string().max(500).nullable().optional(),
   parcial: z.boolean().optional(),
+  // ⭐ (12/11) a grandeza implausível é PERGUNTA: o dono confirma e a tela reenvia
+  confirmouGrandeza: z.boolean().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -32,6 +35,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ ok: true, ...r })
   } catch (e) {
     if (e instanceof OrdemError) return NextResponse.json({ erro: e.message }, { status: 422 })
+    // ⭐⭐ (12/11) a recusa com FRASE (grandeza, trava do estoque) — antes escapava como 500 sem
+    // corpo e a tela dizia "Não consegui concluir." sobre uma recusa que ela sabe explicar
+    const resp = respostaDeErroDoEstoque(e, { empresaId: companyId })
+    if (resp) return NextResponse.json(resp, { status: resp.status })
     throw e
   }
 }

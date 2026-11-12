@@ -3,6 +3,7 @@
 // lote base, preparo). Editar componente/qtd/lote → versão nova (ordens antigas apontam pra
 // versão da época). Ciclo proibido (grafo do banco). Custo teórico AO VIVO. Só stock_.
 
+import { dosesImplausiveis, fraseDaDose, type DoseImplausivel } from './dose-implausivel'
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { fichaInativaComNome, ReceitaHomonimaError } from './receita-ja-existe'
 import { prisma as defaultPrisma } from '@/lib/db'
@@ -93,6 +94,12 @@ export interface CriarFichaInput extends FichaBodyInput {
 }
 
 export class FichaError extends Error {}
+
+/** ⭐ (12/11) a dose fora da família — é PERGUNTA (409), não erro final: a tela reenvia com `confirmouDose` */
+export class DoseImplausivelError extends FichaError {
+  readonly code = 'DOSE_IMPLAUSIVEL'
+  constructor(readonly doses: DoseImplausivel[]) { super(fraseDaDose(doses)) }
+}
 
 /** Grafo produzido→componentes das fichas ATIVAS (versão atual). Pra detectar ciclo. */
 export async function buildGrafoFichas(companyId: string, db: Db, exceptFichaId?: string): Promise<GrafoFichas> {
@@ -330,9 +337,20 @@ export async function fichaAtivaComNome(
 }
 
 /** Atualiza a ficha. Corpo (componentes/lote/preparo) mudou → versão NOVA. Head → in place. */
-export async function atualizarFicha(companyId: string, fichaId: string, input: Partial<FichaBodyInput> & { setorId?: string | null; valorVenda?: number | null; nomeProduzido?: string; ativo?: boolean; userId?: string }, db: PrismaClient = defaultPrisma): Promise<{ versao: number }> {
+export async function atualizarFicha(companyId: string, fichaId: string, input: Partial<FichaBodyInput> & { setorId?: string | null; valorVenda?: number | null; nomeProduzido?: string; ativo?: boolean; userId?: string; confirmouDose?: boolean }, db: PrismaClient = defaultPrisma): Promise<{ versao: number }> {
   const ficha = await db.stockFicha.findFirst({ where: { id: fichaId, companyId } })
   if (!ficha) throw new FichaError('Ficha não encontrada.')
+
+  // ⭐⭐ (12/11) DOSE FORA DA FAMÍLIA DO HISTÓRICO pede confirmação (antes → depois) — nunca calada
+  if (input.componentes?.length && !input.confirmouDose) {
+    const versoes = await db.stockFichaVersao.findMany({ where: { companyId, fichaId }, select: { id: true, versao: true } })
+    const comps = versoes.length ? await db.stockFichaComponente.findMany({ where: { companyId, versaoId: { in: versoes.map((v) => v.id) } }, select: { itemId: true, qtdPlanejada: true, versaoId: true } }) : []
+    const numDe = new Map(versoes.map((v) => [v.id, v.versao]))
+    const historico = comps.map((c) => ({ itemId: c.itemId, qtd: c.qtdPlanejada, versao: numDe.get(c.versaoId) ?? 0 }))
+    const nomes = new Map((await db.stockItem.findMany({ where: { companyId, id: { in: input.componentes.map((c) => c.itemId) } }, select: { id: true, nome: true } })).map((i) => [i.id, i.nome]))
+    const ds = dosesImplausiveis(historico, input.componentes.map((c) => ({ itemId: c.itemId, qtd: c.qtdPlanejada, unidade: c.unidade })), (id) => nomes.get(id) ?? id)
+    if (ds.length) throw new DoseImplausivelError(ds)
+  }
 
   const mudouCorpo = input.componentes !== undefined || input.loteBase !== undefined || input.unidadeLoteBase !== undefined || input.modoPreparo !== undefined || input.tempoPreparoMin !== undefined || input.validadeDias !== undefined || input.etapas !== undefined
 

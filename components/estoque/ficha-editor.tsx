@@ -149,6 +149,8 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   const [erro, setErro] = useState<string | null>(null)
   /** ⭐ a recusa de receita homônima não é erro final: é PERGUNTA com três saídas (19/09) */
   const [homonima, setHomonima] = useState<{ fichaId: string; nome: string; lotes: number } | null>(null)
+  /** ⭐ (12/11) dose fora da família do histórico: a porta PERGUNTA (antes → depois); o dono confirma */
+  const [doseAConfirmar, setDoseAConfirmar] = useState(false)
   const [refazendo, setRefazendo] = useState(false)
   // guarda o que o dono TOCOU, pra o prefill nunca sobrescrever digitação
   const tocou = useRef({ nome: false, preco: false })
@@ -263,7 +265,8 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   const setQtd = (itemId: string, texto: string) => setComps((cs) => cs.map((c) => (c.itemId === itemId ? { ...c, qtdTexto: sanitizarQtd(texto, c.unidadeControle) } : c)))
   const rmComp = (itemId: string) => setComps((cs) => cs.filter((c) => c.itemId !== itemId))
 
-  const salvar = async () => {
+  const salvar = async (confirmouDose = false) => {
+    setDoseAConfirmar(false)
     setErro(null)
     const lb = parseNum(loteBase)
     if (!nomeProduzido.trim()) return setErro('Dê um nome ao produto.')
@@ -288,13 +291,14 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
     setSalvando(true)
     try {
       const r = editando
-        ? await fetch(`/api/empresas/${companyId}/estoque/fichas/${fichaId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), setorId: setorId || null, valorVenda: vv }) })
+        ? await fetch(`/api/empresas/${companyId}/estoque/fichas/${fichaId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), setorId: setorId || null, valorVenda: vv, ...(confirmouDose ? { confirmouDose: true } : {}) }) })
         : await fetch(`/api/empresas/${companyId}/estoque/fichas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), unidadeProduzido, tipoProduto, setorId: setorId || null, valorVenda: vv, mapearNomeSuitable: duplicarDaUrl || !temNomePdv ? null : mapearDaUrl, mapearComplemento: duplicarDaUrl ? null : (complementoDaUrl ?? null) }) })
       const j = await r.json().catch(() => null)
       if (!r.ok) {
         setErro(j?.erro ?? 'Não consegui salvar.')
         // ⛔ 409 da homônima: guarda a ficha inativa pra tela oferecer os três caminhos
         if (j?.code === 'RECEITA_HOMONIMA' && j?.ficha?.id) setHomonima({ fichaId: j.ficha.id, nome: j.ficha.nome, lotes: j.ficha.lotes ?? 0 })
+        if (j?.code === 'DOSE_IMPLAUSIVEL') setDoseAConfirmar(true)
         return
       }
       // ⭐ ITEM 5 (01/09): gravação INCOMPLETA nunca mais volta calada. Se a tela pediu o
@@ -525,6 +529,10 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
       </Card>
 
       {erro && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{erro}</p>}
+      {doseAConfirmar && (
+        <button type="button" onClick={() => void salvar(true)} disabled={salvando} data-testid="confirmar-dose"
+          className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700">a dose está certa — salvar assim mesmo</button>
+      )}
 
       {/* ⭐⭐ AS TRÊS PORTAS DA RECEITA HOMÔNIMA (19/09) — recusa sem saída é beco.
           A ordem é deliberada: reativar primeiro, porque é o caso comum. */}
@@ -564,7 +572,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
 
       {/* ── RODAPÉ ───────────────────────────────────────────────────────────── */}
       <div className="sticky bottom-0 flex items-center gap-3 border-t bg-white/95 py-2.5 backdrop-blur">
-        <button onClick={salvar} disabled={salvando}
+        <button onClick={() => void salvar()} disabled={salvando}
           className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#185FA5] px-5 text-sm font-semibold text-white hover:bg-[#0F4A8C] disabled:opacity-60">
           {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {editando ? 'Salvar receita' : produtoFinal ? 'Criar ficha' : 'Criar receita'}

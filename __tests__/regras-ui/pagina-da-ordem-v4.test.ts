@@ -225,7 +225,8 @@ describe('⭐⭐ 4. AÇÕES — um primário índigo, cancelar de contorno', () 
   })
 
   it('⛔ ordem encerrada não oferece ação nenhuma', () => {
-    expect(tela()).toMatch(/\{!encerrada && \(/)
+    // ⭐ (12/11) e nem pra quem o papel não deixa operar (`podeOperar`)
+    expect(tela()).toMatch(/\{!encerrada && podeOperar && \(/)
   })
 })
 

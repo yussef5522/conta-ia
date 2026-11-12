@@ -5,7 +5,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { avaliarEntrada, ehEntradaQueConserta, frasePergunta, TIPO_AJUSTE_RESIDUO } from './entrada-cruza-o-zero'
 import { ehAncoraDeContagem } from './contagem-ancora'
-import { TIPOS_FORA_DA_PRATELEIRA } from './prateleira'
+import { TIPOS_FORA_DA_PRATELEIRA, movePrateleira } from './prateleira'
 import { lembrarCustoVigente, memoriaDaEntrada } from './custo-vigente'
 import { familiaDoItem, porQueEstaNegativo, type FatosDoNegativo } from './porta-do-negativo'
 
@@ -176,6 +176,16 @@ async function residuoAAbsorverNaEntrada(
 async function assertSaldoNaoFicaImpossivel(db: Db, m: NovoMovimento, custoTotal: number) {
   // ⚠️ só olha quando ESTE movimento tira valor: entrada nunca cria o estado
   if (custoTotal > 0) return
+  /**
+   * ⛔⛔ (12/11/2026, D1 da produção — decisão do dono) A TRAVA JULGA A PRATELEIRA, E SÓ ELA.
+   * O saldo abaixo exclui `TIPOS_FORA_DA_PRATELEIRA` (o `PRODUCAO_CONSUMO` é transferência
+   * interna: a SEPARAÇÃO já tirou o insumo da prateleira). Somar ESTE movimento quando ele não
+   * mexe na prateleira julgava um estado que nunca existiria: em 09/11 20:43 a PORÇAO CALABRESA
+   * tinha 20,003 UN / R$ 32,33 (estoque certo), o consumo de 20 UN a R$ 32,40 era somado em cima
+   * e a trava recusava "0 UN e R$ −0,07" — a pizza não concluía nem no tablet nem no escritório.
+   * A trava continua INTEIRA pra todo movimento que mexe na prateleira; nenhum ajuste é criado.
+   */
+  if (!movePrateleira(m.tipo)) return
   const atual = await db.stockMovement.aggregate({
     // ⚠️ a MESMA régua de prateleira do `saldo.ts` (dono único): o `PRODUCAO_CONSUMO` é
     // transferência interna e não conta no saldo — usar outra lista aqui faria o guard

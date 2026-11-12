@@ -14,6 +14,7 @@
 // soma pra reusar. Em vez de escrever a terceira expressão do em-produção, extraí
 // `emProducaoPorOrdem` e migrei o P4 pra ela: de duas expressões pra uma.
 
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { custoMedioPorItem } from '../saldo'
@@ -79,9 +80,12 @@ export function rendimentoPonderado(
  *  não virou produto). O **P2** pergunta se ela está parada há mais de 24h. Uma ordem criada
  *  ontem às 23h e mexida hoje às 8h é "de ontem" e **não** está parada — as duas coisas
  *  podem discordar sem que nenhuma esteja errada. */
-export function ehDeOntem(atualizadoEm: Date, agora: Date): boolean {
-  const dia = (d: Date) => `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`
-  return dia(atualizadoEm) !== dia(agora) && atualizadoEm.getTime() < agora.getTime()
+export function ehDeOntem(dataProducao: Date, agora: Date): boolean {
+  // ⛔⛔ (12/11) O DIA É O DE BRASÍLIA, e o campo é UM SÓ (`dataProducao`, o dia de negócio da
+  // ordem) — pro rótulo do card E pro contador do topo. Antes: dia em UTC (a ordem de hoje virava
+  // "atrasada" às 21h de Brasília) e o contador olhava `atualizadoEm` enquanto o card olhava
+  // `dataProducao` — os dois discordavam na mesma tela.
+  return diaEmSaoPaulo(dataProducao) < diaEmSaoPaulo(agora)
 }
 
 export interface OrdemAberta {
@@ -207,7 +211,7 @@ export async function cardsDoPainel(
 ): Promise<CardsPainel> {
   const ordens = await db.stockProductionOrder.findMany({
     where: { companyId },
-    select: { id: true, estado: true, atualizadoEm: true, fichaId: true, versaoFicha: true },
+    select: { id: true, estado: true, atualizadoEm: true, dataProducao: true, fichaId: true, versaoFicha: true },
   })
   const abertas = ordens.filter((o) => (ESTADOS_ABERTOS as readonly string[]).includes(o.estado))
 
@@ -234,7 +238,7 @@ export async function cardsDoPainel(
     rendimentoPeriodo: pond.pct,
     lotesNaMedia: pond.lotes,
     faixaRendimento: faixa,
-    abertasDeOntem: abertas.filter((o) => ehDeOntem(o.atualizadoEm, agora)).length,
+    abertasDeOntem: abertas.filter((o) => ehDeOntem(o.dataProducao, agora)).length,
   }
 }
 

@@ -10,9 +10,9 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { quemEstaComOPin } from '@/lib/stock/producao/pin'
-import { finalizarTarefa, minhasTarefasDeHoje, TarefaError } from '@/lib/stock/producao/minhas-tarefas'
-import { concluirDoTablet, avaliarGrandezaDaConclusao } from '@/lib/stock/producao/concluir-do-tablet'
-import { somentePendentes } from '@/lib/stock/producao/em-andamento'
+import { minhasTarefasDeHoje, TarefaError } from '@/lib/stock/producao/minhas-tarefas'
+import { finalizarEConcluirDoTablet, avaliarGrandezaDaConclusao } from '@/lib/stock/producao/concluir-do-tablet'
+import { respostaDeErroDoEstoque } from '@/lib/stock/erro-da-tela'
 import { OrdemError } from '@/lib/stock/producao/ordens'
 
 interface Params { params: Promise<{ id: string }> }
@@ -57,40 +57,24 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
   }
 
+  // ⭐⭐ (12/11) UM ATO SÓ: etapa + conclusão na MESMA transação. Recusou = NADA gravou, e a
+  // funcionária vê o MOTIVO e pode tentar de novo (antes: etapa fechada, ordem aberta, 2º clique
+  // "já foi finalizada" — o escritório virava o único jeito de fechar).
   let concluida: { qtdGerada: number; custoUnitarioReal: number | null } | null = null
   try {
-    await finalizarTarefa({ companyId, etapaId: parsed.data.etapaId, colaboradorId: quem.colaboradorId }, prisma)
-    // ⭐ o número só chega quando a tela sabe que é a última etapa — e mesmo assim o
-    // servidor confere que não sobrou etapa aberta antes de concluir.
-    if (parsed.data.qtdGerada && etapa) {
-      // ⛔⛔ "SOBROU ETAPA?" PELA DERIVAÇÃO ÚNICA, NÃO PELA COLUNA (08/09/2026).
-      //
-      // ⚠️ Mesma classe do bug que trancou a Carlise, com outro efeito: a etapa que o gerente
-      // finalizou fica com `finalizadoEm` NULL de propósito, então a régua crua a contava como
-      // "faltando" e **a cozinha nunca conseguiria fechar o lote pelo tablet** — numa ordem em
-      // que o gerente já resolveu tudo que estava pendente.
-      const candidatas = await prisma.stockOrdemEtapa.findMany({
-        where: { companyId, ordemId: etapa.ordemId, finalizadoEm: null },
-        select: { id: true, ordemId: true, iniciadoEm: true, finalizadoEm: true },
-      })
-      const faltando = await somentePendentes(companyId, candidatas, prisma)
-      if (faltando.length > 0) {
-        return NextResponse.json({ erro: `Ainda faltam ${faltando.length} etapa(s) nesta ordem — não dá pra fechar o lote agora.` }, { status: 409 })
-      }
-      const r = await concluirDoTablet({
-        companyId, ordemId: etapa.ordemId, qtdGerada: parsed.data.qtdGerada,
-        colaboradorId: quem.colaboradorId, parcial: parsed.data.parcial,
-        confirmouGrandeza: parsed.data.confirmouGrandeza,
-      }, prisma)
-      concluida = { qtdGerada: r.qtdGerada, custoUnitarioReal: r.custoUnitarioReal }
-    }
+    const r = await finalizarEConcluirDoTablet({
+      companyId, etapaId: parsed.data.etapaId, colaboradorId: quem.colaboradorId,
+      qtdGerada: etapa ? parsed.data.qtdGerada : undefined, parcial: parsed.data.parcial, confirmouGrandeza: parsed.data.confirmouGrandeza,
+    }, prisma)
+    concluida = r.concluida
   } catch (e) {
-    // ⚠️ a mensagem vai INTEIRA pra tela: "outra pessoa já está nessa tarefa" ensina o que
-    // fazer; "erro ao finalizar" manda perguntar pro encarregado.
     if (e instanceof TarefaError || e instanceof OrdemError) return NextResponse.json({ erro: e.message }, { status: 409 })
-    throw e
+    // ⭐ a trava do estoque, a grandeza… a recusa com FRASE, nunca 500 sem corpo
+    const resp = respostaDeErroDoEstoque(e, { empresaId: companyId })
+    if (resp) return NextResponse.json({ ...resp, erro: `${resp.erro} Nada foi gravado — dá pra tentar de novo.` }, { status: resp.status === 422 ? 409 : resp.status })
+    console.error('[minhas-tarefas/finalizar] falhou:', (e as Error)?.name)
+    return NextResponse.json({ erro: 'Não consegui finalizar agora. Nada foi gravado — tente de novo; se repetir, chame o encarregado.' }, { status: 500 })
   }
-
   return NextResponse.json({
     colaborador: { id: quem.colaboradorId, nome: quem.nome },
     tarefas: await minhasTarefasDeHoje(companyId, quem.colaboradorId, new Date(), prisma),

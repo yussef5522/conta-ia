@@ -14,6 +14,7 @@ import { avaliarPlausibilidade, type VeredictoDaPlausibilidade } from './plausib
 import { idsDeConclusoesEstornadas } from './conclusao-estornada'
 import { conclusoesVigentes, conclusoesComHistoria } from './conclusoes-vigentes'
 import { encerrarEtapasAbertas } from './encerrar-etapas-abertas'
+import { naTransacao, type DbOuTx } from './transacao'
 
 /**
  * ⭐ O CLIENT DE **LEITURA** (04/10) — aceita o transacional.
@@ -175,7 +176,7 @@ export async function rendimentoMedioDaFicha(companyId: string, fichaId: string,
   return (await rendimentoMedidoDaFicha(companyId, fichaId, db, exceptConclusaoId)).media
 }
 
-export async function concluir(input: ConcluirInput, db: PrismaClient = defaultPrisma): Promise<ConcluirResult> {
+export async function concluir(input: ConcluirInput, db: DbOuTx = defaultPrisma): Promise<ConcluirResult> {
   if (!(input.qtdGerada > 0)) throw new OrdemError('Informe quantos saíram (maior que zero).')
   const ordem = await db.stockProductionOrder.findFirst({ where: { id: input.ordemId, companyId: input.companyId } })
   if (!ordem) throw new OrdemError('Ordem não encontrada.')
@@ -240,7 +241,8 @@ export async function concluir(input: ConcluirInput, db: PrismaClient = defaultP
   const desvio = rendimentoMedioAnterior && rendimentoMedioAnterior > 0 ? round4((rendimento - rendimentoMedioAnterior) / rendimentoMedioAnterior) : null
   const foraDaFaixa = desvio != null && Math.abs(desvio) > RENDIMENTO_DESVIO
 
-  const conclusaoId = await db.$transaction(async (tx) => {
+  // ⭐ (12/11) dentro de uma transação maior (finalizar etapa + concluir = um ato só), roda NELA
+  const conclusaoId = await naTransacao(db, async (tx) => {
     // PRODUCAO_CONSUMO por item (baixa da produção; NÃO mexe na prateleira — já saiu no SEPARACAO)
     for (const c of consumoPos) {
       const custo = custoMap.get(c.itemId) ?? 0

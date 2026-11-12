@@ -98,6 +98,8 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const [sep, setSep] = useState<Record<string, string>>({}) // qtd separada editável (PLANEJADA)
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  /** ⭐ (12/11) a carga que FALHOU tem nome — nunca se veste de "ordem não encontrada" */
+  const [falhaCarga, setFalhaCarga] = useState<string | null>(null)
   const [conclusoes, setConclusoes] = useState<Conclusao[]>([])
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   // ⭐ a ordem tem etapa ASSINADA (alguém carimbou com o PIN)? Então "quem produziu" já está
@@ -148,7 +150,14 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const [retalho, setRetalho] = useState<{ aceita: boolean; pesoUnidadeG?: number; ultimoKg?: number | null; declaradoKg?: number | null } | null>(null)
   const [rastroPedido, setRastroPedido] = useState<Array<{ unidades: number; correcao: boolean; quem: string | null; quando: string }>>([])
 
-  const carregar = () => fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}`).then((r) => r.json()).then((j) => {
+  const carregar = () => fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}`).then(async (r) => {
+    const j = await r.json().catch(() => null)
+    // ⛔ (12/11) 403/500 NÃO é "ordem não encontrada": a tela diz o que houve e deixa tentar de novo
+    if (!r.ok) { setFalhaCarga(j?.erro ?? (r.status === 403 ? 'Seu acesso não abre esta ordem.' : 'Não consegui carregar a ordem.')); setOrdem(null); return null }
+    setFalhaCarga(null)
+    return j
+  }).then((j) => {
+    if (!j) return
     if (!j.ordem) { setOrdem(null); return }
     setOrdem(j.ordem); setLinhas(j.linhas ?? [])
     setConclusoes(j.conclusoes ?? []); setColaboradores(j.colaboradores ?? []); setRendimentoMedio(j.rendimentoMedio ?? null); setRendimentoLotes(j.rendimentoLotes ?? 0)
@@ -156,7 +165,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
     setPedido(j.pedido ?? null)
     setRetalho(j.retalho ?? null); setRastroPedido(j.rastroPedido ?? [])
     if (j.ordem.estado === 'PLANEJADA') setSep(Object.fromEntries((j.linhas ?? []).map((l: Linha) => [l.itemId, String(l.qtdPlanejada)])))
-  }).catch(() => setOrdem(null))
+  }).catch(() => { setFalhaCarga('Falha de conexão — a ordem não carregou.'); setOrdem(null) })
   useEffect(() => { carregar() }, [id, ordemId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const acao = async (body: object) => {
@@ -357,7 +366,14 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   }, [ordem, valem, linhas])
 
   if (ordem === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-[var(--prod-muted)]" /></div>
-  if (ordem === null) return <div className="p-6 text-sm text-[var(--prod-muted)]">Ordem não encontrada.</div>
+  if (ordem === null) return (
+    <div className="p-6 text-sm text-[var(--prod-muted)]" data-testid="ordem-falha">
+      {falhaCarga ?? 'Ordem não encontrada.'}
+      {falhaCarga && <button type="button" onClick={() => carregar()} className="ml-2 underline">tentar de novo</button>}
+    </div>
+  )
+  /** ⭐ (12/11) botão que o papel NÃO pode usar não aparece (antes: aparecia e dava 403) */
+  const podeOperar = !carregandoPerm && podePerm('stock.operate')
 
   const planejada = ordem.estado === 'PLANEJADA'
   const separada = ordem.estado === 'SEPARADA'
@@ -518,7 +534,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                     className="rounded-lg px-3 py-1.5 text-xs font-bold"
                     style={{ background: 'var(--fam-ambar-solid)', color: 'var(--fam-ambar-on)' }}>{porta.rotulo}</a>
                 )}
-                {porta.acao === 'CANCELAR_E_DEVOLVER' && (
+                {porta.acao === 'CANCELAR_E_DEVOLVER' && podeOperar && (
                   <button type="button" disabled={busy}
                     onClick={() => { if (confirm('Cancelar a ordem? Os insumos separados voltam pro estoque.')) acao({ acao: 'cancelar' }) }}
                     className="rounded-lg border border-[var(--fam-ambar-mid)] bg-[var(--prod-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--fam-ambar-ink)] disabled:opacity-50">
@@ -777,14 +793,14 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
 
           <div className="flex flex-wrap items-center gap-2">
             {/* ⭐ O WRITER ÚNICO: este botão é o ÚNICO caminho que grava a meta + a escala */}
-            <button
+            {podeOperar && <button
               onClick={confirmarPedido}
               disabled={busy || pedidoNum == null || !(pedidoNum > 0)}
               className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium disabled:opacity-40"
               style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               {rotuloDoConfirmar(pedidoNum, ordem.unidadeProduzido)}
-            </button>
+            </button>}
             {corrigindoPedido && (
               <button onClick={() => { setCorrigindoPedido(false); setQuanto('') }}
                 className="h-9 rounded-md px-3 text-[13px]"
@@ -993,7 +1009,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
         * iniciar; **em produção → concluir** (que é o formulário logo abaixo, por isso o
         * primário aqui é a âncora pra ele, não um 2º caminho de gravação).
         */}
-      {!encerrada && (
+      {!encerrada && podeOperar && (
         <div className="flex flex-wrap items-center gap-3 print:hidden">
           {planejada && (
             <button onClick={confirmarSeparacao} disabled={busy}
@@ -1048,7 +1064,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
 
       {/* conclusão ("quantos saíram?") — ⭐ a âncora é o alvo da 1ª porta do aviso */}
       <div id="concluir" />
-      {emProducao && (
+      {emProducao && podeOperar && (
         <ConclusaoForm
           id={id} ordemId={ordemId} linhas={linhas} etapasAbertas={etapasAbertas}
           quemProduziu={quemProduziu}
@@ -1306,6 +1322,8 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, etapasAbertas, quem
   const [motivo, setMotivo] = useState('')
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  /** ⭐ (12/11) a grandeza implausível é PERGUNTA: o servidor diz a conta, o dono confirma */
+  const [pedeConfirmar, setPedeConfirmar] = useState(false)
   const parseNum = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
 
   // ⭐ REGRA 4: a frase vem da MESMA função que o servidor usa pra descrever o encerramento —
@@ -1324,8 +1342,8 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, etapasAbertas, quem
   const custoUnit = qg > 0 ? custoLote / qg : null
   const custoUnitTexto = custoUnit != null && Number.isFinite(custoUnit) ? formatBRL(custoUnit) : '—'
 
-  const concluir = async () => {
-    setErro(null)
+  const concluir = async (confirmouGrandeza = false) => {
+    setErro(null); setPedeConfirmar(false)
     // ⛔ vazio / 0 / negativo / lixo digitado: erro INLINE, e nada é gravado
     if (!(qg > 0)) return setErro('Diga quantas unidades saíram — conte antes de concluir.')
     setBusy(true)
@@ -1348,10 +1366,16 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, etapasAbertas, quem
           qtdGerada: qg,
           colaboradorId: colaboradorId || null,
           motivoDesvio: motivo.trim() || null,
+          ...(confirmouGrandeza ? { confirmouGrandeza: true } : {}),
         }),
       })
       const j = await r.json().catch(() => null)
-      if (!r.ok) { setErro(j?.erro ?? 'Não consegui concluir.'); return }
+      if (!r.ok) {
+        // ⭐ a mensagem REAL da recusa (trava do estoque, grandeza…) — nunca o genérico quando há frase
+        setErro(j?.erro ?? `Não consegui concluir (erro ${r.status}).`)
+        if (j?.code === 'GRANDEZA' || j?.code === 'GRANDEZA_AVISO') setPedeConfirmar(true)
+        return
+      }
       // vai pra etiqueta e já manda pra Zebra (agente local) — a etiqueta sai na conclusão
       if (j?.conclusaoId) { window.location.href = `/empresas/${id}/estoque/producao/conclusoes/${j.conclusaoId}/etiqueta?print=zebra`; return }
       onConcluida()
@@ -1480,11 +1504,17 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, etapasAbertas, quem
         </div>
       )}
 
-      {erro && <p className="text-sm" style={{ color: 'var(--fam-coral-ink)' }}>{erro}</p>}
+      {erro && <p className="text-sm" style={{ color: 'var(--fam-coral-ink)' }} data-testid="erro-concluir">{erro}</p>}
+      {pedeConfirmar && (
+        <button type="button" onClick={() => void concluir(true)} disabled={busy} data-testid="confirmar-grandeza"
+          className="rounded-lg border px-3 py-1.5 text-[13px] font-semibold" style={{ borderColor: 'var(--fam-coral-ink)', color: 'var(--fam-coral-ink)' }}>
+          o número está certo — concluir assim mesmo
+        </button>
+      )}
 
       {/* ⭐ UM primário índigo + "voltar" de contorno (a régua do "um primário só") */}
       <div className="flex flex-wrap items-center gap-3">
-        <button onClick={concluir} disabled={busy}
+        <button onClick={() => void concluir()} disabled={busy}
           className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60"
           style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Concluir e gerar etiqueta

@@ -86,8 +86,10 @@ describe('⚠️ "é de ontem?" ≠ "parou >24h?"', () => {
     expect(horas).toBeLessThan(24) // ⭐ o P2 NÃO dispararia — e as duas estão certas
   })
 
-  it('⭐ ordem mexida HOJE não é de ontem, por mais cedo que tenha sido', () => {
-    expect(ehDeOntem(new Date('2026-09-01T00:01:00Z'), agora)).toBe(false)
+  it('⭐ ordem de HOJE (dia de Brasília) não é de ontem, por mais cedo que tenha sido', () => {
+    // ⭐ (12/11) o dia é o de Brasília: 00:01 de 01/09 em SP = 03:01Z. (00:01Z é 21:01 de 31/08 — ontem.)
+    expect(ehDeOntem(new Date('2026-09-01T03:01:00Z'), agora)).toBe(false)
+    expect(ehDeOntem(new Date('2026-09-01T00:01:00Z'), agora)).toBe(true)
   })
 
   it('⭐ e a lista de estados abertos é a MESMA do P2', () => {

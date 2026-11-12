@@ -119,7 +119,8 @@ describe('⛔⛔ a pergunta vem ANTES de qualquer escrita', () => {
     // ⚠️ POSIÇÃO DO USO, nunca do texto: o `import` no topo do arquivo cita os dois
     // símbolos e fazia este guard passar com o bloco movido pro catch (REGRA 11).
     const iAvalia = posDoUso(r, 'avaliarGrandezaDaConclusao')
-    const iFinaliza = posDoUso(r, 'finalizarTarefa')
+    // ⭐ (12/11) finalizar+concluir virou UM ato (`finalizarEConcluirDoTablet`): a pergunta vem antes dele
+    const iFinaliza = posDoUso(r, 'finalizarEConcluirDoTablet')
     expect(iAvalia, 'a avaliação sumiu da rota').toBeGreaterThan(-1)
     expect(iAvalia, 'a etapa fecharia antes da pergunta — a cozinha ficaria sem repetir').toBeLessThan(iFinaliza)
   })

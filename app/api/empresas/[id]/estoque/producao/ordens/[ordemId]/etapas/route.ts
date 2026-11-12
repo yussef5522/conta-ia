@@ -7,6 +7,9 @@ import { guardStock } from '@/lib/stock/require-stock'
 import { etapasDaOrdem, designarEtapa, EtapaError } from '@/lib/stock/producao/etapas'
 import { pedirPraFinalizar, finalizarPeloGerente, GestoError } from '@/lib/stock/producao/gestos-do-gerente'
 import { concluirDoTablet } from '@/lib/stock/producao/concluir-do-tablet'
+import { naTransacao } from '@/lib/stock/producao/transacao'
+import { OrdemError } from '@/lib/stock/producao/ordens'
+import { respostaDeErroDoEstoque } from '@/lib/stock/erro-da-tela'
 import { designarParticipantes } from '@/lib/stock/producao/participantes'
 import { DuplaError } from '@/lib/stock/producao/dupla-na-etapa'
 
@@ -120,17 +123,24 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (parsed.data.acao === 'pedir-finalizar') {
       await pedirPraFinalizar({ companyId, etapaId: parsed.data.etapaId, userId: a.user.sub }, prisma)
     } else {
-      await finalizarPeloGerente({ companyId, etapaId: parsed.data.etapaId, userId: a.user.sub, observacao: parsed.data.observacao }, prisma)
       // ⭐ era a ÚLTIMA etapa e o gerente disse quanto saiu → conclui pelo MESMO motor
-      if (parsed.data.qtdGerada != null) {
-        await concluirDoTablet({
-          companyId, ordemId, qtdGerada: parsed.data.qtdGerada,
-          colaboradorId: null, parcial: parsed.data.parcial ?? false,
-        }, prisma)
-      }
+      // ⭐⭐ (12/11) UM ATO SÓ, como no tablet: finalizar + concluir — ou tudo grava, ou nada grava
+      await naTransacao(prisma, async (tx) => {
+        await finalizarPeloGerente({ companyId, etapaId: parsed.data.etapaId, userId: a.user.sub, observacao: parsed.data.observacao }, tx as unknown as typeof prisma)
+        if (parsed.data.qtdGerada != null) {
+          await concluirDoTablet({
+            companyId, ordemId, qtdGerada: parsed.data.qtdGerada,
+            colaboradorId: null, parcial: parsed.data.parcial ?? false,
+          }, tx)
+        }
+      })
     }
   } catch (e) {
     if (e instanceof GestoError) return NextResponse.json({ erro: e.message }, { status: 422 })
+    if (e instanceof OrdemError) return NextResponse.json({ erro: e.message }, { status: 409 })
+    // ⭐ a recusa com FRASE (trava do estoque, grandeza) — nunca "Não consegui." genérico
+    const resp = respostaDeErroDoEstoque(e, { empresaId: companyId })
+    if (resp) return NextResponse.json({ ...resp, erro: `${resp.erro} Nada foi gravado.` }, { status: resp.status })
     throw e
   }
   return responder(companyId, ordemId)

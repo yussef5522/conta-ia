@@ -183,6 +183,8 @@ describe('⛔⛔⛔ 3. o caminho inteiro: editar a ficha → separar → o ledge
     await atualizarFicha(companyId, fichaId, {
       loteBase: 1, unidadeLoteBase: 'UN',
       componentes: [{ itemId: fermentoId, qtdPlanejada: 0.000001, unidade: 'KG', posicao: 0 }],
+      // ⭐ (12/11) 0,003 → 0,000001 KG é 3000×: fora da família, a porta PERGUNTA — o dono confirma
+      confirmouDose: true,
     }, prisma)
     const o = await criarOrdem({ companyId, fichaId, escalaReceitas: 1, dataProducao: new Date('2026-09-29') }, prisma)
     const linha = (await explodirSeparacao(companyId, o.ordemId, prisma)).linhas.find((l) => l.itemId === fermentoId)!

@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
-import { getFicha, atualizarFicha, FichaError } from '@/lib/stock/producao/fichas'
+import { getFicha, atualizarFicha, FichaError, DoseImplausivelError } from '@/lib/stock/producao/fichas'
 import { excluirFicha, preverExclusaoDaFicha, ExcluirFichaError } from '@/lib/stock/producao/excluir-ficha'
 import { respostaDeErroDoEstoque } from '@/lib/stock/erro-da-tela'
 
@@ -25,6 +25,8 @@ const patchSchema = z.object({
   componentes: z.array(componenteSchema).min(1).optional(),
   // ⭐ etapas (06/09): lista ordenada de nomes. `[]` é significativo (apaga as anteriores).
   etapas: z.array(z.object({ nome: z.string().min(1).max(60), setorId: z.string().nullable().optional() })).max(12).optional(),
+  // ⭐ (12/11) o dono viu o antes → depois e confirmou a dose fora da família
+  confirmouDose: z.boolean().optional(),
 })
 
 export async function GET(request: NextRequest, { params }: Params) {
@@ -46,6 +48,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const r = await atualizarFicha(companyId, fichaId, { ...parsed.data, userId: a.user!.sub })
     return NextResponse.json({ ok: true, ...r })
   } catch (e) {
+    // ⭐ PERGUNTA, não erro final: a tela mostra antes → depois e reenvia com `confirmouDose`
+    if (e instanceof DoseImplausivelError) return NextResponse.json({ erro: e.message, code: e.code, doses: e.doses }, { status: 409 })
     if (e instanceof FichaError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e
   }

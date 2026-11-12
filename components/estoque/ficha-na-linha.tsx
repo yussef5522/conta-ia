@@ -31,6 +31,8 @@ export function FichaNaLinha({ companyId, alvo, aoGravar }: { companyId: string;
   const [erro, setErro] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [gravando, setGravando] = useState(false)
+  /** ⭐ (12/11) dose fora da família: a porta pergunta, a linha confirma */
+  const [doseAConfirmar, setDoseAConfirmar] = useState(false)
 
   useEffect(() => {
     if (!alvo.fichaId) return
@@ -53,8 +55,9 @@ export function FichaNaLinha({ companyId, alvo, aoGravar }: { companyId: string;
 
   const add = (it: ItemBusca) => setComps((cs) => (cs && !cs.some((c) => c.itemId === it.id) ? [...cs, { itemId: it.id, nome: it.nome, unidade: it.unidadeControle, qtdTexto: it.unidadeControle === 'UN' ? '1' : '0,05', custoMedio: it.custoMedio }] : cs))
 
-  const gravar = async () => {
+  const gravar = async (confirmouDose = false) => {
     if (!comps) return
+    setDoseAConfirmar(false)
     setErro(null)
     setAviso(null)
     const r0 = recusa(comps)
@@ -62,13 +65,14 @@ export function FichaNaLinha({ companyId, alvo, aoGravar }: { companyId: string;
     setGravando(true)
     try {
       const r = alvo.fichaId
-        ? await fetch(`/api/empresas/${companyId}/estoque/fichas/${alvo.fichaId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpoDaEdicao(comps)) })
+        ? await fetch(`/api/empresas/${companyId}/estoque/fichas/${alvo.fichaId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...corpoDaEdicao(comps), ...(confirmouDose ? { confirmouDose: true } : {}) }) })
         : await fetch(`/api/empresas/${companyId}/estoque/fichas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpoDaCriacao(alvo, comps)) })
       const j = await r.json().catch(() => null)
       if (!r.ok) {
         // ⛔ a homônima (409) tem três saídas — elas moram no editor, não aqui (uma porta só)
         setErro(j?.erro ?? 'Não consegui gravar.')
         if (j?.code === 'RECEITA_HOMONIMA' && j?.ficha?.id) setAviso(`/empresas/${companyId}/estoque/fichas/${j.ficha.id}`)
+        if (j?.code === 'DOSE_IMPLAUSIVEL') setDoseAConfirmar(true)
         return
       }
       // ⭐ ITEM 5 do editor: gravação incompleta nunca volta calada
@@ -112,7 +116,8 @@ export function FichaNaLinha({ companyId, alvo, aoGravar }: { companyId: string;
       {(mudou || erro) && (
         <div className="grava">
           {erro && <span className="erro">{erro}{aviso && <> · <a href={aviso}>abrir no editor →</a></>}</span>}
-          {mudou && <button type="button" className="btn-mini on" disabled={gravando || !comps.length} onClick={gravar}>{gravando ? 'gravando…' : 'gravar ficha'}</button>}
+          {doseAConfirmar && <button type="button" className="btn-mini" disabled={gravando} onClick={() => void gravar(true)} data-testid="confirmar-dose">a dose está certa — gravar</button>}
+          {mudou && <button type="button" className="btn-mini on" disabled={gravando || !comps.length} onClick={() => void gravar()}>{gravando ? 'gravando…' : 'gravar ficha'}</button>}
         </div>
       )}
     </div>
