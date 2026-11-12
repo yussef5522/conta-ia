@@ -108,6 +108,20 @@ describe('Lucro por Setor · a tela bate com a lei v11', () => {
     expect(TELA).toContain('data-testid="estudo-parcial"')
   })
 
+  it('E3 (12/11) · a emenda está NA LEI e a tela separa "sem ficha" × "ingrediente sem preço", com ⚠ e o atalho pra porta do preço', () => {
+    expect(LEI).toContain('E3 · FICHA COM INGREDIENTE SEM PREÇO')
+    expect(TELA).toContain('un com ingrediente sem preço →')
+    expect(TELA).toContain('un sem ficha →')
+    expect(TELA).toContain('data-testid="selo-sem-preco"')
+    // ⛔ "fichas 100% ✓" só quando NÃO falta ficha NEM preço
+    expect(TELA).toMatch(/s\.unSemFicha === 0 && s\.unSemPreco === 0 && <span className="cob ok">fichas 100% ✓/)
+    const ficha = semComentario(ler('components/estoque/ficha-na-linha.tsx'))
+    expect(ficha).toContain('href={`/empresas/${companyId}/estoque/itens/${c.itemId}`}') // a porta que JÁ define o preço do insumo
+    expect(ficha).toContain('rodapeDaFicha(comps, formatBRL)')
+    // a lista do cardápio (irmão): o parcial aparece como PISO, com ⚠
+    expect(semComentario(ler('app/(dashboard)/empresas/[id]/estoque/cardapio/page.tsx'))).toMatch(/⚠ ≥ \{brl\(l\.custoParcial\)\}/)
+  })
+
   it('S21 · a conta do empate é a da lei (ceil(lucro ÷ lucro por un)) e o campo começa no preço de HOJE (S23)', () => {
     expect(LEI).toContain('Math.ceil(e.lucro/lucroUn)')
     expect(ESTUDO).toMatch(/Math\.ceil\(e\.lucro \/ lucroUn/)

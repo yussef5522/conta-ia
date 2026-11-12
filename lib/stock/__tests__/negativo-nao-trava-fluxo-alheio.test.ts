@@ -58,8 +58,11 @@ describe('⛔⛔ 3. FICHA — componente negativo é aviso na LINHA DELE, não v
     const r = custoDeUmaUnidade({ tipo: 'FICHA', fichaId: 'f-xis' }, ctx, custoDe)
     expect(r.parcial, 'o custo conhecido sumiu junto com o que falta').toBe(8.58)
     expect(r.semCusto).toBe(1)
-    // ⛔ e o custo FECHADO continua null: margem inventada é pior que margem ausente
-    expect(r.custo).toBeNull()
+    // ⭐⭐ E3 (12/11, ordem do dono): o custo é o PARCIAL, com a marca explícita — nunca se
+    // veste de completo (`completo: false` + quem falta). Era `null` e estragava o total.
+    expect(r.custo).toBe(8.58)
+    expect(r.completo).toBe(false)
+    expect(r.faltantes).toEqual(['ERVILHA'])
   })
 
   it('⭐ com todos os custos, parcial == custo fechado', () => {
@@ -67,6 +70,30 @@ describe('⛔⛔ 3. FICHA — componente negativo é aviso na LINHA DELE, não v
     const r = custoDeUmaUnidade({ tipo: 'FICHA', fichaId: 'f-xis' }, ctx, cheio)
     expect(r.custo).toBe(r.parcial)
     expect(r.semCusto).toBe(0)
+    expect([r.completo, r.faltantes]).toEqual([true, []])
+  })
+})
+
+describe('⭐⭐ E3 (12/11) · a PORTA soma o que tem preço e marca o que falta — nunca zera a ficha', () => {
+  const comps: [string, string, number, number | null][] = [
+    ['beef', 'beef de xis', 1, 3.7], ['pao', 'PAO DE XIS', 1, 1.75], ['papel', 'PAPEL ACOPLADO', 1, 0.86], ['milho', 'MILHO VERDE', 0.04, null],
+    ['ervilha', 'ERVILHA', 0.03, 11.57], ['ovo', 'OVO', 1, 0.53], ['catchup', 'CATCHUP', 0.002, 8.98],
+    ['queijo', 'QUEIJO', 0.02, 30.06], ['maionese', 'MAIONESE', 1, 0.32], ['tomate', 'TOMATE', 0.001, 13.39],
+  ]
+  const ctx = {
+    componentesByFicha: new Map([['f-xis', comps.map(([id, , q]) => ({ itemId: id, qtdPlanejada: q }))], ['f-vazia', []], ['f-nada', [{ itemId: 'milho', qtdPlanejada: 1 }]]]),
+    fichaByItemProduzido: new Map(),
+    fichaById: new Map([['f-xis', { id: 'f-xis', tipoProduto: 'PRODUTO_FINAL', itemProduzidoId: 'i-xis' }], ['f-vazia', { id: 'f-vazia', tipoProduto: 'PRODUTO_FINAL', itemProduzidoId: 'i-v' }], ['f-nada', { id: 'f-nada', tipoProduto: 'PRODUTO_FINAL', itemProduzidoId: 'i-n' }]]),
+    nomeItem: new Map(comps.map(([id, nome]) => [id, nome])),
+  } as Parameters<typeof custoDeUmaUnidade>[1]
+  const custoDe = new Map<string, number | null>(comps.map(([id, , , c]) => [id, c]))
+
+  it('o caso REAL do XIS COMPLETO: 9 com preço + MILHO VERDE sem → custo 8,14, completo:false, faltantes:[MILHO VERDE]', () => {
+    expect(custoDeUmaUnidade({ tipo: 'FICHA', fichaId: 'f-xis' }, ctx, custoDe)).toMatchObject({ custo: 8.14, completo: false, faltantes: ['MILHO VERDE'] })
+  })
+  it('ficha VAZIA continua sem custo (sem ficha) · ficha só de insumo sem preço: nada a somar, sem custo', () => {
+    expect(custoDeUmaUnidade({ tipo: 'FICHA', fichaId: 'f-vazia' }, ctx, custoDe)).toMatchObject({ custo: null, completo: false, faltantes: [] })
+    expect(custoDeUmaUnidade({ tipo: 'FICHA', fichaId: 'f-nada' }, ctx, custoDe)).toMatchObject({ custo: null, completo: false, faltantes: ['MILHO VERDE'] })
   })
 })
 

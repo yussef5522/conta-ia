@@ -90,26 +90,38 @@ export interface HubCardapio {
   totais: { produtos: number; vendasQtd: number; vendasValor: number; semDestino: number; semCusto: number; prontos: number; ignorados: number }
 }
 
-/** Custo de 1 unidade vendida = Σ (qtd que sai do estoque × custo médio do insumo).
- *  Null se QUALQUER folha ainda não tem custo — "a definir" nunca vira 0,01. */
+/**
+ * Custo de 1 unidade vendida = Σ (qtd que sai do estoque × custo médio do insumo).
+ *
+ * ⭐⭐ E3 (12/11/2026, ordem do dono — lei docs/lucro-por-setor-referencia.html): ingrediente
+ * SEM PREÇO NÃO ANULA A FICHA. O `custo` sai como a soma do que TEM preço, com a marca
+ * explícita: `completo: false` + `faltantes` (os nomes). Padrão profissional: soma o que tem,
+ * sinaliza o que falta — nunca estraga o total por um item (o XIS COMPLETO tinha 9 de 10 com
+ * preço e aparecia "sem ficha" por causa do MILHO VERDE).
+ * ⛔ Quem lê `custo` TEM que ler `completo` junto: parcial nunca se veste de completo em
+ *    silêncio (o hub guarda o fechado em `custoUnitario` e o parcial em `custoParcial`).
+ * ⛔ Ficha vazia (sem componente) continua `custo: null` — é ficha por fazer, não custo zero.
+ */
 export function custoDeUmaUnidade(
   alvo: { tipo: 'REVENDA'; itemId: string } | { tipo: 'FICHA'; fichaId: string },
   ctx: Ctx,
   custoDe: Map<string, number | null>,
-): { custo: number | null; semCusto: number; parcial: number } {
+): { custo: number | null; completo: boolean; faltantes: string[]; semCusto: number; parcial: number } {
   const folhas = new Map<string, number>()
   explodir(alvo, 1, ctx, folhas)
   let total = 0
-  let semCusto = 0
+  const faltantes: string[] = []
   for (const [itemId, qtd] of folhas) {
     const c = custoDe.get(itemId) ?? null
-    if (c == null) semCusto++
+    if (c == null) faltantes.push(ctx.nomeItem.get(itemId) ?? itemId)
     else total += c * qtd
   }
-  // ficha vazia (sem componente) não é custo zero — é ficha por fazer.
-  if (folhas.size === 0) return { custo: null, semCusto: 0, parcial: 0 }
-  // ⭐ `parcial` é sempre a soma do que TEM custo — é ele que salva a ficha de "a definir" seco
-  return { custo: semCusto > 0 ? null : round2(total), semCusto, parcial: round2(total) }
+  if (folhas.size === 0) return { custo: null, completo: false, faltantes: [], semCusto: 0, parcial: 0 }
+  // ⛔ NADA com preço (revenda sem custo médio, ficha só de insumos sem nota): não há o que somar —
+  //    "pelo menos R$ 0,00" seria margem de 100% vestida de número. Fica sem custo, com os faltantes.
+  if (faltantes.length === folhas.size) return { custo: null, completo: false, faltantes, semCusto: faltantes.length, parcial: 0 }
+  // ⭐ `parcial` == `custo` (mantido pros leitores antigos): a soma do que TEM custo
+  return { custo: round2(total), completo: faltantes.length === 0, faltantes, semCusto: faltantes.length, parcial: round2(total) }
 }
 
 function margemDe(preco: number | null, custo: number | null): number | null {
@@ -249,10 +261,12 @@ export async function hubCardapio(
   for (const linha of agrup.values()) {
     if (linha.destinoTipo === 'FICHA' && linha.fichaId && fichaPorId.has(linha.fichaId)) {
       const r = custoDeUmaUnidade({ tipo: 'FICHA', fichaId: linha.fichaId }, ctx, custoDe)
-      linha.custoUnitario = r.custo
+      // ⛔ o hub guarda o FECHADO em `custoUnitario` (null se falta preço) e o PARCIAL em
+      // `custoParcial` + `componentesSemCusto` + status FICHA_INCOMPLETA — a marca é essa (E3)
+      linha.custoUnitario = r.completo ? r.custo : null
       linha.componentesSemCusto = r.semCusto
       linha.custoParcial = r.parcial
-      if (r.custo == null) linha.status = 'FICHA_INCOMPLETA'
+      if (!r.completo) linha.status = 'FICHA_INCOMPLETA'
     } else if (linha.destinoTipo === 'REVENDA' && linha.itemId) {
       linha.custoUnitario = custoDe.get(linha.itemId) ?? null
       linha.custoParcial = linha.custoUnitario ?? 0

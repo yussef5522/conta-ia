@@ -12,7 +12,8 @@
  */
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { montarCtx, explodir } from '@/lib/stock/vendas/baixa-venda'
+import { montarCtx } from '@/lib/stock/vendas/baixa-venda'
+import { custoDeUmaUnidade } from '@/lib/stock/cardapio/hub'
 import { custoMedioPorItem } from '@/lib/stock/saldo'
 import { caraDaReceita } from '@/lib/stock/producao/cara-da-receita'
 import { montarTamanhos, type RegraDeSabores, type TamanhoDePizza } from './tamanhos'
@@ -35,22 +36,26 @@ export interface CatalogoDoMontador {
  *
  * ⛔ `null` quando QUALQUER folha não tem custo médio — nunca o parcial como se fosse o total
  * (a régua do `custoUnitario` do hub do cardápio, que este módulo inteiro obedece).
+ * ⭐ E3 (12/11): deixou de ser CÓPIA da conta — delega à porta (`custoDeUmaUnidade`), e o PARCIAL
+ * (o que tem preço) sai à parte em `parcialDeUmaFicha`: o montador soma o "pelo menos" com ele, em
+ * vez de zerar a base/sabor inteiro por um ingrediente sem preço.
  */
 export function custoDeUmaFicha(
   fichaId: string,
   ctx: Awaited<ReturnType<typeof montarCtx>>,
   custoDe: Map<string, number | null>,
 ): number | null {
-  const acc = new Map<string, number>()
-  explodir({ tipo: 'FICHA', fichaId }, 1, ctx, acc)
-  if (acc.size === 0) return null
-  let t = 0
-  for (const [itemId, qtd] of acc) {
-    const c = custoDe.get(itemId)
-    if (c == null) return null
-    t += c * qtd
-  }
-  return round2(t)
+  const r = custoDeUmaUnidade({ tipo: 'FICHA', fichaId }, ctx, custoDe)
+  return r.completo ? r.custo : null
+}
+
+/** ⭐ E3 · a soma do que TEM preço (o "pelo menos"); 0 = nada a somar */
+export function parcialDeUmaFicha(
+  fichaId: string,
+  ctx: Awaited<ReturnType<typeof montarCtx>>,
+  custoDe: Map<string, number | null>,
+): number {
+  return custoDeUmaUnidade({ tipo: 'FICHA', fichaId }, ctx, custoDe).parcial
 }
 
 export async function lerMontador(
@@ -85,6 +90,7 @@ export async function lerMontador(
     nome: nomeDaFicha(b.fichaId),
     // ⚠️ ficha apagada depois de apontada: o custo vem `null` e a tela diz, em vez de somar 0
     custo: fichas.some((f) => f.id === b.fichaId) ? custoDeUmaFicha(b.fichaId, ctx, custoDe) : null,
+    parcial: fichas.some((f) => f.id === b.fichaId) ? parcialDeUmaFicha(b.fichaId, ctx, custoDe) : 0,
   }))
   const tamanhos = montarTamanhos({ regras, bases })
 
@@ -98,6 +104,7 @@ export async function lerMontador(
       fichaId: f.id,
       nome,
       custo: custoDeUmaFicha(f.id, ctx, custoDe),
+      parcial: parcialDeUmaFicha(f.id, ctx, custoDe),
       familia: cara.familia,
       icone: cara.icone,
       temFicha: true,

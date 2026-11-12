@@ -80,13 +80,17 @@ export function sobraPorDia(
 export function custoComplementoPorDia(
   linhas: readonly { dia: string; nomeSuitable: string; ocorrencias: number }[],
   custoPorNome: ReadonlyMap<string, number | null>,
+  /** ⭐ E3 · o "pelo menos" de quem tem ingrediente sem preço: entra no custo, segue contado como sem custo */
+  parcialPorNome: ReadonlyMap<string, number> = new Map(),
 ): Map<string, { custo: number; comCusto: number; semCusto: number }> {
   const m = new Map<string, { custo: number; comCusto: number; semCusto: number }>()
   for (const l of linhas) {
     const a = m.get(l.dia) ?? { custo: 0, comCusto: 0, semCusto: 0 }
     const c = custoPorNome.get(l.nomeSuitable)
-    if (c == null) a.semCusto += l.ocorrencias
-    else {
+    if (c == null) {
+      a.semCusto += l.ocorrencias
+      a.custo = round2(a.custo + (parcialPorNome.get(l.nomeSuitable) ?? 0) * l.ocorrencias)
+    } else {
       a.custo = round2(a.custo + c * l.ocorrencias)
       a.comCusto += l.ocorrencias
     }

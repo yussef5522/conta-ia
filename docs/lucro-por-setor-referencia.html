@@ -168,6 +168,25 @@
   E2 · LUGAR NO MENU: a tela mora no grupo FINANCEIRO, imediatamente
       abaixo de "Quem paga a casa" (a mesma pergunta — quem dá lucro —
       aberta por setor e por item). Rota inalterada.
+
+  E3 · FICHA COM INGREDIENTE SEM PREÇO: SOMA O QUE TEM, NUNCA ZERA
+      (12/11/2026, ordem do dono). Padrão profissional: somar o que tem
+      preço e sinalizar o que falta — nunca estragar o total por um item.
+      a) PORTA ÚNICA de custo de ficha: ingrediente sem preço NÃO anula a
+         ficha; o custo sai PARCIAL (soma dos que têm preço) com a marca
+         explícita {custo, completo:false, faltantes:[…]}. Ficha sem
+         nenhum ingrediente continua "sem ficha"; ficha em que NENHUM
+         ingrediente tem preço fica sem custo (não há o que somar).
+      b) FICHA ABERTA: o ingrediente sem preço ganha ⚠ e o rodapé vira
+         "pelo menos R$ X · N ingrediente sem preço"; o "sem custo" leva à
+         porta que já define o preço do insumo (a página do item → nota /
+         entrada) — nenhuma segunda porta de preço.
+      c) CONTAS: o item ENTRA no custo do setor com o parcial e carrega ⚠
+         (custo "≥", margem/lucro "≤"); o estudo usa o mesmo selo âmbar dos
+         sabores sem ficha; a cobertura do setor separa os dois casos:
+         "N un sem ficha" × "N un com ingrediente sem preço".
+      Caso real que originou a emenda: XIS COMPLETO, 9 de 10 ingredientes
+      com preço (MILHO VERDE sem) → pelo menos R$ 8,14 por unidade.
 -->
 <style>
 :root{

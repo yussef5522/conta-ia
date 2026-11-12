@@ -40,8 +40,11 @@ describe('⭐⭐ o custo PARCIAL sobrevive ao componente sem custo', () => {
   it('⛔ a régua devolve o parcial, e o custo fechado continua null', () => {
     const hub = semComentario(ler('lib/stock/cardapio/hub.ts'))
     expect(hub).toContain('parcial: round2(total)')
-    // ⛔ margem inventada é pior que margem ausente — o `custo` só fecha com TODAS as folhas
-    expect(hub).toContain('custo: semCusto > 0 ? null : round2(total)')
+    // ⛔ margem inventada é pior que margem ausente — o custo FECHADO do hub (`custoUnitario`) só
+    // existe com TODAS as folhas. ⭐ E3 (12/11): a porta devolve o parcial COM a marca `completo`,
+    // e o hub só fecha quando `completo` — o parcial segue em `custoParcial`, marcado.
+    expect(hub).toContain('completo: faltantes.length === 0')
+    expect(hub).toContain('linha.custoUnitario = r.completo ? r.custo : null')
   })
 
   it('⭐⭐ a tela mostra "R$ X +" e NOMEIA o que falta', () => {

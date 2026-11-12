@@ -47,6 +47,8 @@ export interface ProdutoDoDia {
   un: number
   vendeu: number // R$ do dia
   custoUn: CustoDaPorta
+  /** ⭐ E3 · ingredientes SEM PREÇO da ficha (o custo é parcial — "pelo menos"); vazio/ausente = completo */
+  faltaPreco?: readonly string[]
   /** a seção do produto, já resolvida; `null` = sem seção gravada */
   secao: string | null
 }
@@ -56,6 +58,8 @@ export interface ComplementoDoDia {
   ocorrencias: number
   alvo: 'FICHA' | 'IGNORAR' | 'SEM_MAPA'
   custoUn: CustoDaPorta
+  /** ⭐ E3 · ingredientes sem preço da ficha do complemento */
+  faltaPreco?: readonly string[]
   grupo: GrupoComplemento
 }
 
@@ -75,6 +79,8 @@ export interface LinhaDoProduto {
   custoUn: CustoDaPorta
   /** custo do dia = custoUn × un; `null` quando não há custo */
   custo: number | null
+  /** ⭐ E3 · ingredientes sem preço (custo é "pelo menos"); `[]` = completo */
+  faltaPreco: string[]
 }
 
 export interface LinhaDoComplemento {
@@ -82,6 +88,7 @@ export interface LinhaDoComplemento {
   ocorrencias: number
   custoUn: CustoDaPorta
   custo: number | null
+  faltaPreco: string[]
   porQue: string
 }
 
@@ -103,6 +110,9 @@ export interface SetorDoDia {
   lucro: number
   semFicha: { nome: string; un: number; vendeu: number }[]
   complementosSemFicha: { nome: string; ocorrencias: number }[]
+  /** ⭐ E3 · produto COM custo parcial (ingrediente sem preço): entra no custo, nomeado aqui */
+  semPreco: { nome: string; un: number; faltantes: string[] }[]
+  complementosSemPreco: { nome: string; ocorrencias: number; faltantes: string[] }[]
   produtos: LinhaDoProduto[]
   complementos: LinhaDoComplemento[]
 }
@@ -139,6 +149,8 @@ interface Acc {
   complementos: LinhaDoComplemento[]
   semFicha: { nome: string; un: number; vendeu: number }[]
   complementosSemFicha: { nome: string; ocorrencias: number }[]
+  semPreco: { nome: string; un: number; faltantes: string[] }[]
+  complementosSemPreco: { nome: string; ocorrencias: number; faltantes: string[] }[]
 }
 
 export function montarSetores(opts: {
@@ -158,7 +170,7 @@ export function montarSetores(opts: {
       a = {
         secao: k, nome: s ? s.nome : NOME_SEM_SETOR, ordem: s ? s.ordem : 1000,
         vendeu: 0, un: 0, vendeuComCusto: 0, unComCusto: 0, custoProdutos: 0, custoComplementos: 0,
-        produtos: [], complementos: [], semFicha: [], complementosSemFicha: [],
+        produtos: [], complementos: [], semFicha: [], complementosSemFicha: [], semPreco: [], complementosSemPreco: [],
       }
       accs.set(k, a)
     }
@@ -173,13 +185,15 @@ export function montarSetores(opts: {
     a.un += p.un
     if (p.custoUn == null) {
       a.semFicha.push({ nome: p.nome, un: p.un, vendeu: reais(v) })
-      a.produtos.push({ chave: p.chave, nome: p.nome, un: p.un, vendeu: reais(v), custoUn: null, custo: null })
+      a.produtos.push({ chave: p.chave, nome: p.nome, un: p.un, vendeu: reais(v), custoUn: null, custo: null, faltaPreco: [...(p.faltaPreco ?? [])] })
     } else {
       const c = cent(p.custoUn) * p.un
       a.custoProdutos += c
       a.vendeuComCusto += v
       a.unComCusto += p.un
-      a.produtos.push({ chave: p.chave, nome: p.nome, un: p.un, vendeu: reais(v), custoUn: p.custoUn, custo: reais(c) })
+      const falta = [...(p.faltaPreco ?? [])]
+      if (falta.length) a.semPreco.push({ nome: p.nome, un: p.un, faltantes: falta })
+      a.produtos.push({ chave: p.chave, nome: p.nome, un: p.un, vendeu: reais(v), custoUn: p.custoUn, custo: reais(c), faltaPreco: falta })
     }
   }
 
@@ -195,11 +209,13 @@ export function montarSetores(opts: {
     const a = acc(destino.secao)
     if (c.custoUn == null) {
       a.complementosSemFicha.push({ nome: c.nomeSuitable, ocorrencias: c.ocorrencias })
-      a.complementos.push({ nome: c.nomeSuitable, ocorrencias: c.ocorrencias, custoUn: null, custo: null, porQue: destino.porQue })
+      a.complementos.push({ nome: c.nomeSuitable, ocorrencias: c.ocorrencias, custoUn: null, custo: null, faltaPreco: [...(c.faltaPreco ?? [])], porQue: destino.porQue })
     } else {
       const k = cent(c.custoUn) * c.ocorrencias
       a.custoComplementos += k
-      a.complementos.push({ nome: c.nomeSuitable, ocorrencias: c.ocorrencias, custoUn: c.custoUn, custo: reais(k), porQue: destino.porQue })
+      const falta = [...(c.faltaPreco ?? [])]
+      if (falta.length) a.complementosSemPreco.push({ nome: c.nomeSuitable, ocorrencias: c.ocorrencias, faltantes: falta })
+      a.complementos.push({ nome: c.nomeSuitable, ocorrencias: c.ocorrencias, custoUn: c.custoUn, custo: reais(k), faltaPreco: falta, porQue: destino.porQue })
     }
   }
 
@@ -218,10 +234,13 @@ export function montarSetores(opts: {
         custoProdutos: reais(a.custoProdutos),
         custoComplementos: temRelatorio ? reais(a.custoComplementos) : null,
         custo: reais(custo),
-        custoCompleto: temRelatorio && a.semFicha.length === 0 && a.complementosSemFicha.length === 0,
+        // ⛔ E3 · custo PARCIAL (ingrediente sem preço) não é custo completo
+        custoCompleto: temRelatorio && a.semFicha.length === 0 && a.complementosSemFicha.length === 0 && a.semPreco.length === 0 && a.complementosSemPreco.length === 0,
         lucro: reais(a.vendeuComCusto - custo),
         semFicha: porVendeu(a.semFicha),
         complementosSemFicha: porVendeu(a.complementosSemFicha),
+        semPreco: a.semPreco.sort((x, y) => y.un - x.un || x.nome.localeCompare(y.nome, 'pt-BR')),
+        complementosSemPreco: a.complementosSemPreco.sort((x, y) => y.ocorrencias - x.ocorrencias || x.nome.localeCompare(y.nome, 'pt-BR')),
         produtos: porVendeu(a.produtos),
         complementos: a.complementos.sort((x, y) => (y.custo ?? 0) - (x.custo ?? 0) || y.ocorrencias - x.ocorrencias),
       }
@@ -277,23 +296,33 @@ export async function lucroPorSetorDoDia(
  * pedido→item→sabores, `tela.ts`) usa ESTA mesma, nunca uma cópia: o custo da linha do motor
  * e o custo do item da tela não podem divergir por régua.
  */
+export interface CustoMarcado {
+  /** o custo de 1 unidade: completo OU parcial (veja `completo`); `null` = sem custo nenhum */
+  custo: CustoDaPorta
+  /** ⭐ E3 · `false` = algum ingrediente sem preço — o custo é "pelo menos" */
+  completo: boolean
+  faltantes: string[]
+}
+const SEM_CUSTO: CustoMarcado = { custo: null, completo: false, faltantes: [] }
+
 export function portaDeCusto(ctx: Awaited<ReturnType<typeof montarCtx>>, custoDe: Map<string, number | null>) {
   const fichasValidas = new Set(ctx.componentesByFicha.keys())
+  const marcado = (r: ReturnType<typeof custoDeUmaUnidade>): CustoMarcado => ({ custo: r.custo, completo: r.completo, faltantes: r.faltantes })
   return {
-    produto(l: Pick<LinhaCardapio, 'destinoTipo' | 'fichaId' | 'status' | 'itemId'>): CustoDaPorta {
-      if (l.status === 'IGNORADO') return null
+    produto(l: Pick<LinhaCardapio, 'destinoTipo' | 'fichaId' | 'status' | 'itemId'>): CustoMarcado {
+      if (l.status === 'IGNORADO') return SEM_CUSTO
       if (l.destinoTipo === 'FICHA' && l.fichaId && l.status !== 'SEM_FICHA' && fichasValidas.has(l.fichaId)) {
-        return custoDeUmaUnidade({ tipo: 'FICHA', fichaId: l.fichaId }, ctx, custoDe).custo
+        return marcado(custoDeUmaUnidade({ tipo: 'FICHA', fichaId: l.fichaId }, ctx, custoDe))
       }
       if (l.destinoTipo === 'REVENDA' && l.itemId) {
-        return custoDeUmaUnidade({ tipo: 'REVENDA', itemId: l.itemId }, ctx, custoDe).custo
+        return marcado(custoDeUmaUnidade({ tipo: 'REVENDA', itemId: l.itemId }, ctx, custoDe))
       }
-      return null
+      return SEM_CUSTO
     },
-    complemento(alvo: ComplementoDoDia['alvo'], fichaId: string | null): CustoDaPorta {
+    complemento(alvo: ComplementoDoDia['alvo'], fichaId: string | null): CustoMarcado {
       return alvo === 'FICHA' && fichaId && fichasValidas.has(fichaId)
-        ? custoDeUmaUnidade({ tipo: 'FICHA', fichaId }, ctx, custoDe).custo
-        : null
+        ? marcado(custoDeUmaUnidade({ tipo: 'FICHA', fichaId }, ctx, custoDe))
+        : SEM_CUSTO
     },
   }
 }
@@ -334,7 +363,7 @@ export async function lerEntradasDoDia(
     .filter((l) => l.vendasQtd !== 0 || l.vendasValor !== 0)
     .map((l) => ({
       chave: l.chave, nome: l.nome, nomesSuitable: l.nomesSuitable, un: l.vendasQtd, vendeu: l.vendasValor,
-      custoUn: custoDoProduto(l),
+      ...(() => { const k = custoDoProduto(l); return { custoUn: k.custo, faltaPreco: k.faltantes } })(),
       secao: secaoGravada(l.nomesSuitable, gravadas, l.nome),
     }))
 
@@ -347,8 +376,8 @@ export async function lerEntradasDoDia(
     complementos = [...porNome].map(([nome, oc]) => {
       const m = mapa.get(nome)
       const alvo: ComplementoDoDia['alvo'] = m?.alvoTipo === 'IGNORAR' ? 'IGNORAR' : m?.alvoTipo === 'FICHA' && m.fichaId ? 'FICHA' : 'SEM_MAPA'
-      const custoUn = porta.complemento(alvo, m?.fichaId ?? null)
-      return { nomeSuitable: nome, ocorrencias: oc, alvo, custoUn, grupo: grupos.get(nome)?.grupo ?? 'OUTRO' }
+      const k = porta.complemento(alvo, m?.fichaId ?? null)
+      return { nomeSuitable: nome, ocorrencias: oc, alvo, custoUn: k.custo, faltaPreco: k.faltantes, grupo: grupos.get(nome)?.grupo ?? 'OUTRO' }
     })
   }
 

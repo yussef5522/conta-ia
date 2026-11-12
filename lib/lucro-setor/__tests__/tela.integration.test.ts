@@ -19,7 +19,8 @@ import type { PedidoCru } from '@/lib/suit/cliente-leitura'
 import fixture from '@/lib/suit/__fixtures__/dia-2026-11-08.json'
 import { lerTelaDoDia, pedidosDoItem, montarDoLaco, diasDaRegua, reguaDeUn, emPromo, type TelaDTO, type Historico } from '../tela'
 import { eseConta, vereditoDoEse, quadrantes, medianaDaLei, lerPreco, ehNomeDePromo, gemeoDe, paineisDoDia } from '../estudo'
-import { corpoDaCriacao, corpoDaEdicao, moverDose, custoAoVivo, recusa } from '../ficha-na-linha'
+import { corpoDaCriacao, corpoDaEdicao, moverDose, custoAoVivo, recusa, rodapeDaFicha } from '../ficha-na-linha'
+import { formatBRL } from '@/lib/format/money'
 import { atualizarFicha } from '@/lib/stock/producao/fichas'
 
 const CNPJ = '90909090000888'
@@ -242,7 +243,7 @@ describe('Lucro por Setor · a tela do dia REAL (15/11 = o sábado 08/11 da Suit
     expect(p.length).toBeGreaterThan(0)
     for (const x of p) expect(Object.keys(x).sort()).toEqual(['hora', 'numero', 'q', 'sabores'])
     expect(p.reduce((t2, x) => t2 + x.q, 0)).toBe(recontar('PIZZA GRANDE PRECINHO').q) // S19: a soma dos pedidos É o número
-    const chavesItem = ['chave', 'custo', 'custoBase', 'custoBaseUn', 'destino', 'fichaId', 'lucro', 'margem', 'nome', 'nomesSuitable', 'preco', 'promo', 'q', 'quadrante', 'sabores', 'secao', 'semBase', 'semFicha', 'vendeu']
+    const chavesItem = ['chave', 'custo', 'custoBase', 'custoBaseUn', 'destino', 'fichaId', 'lucro', 'margem', 'nome', 'nomesSuitable', 'preco', 'promo', 'q', 'quadrante', 'sabores', 'secao', 'semBase', 'semFicha', 'semPreco', 'vendeu']
     for (const i of t.itens) expect(Object.keys(i).sort()).toEqual(chavesItem)
   })
 
@@ -287,16 +288,55 @@ describe('Lucro por Setor · a tela do dia REAL (15/11 = o sábado 08/11 da Suit
     const p0 = t0.itens.find((i) => i.nomesSuitable.includes('PIZZA GRANDE 35CM'))!
     const comps = [{ itemId: ids.massa, nome: 'MASSA BOLINHA', unidade: 'UN', qtdTexto: '2', custoMedio: 1.1 }, { itemId: ids.queijo, nome: 'SACOLA QUEIJO', unidade: 'UN', qtdTexto: '2', custoMedio: 7.2 }]
     const mais = [moverDose(comps[0], 1), comps[1]] // 3 massas
-    expect(custoAoVivo(mais)).toBe(17.7)
+    expect(custoAoVivo(mais)).toEqual({ custo: 17.7, faltam: 0 })
     expect(moverDose({ ...comps[0], qtdTexto: '1' }, -1).qtdTexto).toBe('1') // nunca chega a 0
     expect(moverDose({ itemId: 'x', nome: 'MOLHO', unidade: 'KG', qtdTexto: '0,08', custoMedio: 9.8 }, 1).qtdTexto).toBe('0,09')
     expect(recusa([])).toBe('Adicione ao menos um ingrediente.') // ficha vazia não grava: segue SEM ficha
-    expect(custoAoVivo([])).toBeNull()
+    expect(custoAoVivo([]).custo).toBeNull()
     await atualizarFicha(companyId, p0.fichaId!, { ...corpoDaEdicao(mais) }, prisma)
     const p1 = (await lerTelaDoDia(companyId, DIA, FECHADO, prisma)).itens.find((i) => i.chave === p0.chave)!
     expect(p1.custoBaseUn).toBe(17.7)
     expect(p1.custo - p0.custo).toBeCloseTo(p0.q * 1.1, 2)
     await atualizarFicha(companyId, p0.fichaId!, { ...corpoDaEdicao(comps) }, prisma) // volta
+  })
+
+  it('E3 (12/11) · o caso REAL do XIS COMPLETO: 9 ingredientes com preço + MILHO VERDE sem → pelo menos R$ 8,14, conta no setor com ⚠', async () => {
+    // a composição EXATA da ficha de produção (sonda read-only, 12/11): qtd e custo médio de cada insumo
+    const REAL: [string, string, number, number | null][] = [
+      ['beef de xis', 'UN', 1, 3.7], ['PAO DE XIS', 'UN', 1, 1.75], ['PAPEL ACOPLADO', 'UN', 1, 0.86], ['MILHO VERDE', 'KG', 0.04, null],
+      ['ERVILHA', 'KG', 0.03, 11.57], ['OVO BRANCO CARTELA GRAUDO', 'UN', 1, 0.53], ['CATCHUP', 'KG', 0.002, 8.98],
+      ['QUEIJO MUSSARELA FATIADO', 'KG', 0.02, 30.06], ['POÇAO MAIONESE 30G', 'UN', 1, 0.32], ['TOMATE', 'KG', 0.001, 13.39],
+    ]
+    const comps = []
+    for (const [nome, un, qtd, custo] of REAL) {
+      const it = await prisma.stockItem.create({ data: { companyId, nome: `${nome} (xis real)`, unidadeControle: un, categoria: 'MATERIA_PRIMA', criadoVia: 'MANUAL' } })
+      if (custo != null) await prisma.stockMovement.create({ data: { companyId, itemId: it.id, tipo: 'ENTRADA_NF', quantidade: 100, custoUnitario: custo, custoTotal: 100 * custo, origem: 'SEFAZ' } })
+      comps.push({ itemId: it.id, nome, unidade: un, qtdTexto: String(qtd).replace('.', ','), custoMedio: custo })
+    }
+    // ⭐ a ficha aberta (S13): ⚠ no MILHO e o rodapé "pelo menos"
+    expect(rodapeDaFicha(comps, formatBRL)).toBe(`pelo menos ${formatBRL(8.14)} · 1 ingrediente sem preço`)
+    expect(custoAoVivo(comps)).toEqual({ custo: 8.14, faltam: 1 })
+    expect(rodapeDaFicha(comps.map((c) => ({ ...c, custoMedio: null })), formatBRL)).toBe('a definir') // NADA com preço: não há o que somar
+
+    const t0 = await lerTelaDoDia(companyId, DIA, FECHADO, prisma)
+    const x0 = t0.itens.find((i) => i.nome === 'XIS COMPLETO')!
+    await atualizarFicha(companyId, x0.fichaId!, { ...corpoDaEdicao(comps) }, prisma)
+    const t = await lerTelaDoDia(companyId, DIA, FECHADO, prisma)
+    const x = t.itens.find((i) => i.chave === x0.chave)!
+    // ⛔ ANTES: semBase true, "sem ficha", fora do setor. AGORA: entra com o parcial, nomeado
+    expect(x.semBase).toBe(false)
+    expect(x.custoBaseUn).toBe(8.14)
+    expect(x.custo).toBeCloseTo(x.q * 8.14, 2)
+    expect(x.semPreco).toEqual([{ nome: x.nome, q: x.q, tipo: 'PRODUTO', faltantes: ['MILHO VERDE (xis real)'] }])
+    expect(x.semFicha.filter((f) => f.tipo === 'PRODUTO')).toEqual([]) // a base TEM ficha (os adicionais sem ficha seguem nomeados)
+    expect(x.lucro).toBeCloseTo(x.vendeu - x.custo, 2)
+    const s = t.setores.find((y) => y.secao === 'XIS')!
+    expect(s.custo).toBeCloseTo(x.custo, 2) // o item CONTA no setor
+    expect(s.vendeuComCusto).toBeCloseTo(x.vendeu, 2)
+    expect(s.semFicha.filter((f) => f.tipo === 'PRODUTO')).toEqual([])
+    expect(s.unSemPreco).toBe(x.q) // a cobertura separa os dois casos
+    expect(s.unSemFicha).toBe(x.semFicha.reduce((a, f) => a + f.q, 0))
+    await atualizarFicha(companyId, x0.fichaId!, { ...corpoDaEdicao([{ itemId: ids.pao, nome: 'PAO DE XIS', unidade: 'UN', qtdTexto: '1', custoMedio: 1.2 }, { itemId: ids.ham, nome: 'HAMBURGUER 150G', unidade: 'UN', qtdTexto: '1', custoMedio: 3.05 }]) }, prisma) // volta
   })
 
   it('S19 · dia SEM laço (import de XLS): só o total por setor — a quebra por item nunca se inventa', async () => {
@@ -359,7 +399,7 @@ describe('Lucro por Setor · a tela do dia REAL (15/11 = o sábado 08/11 da Suit
 
   it('montarDoLaco é PURO: o mesmo laço dá o mesmo dia (sem relógio, sem banco)', () => {
     const pedidos = [{ status: 'delivered', sumido: false, itens: [{ nome: 'A', quantidade: 2, unitarioCent: 1000, precoCent: 2000, cancelado: false, opcoes: [{ nome: 'S', quantidade: 1 }] }] }]
-    const args = { pedidos, secoes: [{ chave: 'X', nome: 'X', ordem: 1 }], produto: () => ({ chave: 'a', nome: 'A', nomesSuitable: ['A'], secao: 'X', destino: 'FICHA' as const, fichaId: 'f', custoUn: 3 }), opcao: () => ({ alvo: 'FICHA' as const, fichaId: 's', custoUn: 1.5 }) }
+    const args = { pedidos, secoes: [{ chave: 'X', nome: 'X', ordem: 1 }], produto: () => ({ chave: 'a', nome: 'A', nomesSuitable: ['A'], secao: 'X', destino: 'FICHA' as const, fichaId: 'f', custoUn: 3, faltaPreco: [] }), opcao: () => ({ alvo: 'FICHA' as const, fichaId: 's', custoUn: 1.5, faltaPreco: [] }) }
     const r = montarDoLaco(args)
     expect(r.itens[0]).toMatchObject({ q: 2, vendeu: 20, custo: 9, lucro: 11, sabores: [{ nome: 'S', q: 2, custo: 3 }] })
     expect(montarDoLaco(args)).toEqual(r)

@@ -341,7 +341,7 @@ function honestidadeDaCascata(
       texto:
         `${brl(casa.complementos.custo)} de sabor/adicional entram no CMV — eles saem do estoque a cada ` +
         (casa.complementos.ocorrenciasSemCusto > 0
-          ? `ocorrência. ⚠️ ${casa.complementos.ocorrenciasSemCusto} ocorrências ainda sem ficha: o CMV acima é o MÍNIMO, não o total.`
+          ? `ocorrência. ⚠️ ${casa.complementos.ocorrenciasSemCusto} ocorrências ainda sem ficha ou com ingrediente sem preço: o CMV acima é o MÍNIMO, não o total.`
           : 'ocorrência.'),
     })
   }

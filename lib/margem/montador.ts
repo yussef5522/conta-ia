@@ -25,6 +25,8 @@ export interface SaborDisponivel {
   nome: string
   /** `null` = algum insumo da ficha não tem custo médio → o total da pizza fica "a apurar" */
   custo: number | null
+  /** ⭐ E3 · a soma do que TEM preço na ficha (o "pelo menos" quando `custo` é null) */
+  parcial?: number
   familia: string
   icone: string
   /** ⚠️ sabor que o PDV vende e que ainda NÃO tem ficha — entra com selo âmbar, nunca escondido */
@@ -117,7 +119,8 @@ export function montarPizza(opts: {
   let saboresFechados = true
   for (const f of fatias) {
     if (f.sabor == null) { saboresFechados = false; continue }
-    if (f.sabor.custo == null) { saboresFechados = false; continue }
+    // ⭐ E3 · sabor com ingrediente sem preço: o TOTAL não fecha, mas o "pelo menos" soma o que tem
+    if (f.sabor.custo == null) { saboresFechados = false; somaSabores += f.sabor.parcial ?? 0; continue }
     somaSabores += f.sabor.custo
   }
   const custoSabores = saboresFechados && n > 0 ? round2(somaSabores) : null
@@ -128,7 +131,7 @@ export function montarPizza(opts: {
     custoBase != null && custoSabores != null && incompleto.length === 0
       ? round2(custoBase + custoSabores)
       : null
-  const custoParcial = round2((custoBase ?? 0) + somaSabores)
+  const custoParcial = round2((custoBase ?? tamanho.base?.parcial ?? 0) + somaSabores)
 
   /**
    * ⚠️ A SOBRA POR CANAL SÓ EXISTE COM O CUSTO FECHADO. Com o parcial ela seria otimista —

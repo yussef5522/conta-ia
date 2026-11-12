@@ -44,6 +44,16 @@ export interface SaborDTO {
   custo: number | null
   /** a ficha a que o nome está ligado (pra abrir na linha); `null` = sem vínculo → "criar ficha →" */
   fichaId: string | null
+  /** ⭐ E3 · ingredientes da ficha do sabor sem preço (custo "pelo menos"); `[]` = completo */
+  faltaPreco: string[]
+}
+
+/** ⭐ E3 · o que tem ficha mas carrega ingrediente SEM PREÇO (entra no custo como "pelo menos") */
+export interface FaltaPreco {
+  nome: string
+  q: number
+  tipo: 'PRODUTO' | 'SABOR'
+  faltantes: string[]
 }
 
 export interface FaltaFicha {
@@ -76,6 +86,8 @@ export interface ItemDTO {
   lucro: number | null
   margem: number | null
   semFicha: FaltaFicha[]
+  /** ⭐ E3 · base/sabores com ingrediente sem preço — custo e margem são "pelo menos" */
+  semPreco: FaltaPreco[]
   promo: boolean
   quadrante: Quadrante | null
 }
@@ -94,6 +106,9 @@ export interface SetorDTO {
   /** S4 · o que ficou sem ficha (un somadas: base sem ficha + sabores sem ficha) */
   semFicha: FaltaFicha[]
   unSemFicha: number
+  /** ⭐ E3 · o outro caso da cobertura: tem ficha, falta preço de ingrediente */
+  semPreco: FaltaPreco[]
+  unSemPreco: number
   /** sabores cujo item-pai não tem setor (ficaram em SEM SETOR com ele) */
   orfaos: { sabores: number; custo: number } | null
   itens: string[]
@@ -148,12 +163,15 @@ export interface ProdutoResolvido {
   destino: 'FICHA' | 'REVENDA' | null
   fichaId: string | null
   custoUn: CustoDaPorta
+  /** ⭐ E3 · ingredientes sem preço (custoUn é parcial) */
+  faltaPreco: readonly string[]
 }
 
 export interface OpcaoResolvida {
   alvo: 'FICHA' | 'IGNORAR' | 'SEM_MAPA'
   fichaId: string | null
   custoUn: CustoDaPorta
+  faltaPreco: readonly string[]
 }
 
 export interface Secao { chave: string; nome: string; ordem: number }
@@ -209,16 +227,19 @@ export function montarDoLaco(opts: {
     const custoBaseCent = semBase ? null : cent(a.p.custoUn as number) * q
     let custoCent = custoBaseCent ?? 0
     const semFicha: FaltaFicha[] = semBase ? [{ nome: a.p.nome, q, tipo: 'PRODUTO', fichaId: a.p.fichaId, nomesPdv: a.p.nomesSuitable }] : []
+    // ⭐ E3 · ficha com ingrediente sem preço ENTRA no custo (parcial) e é nomeada aqui
+    const semPreco: FaltaPreco[] = !semBase && a.p.faltaPreco.length ? [{ nome: a.p.nome, q, tipo: 'PRODUTO', faltantes: [...a.p.faltaPreco] }] : []
     const sabores: SaborDTO[] = []
     for (const [nome, s] of a.sab) {
       const qs = r3(s.q)
       if (s.r.custoUn == null) {
         semFicha.push({ nome, q: qs, tipo: 'SABOR', fichaId: s.r.fichaId, nomesPdv: [nome] })
-        sabores.push({ nome, q: qs, custoUn: null, custo: null, fichaId: s.r.fichaId })
+        sabores.push({ nome, q: qs, custoUn: null, custo: null, fichaId: s.r.fichaId, faltaPreco: [...s.r.faltaPreco] })
       } else {
         const c = Math.round(cent(s.r.custoUn) * qs)
         custoCent += c
-        sabores.push({ nome, q: qs, custoUn: s.r.custoUn, custo: reais(c), fichaId: s.r.fichaId })
+        if (s.r.faltaPreco.length) semPreco.push({ nome, q: qs, tipo: 'SABOR', faltantes: [...s.r.faltaPreco] })
+        sabores.push({ nome, q: qs, custoUn: s.r.custoUn, custo: reais(c), fichaId: s.r.fichaId, faltaPreco: [...s.r.faltaPreco] })
       }
     }
     sabores.sort((x, y) => y.q - x.q || x.nome.localeCompare(y.nome, 'pt-BR'))
@@ -229,7 +250,7 @@ export function montarDoLaco(opts: {
       custoBaseUn: a.p.custoUn, custoBase: custoBaseCent == null ? null : reais(custoBaseCent), semBase,
       sabores, custo: reais(custoCent), lucro: lucroCent == null ? null : reais(lucroCent),
       margem: lucroCent == null || a.cent === 0 ? null : (100 * lucroCent) / a.cent,
-      semFicha, promo: !!opts.promos?.has(a.p.chave), quadrante: null,
+      semFicha, semPreco, promo: !!opts.promos?.has(a.p.chave), quadrante: null,
     })
   }
   itens.sort((x, y) => y.vendeu - x.vendeu || y.q - x.q || x.nome.localeCompare(y.nome, 'pt-BR'))
@@ -246,7 +267,13 @@ export function montarDoLaco(opts: {
     const s = ativas.get(secao)
     let vendeu = 0, vendeuComCusto = 0, custo = 0, un = 0, orfS = 0, orfC = 0
     const falta = new Map<string, FaltaFicha>()
+    const faltaP = new Map<string, FaltaPreco>()
     for (const i of xs) {
+      if (!i.semBase) for (const f of i.semPreco) {
+        const k = `${f.tipo}:${f.nome}`
+        const cur = faltaP.get(k)
+        faltaP.set(k, cur ? { ...cur, q: r3(cur.q + f.q) } : { ...f, faltantes: [...f.faltantes] })
+      }
       vendeu += cent(i.vendeu)
       un += i.q
       if (!i.semBase) vendeuComCusto += cent(i.vendeu)
@@ -262,11 +289,13 @@ export function montarDoLaco(opts: {
     custo = xs.filter((i) => !i.semBase).reduce((t, i) => t + cent(i.custo), 0)
     const lucro = vendeuComCusto - custo
     const semFicha = [...falta.values()].sort((x, y) => y.q - x.q || x.nome.localeCompare(y.nome, 'pt-BR'))
+    const semPreco = [...faltaP.values()].sort((x, y) => y.q - x.q || x.nome.localeCompare(y.nome, 'pt-BR'))
     return {
       secao, nome: s ? s.nome : NOME_SEM_SETOR, ordem: s ? s.ordem : 1000,
       vendeu: reais(vendeu), un: r3(un), vendeuComCusto: reais(vendeuComCusto), custo: reais(custo), lucro: reais(lucro),
       margem: vendeuComCusto > 0 ? (100 * lucro) / vendeuComCusto : null,
       semFicha, unSemFicha: r3(semFicha.reduce((t, f) => t + f.q, 0)),
+      semPreco, unSemPreco: r3(semPreco.reduce((t, f) => t + f.q, 0)),
       orfaos: secao === SEM_SETOR && orfS > 0 ? { sabores: r3(orfS), custo: reais(orfC) } : null,
       itens: xs.map((i) => i.chave),
     }
@@ -411,10 +440,11 @@ export async function resolvedores(companyId: string, db: PrismaClient = default
       ? {
           chave: l.chave, nome: l.nome, nomesSuitable: l.nomesSuitable.length ? l.nomesSuitable : [grafia],
           secao: secaoGravada(l.nomesSuitable.length ? l.nomesSuitable : [grafia], gravadas, l.nome),
-          destino: l.status === 'IGNORADO' ? null : l.destinoTipo, fichaId: l.fichaId, custoUn: porta.produto(l),
+          destino: l.status === 'IGNORADO' ? null : l.destinoTipo, fichaId: l.fichaId,
+          ...(() => { const k = porta.produto(l); return { custoUn: k.custo, faltaPreco: k.faltantes } })(),
         }
       : // ⭐ nome que o PDV nunca mandou antes: a régua do hub pra nome sem destino (`nome:<grafia>`)
-        { chave: `nome:${grafia}`, nome: grafia, nomesSuitable: [grafia], secao: secaoGravada([grafia], gravadas, grafia), destino: null, fichaId: null, custoUn: null }
+        { chave: `nome:${grafia}`, nome: grafia, nomesSuitable: [grafia], secao: secaoGravada([grafia], gravadas, grafia), destino: null, fichaId: null, custoUn: null, faltaPreco: [] }
     cacheP.set(grafia, r)
     return r
   }
@@ -422,7 +452,8 @@ export async function resolvedores(companyId: string, db: PrismaClient = default
   const opcao = (grafia: string): OpcaoResolvida => {
     const m = mapa.get(grafia)
     const alvo: OpcaoResolvida['alvo'] = m?.alvoTipo === 'IGNORAR' ? 'IGNORAR' : m?.alvoTipo === 'FICHA' && m.fichaId ? 'FICHA' : 'SEM_MAPA'
-    return { alvo, fichaId: alvo === 'FICHA' ? m!.fichaId : null, custoUn: porta.complemento(alvo, m?.fichaId ?? null) }
+    const k = porta.complemento(alvo, m?.fichaId ?? null)
+    return { alvo, fichaId: alvo === 'FICHA' ? m!.fichaId : null, custoUn: k.custo, faltaPreco: k.faltantes }
   }
   /** chave do hub de cada nome do PDV (pra montar o histórico das linhas antigas) */
   const chaveDoNome = (n: string) => produto(grafiaDoXls(n)).chave
@@ -479,10 +510,15 @@ export async function lerTelaDoDia(companyId: string, dia: string, agora: Date, 
           ...s.semFicha.map((f) => ({ nome: f.nome, q: f.un, tipo: 'PRODUTO' as const, fichaId: null, nomesPdv: [] })),
           ...s.complementosSemFicha.map((f) => ({ nome: f.nome, q: f.ocorrencias, tipo: 'SABOR' as const, fichaId: null, nomesPdv: [] })),
         ]
+        const semPreco: FaltaPreco[] = [
+          ...s.semPreco.map((f) => ({ nome: f.nome, q: f.un, tipo: 'PRODUTO' as const, faltantes: f.faltantes })),
+          ...s.complementosSemPreco.map((f) => ({ nome: f.nome, q: f.ocorrencias, tipo: 'SABOR' as const, faltantes: f.faltantes })),
+        ]
         return {
           secao: s.secao, nome: s.nome, ordem: s.ordem, vendeu: s.vendeu, un: s.un, vendeuComCusto: s.vendeuComCusto,
           custo: s.custo, lucro: s.lucro, margem: s.vendeuComCusto > 0 ? (100 * s.lucro) / s.vendeuComCusto : null,
-          semFicha, unSemFicha: semFicha.reduce((t, f) => t + f.q, 0), orfaos: null, itens: [],
+          semFicha, unSemFicha: semFicha.reduce((t, f) => t + f.q, 0),
+          semPreco, unSemPreco: semPreco.reduce((t, f) => t + f.q, 0), orfaos: null, itens: [],
         }
       }),
     }

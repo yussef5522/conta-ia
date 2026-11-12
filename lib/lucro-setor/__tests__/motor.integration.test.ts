@@ -96,11 +96,16 @@ describe('motor do setor-dia contra o banco', () => {
     expect(linha('PIZZAS', 'Base grande')).toMatchObject({ un: 4, vendeu: 200, custoUn: 10, custo: 40 })
   })
 
-  it('K3: ficha incompleta e produto sem destino ficam FORA do custo, nomeados', async () => {
+  // ⭐⭐ E3 (12/11, ordem do dono): ficha com ingrediente SEM PREÇO entra com o custo PARCIAL e é
+  // NOMEADA em `semPreco` (custo "pelo menos") — antes ela ia pra `semFicha` e o custo do pão sumia.
+  it('K3 (E3): ficha com ingrediente sem preço ENTRA no custo parcial, nomeada; sem destino segue FORA', async () => {
     const r = await lucroPorSetorDoDia(companyId, DIA, prisma)
     const xis = r.setores.find((s) => s.secao === 'XIS')!
-    expect(xis.semFicha).toEqual([{ nome: 'Xis ovo', un: 2, vendeu: 50 }])
-    expect(xis).toMatchObject({ vendeu: 350, vendeuComCusto: 300, custoProdutos: 35, custo: 35, lucro: 265 })
+    expect(xis.semFicha).toEqual([])
+    expect(xis.semPreco).toEqual([{ nome: 'Xis ovo', un: 2, faltantes: ['OVO SEM NOTA'] }])
+    expect(xis).toMatchObject({ vendeu: 350, vendeuComCusto: 350, custoProdutos: 38, custo: 38, lucro: 312, custoCompleto: false })
+    expect(xis.produtos.find((p) => p.nome === 'Xis ovo')).toMatchObject({ custoUn: 1.5, custo: 3, faltaPreco: ['OVO SEM NOTA'] })
+    expect(r.setores.find((s) => s.secao === SEM_SETOR)!.semFicha).toEqual([{ nome: 'PRODUTO NOVO', un: 1, vendeu: 10 }])
   })
 
   it('K4 + complementos: sem seção e sem atribuição em SEM SETOR; sabor nas PIZZAS; IGNORAR contado', async () => {
@@ -121,7 +126,7 @@ describe('motor do setor-dia contra o banco', () => {
       const k = s.complementos.reduce((a, x) => a + Math.round((x.custo ?? 0) * 100), 0)
       expect(Math.round(s.custo * 100)).toBe(p + k)
     }
-    expect(r.totais.custo).toBe(35 + 19 + 15 + 52.5 + 18)
+    expect(r.totais.custo).toBe(35 + 3 + 19 + 15 + 52.5 + 18) // + 3 = Xis ovo parcial (E3)
   })
 
   // ⚠️ (12/11) contado POR EMPRESA: a suíte roda arquivos em paralelo e outro teste criando seção

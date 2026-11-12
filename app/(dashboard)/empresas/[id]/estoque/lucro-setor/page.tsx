@@ -93,6 +93,12 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
   if (!d) return <div className="ls"><style>{CSS}</style><h1>Lucro por Setor</h1><div className="painel carregando">…</div></div>
 
   const promoItem = d.promo ? d.itens.find((i) => i.chave === d.promo!.chave) ?? null : null
+  // ⭐ E3 (12/11) · custo PARCIAL (ingrediente sem preço / sabor sem ficha): o número entra, com a marca —
+  //    custo "≥" (pelo menos) e margem/lucro "≤" (no máximo). Parcial nunca se veste de completo.
+  const baseParcial = (i: ItemDTO) => i.semPreco.some((f) => f.tipo === 'PRODUTO')
+  const incompleto = (i: ItemDTO) => i.semPreco.length > 0 || i.semFicha.some((f) => f.tipo === 'SABOR')
+  const peloMenos = (v: number, parcial: boolean) => `${parcial ? '≥ ' : ''}${formatBRL(v)}`
+  const noMaximo = (txt: string, parcial: boolean) => `${parcial ? '≤ ' : ''}${txt}`
 
   // ─── ficha na linha (S13/S22) ───
   const alvoDoItem = (i: ItemDTO): AlvoDaFicha => ({ fichaId: i.fichaId, tipo: 'PRODUTO', nome: i.nome, nomesPdv: i.nomesSuitable, preco: i.preco })
@@ -122,17 +128,30 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
           </Fragment>
         )
       })}
+      {s.semPreco.map((f) => {
+        const it = f.tipo === 'PRODUTO' ? d.itens.find((i) => i.nome === f.nome && i.secao === s.secao) : null
+        const k = f.tipo === 'PRODUTO' ? kP(it?.chave ?? f.nome) : kS(f.nome)
+        const fichaId = f.tipo === 'PRODUTO' ? it?.fichaId ?? null : d.itens.flatMap((i) => i.sabores).find((x) => x.nome === f.nome)?.fichaId ?? null
+        return (
+          <Fragment key={`P$:${f.tipo}:${f.nome}`}>
+            <div className="lin2 sf" data-testid="gap-sem-preco"><span>⚠ {f.nome}<span className="q">× {un(f.q)} · sem preço: {f.faltantes.join(', ')}</span>
+              {d.temLaco && fichaId ? botaoSem(k, true, false) : null}
+            </span><span>custo parcial</span></div>
+            {d.temLaco && fichaId && fichaDe(k, f.tipo === 'PRODUTO' && it ? alvoDoItem(it) : alvoDoSabor(f.nome, fichaId))}
+          </Fragment>
+        )
+      })}
     </div>
   )
 
   // ─── S5 · detalhe do setor: camada 1 (o que vendeu) + camada 2 (sabores do dia) ───
   const renderDetalhe = (s: SetorDTO) => {
     const xs = itensDe(s)
-    const sab = new Map<string, { q: number; custoUn: number | null; custo: number | null; fichaId: string | null }>()
+    const sab = new Map<string, { q: number; custoUn: number | null; custo: number | null; fichaId: string | null; semPreco: boolean }>()
     for (const i of xs) {
       if (i.semBase) continue // item fora da conta (S22): os sabores dele não entram na camada do custo
       for (const sb of i.sabores) {
-        const c = sab.get(sb.nome) ?? { q: 0, custoUn: sb.custoUn, custo: 0, fichaId: sb.fichaId }
+        const c = sab.get(sb.nome) ?? { q: 0, custoUn: sb.custoUn, custo: 0, fichaId: sb.fichaId, semPreco: sb.custoUn != null && sb.faltaPreco.length > 0 }
         c.q += sb.q
         c.custo = sb.custo != null && c.custo != null ? c.custo + sb.custo : null
         sab.set(sb.nome, c)
@@ -143,7 +162,7 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
     return (
       <div className="painel" ref={detalheRef} data-testid="detalhe">
         <h2>{nomeSetor(s)}<Info>custo do item = ficha do produto (na pizza: base do tamanho) + ficha de cada sabor que foi nele · clique numa linha pra abrir e ajustar a ficha · item sem ficha fica fora do lucro até a ficha nascer</Info></h2>
-        {gaps === s.secao && s.semFicha.length > 0 && listaGaps(s)}
+        {gaps === s.secao && (s.semFicha.length > 0 || s.semPreco.length > 0) && listaGaps(s)}
         <div className="camada g5"><div className="t">CAMADA 1 · O QUE VENDEU</div>
           <div className="head"><span>UN</span><span>ITEM</span><span className="r">VENDEU</span><span className="r">CUSTO FICHA</span><span></span></div>
           {xs.map((i) => {
@@ -154,10 +173,10 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
               <div className={`row ${i.semBase ? 'sem' : ''}`} key={i.chave} onClick={() => clicavel && abrirFicha(k)} data-testid="linha-camada1">
                 <div className="cab">
                   <span className="qtd">{un(i.q)}</span>
-                  <span className="nm">{i.nome}{i.promo && <span className="tagp">PROMO</span>}{i.semBase && botaoSem(k, temFicha, i.destino == null)}</span>
+                  <span className="nm">{i.nome}{i.promo && <span className="tagp">PROMO</span>}{baseParcial(i) && <span className="aviso" data-testid="aviso-sem-preco"> ⚠</span>}{i.semBase && botaoSem(k, temFicha, i.destino == null)}</span>
                   <span className="stats">
                     <span className="apoio forte-2"><span className="rot">vendeu</span>{formatBRL(i.vendeu)}</span>
-                    <span className="forte"><span className="rot">custo ficha</span>{i.custoBase == null ? 'sem ficha' : formatBRL(i.custoBase)}</span>
+                    <span className="forte"><span className="rot">custo ficha</span>{i.custoBase == null ? 'sem ficha' : peloMenos(i.custoBase, baseParcial(i))}</span>
                   </span>
                   <span className="chev">{clicavel ? (fichaAberta === k ? '▲' : '▼') : ''}</span>
                 </div>
@@ -175,10 +194,10 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
                 <div className={`row ${c.custoUn == null ? 'sem' : ''}`} key={nome} onClick={() => abrirFicha(k)} data-testid="linha-camada2">
                   <div className="cab">
                     <span className="qtd">{un(c.q)}</span>
-                    <span className="nm">{nome}{c.custoUn == null && botaoSem(k, !!c.fichaId, true)}</span>
+                    <span className="nm">{nome}{c.semPreco && <span className="aviso"> ⚠</span>}{c.custoUn == null && botaoSem(k, !!c.fichaId, true)}</span>
                     <span className="stats">
-                      <span className="apoio"><span className="rot">ficha</span>{c.custoUn != null ? formatBRL(c.custoUn) : ''}</span>
-                      <span className="forte"><span className="rot">custo</span>{c.custo != null ? formatBRL(c.custo) : 'sem ficha'}</span>
+                      <span className="apoio"><span className="rot">ficha</span>{c.custoUn != null ? peloMenos(c.custoUn, c.semPreco) : ''}</span>
+                      <span className="forte"><span className="rot">custo</span>{c.custo != null ? peloMenos(c.custo, c.semPreco) : 'sem ficha'}</span>
                     </span>
                     <span className="chev">{fichaAberta === k ? '▲' : '▼'}</span>
                   </div>
@@ -188,10 +207,10 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
             })}
           </div>
         )}
-        <div className="tot"><span>CUSTO TOTAL DO SETOR</span><span>{formatBRL(s.custo)}</span></div>
+        <div className="tot"><span>CUSTO TOTAL DO SETOR</span><span>{peloMenos(s.custo, s.unSemPreco > 0)}</span></div>
         <div className="tot sub"><span>VENDEU</span><span>{formatBRL(s.vendeu)}</span></div>
         {fora > 0.004 && <div className="tot sub sf"><span>FORA DA CONTA · SEM FICHA</span><span>{formatBRL(fora)}</span></div>}
-        <div className="tot sub lucro"><span>LUCRO DO SETOR</span><span>{formatBRL(s.lucro)}</span></div>
+        <div className="tot sub lucro"><span>LUCRO DO SETOR</span><span>{noMaximo(formatBRL(s.lucro), s.unSemPreco > 0)}</span></div>
         {s.orfaos && <div className="tot sub sf"><span>SABORES EM ITEM SEM SETOR</span><span>{un(s.orfaos.sabores)} un · {formatBRL(s.orfaos.custo)}</span></div>}
       </div>
     )
@@ -204,13 +223,17 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
       <div className="dentro" onClick={(e) => e.stopPropagation()} data-testid="dentro">
         {i.semBase
           ? <div className="lin2 sf"><span>⚠ ficha de {i.nome}<span className="q">× {un(i.q)}</span>{i.destino == null || i.fichaId ? <button type="button" className="btn-mini" onClick={() => criarFichaEm(i)}>{i.fichaId ? 'abrir ficha →' : 'criar ficha →'}</button> : null}</span><span>sem ficha</span></div>
-          : <div className="lin2"><span>ficha {i.nome}<span className="q">× {un(i.q)}</span></span><span>{formatBRL(i.custoBase ?? 0)}</span></div>}
+          : baseParcial(i)
+            ? <div className="lin2 sf"><span>⚠ ficha {i.nome}<span className="q">× {un(i.q)} · sem preço: {i.semPreco.find((f) => f.tipo === 'PRODUTO')!.faltantes.join(', ')}</span></span><span>{peloMenos(i.custoBase ?? 0, true)}</span></div>
+            : <div className="lin2"><span>ficha {i.nome}<span className="q">× {un(i.q)}</span></span><span>{formatBRL(i.custoBase ?? 0)}</span></div>}
         {i.sabores.map((s) => (s.custoUn == null
           ? <div className="lin2 sf" key={s.nome}><span>⚠ {s.nome}<span className="q">× {un(s.q)}</span><button type="button" className="btn-mini" onClick={() => { setSetorAberto(i.secao); setFichaAberta(kS(s.nome)); requestAnimationFrame(() => detalheRef.current?.scrollIntoView({ behavior: 'smooth' })) }}>{s.fichaId ? 'abrir ficha →' : 'criar ficha →'}</button></span><span>sem ficha</span></div>
-          : <div className="lin2" key={s.nome}><span>{s.nome}<span className="q">× {un(s.q)} · ficha {formatBRL(s.custoUn)}</span></span><span>{formatBRL(s.custo ?? 0)}</span></div>))}
+          : s.faltaPreco.length
+            ? <div className="lin2 sf" key={s.nome}><span>⚠ {s.nome}<span className="q">× {un(s.q)} · sem preço: {s.faltaPreco.join(', ')}</span></span><span>{peloMenos(s.custo ?? 0, true)}</span></div>
+            : <div className="lin2" key={s.nome}><span>{s.nome}<span className="q">× {un(s.q)} · ficha {formatBRL(s.custoUn)}</span></span><span>{formatBRL(s.custo ?? 0)}</span></div>))}
         <div className="fecho"><span>VENDEU</span><span>{formatBRL(i.vendeu)}</span></div>
-        <div className="fecho"><span>CUSTO</span><span>{i.semBase ? 'sem ficha' : formatBRL(i.custo)}</span></div>
-        <div className={`fecho lucro ${i.lucro != null && i.lucro < 0 ? 'neg' : ''}`}><span>LUCRO DO ITEM</span><span>{i.lucro == null ? '·' : formatBRL(i.lucro)}</span></div>
+        <div className="fecho"><span>CUSTO</span><span>{i.semBase ? 'sem ficha' : peloMenos(i.custo, incompleto(i))}</span></div>
+        <div className={`fecho lucro ${i.lucro != null && i.lucro < 0 ? 'neg' : ''}`}><span>LUCRO DO ITEM</span><span>{i.lucro == null ? '·' : noMaximo(formatBRL(i.lucro), incompleto(i))}</span></div>
         <div className="vp"><button type="button" className="btn-mini" onClick={() => void verPedidos(i.chave)} data-testid="ver-pedidos">ver pedidos →</button></div>
         {ps === 'carregando' && <div className="peds">…</div>}
         {Array.isArray(ps) && (
@@ -234,11 +257,11 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
             <div className="row" key={i.chave} onClick={() => setItemAberto((x) => (x === i.chave ? null : i.chave))} data-testid="linha-mesa">
               <div className="cab">
                 <span className="qtd">{un(i.q)}</span>
-                <span className="nm">{i.nome}{i.promo && <span className="tagp">PROMO</span>}{i.semFicha.length > 0 && <span className="aviso"> ⚠</span>}</span>
+                <span className="nm">{i.nome}{i.promo && <span className="tagp">PROMO</span>}{(i.semFicha.length > 0 || i.semPreco.length > 0) && <span className="aviso"> ⚠</span>}</span>
                 <span className="stats">
                   <span className="apoio forte-2"><span className="rot">vendeu</span>{formatBRL(i.vendeu)}</span>
-                  <span className="forte"><span className="rot">custo</span>{i.semBase ? 'sem ficha' : formatBRL(i.custo)}</span>
-                  {i.margem != null && <span className="mg"><span className="rot">margem</span>{pct(i.margem)}</span>}
+                  <span className="forte"><span className="rot">custo</span>{i.semBase ? 'sem ficha' : peloMenos(i.custo, incompleto(i))}</span>
+                  {i.margem != null && <span className="mg"><span className="rot">margem</span>{noMaximo(pct(i.margem), incompleto(i))}</span>}
                 </span>
                 <span className="badge">{i.quadrante ?? ''} <span className="chev">{itemAberto === i.chave ? '▲' : '▼'}</span></span>
               </div>
@@ -274,6 +297,7 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
       )
     }
     const inc = e.semFicha.reduce((t, f) => t + f.q, 0)
+    const incPreco = e.semPreco.reduce((t, f) => t + f.q, 0)
     const preco = lerPreco(precoTxt ?? String(e.preco).replace('.', ',')) ?? e.preco
     const base = { lucro: e.lucro, custoUn: e.custo / e.q, cheioUn: regua?.un ?? null }
     const r = eseConta(base, preco)
@@ -286,8 +310,8 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
           <div className="v-cel">lucro de hoje<b>{formatBRL(e.lucro)}</b></div>
           <div className="v-cel">lucro por unidade<b>{formatBRL(e.lucro / e.q)}</b></div>
         </div>
-        <div className="selo-l">{inc > 0
-          ? <span className="cob gap" onClick={() => { setSetorAberto(e.secao); setGaps(e.secao) }}>⚠ {un(inc)} un sem ficha — custo incompleto, lucro é &quot;pelo menos&quot; →</span>
+        <div className="selo-l">{inc > 0 || incPreco > 0
+          ? <span className="cob gap" onClick={() => { setSetorAberto(e.secao); setGaps(e.secao) }} data-testid="estudo-incompleto">⚠ {[inc > 0 ? `${un(inc)} un sem ficha` : '', incPreco > 0 ? `${un(incPreco)} un com ingrediente sem preço` : ''].filter(Boolean).join(' · ')} — custo incompleto, lucro é &quot;pelo menos&quot; →</span>
           : <span className="cob ok">fichas 100% ✓</span>}</div>
         <div className="ese">
           <span className="t2">e se vendesse a</span>
@@ -375,11 +399,12 @@ export default function LucroPorSetorPage({ params }: { params: Promise<{ id: st
                   <div className="lin"><span>custo (fichas)</span><b>{formatBRL(s.custo)}</b></div>
                   <div className={`lucro ${s.lucro >= 0 ? 'pos' : 'neg'}`}>{formatBRL(s.lucro)}</div>
                   {s.margem != null && <span className="pill marg">margem {pct(s.margem)}</span>}{' '}
-                  {s.unSemFicha > 0
-                    ? <span className="cob gap" onClick={(e) => { e.stopPropagation(); if (d.temLaco) setSetorAberto(s.secao); setGaps((g) => (g === s.secao ? null : s.secao)) }}>⚠ {un(s.unSemFicha)} un sem ficha →</span>
-                    : <span className="cob ok">fichas 100% ✓</span>}
+                  {/* ⭐ E3 · a cobertura separa os DOIS casos: sem ficha × ficha com ingrediente sem preço */}
+                  {s.unSemFicha > 0 && <span className="cob gap" data-testid="selo-sem-ficha" onClick={(e) => { e.stopPropagation(); if (d.temLaco) setSetorAberto(s.secao); setGaps((g) => (g === s.secao ? null : s.secao)) }}>⚠ {un(s.unSemFicha)} un sem ficha →</span>}
+                  {s.unSemPreco > 0 && <span className="cob gap" data-testid="selo-sem-preco" onClick={(e) => { e.stopPropagation(); if (d.temLaco) setSetorAberto(s.secao); setGaps((g) => (g === s.secao ? null : s.secao)) }}>⚠ {un(s.unSemPreco)} un com ingrediente sem preço →</span>}
+                  {s.unSemFicha === 0 && s.unSemPreco === 0 && <span className="cob ok">fichas 100% ✓</span>}
                   {!d.temLaco && <span className="cob nl">sem laço nesse dia</span>}
-                  {!d.temLaco && gaps === s.secao && s.semFicha.length > 0 && listaGaps(s)}
+                  {!d.temLaco && gaps === s.secao && (s.semFicha.length > 0 || s.semPreco.length > 0) && listaGaps(s)}
                 </div>
               )
             })}
@@ -466,6 +491,7 @@ const CSS = `
 .ls .ficha .dose button{width:22px;height:22px;border-radius:6px;border:1px solid var(--linha-forte);background:var(--card-2);color:var(--tinta);font-weight:800;cursor:pointer;font-size:13px;padding:0}
 .ls .ficha .dose b{min-width:70px;text-align:center;font-variant-numeric:tabular-nums;font-size:12px}
 .ls .ficha .x{background:var(--coral-50)!important;color:var(--coral-tinta)!important;font-size:11px!important}
+.ls .ficha .sp{color:var(--ambar-tinta);font-weight:700} .ls .ficha .sp-link{color:var(--ambar-tinta);text-decoration:underline;font-weight:700}
 .ls .ficha .rodape{display:flex;justify-content:space-between;font-size:12px;font-weight:800;margin-top:7px;padding-top:6px;border-top:1px solid var(--linha-forte)}
 .ls .ficha .add{margin-top:8px;padding-top:7px;border-top:1px dashed var(--linha-forte)}
 .ls .ficha .grava{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}

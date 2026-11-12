@@ -66,7 +66,7 @@ export interface TamanhoDePizza {
   /** ⚠️ de onde veio o número: `null` = linha própria, senão o tamanho que ele herdou */
   derivadoDe: string | null
   /** a ficha do cardápio que é a BASE (massa + queijo + caixa). `null` = a declarar */
-  base: { fichaId: string; nome: string; custo: number | null } | null
+  base: { fichaId: string; nome: string; custo: number | null; parcial?: number } | null
 }
 
 /**
@@ -78,7 +78,7 @@ export interface TamanhoDePizza {
  */
 export function montarTamanhos(opts: {
   regras: readonly RegraDeSabores[]
-  bases: readonly { tamanho: string; fichaId: string; nome: string; custo: number | null }[]
+  bases: readonly { tamanho: string; fichaId: string; nome: string; custo: number | null; parcial?: number }[]
 }): TamanhoDePizza[] {
   const { regras, bases } = opts
   const nomes = new Set<string>()
@@ -95,7 +95,7 @@ export function montarTamanhos(opts: {
       // nunca com 1 chutado, que desenharia a pizza errada
       sabores: s?.sabores ?? 0,
       derivadoDe: s?.derivadoDe ?? null,
-      base: b ? { fichaId: b.fichaId, nome: b.nome, custo: b.custo } : null,
+      base: b ? { fichaId: b.fichaId, nome: b.nome, custo: b.custo, parcial: b.parcial } : null,
     })
   }
   // ⭐ ordem: o que está pronto primeiro, e dentro disso por nº de sabores (pequena → família)

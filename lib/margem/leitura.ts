@@ -13,9 +13,9 @@
  */
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { hubCardapio } from '@/lib/stock/cardapio/hub'
+import { hubCardapio, custoDeUmaUnidade } from '@/lib/stock/cardapio/hub'
 import { lerCustosFixos } from '@/lib/custos-fixos/leitura'
-import { montarCtx, explodir } from '@/lib/stock/vendas/baixa-venda'
+import { montarCtx } from '@/lib/stock/vendas/baixa-venda'
 import { custoMedioPorItem } from '@/lib/stock/saldo'
 import { sobrasDoPeriodo, type Sobras } from './sobra'
 import { montarCasa, type Casa } from './casa'
@@ -158,19 +158,16 @@ export async function lerMargem(
   const cf = custoFixoDaJanela(janela, diarioPorMes)
 
   // ─────────── o custo dos COMPLEMENTOS (o achado de 07/10) ───────────
+  // ⭐ E3 (12/11): pela PORTA (era cópia da conta). `custoPorSabor` segue o FECHADO (null se falta
+  // preço — a ocorrência fica contada como "sem custo", e o CMV é o MÍNIMO); o PARCIAL (o que tem
+  // preço) entra no CMV à parte, em vez de zerar o sabor inteiro por um ingrediente.
   const custoPorSabor = new Map<string, number | null>()
+  const parcialPorSabor = new Map<string, number>()
   for (const m of mapComp) {
     if (!m.fichaId) continue
-    const acc = new Map<string, number>()
-    explodir({ tipo: 'FICHA', fichaId: m.fichaId }, 1, ctx, acc)
-    let t = 0
-    let falta = 0
-    for (const [itemId, qtd] of acc) {
-      const c = custoDe.get(itemId)
-      if (c == null) falta++
-      else t += c * qtd
-    }
-    custoPorSabor.set(m.nomeSuitable, acc.size === 0 || falta > 0 ? null : round2(t))
+    const r = custoDeUmaUnidade({ tipo: 'FICHA', fichaId: m.fichaId }, ctx, custoDe)
+    custoPorSabor.set(m.nomeSuitable, r.completo ? r.custo : null)
+    if (!r.completo && r.parcial > 0) parcialPorSabor.set(m.nomeSuitable, r.parcial)
   }
 
   let custoComp = 0
@@ -178,8 +175,10 @@ export async function lerMargem(
   let ocSem = 0
   for (const l of compLinhas) {
     const c = custoPorSabor.get(l.nomeSuitable)
-    if (c == null) ocSem += l.ocorrencias
-    else {
+    if (c == null) {
+      ocSem += l.ocorrencias
+      custoComp = round2(custoComp + (parcialPorSabor.get(l.nomeSuitable) ?? 0) * l.ocorrencias)
+    } else {
       custoComp = round2(custoComp + c * l.ocorrencias)
       ocCom += l.ocorrencias
     }
@@ -198,6 +197,7 @@ export async function lerMargem(
   const compPorDia = custoComplementoPorDia(
     compLinhas.map((l) => ({ dia: iso(l.data), nomeSuitable: l.nomeSuitable, ocorrencias: l.ocorrencias })),
     custoPorSabor,
+    parcialPorSabor,
   )
   // ⚠️ a linha de chegada mostra o dia LÍQUIDO — senão ela diria "bateu" num dia que não bateu
   const diasLiquidos = porDia.map((d) => ({

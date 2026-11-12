@@ -32,16 +32,32 @@ export function moverDose(c: CompNaLinha, sinal: 1 | -1): CompNaLinha {
   return { ...c, qtdTexto: textoQtd(novo) }
 }
 
-/** custo da ficha AO VIVO (Σ qtd × custo médio) — `null` se vazia ou algum insumo sem custo (nunca 0 disfarçado) */
-export function custoAoVivo(comps: readonly CompNaLinha[]): number | null {
-  if (!comps.length) return null
+/**
+ * custo da ficha AO VIVO (Σ qtd × custo médio).
+ * ⭐ E3 (12/11): ingrediente SEM PREÇO não zera a ficha — soma o que tem preço e diz quantos
+ * faltam (`faltam`), o rodapé vira "pelo menos R$ X · N ingrediente sem preço".
+ * `custo: null` = ficha vazia ou NADA com preço (não há o que somar — nunca "R$ 0,00").
+ */
+export function custoAoVivo(comps: readonly CompNaLinha[]): { custo: number | null; faltam: number } {
   let t = 0
+  let comPreco = 0
+  let faltam = 0
   for (const c of comps) {
     const q = valorQtd(c.qtdTexto)
-    if (q == null || c.custoMedio == null) return null
+    if (c.custoMedio == null) { faltam++; continue }
+    if (q == null) continue
     t += q * c.custoMedio
+    comPreco++
   }
-  return Math.round(t * 100) / 100
+  return { custo: comPreco ? Math.round(t * 100) / 100 : null, faltam }
+}
+
+/** o rodapé da ficha aberta (E3): completo · "pelo menos … · N sem preço" · "a definir" · "sem ficha" */
+export function rodapeDaFicha(comps: readonly CompNaLinha[], brl: (v: number) => string): string {
+  if (!comps.length) return 'sem ficha'
+  const { custo, faltam } = custoAoVivo(comps)
+  if (custo == null) return 'a definir'
+  return faltam ? `pelo menos ${brl(custo)} · ${faltam} ingrediente${faltam > 1 ? 's' : ''} sem preço` : brl(custo)
 }
 
 /** a primeira recusa de quantidade (a MESMA mensagem do editor) — `null` = pode gravar */

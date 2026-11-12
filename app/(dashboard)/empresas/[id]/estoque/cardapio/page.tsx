@@ -36,7 +36,7 @@ interface Linha {
   chave: string; nome: string; nomesSuitable: string[]
   destinoTipo: 'FICHA' | 'REVENDA' | null; fichaId: string | null; itemId: string | null
   status: Status; vendasQtd: number; vendasValor: number
-  custoUnitario: number | null; componentesSemCusto: number
+  custoUnitario: number | null; componentesSemCusto: number; custoParcial: number
   precoCardapio: number | null; precoPraticado: number | null
   precoUsado: number | null; precoOrigem: 'praticado' | 'cardapio' | null; margem: number | null
 }
@@ -353,7 +353,11 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
                         {l.vendasQtd > 0 ? l.vendasQtd : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-3 py-0 text-right text-[13px] tabular-nums">
-                        {l.custoUnitario != null ? <span className="text-slate-700">{brl(l.custoUnitario)}</span> : <span className="text-amber-600">a definir</span>}
+                        {/* ⭐ E3 (12/11): ingrediente sem preço NÃO zera a ficha — o parcial aparece como PISO, com ⚠ */}
+                        {l.custoUnitario != null ? <span className="text-slate-700">{brl(l.custoUnitario)}</span>
+                          : l.status === 'FICHA_INCOMPLETA' && l.custoParcial > 0
+                            ? <span className="text-amber-600" title={`${l.componentesSemCusto} ingrediente(s) sem preço — custo é o mínimo`} data-testid="custo-parcial">⚠ ≥ {brl(l.custoParcial)}</span>
+                            : <span className="text-amber-600">a definir</span>}
                       </td>
                       <td className="px-3 py-0 text-right text-[13px] tabular-nums">
                         {l.precoUsado != null ? (
@@ -362,7 +366,10 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
                       </td>
                       <td className={`px-3 py-0 text-right text-[13px] font-semibold tabular-nums ${
                         l.margem == null ? 'text-slate-400' : l.margem < 0.15 ? 'text-rose-600' : l.margem < 0.3 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                        {l.margem != null ? `${Math.round(l.margem * 100)}%` : '—'}
+                        {l.margem != null ? `${Math.round(l.margem * 100)}%`
+                          : l.status === 'FICHA_INCOMPLETA' && l.custoParcial > 0 && l.precoUsado != null && l.precoUsado > 0
+                            ? <span className="text-amber-600">até {Math.round(((l.precoUsado - l.custoParcial) / l.precoUsado) * 100)}%</span>
+                            : '—'}
                       </td>
                       <td className="px-1 py-0 text-slate-300"><ChevronRight className="h-4 w-4" /></td>
                     </tr>

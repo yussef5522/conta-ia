@@ -509,16 +509,17 @@ describe('⛔⛔ A LEITURA DO MONTADOR — o buraco que a minha própria reposi�
     expect(usosDe(leitura, 'ehSaborDeVerdade')).toBeGreaterThan(0)
   })
 
-  it('⛔⛔ o custo sai da porta única `explodir` + `custoMedioPorItem` — zero conta nova', () => {
-    expect(usosDe(leitura, 'explodir')).toBeGreaterThan(0)
+  // ⭐ E3 (12/11): a porta única agora é `custoDeUmaUnidade` (que chama `explodir`) — a cópia da conta morreu
+  it('⛔⛔ o custo sai da porta única `custoDeUmaUnidade` + `custoMedioPorItem` — zero conta nova', () => {
+    expect(usosDe(leitura, 'custoDeUmaUnidade')).toBeGreaterThan(0)
     expect(usosDe(leitura, 'custoMedioPorItem')).toBeGreaterThan(0)
     // ⛔ nenhuma dose multiplicada aqui: a multiplicação mora dentro de `explodirReceita`
     expect(leitura).not.toMatch(/qtdPlanejada/)
   })
 
-  it('⛔ custo PARCIAL nunca vira o custo da ficha — falta uma folha, devolve `null`', () => {
-    const bloco = leitura.slice(leitura.indexOf('export function custoDeUmaFicha'))
-    expect(bloco).toMatch(/if \(c == null\) return null/)
+  it('⛔ custo PARCIAL nunca vira o custo FECHADO da ficha — falta uma folha, devolve `null` (o parcial vai à parte)', () => {
+    const bloco = leitura.slice(leitura.indexOf('export function custoDeUmaFicha'), leitura.indexOf('export function parcialDeUmaFicha'))
+    expect(bloco).toMatch(/return r\.completo \? r\.custo : null/)
   })
 
   it('⚠️ ficha apontada como base e depois arquivada: o custo vem `null`, não 0', () => {
