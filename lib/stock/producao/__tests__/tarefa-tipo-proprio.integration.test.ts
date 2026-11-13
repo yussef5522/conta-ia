@@ -223,3 +223,31 @@ describe('⛔ estrutural: TAREFA nunca tem caminho de lote/estoque', () => {
     expect(TAREFA).not.toMatch(/stockMovement|stockProducaoConclusao|stockProductionOrder\.(create|update)|concluir\(|confirmarSeparacao\(/)
   })
 })
+
+describe('M7.e (lei v9) · o painel do escritório: tarefa com quem · hora · DURAÇÃO, e segue o período', () => {
+  it('a feita traz a hora do fim e os minutos MEDIDOS; a cancelada não tem duração', async () => {
+    const a = await criarTarefa({ companyId, nome: 'ABRIR MILHO', instrucao: '3 LATAS', quem: michele, dia: HOJE }, prisma)
+    const b = await criarTarefa({ companyId, nome: 'ABRIR ERVILHA', quem: edmar, dia: HOJE }, prisma)
+    await iniciarTarefa({ companyId, etapaId: a.etapaId, colaboradorId: michele, agora: AGORA }, prisma)
+    await finalizarEConcluirDoTablet({ companyId, etapaId: a.etapaId, colaboradorId: michele, agora: depois(12) }, prisma)
+    await cancelarTarefa({ companyId, tarefaId: b.tarefaId, userId: 'u-escritorio' }, prisma)
+    const ts = await tarefasDoEscritorio(companyId, depois(30), prisma)
+    const feita = ts.find((t) => t.tarefaId === a.tarefaId)!
+    expect(feita).toMatchObject({ estado: 'FEITA', minutos: 12, finalizadoEm: depois(12).toISOString() })
+    expect(ts.find((t) => t.tarefaId === b.tarefaId)).toMatchObject({ estado: 'CANCELADA', minutos: null })
+  })
+
+  it('a feita ONTEM só aparece quando o período a inclui; a viva aparece sempre', async () => {
+    const ONTEM = '2026-11-11'
+    const ontem = new Date('2026-11-11T15:00:00.000Z')
+    const a = await criarTarefa({ companyId, nome: 'ABRIR MILHO', quem: michele, dia: ONTEM }, prisma)
+    await iniciarTarefa({ companyId, etapaId: a.etapaId, colaboradorId: michele, agora: ontem }, prisma)
+    await finalizarEConcluirDoTablet({ companyId, etapaId: a.etapaId, colaboradorId: michele, agora: new Date(ontem.getTime() + 7 * 60_000) }, prisma)
+    const viva = await criarTarefa({ companyId, nome: 'ENCHER TUBO KETCHUP', quem: edmar, dia: ONTEM }, prisma)
+    const soHoje = await tarefasDoEscritorio(companyId, AGORA, prisma)
+    expect(soHoje.map((t) => t.tarefaId)).toEqual([viva.tarefaId])
+    const semana = await tarefasDoEscritorio(companyId, AGORA, prisma, { de: '2026-11-06', ate: HOJE })
+    expect(semana.map((t) => t.tarefaId).sort()).toEqual([a.tarefaId, viva.tarefaId].sort())
+    expect(semana.find((t) => t.tarefaId === a.tarefaId)!.minutos).toBe(7)
+  })
+})

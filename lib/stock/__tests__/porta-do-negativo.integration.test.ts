@@ -214,8 +214,11 @@ describe('⛔ A TELA ENTREGA A PORTA — composição ÚNICA, os dois viewports 
       join(process.cwd(), 'app/(dashboard)/empresas/[id]/estoque/producao/page.tsx'), 'utf-8',
     )
     expect(prod).toContain("get('ficha')")
-    // ⛔ e ABRE o formulário sozinho: chegar na tela com o form fechado é chegar em lugar nenhum
-    expect(prod).toContain('useState(!!fichaDaUrl)')
-    expect(prod).toContain('fichaInicial')
+    // ⛔ e o formulário ESTÁ ABERTO com a ficha: chegar na tela com o form fechado é chegar em lugar nenhum.
+    // ⚠️ REAPONTADO pela lei v9 M7.g (13/11): a Nova ordem virou cartão FIXO — não há mais estado
+    // "aberto/fechado" a ligar; o que a porta exige é a ficha da URL chegar no cartão sem condição.
+    expect(prod).toContain('<NovaOrdem id={id} fichaInicial={fichaDaUrl}')
+    expect(prod).not.toMatch(/\{novo && <NovaOrdem/)
+    expect(prod).toContain("useState(fichaInicial ?? '')")
   })
 })

@@ -12,7 +12,12 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
   const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
-  const [tarefas, nomes] = await Promise.all([tarefasDoEscritorio(companyId, new Date(), prisma), nomesDeTarefasUsados(companyId, prisma)])
+  // ⭐ (lei v9) o período das Concluídas do painel — mesmo `de/ate` da rota de ordens; sem ele, hoje
+  const sp = request.nextUrl.searchParams
+  const de = sp.get('de'), ate = sp.get('ate')
+  const dia = /^\d{4}-\d{2}-\d{2}$/
+  const periodo = de && ate && dia.test(de) && dia.test(ate) && de <= ate ? { de, ate } : undefined
+  const [tarefas, nomes] = await Promise.all([tarefasDoEscritorio(companyId, new Date(), prisma, periodo), nomesDeTarefasUsados(companyId, prisma)])
   return NextResponse.json({ tarefas, nomes })
 }
 

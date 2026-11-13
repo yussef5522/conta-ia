@@ -21,6 +21,7 @@ import { definirPlanoDaEtapa } from './plano-etapas'
 import { resolverEstadoDasEtapas } from './gestos-do-gerente'
 import { naTransacao, type DbOuTx } from './transacao'
 import type { EstadoDaEtapa } from './estado-da-etapa'
+import { minutosDaEtapa } from './etapas'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -144,16 +145,27 @@ export interface TarefaDoEscritorio {
   liberada: boolean
   estado: EstadoDaEtapa | 'CANCELADA'
   iniciadoEm: string | null
+  /** ⭐ (lei v9 M7.e) o painel mostra quem · hora · DURAÇÃO da tarefa feita — nunca R$/un nem % */
+  finalizadoEm: string | null
+  /** minutos medidos (`minutosDaEtapa`, o dono único): só FEITA tem; correndo é o cronômetro; resto `null` */
+  minutos: number | null
 }
 
-/** ⭐ o que o escritório vê: as tarefas do período (vivas + feitas no período), com quem e estado. */
+/**
+ * ⭐ o que o escritório vê: as VIVAS (sempre, como as ordens abertas) + as encerradas no PERÍODO
+ * (`de..ate`, dia de Brasília; sem período = hoje), com quem e estado.
+ * ⚠️ (lei v9) o painel segue o filtro hoje/semana/mês nas Concluídas — a tarefa obedece igual ao lote.
+ */
 export async function tarefasDoEscritorio(
   companyId: string, agora: Date = new Date(), db: Db = defaultPrisma,
+  periodo?: { de: string; ate: string },
 ): Promise<TarefaDoEscritorio[]> {
   const hoje = diaEmSaoPaulo(agora)
-  const janela = janelaDoDiaSP(hoje, hoje)
+  const de = periodo?.de ?? hoje
+  const ate = periodo?.ate ?? hoje
+  const janela = janelaDoDiaSP(de, ate)
   const ts = await db.stockTarefa.findMany({
-    where: { companyId, OR: [{ canceladaEm: null, dia: { lte: janela.ate } }, { dia: { gte: janela.de, lte: janela.ate } }] },
+    where: { companyId, OR: [{ canceladaEm: null, dia: { lte: janelaDoDiaSP(hoje, hoje).ate } }, { dia: { gte: janela.de, lte: janela.ate } }] },
     select: { id: true, nome: true, instrucao: true, dia: true, canceladaEm: true },
     orderBy: { criadoEm: 'asc' },
   })
@@ -172,14 +184,17 @@ export async function tarefasDoEscritorio(
   for (const t of ts) {
     const e = etapaDe.get(t.id) ?? null
     const estado = t.canceladaEm ? 'CANCELADA' as const : e ? res.get(e.id)!.estado : 'AGUARDANDO' as const
-    // ⚠️ feita em outro dia não é "do dia": só as vivas e as do dia de hoje aparecem
-    if (estado !== 'AGUARDANDO' && estado !== 'EM_ANDAMENTO' && diaEmSaoPaulo(t.dia) !== hoje && !(e?.finalizadoEm && diaEmSaoPaulo(e.finalizadoEm) === hoje)) continue
+    // ⚠️ encerrada fora do período não é "do período": só as vivas e as do período aparecem
+    const noPeriodo = (d: Date) => { const x = diaEmSaoPaulo(d); return x >= de && x <= ate }
+    if (estado !== 'AGUARDANDO' && estado !== 'EM_ANDAMENTO' && !(e?.finalizadoEm ? noPeriodo(e.finalizadoEm) : noPeriodo(t.dia))) continue
     const ids = [...new Set([...parts.filter((p) => p.etapaId === e?.id).map((p) => p.colaboradorId), ...(e?.executorId ? [e.executorId] : []), ...(e?.colaboradorId ? [e.colaboradorId] : [])])]
     out.push({
       tarefaId: t.id, etapaId: e?.id ?? null, nome: t.nome, instrucao: t.instrucao, dia: diaEmSaoPaulo(t.dia),
       quem: ids.map((i) => nome.get(i)).filter((x): x is string => !!x),
       liberada: e ? lib.get(e.id) ?? false : false,
       estado, iniciadoEm: e?.iniciadoEm?.toISOString() ?? null,
+      finalizadoEm: e?.finalizadoEm?.toISOString() ?? null,
+      minutos: e && estado !== 'CANCELADA' ? minutosDaEtapa(e, agora, estado) : null,
     })
   }
   return out

@@ -32,7 +32,8 @@ const CRIACAO = join(RAIZ, 'app/(dashboard)/empresas/[id]/estoque/producao/page.
 const ORDEM = join(RAIZ, 'app/(dashboard)/empresas/[id]/estoque/producao/[ordemId]/page.tsx')
 const WRITER = join(RAIZ, 'lib/stock/producao/confirmar-pedido.ts')
 
-const ler = (p: string) => readFileSync(p, 'utf8')
+// ⚠️ (lei v9, 13/11) as listas do painel mudaram de arquivo (components/estoque/listas-do-painel.tsx, pra serem renderizadas em teste): o painel é lido com elas — mesmo texto, dois arquivos
+const ler = (p: string) => readFileSync(p, 'utf8') + (p === CRIACAO ? '\n' + readFileSync(join(RAIZ, 'components/estoque/listas-do-painel.tsx'), 'utf8') : '')
 const limpo = (p: string) => semComentarios(ler(p))
 
 describe('⭐⭐⭐ PASSO 1 — a criação é ENXUTA: receita + data + setor', () => {

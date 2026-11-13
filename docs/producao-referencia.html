@@ -3,10 +3,32 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Produção — referência v7 APROVADA</title>
+<title>Produção — referência v9 APROVADA</title>
 <!--
 ═══════════════════════════════════════════════════════════════════════
-  PRODUÇÃO — ARQUIVO DE REFERÊNCIA v7 — APROVADA PELO DONO
+  PRODUÇÃO — ARQUIVO DE REFERÊNCIA v9 — APROVADA PELO DONO
+  (13/11/2026 00:42). Esta lei SUBSTITUI a v7 em docs/ e contém tudo:
+  G1–G12 (preservação) + M1–M7 (mudanças, incluindo o Painel novo).
+  Pente da v9 incorporado: criação em DOIS cartões fixos lado a lado
+  abaixo dos filtros (nada de botão "+", nada duplicado, nada de
+  criar embaixo); subtítulo morto; Receitas e Sugestão fora do
+  painel.
+  v9 = pente do dono no painel: (1) RECEITAS SAEM DO PAINEL — têm
+  tela própria (55 receitas) que já funciona; o chip "Receitas" leva
+  lá e o painel NUNCA duplica; (2) UM SÓ CAMINHO DE CRIAR — o cartão
+  "Nova ordem" fica oculto e abre pelo botão "+ Nova ordem" (como no
+  real); nasce o irmão "+ Nova tarefa"; nada repetido na tela;
+  (3) SUGESTÃO DE PRODUÇÃO SAI DA TELA (veto do dono); (4) tarefa
+  cai pra equipe NA MESMA Janela da Cozinha da produção (já é lei
+  M2 e já roda em produção).
+  v8 = M7: o PAINEL DO ESCRITÓRIO sobe ao nível das telas novas
+  (ordem do dono vendo o painel real em produção). MESMA estrutura e
+  MESMOS gestos de hoje — muda a cara: tipografia S16, prosa no ⓘ
+  (S15), grades alinhadas, e TAREFA com linha própria nas listas
+  (sem R$/un, sem % do pedido, sem conferência).
+  v7 foi APROVADA pelo dono (12/11 14:54) e segue valendo por inteiro.
+═══════════════════════════════════════════════════════════════════════
+  (v7) PRODUÇÃO — ARQUIVO DE REFERÊNCIA — APROVADA PELO DONO
   (v6 aprovada 12/11 14:51; v7 = v6 + retrato FIEL da tela "Receita
   de produção" que JÁ EXISTE — onde se define quantos gramas de cada
   insumo a produção desconta (rende, validade, ingredientes, dose) —
@@ -83,6 +105,38 @@
   M6 NÚMEROS E TEXTOS DA AMOSTRA: cada conta no <script> é pino de
      teste no sprint. Tema escuro da cozinha = o real (slate-900,
      verde emerald, cronômetro âmbar, recado roxo, erro rosa).
+
+  M7 (v8, ordem do dono 12/11 15:30) O PAINEL DO ESCRITÓRIO SOBE AO
+     NÍVEL DAS TELAS NOVAS. Mesma estrutura, MESMOS gestos de hoje
+     (criar, conferir, corrigir, abrir ordem) — zero função nova.
+     O que muda é a cara:
+     a) tipografia S16: cabecinhas em caps 9,5px, nomes 700, números
+        tabulares à direita, grades com colunas ALINHADAS;
+     b) S15: a prosa sai da tela — "assina no teu nome · quem fez
+        não confere a própria" vai pro ⓘ da Conferência; e o
+        SUBTÍTULO MORRE (v9, dono 13/11: "texto largado sem motivo")
+        — só o título "Produção", nada escrito solto embaixo;
+     c) os 4 cartões do topo ganham o padrão de KPI das telas novas
+        (rótulo caps, número grande tabular, apoio curto);
+     d) filetes de estado e selos padronizados com o resto da casa;
+     e) TAREFA TEM LINHA PRÓPRIA nas listas do escritório: selo
+        TAREFA + nome + instrução + quem + duração. NUNCA mostra
+        R$/un, % do pedido, UN pedidas, nem entra na Conferência
+        (tarefa não tem número a conferir) — o print do dono pegou
+        tarefa concluída com "R$ 0,00/un", isso morre;
+     f) (v9, dono) SUGESTÃO DE PRODUÇÃO SAI DO PAINEL — a seção é
+        removida da tela; criar é pela Nova ordem ou pelo "produzir"
+        da tela de Receitas;
+     g) (v9, dono) NADA REPETIDO: o painel nunca mostra dois
+        caminhos pro mesmo gesto. O cartão "Nova ordem" vive OCULTO
+        e abre só pelo botão "+ Nova ordem" (comportamento real de
+        hoje); "+ Nova tarefa" nasce do lado, mesmo padrão; abrir um
+        fecha o outro;
+     h) (v9, dono) RECEITAS TÊM TELA PRÓPRIA e o painel não as
+        duplica — o chip "Receitas" leva lá. A tela de Receitas e o
+        editor "Nova receita" de hoje ficam COMO ESTÃO (funcionam
+        bem); melhorias nelas, se vierem, são capítulo próprio com
+        estudo próprio.
 -->
 <style>
 :root{
@@ -222,6 +276,78 @@ body{padding:0 0 40px}
   font-size:13px;font-weight:800;cursor:pointer;padding:0 15px;font-family:var(--font)}
 .criada{font-size:12.5px;font-weight:800;color:var(--esc-verde-t);background:var(--esc-verde50);
   border-radius:999px;padding:6px 12px;display:inline-block;margin-top:9px}
+/* ⓘ e pop (faltavam neste arquivo) */
+.oculto{display:none}
+.i{width:17px;height:17px;border-radius:50%;border:1px solid var(--esc-linha);
+  background:var(--esc-card);color:var(--esc-tinta3);font-size:11px;font-weight:700;
+  cursor:pointer;vertical-align:2px;margin-left:6px;line-height:1;padding:0}
+.pop{display:block;font-size:11.5px;color:var(--esc-tinta2);background:var(--esc-card);
+  border:1px solid var(--esc-linha);border-radius:10px;padding:8px 11px;
+  margin:8px 0 2px;line-height:1.6;font-weight:500;text-transform:none;letter-spacing:0}
+.pop.oculto{display:none}
+.bt{min-height:38px;border:0;border-radius:10px;background:var(--esc-indigo);color:#fff;
+  font-size:12.5px;font-weight:800;cursor:pointer;padding:0 13px;font-family:var(--font)}
+/* ─── M7 · Painel do escritório no nível das telas novas ─── */
+.pp-topo{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.pp-h1{font-size:21px;font-weight:800;letter-spacing:-.02em}
+.pp-sub{font-size:12.5px;color:var(--esc-tinta2);margin-top:3px;font-variant-numeric:tabular-nums}
+.pp-nova{min-height:42px;border:0;border-radius:999px;background:var(--esc-indigo);color:#fff;
+  font-size:13px;font-weight:800;cursor:pointer;padding:0 18px;font-family:var(--font)}
+/* v9 · zona de criar: as DUAS criações bem em cima, lado a lado; embaixo nada cria */
+.pp-zcriar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.bt.verde2{background:var(--esc-verde)}
+@media(max-width:760px){ .pp-zcriar{grid-template-columns:1fr} }
+.pp-chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+.pp-chip{font-size:12px;font-weight:700;border:1px solid var(--esc-linha);background:var(--esc-card);
+  color:var(--esc-tinta2);border-radius:999px;padding:7px 13px;cursor:pointer}
+.pp-chip.mut{border-style:dashed;color:var(--esc-tinta3)}
+.pp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.pp-kpi{background:var(--esc-card);border:1px solid var(--esc-linha);border-radius:14px;padding:12px 14px}
+.pp-kpi .r{display:block;font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);text-transform:uppercase}
+.pp-kpi b{display:block;font-size:23px;font-weight:800;letter-spacing:-.02em;margin-top:3px;font-variant-numeric:tabular-nums}
+.pp-kpi b.ok{color:var(--esc-verde-t)}
+.pp-kpi .s{display:block;font-size:11.5px;color:var(--esc-tinta3);margin-top:2px}
+.pp-filtros{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.pp-f{font-size:12px;font-weight:700;border:1px solid var(--esc-linha);background:var(--esc-card);
+  color:var(--esc-tinta2);border-radius:999px;padding:7px 14px;cursor:pointer}
+.pp-f.on{background:var(--esc-indigo);border-color:var(--esc-indigo);color:#fff}
+.pp-busca{flex:1 1 170px;min-height:36px;border:1px solid var(--esc-linha);border-radius:999px;
+  background:var(--esc-card);color:var(--esc-tinta);font-size:12.5px;font-weight:600;padding:0 14px;font-family:var(--font)}
+.pp-pill{font-size:10.5px;font-weight:800;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.pp-pill.verde{background:var(--esc-verde50);color:var(--esc-verde-t)}
+.pp-pill.ambar{background:var(--esc-ambar50);color:var(--esc-ambar-t)}
+.pp-pill.coral{background:#FDECEA;color:#8C251E}
+.pp-pill.mut2{background:var(--esc-bg);color:var(--esc-tinta3);border:1px solid var(--esc-linha)}
+.pp-head{display:grid;gap:10px;font-size:9.5px;font-weight:800;letter-spacing:.07em;
+  color:var(--esc-tinta3);text-transform:uppercase;padding:0 0 6px;border-bottom:2px solid var(--esc-linha);
+  grid-template-columns:1fr 92px 112px 84px}
+.pp-head.h4{grid-template-columns:1fr 86px 130px 150px}
+.pp-head .r{text-align:right}
+.pp-row{display:grid;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #E3E7F2}
+.pp-row:last-child{border-bottom:0}
+.pp-row.c4{grid-template-columns:1fr 92px 112px 84px}
+.pp-row.d4{grid-template-columns:1fr 86px 130px 150px}
+.pp-row.e3{grid-template-columns:8px 1fr auto;padding-left:0}
+.pp-row.e3::before{content:'';width:4px;height:30px;border-radius:4px;background:var(--esc-linha)}
+.pp-row.e3.fz::before{background:var(--esc-indigo)}
+.pp-row.s3{grid-template-columns:1fr auto}
+.pp-nm{font-weight:700;font-size:13.5px;line-height:1.3}
+.pp-sub2{display:block;font-size:11.5px;font-weight:600;color:var(--esc-tinta3);margin-top:1px;font-variant-numeric:tabular-nums}
+.pp-num{font-weight:800;font-size:14px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pp-num i{font-style:normal;font-weight:700;font-size:11.5px;color:var(--esc-tinta3)}
+.pp-acoes{display:flex;gap:6px;justify-content:flex-end}
+.pp-ok{width:38px;height:38px;border-radius:10px;border:0;background:var(--esc-indigo);color:#fff;
+  font-size:15px;font-weight:800;cursor:pointer}
+.pp-ed{width:38px;height:38px;border-radius:10px;border:1px solid var(--esc-linha);background:var(--esc-card);
+  color:var(--esc-tinta2);font-size:14px;cursor:pointer}
+.selo-t{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.06em;
+  background:var(--esc-bg);border:1px solid var(--esc-linha);color:var(--esc-tinta3);
+  border-radius:999px;padding:2px 8px;margin-right:7px;vertical-align:2px}
+@media(max-width:640px){
+  .pp-head{display:none}
+  .pp-row.c4,.pp-row.d4{grid-template-columns:1fr auto;row-gap:5px}
+  .pp-row.c4 .pp-acoes{grid-column:1/-1;justify-content:flex-start}
+}
 @media(max-width:420px){ .teclado{grid-template-columns:repeat(3,72px)} .teclado button{width:72px;height:72px} }
 </style>
 </head>
@@ -326,54 +452,127 @@ body{padding:0 0 40px}
 </div></div>
 
 <!-- ─────────── ESCRITÓRIO: só o que MUDA (M2/M4/M5) ─────────── -->
-<div class="ecra" id="e-esc"><div class="esc">
-  <div class="painel-e">
-    <h3>Nova ordem de produção</h3>
-    <div class="cria-t">
-      <select id="o-ficha" onchange="ordemFicha(this.value)">
-        <option>PORÇÃO CALABRESA 85g</option>
-        <option>MEIA BOLINHA DE MASSA</option>
-      </select>
-      <input class="medio" value="12/11/2026" aria-label="data de produção">
-      <select><option>Setor: —</option><option>Cozinha</option></select>
-      <button class="bt" style="background:var(--esc-indigo)" onclick="ordemCriar()">Criar ordem →</button>
+<div class="ecra" id="e-esc" style="max-width:780px"><div class="esc">
+
+  <div class="pp-topo">
+    <div>
+      <div class="pp-h1">Produção</div>
     </div>
-    <div id="o-pedido" style="display:none;margin-top:12px;border-top:1px dashed var(--esc-linha);padding-top:12px">
-      <div style="font-size:14px;font-weight:800">Quantas unidades produzir?</div>
-      <div style="font-size:12px;color:var(--esc-tinta3);margin:2px 0 8px">a prateleira está do lado: digite e confira o que vai sair</div>
-      <input class="medio" id="o-qtd" inputmode="numeric" placeholder="0" oninput="ordemQtd(this.value)" style="font-size:20px;font-weight:800;text-align:center;width:110px">
-      <div id="o-tabela" style="margin-top:10px"></div>
-      <div id="o-confirma" style="margin-top:10px"></div>
+  </div>
+
+  <div class="pp-chips">
+    <span class="pp-chip">Hoje ao vivo</span><span class="pp-chip">Por dia</span><span class="pp-chip">Receitas</span><span class="pp-chip">Por pessoa</span><span class="pp-chip">Relatórios</span>
+    <span class="pp-chip mut">Equipe</span><span class="pp-chip mut">CSV</span>
+  </div>
+
+  <div class="pp-kpis">
+    <div class="pp-kpi"><span class="r">em aberto</span><b>6</b><span class="s">ordens andando</span></div>
+    <div class="pp-kpi"><span class="r">na bancada</span><b>R$ 904,26</b><span class="s">insumo fora da prateleira</span></div>
+    <div class="pp-kpi"><span class="r">concluídas hoje</span><b>10</b><span class="s">R$ 369,02 produzidos</span></div>
+    <div class="pp-kpi"><span class="r">rendimento do dia</span><b class="ok">127%</b><span class="s">de 10 lotes</span></div>
+  </div>
+
+  <div class="pp-filtros">
+    <span class="pp-f on">hoje</span><span class="pp-f">semana</span><span class="pp-f">mês</span><span class="pp-f">período…</span>
+    <input class="pp-busca" placeholder="buscar receita…">
+  </div>
+
+  <div class="pp-zcriar">
+    <div class="painel-e" style="margin-bottom:0">
+      <h3>Nova ordem de produção</h3>
+      <div class="cria-t">
+        <select id="o-ficha" onchange="ordemFicha(this.value)">
+          <option>PORÇÃO CALABRESA 85g</option>
+          <option>MEIA BOLINHA DE MASSA</option>
+        </select>
+        <input class="medio" value="12/11/2026" aria-label="data de produção" style="width:110px">
+        <select><option>Setor: —</option><option>Cozinha</option></select>
+        <button class="bt" onclick="ordemCriar()">Criar ordem →</button>
+      </div>
+      <div id="o-pedido" style="display:none;margin-top:12px;border-top:1px dashed var(--esc-linha);padding-top:12px">
+        <div style="font-size:14px;font-weight:800">Quantas unidades produzir?</div>
+        <div style="font-size:12px;color:var(--esc-tinta3);margin:2px 0 8px">a prateleira está do lado: digite e confira o que vai sair</div>
+        <input class="medio" id="o-qtd" inputmode="numeric" placeholder="0" oninput="ordemQtd(this.value)" style="font-size:20px;font-weight:800;text-align:center;width:110px">
+        <div id="o-tabela" style="margin-top:10px"></div>
+        <div id="o-confirma" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="painel-e" style="margin-bottom:0">
+      <h3>Nova tarefa</h3>
+      <div class="cria-t">
+        <input class="longo" id="t-nome" placeholder="o que fazer? ex.: ABRIR LATAS DE MILHO">
+        <input class="medio" id="t-instr" placeholder="instrução, ex.: 3 LATAS">
+        <select id="t-quem"><option value="">quem faz?</option><option>Michele</option><option>Edmar</option><option>Jessica</option><option>Lucas</option><option>Barbara</option><option value="livre">liberada pra equipe</option></select>
+        <button class="bt verde2" onclick="criaTarefa()">Criar tarefa</button>
+      </div>
+      <div id="t-ok"></div>
     </div>
   </div>
 
   <div class="painel-e">
-    <h3>Receita de produção</h3>
-    <div class="cria-t" style="margin-bottom:10px">
-      <select id="r-prod" onchange="recTroca(this.value)">
-        <option>PORÇÃO CALABRESA 85g</option>
-        <option>SACOLA QUEIJO 135g</option>
-      </select>
-      <span style="font-size:12px;font-weight:700;color:var(--esc-tinta3)">rende</span>
-      <input class="medio" style="width:70px;text-align:center" value="20"> <span style="font-size:12px;font-weight:700;color:var(--esc-tinta3)">UN · validade</span>
-      <input class="medio" style="width:60px;text-align:center" value="30"> <span style="font-size:12px;font-weight:700;color:var(--esc-tinta3)">dias</span>
+    <h3>Conferência do dia <span class="pp-pill coral">10 aguardando</span> <span class="pp-pill ambar">1 parada há mais de 3h</span><button class="i" style="border-color:var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta3)" onclick="this.nextElementSibling.classList.toggle('oculto')">i</button><span class="pop oculto" style="background:var(--esc-card);border-color:var(--esc-linha);color:var(--esc-tinta2)">assina no teu nome · quem fez não confere a própria · ✓ confere com um toque · ✎ corrige pedindo o número certo e o motivo · tarefa não entra aqui: não tem número a conferir</span></h3>
+    <div class="pp-head"><span>LOTE</span><span class="r">FEZ / PED.</span><span class="r">VEREDITO</span><span></span></div>
+    <div class="pp-row c4" id="cf1">
+      <span class="pp-nm">TOMATE EM RODELA<span class="pp-sub2">barbara · há 3h24</span></span>
+      <span class="pp-num">4 <i>/ 4</i></span>
+      <span class="pp-pill verde">✓ confere</span>
+      <span class="pp-acoes"><button class="pp-ok" onclick="ppConfere('cf1')">✓</button><button class="pp-ed">✎</button></span>
     </div>
-    <div id="r-ings"></div>
-    <div id="r-aviso"></div>
-    <div style="margin-top:8px"><button class="bt" style="background:var(--esc-indigo)">+ adicionar ingrediente</button></div>
-    <div style="font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--esc-tinta3);text-transform:uppercase;margin:12px 0 6px">Etapas <span style="text-transform:none;font-weight:700;letter-spacing:0">— opcional, só quando muda a mão</span></div>
-    <div style="font-size:13px;font-weight:700">FRITAR E PORCIONAR</div>
+    <div class="pp-row c4" id="cf2">
+      <span class="pp-nm">PORÇÃO ISCAS DE FRANGO 250g<span class="pp-sub2">michelle · há 2h42</span></span>
+      <span class="pp-num">24 <i>/ 21</i></span>
+      <span class="pp-pill ambar">⚠ dava ~21</span>
+      <span class="pp-acoes"><button class="pp-ok" onclick="ppConfere('cf2')">✓</button><button class="pp-ed">✎</button></span>
+    </div>
+    <div class="pp-row c4" id="cf3">
+      <span class="pp-nm">METADE DE BOLINHA MASSA DE PIZZA<span class="pp-sub2">eliane · há 2h29</span></span>
+      <span class="pp-num">222 <i>/ ~214</i></span>
+      <span class="pp-pill verde">✓ confere</span>
+      <span class="pp-acoes"><button class="pp-ok" onclick="ppConfere('cf3')">✓</button><button class="pp-ed">✎</button></span>
+    </div>
   </div>
 
   <div class="painel-e">
-    <h3>Nova tarefa</h3>
-    <div class="cria-t">
-      <input class="longo" id="t-nome" placeholder="o que fazer? ex.: ABRIR LATAS DE MILHO">
-      <input class="medio" id="t-instr" placeholder="instrução, ex.: 3 LATAS">
-      <select id="t-quem"><option value="">quem faz?</option><option>Michele</option><option>Edmar</option><option>Jessica</option><option>Lucas</option><option>Barbara</option><option value="livre">liberada pra equipe</option></select>
-      <button class="bt" onclick="criaTarefa()">CRIAR TAREFA</button>
+    <h3>Em aberto (6) <span class="pp-pill mut2">2 desde ontem</span></h3>
+    <div class="pp-row e3 fz">
+      <span class="pp-nm">BEEF DE HAMBURGER<span class="pp-sub2">edmar e naiara · começou 11:42 · há 3h47</span></span>
+      <span class="pp-num">50 UN <i>pedidas</i></span>
     </div>
-    <div id="t-ok"></div>
+    <div class="pp-row e3 fz">
+      <span class="pp-nm">MAIONESE<span class="pp-sub2">debora · começou 15:20 · há 9min</span></span>
+      <span class="pp-num">17,148 KG <i>pedidas</i></span>
+    </div>
+    <div class="pp-row e3 af">
+      <span class="pp-nm"><span class="selo-t">TAREFA</span>ABRIR LATAS DE ERVILHA<span class="pp-sub2">para Michele · ninguém iniciou ainda</span></span>
+      <span class="pp-num">5 LATAS</span>
+    </div>
+    <div class="pp-row e3 af">
+      <span class="pp-nm">CORTAR PÃO<span class="pp-sub2">ninguém pegou ainda</span></span>
+      <span class="pp-num">150 UN <i>pedidas</i></span>
+    </div>
+  </div>
+
+  <div class="painel-e">
+    <h3>Concluídas · hoje (10)</h3>
+    <div class="pp-head h4"><span>LOTE</span><span class="r">CUSTO</span><span class="r">FEZ / PED.</span><span class="r">CONFERÊNCIA</span></div>
+    <div class="pp-row d4">
+      <span class="pp-nm">PORÇÃO MAIONESE 30g<span class="pp-sub2">jessica · 12:40</span></span>
+      <span class="pp-num">R$ 0,31<i>/un</i></span>
+      <span class="pp-num">76 <i>/ 80</i> <span class="pp-pill verde">95%</span></span>
+      <span class="pp-pill verde">✓✓ conferido · cristian</span>
+    </div>
+    <div class="pp-row d4 tar">
+      <span class="pp-nm"><span class="selo-t">TAREFA</span>ABRIR MILHO<span class="pp-sub2">NATHALIA · 15:05</span></span>
+      <span class="pp-num">·</span>
+      <span class="pp-num">12min</span>
+      <span class="pp-num">·</span>
+    </div>
+    <div class="pp-row d4">
+      <span class="pp-nm">TOMATE PICADO<span class="pp-sub2">barbara · 12:36</span></span>
+      <span class="pp-num">R$ 0,89<i>/un</i></span>
+      <span class="pp-num">2 <i>/ 2</i> <span class="pp-pill verde">100%</span></span>
+      <span class="pp-pill ambar">aguardando conferência</span>
+    </div>
   </div>
 
 </div></div>
@@ -388,7 +587,7 @@ const cronFmt=seg=>{const m=Math.floor(seg/60),s=seg%60;
   return String(m)+':'+String(s).padStart(2,'0')};
 /* M2 · tarefa NUNCA tem caminho de lote */
 const TIPOS={PRODUCAO:{fechaLote:true},TAREFA:{fechaLote:false}};
-/* M4 VETADO · a Sugestão de produção fica como é hoje (mínimo de estoque) */
+/* M4 vetado (v5) e, na v9, a seção Sugestão SAI do painel (M7.f) */
 
 /* ═══ render da amostra ═══ */
 const $=id=>document.getElementById(id);
@@ -451,42 +650,12 @@ function ordemConfirma(n){
   $('o-confirma').innerHTML=`<span class="criada">✓ ordem PLANEJADA · ${fichaSel} · ${n} UN — agora é separar e designar as etapas, como hoje</span>`;
 }
 
-/* escritório: Receita de produção (tela que JÁ existe — retrato fiel, nada muda)
-   É AQUI que se diz quantos gramas de cada insumo a produção desconta do estoque.
-   A guarda de dose fora do padrão (conserto de 12/11) vive aqui: >10× acima ou
-   abaixo do histórico pede confirmação antes → depois. pino: fora(1.7,0.0001)=true */
-const RECEITAS_ED={
- 'PORÇÃO CALABRESA 85g':[['CALABRESA PEÇA',1.700,'KG'],['PAPEL ACOPLADO',20,'UN']],
- 'SACOLA QUEIJO 135g':[['QUEIJO MUSSARELA PEÇA',2.700,'KG'],['SACOLA PLÁSTICA',20,'UN']],
-};
-const doseFora=(antes,depois)=>depois>0&&(depois>antes*10||depois<antes/10);
-let recSel='PORÇÃO CALABRESA 85g';
-function recTroca(p){recSel=p;renderRec();}
-function renderRec(){
-  $('r-aviso').innerHTML='';
-  $('r-ings').innerHTML=RECEITAS_ED[recSel].map(([ins,dose,un],i)=>
-   `<div class="sug" style="padding:7px 0"><span class="nm">${ins}</span>
-     <input class="medio" style="width:92px;text-align:center;font-variant-numeric:tabular-nums"
-       value="${String(dose).replace('.',',')}" onchange="recDose(${i},this)">
-     <span style="font-size:12px;font-weight:800;color:var(--esc-tinta3)">${un} por receita</span>
-     <button class="bt" style="background:transparent;color:#9F2D25;border:1px solid var(--esc-linha)">✕</button></div>`).join('');
+/* M7 · conferência: ✓ num toque (gesto de hoje, cara nova) */
+function ppConfere(id){
+  const r=document.getElementById(id);
+  r.querySelector('.pp-pill').outerHTML='<span class="pp-pill verde">✓✓ conferido por você</span>';
+  r.querySelector('.pp-acoes').innerHTML='';
 }
-function recDose(i,el){
-  const antes=RECEITAS_ED[recSel][i][1];
-  const v=parseFloat(String(el.value).replace(',','.'));
-  if(!isFinite(v)||v<=0){el.value=String(antes).replace('.',',');return}
-  if(doseFora(antes,v)){
-    $('r-aviso').innerHTML=`<div style="font-size:12.5px;color:var(--esc-ambar-t);background:var(--esc-ambar50);border-radius:10px;padding:9px 12px;margin-top:8px">
-      ${RECEITAS_ED[recSel][i][0]}: <b>${String(antes).replace('.',',')} → ${el.value}</b> — fora do padrão do histórico desta ficha.
-      <button class="bt" style="background:var(--esc-indigo);margin-left:8px" onclick="recConfirma(${i},${v})">confirmar assim</button>
-      <button class="bt" style="background:transparent;color:var(--esc-tinta2);border:1px solid var(--esc-linha);margin-left:6px" onclick="renderRec()">manter ${String(antes).replace('.',',')}</button></div>`;
-    el.value=String(antes).replace('.',',');
-    return;
-  }
-  RECEITAS_ED[recSel][i][1]=v;renderRec();
-}
-function recConfirma(i,v){RECEITAS_ED[recSel][i][1]=v;renderRec();}
-renderRec();
 
 /* escritório: criar tarefa (M2) */
 function criaTarefa(){

@@ -29,7 +29,8 @@ const ORDEM = 'app/(dashboard)/empresas/[id]/estoque/producao/[ordemId]/page.tsx
 const HOME = 'app/(dashboard)/empresas/[id]/estoque/producao/page.tsx'
 const ROTA_ORDEM = 'app/api/empresas/[id]/estoque/producao/ordens/[ordemId]/route.ts'
 
-const ler = (p: string) => semComentarios(readFileSync(p, 'utf8'))
+// ⚠️ (lei v9, 13/11) as listas do painel mudaram de arquivo (components/estoque/listas-do-painel.tsx, pra serem renderizadas em teste): o painel é lido com elas — mesmo texto, dois arquivos
+const ler = (p: string) => semComentarios(readFileSync(p, 'utf8') + (p === HOME ? '\n' + readFileSync('components/estoque/listas-do-painel.tsx', 'utf8') : ''))
 
 describe('⛔⛔ UM formulário de correção, dois lugares', () => {
   /**

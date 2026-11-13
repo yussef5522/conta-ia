@@ -19,7 +19,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 const RAIZ = process.cwd()
-const ler = (p: string) => readFileSync(join(RAIZ, p), 'utf8')
+// ⚠️ (lei v9, 13/11) as listas do painel mudaram de arquivo (components/estoque/listas-do-painel.tsx, pra serem renderizadas em teste): o painel é lido com elas — mesmo texto, dois arquivos
+const ler = (p: string) => readFileSync(join(RAIZ, p), 'utf8') + (p === HOME ? '\n' + readFileSync(join(RAIZ, 'components/estoque/listas-do-painel.tsx'), 'utf8') : '')
 const semComentario = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '')
 
@@ -130,12 +131,13 @@ describe('⭐⭐ 2. LOGO COLORIDO POR RECEITA — 38px, raio 11, estável', () =
    * porque a página da ORDEM pede *"o quadradinho 48px, mesma família/ícone da lista"*. A régua
    * é a mesma; o guard ficou MAIS FORTE, porque passou a exigir **um dono só**.
    */
-  it('⭐ o logo da lista é 38/11 com o ícone proporcional', () => {
-    const logo = semComentario(ler(LOGO))
-    expect(logo, '38px e raio 11 na lista').toMatch(/h-\[38px\] w-\[38px\] rounded-\[11px\]/)
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⭐ o logo é 38/11 no componente único (a lista v9 não usa logo: nome 700 + apoio)', () => {
+    const logo = semComentario(readFileSync(join(RAIZ, LOGO), 'utf8'))
+    expect(logo, '38px e raio 11').toMatch(/h-\[38px\] w-\[38px\] rounded-\[11px\]/)
     expect(logo, 'e o ícone acompanha').toMatch(/h-\[18px\] w-\[18px\]/)
     expect(logo, 'e o 48 do cabeçalho da ordem').toMatch(/h-12 w-12 rounded-\[14px\]/)
-    expect(lista(), 'a lista pede o tamanho grande').toMatch(/tamanho=\{38\}/)
+    expect(lista(), 'a lei v9 tirou o logo da linha').not.toMatch(/<IconeDaFicha|<LogoDaReceita/)
   })
 
   /**
@@ -157,7 +159,8 @@ describe('⭐⭐ 2. LOGO COLORIDO POR RECEITA — 38px, raio 11, estável', () =
     }
     varrer('app'); varrer('components')
     expect(ofensores, `2ª tradução de ícone em: ${ofensores.join(', ')}`).toEqual([])
-    expect(tela(), 'a home consome o dono único').toMatch(/import \{ LogoDaReceita \}/)
+    // ⚠️ REAPONTADO pela lei v9: a home deixou de desenhar logo (nome 700 + apoio) — a régua do dono único segue nas outras telas
+    expect(tela(), 'a home não traduz ícone por conta própria').not.toMatch(/Record<IconeDaReceita|cara-da-receita/)
   })
 
   /**
@@ -188,21 +191,21 @@ describe('⭐⭐ 2. LOGO COLORIDO POR RECEITA — 38px, raio 11, estável', () =
   })
 
   /** ⭐ e o pontinho do fiscal mora no CANTO do logo (sinal colado no que ele acusa) */
-  it('⭐⭐ o alerta do fiscal é slot do logo', () => {
-    expect(lista(), 'a lista passa o alerta').toMatch(/alerta=\{c\.fiscalImpossivel \?/)
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⭐⭐ o alerta do fiscal segue na linha, colado no nome (v9 tirou o logo)', () => {
+    expect(lista(), 'a lista desenha o sinal do fiscal').toMatch(/\{c\.fiscalImpossivel && <span className="pp-fiscal"/)
     const logo = semComentario(ler(LOGO))
-    expect(logo).toMatch(/\{alerta && \(/)
-    expect(logo, 'no canto, nos 3 tamanhos').toMatch(/-right-\[3px\] -top-\[3px\]/)
+    expect(logo, 'e o slot do logo continua vivo pra página da ordem').toMatch(/\{alerta && \(/)
   })
 })
 
 // ─────────────── 3. quem fez ───────────────
 
 describe('⭐ 3. QUEM FEZ — mini-avatar na sublinha, e o "?" morreu', () => {
-  it('⭐ a sublinha tem o avatar de 18px + o nome', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⭐ a sublinha tem quem fez · hora (sem avatar na v9) e não inventa pessoa', () => {
     const l = lista()
-    expect(l, 'o mini-avatar na sublinha').toMatch(/<AvatarPessoa nome=\{c\.colaboradorNome\} apenasAvatar tamanho=\{18\} \/>/)
-    expect(l, 'o nome ao lado').toMatch(/\{c\.colaboradorNome \?\? <i>sem responsável<\/i>\}/)
+    expect(l).toMatch(/<span className="pp-sub2">\{c\.colaboradorNome \?\? 'sem responsável'\} · \{hhmm\(c\.criadoEm\)\}/)
   })
 
   /**
@@ -269,17 +272,19 @@ describe('⭐⭐ 4. A PÍLULA COM SOBRENOME — "% do pedido"', () => {
 
   /** ⭐ e o ⚠ aparece só no extremo, que é o que a lib chama de `alarme` */
   it('⭐ o ⚠ vem do `alarme` da lib, não de uma comparação na tela', () => {
-    expect(lista()).toMatch(/\{pil\.alarme && <AlertTriangle/)
+    expect(lista()).toMatch(/\{pil\.alarme && '⚠ '\}/)
   })
 })
 
 // ─────────────── 5. linhas mais fortes ───────────────
 
 describe('⭐⭐ 5. LINHAS MAIS FORTES — moldura, divisória e zebrado', () => {
-  it('⭐ moldura de 1px na lista e divisória no tom forte', () => {
-    const l = lista()
-    expect(l, 'a moldura').toMatch(/border: '1px solid var\(--prod-line\)'/)
-    expect(l, 'a divisória sobe pro line-strong').toMatch(/borderTop: '1px solid var\(--prod-line-strong\)'/)
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⭐ (v9) moldura no painel e divisória fina entre as linhas, cabecinha com filete forte', () => {
+    const t = tela()
+    expect(t, 'a moldura do painel').toMatch(/\.pp-painel\{background:var\(--card\);border:1px solid var\(--linha\)/)
+    expect(t, 'a divisória da linha').toMatch(/\.pp-row\{[^}]*border-bottom:1px solid var\(--linha-fina\)/)
+    expect(t, 'a cabecinha com filete de 2px').toMatch(/\.pp-head\{[^}]*border-bottom:2px solid var\(--linha\)/)
   })
 
   /**
@@ -287,13 +292,11 @@ describe('⭐⭐ 5. LINHAS MAIS FORTES — moldura, divisória e zebrado', () =>
    * gosto: **estilo inline ganha de classe**, então o `hover:` deixaria de pintar justamente
    * nas linhas alternadas. Metade da lista pararia de responder ao mouse, sem nada quebrar.
    */
-  it('⛔⛔ zebrado por CLASSE e hover num tom ACIMA dele', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⛔⛔ o hover é por CLASSE (CSS), nunca fundo inline na linha', () => {
     const l = lista()
-    expect(l, 'o zebrado alterna por classe').toMatch(/i % 2 === 1 \? 'bg-\[var\(--prod-surface-1\)\]' : ''/)
-    expect(l, 'e o hover sobe pro surface-2 (senão a linha zebrada não responde)').toMatch(
-      /hover:bg-\[var\(--prod-surface-2\)\]/,
-    )
-    const linha = l.slice(l.indexOf('<a key={c.id}'), l.indexOf('<IconeDaFicha'))
+    expect(tela()).toMatch(/a\.pp-row:hover\{background:var\(--prod-surface-1\)\}/)
+    const linha = l.slice(l.indexOf('<a key={c.id}'), l.indexOf('</a>'))
     expect(/style=\{\{[^}]*background/.test(linha), 'fundo inline na linha mataria o hover').toBe(false)
   })
 })
@@ -307,17 +310,21 @@ describe('⭐⭐ REGRA 12 — uma composição, dois viewports', () => {
    * ⚠️ Dois blocos de linha (um por viewport) seriam duas composições a manter — e a segunda é
    * a que alguém esquece de ajustar, que é a doença que a REGRA 12 existe pra impedir.
    */
-  it('⛔⛔ a linha tem UMA composição, com flex-wrap', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⛔⛔ a linha tem UMA composição (a grade d4 da lei)', () => {
     const l = lista()
     const linha = l.slice(l.indexOf('<a key={c.id}'), l.indexOf('</a>'))
-    expect(linha, 'empilha por flex-wrap').toMatch(/flex flex-wrap items-center/)
-    expect((linha.match(/<IconeDaFicha/g) ?? []).length, 'um logo por linha, não um por viewport').toBe(1)
+    expect(linha, 'a grade da lei').toMatch(/className="pp-row d4"/)
     expect((linha.match(/\{pil && \(/g) ?? []).length, 'uma pílula por linha').toBe(1)
     expect(/sm:hidden|hidden sm:/.test(linha), 'bloco por viewport = duas composições').toBe(false)
   })
 
   /** ⭐ e o 2º andar do celular alinha os números abaixo do logo (38px + gap) */
-  it('⭐ o par e a pílula descem alinhados no celular', () => {
-    expect(lista()).toMatch(/pl-\[50px\] text-right lg:ml-0 lg:pl-0/)
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⭐ no celular a grade vira 2ª linha com rótulo (S18) — custo e fez/ped. nunca somem', () => {
+    const t = tela()
+    expect(t).toMatch(/\.pp-row\.d4\{grid-template-columns:1fr 1fr;row-gap:6px\}/)
+    expect(t).toMatch(/\.pp-head\.c4,\.pp-head\.d4\{display:none\}/)
+    for (const r of ['custo', 'fez / ped.', 'conferência']) expect(lista()).toContain(`data-r="${r}"`)
   })
 })

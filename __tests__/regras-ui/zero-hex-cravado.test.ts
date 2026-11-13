@@ -100,7 +100,6 @@ const DIVIDA_DE_HEX = new Set<string>([
   'app/(dashboard)/empresas/[id]/estoque/perdas/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/posicao/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/producao/conclusoes/[conclusaoId]/etiqueta/page.tsx',
-  'app/(dashboard)/empresas/[id]/estoque/producao/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/producao/pessoas/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/producao/relatorios/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/radar/page.tsx',
@@ -252,8 +251,8 @@ describe('⭐⭐⭐ a catraca do hex cravado', () => {
   it('⭐ a dívida de 14/10 tem o tamanho que foi medido', () => {
     expect(
       DIVIDA_DE_HEX.size,
-      'medida em 113 (14/10) → 112 (sininho) → 109 (produção, 15/10) → 107 (componentes da contagem)',
-    ).toBe(107)
+      'medida em 113 (14/10) → 112 (sininho) → 109 (produção, 15/10) → 107 (componentes da contagem) → 106 (painel de produção, lei v9, 13/11)',
+    ).toBe(106)
     expect(TELAS.length, 'o universo varrido').toBeGreaterThan(400)
   })
 })

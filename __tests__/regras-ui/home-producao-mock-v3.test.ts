@@ -19,7 +19,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const raiz = process.cwd()
-const ler = (rel: string) => readFileSync(join(raiz, rel), 'utf8')
+// ⚠️ (lei v9, 13/11) as listas do painel mudaram de arquivo (components/estoque/listas-do-painel.tsx, pra serem renderizadas em teste): o painel é lido com elas — mesmo texto, dois arquivos
+const ler = (rel: string) => readFileSync(join(raiz, rel), 'utf8') + (rel === TELA ? '\n' + readFileSync(join(raiz, 'components/estoque/listas-do-painel.tsx'), 'utf8') : '')
 const semComentario = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^[ \t]*\/\/.*$/gm, '')
 
@@ -32,12 +33,12 @@ describe('⭐⭐ o topo: título, linha editorial e UM primário', () => {
     expect(semComentario(ler(TELA))).toContain('data-tela="producao-home"')
   })
 
-  it('⭐⭐ a linha editorial é SERIFADA e em itálico, pelo CSS do escopo', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⛔⛔ (v9 M7.b) a linha editorial MORREU — só o título, nada escrito solto embaixo', () => {
     const tela = semComentario(ler(TELA))
-    expect(tela, 'a linha usa a classe .editorial').toMatch(/className="editorial/)
-    const css = ler(CSS)
-    const bloco = css.slice(css.indexOf("[data-tela='producao-home'] .editorial"))
-    expect(bloco.slice(0, 220), 'serif + itálico no CSS, não inline').toMatch(/ui-serif[\s\S]*font-style: italic/)
+    expect(tela, 'a linha serifada voltou').not.toMatch(/className="editorial/)
+    expect(tela, 'o texto solto voltou').not.toMatch(/a cozinha já produziu|a cozinha ainda não fechou lote/)
+    expect(tela).toMatch(/<div className="pp-topo"><h1 className="pp-h1">Produção<\/h1><\/div>/)
   })
 
   /**
@@ -63,66 +64,34 @@ describe('⭐⭐ o topo: título, linha editorial e UM primário', () => {
    * der `px-2 py-1` e um rótulo ao pontinho, ele vira um botão coral competindo com o
    * "Nova ordem" — e aí o teste morde.
    */
-  it('⭐⭐ cor forte preenchida aparece em DOIS lugares, e os dois são primários', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⭐⭐ cor forte preenchida só nos CONTROLES de ação, e por token (fundo + tinta)', () => {
     const tela = semComentario(ler(TELA))
-    const todos = [...tela.matchAll(/background: 'var\(--fam-[a-z]+-mid\)'/g)]
-    const acao = [...tela.matchAll(/background: 'var\(--prod-acao-bg\)'/g)]
-
-    /**
-     * ⭐ o SINAL do fiscal: círculo pequeno, sem texto, com nome pra leitor de tela.
-     * ⚠️ REAPONTADO em 05/10 — ele **mudou de casa** (fim da linha → canto do logo) e o guard
-     * seguiu a casa nova. A régua não mudou: sinal é sinal, e sinal não vira controle.
-     */
-    /**
-     * ⚠️ REAPONTADO em 05/10: o logo (e o pontinho dentro dele) **mudaram de casa** pro
-     * componente único. A régua desta tela não mudou — o que ela conta é cor forte preenchida
-     * **na TELA**, e o sinal agora nem mora aqui.
-     */
-    const logo = semComentario(ler('components/estoque/logo-da-receita.tsx'))
-    const sinal = logo.slice(logo.indexOf('{alerta && ('))
-    const tagDoSinal = sinal.slice(0, sinal.indexOf('/>') + 2)
-    expect(tagDoSinal, 'o pontinho é um círculo no canto').toMatch(/rounded-full/)
-    expect(tagDoSinal, 'sinal sem nome é enfeite').toMatch(/aria-label=/)
-    expect(/px-\d|py-\d|text-\[/.test(tagDoSinal), 'pontinho com padding/texto é um botão disfarçado').toBe(false)
-    const familia = todos
-
-    expect(
-      familia.length + acao.length,
-      'cor forte preenchida fora dos primários = dois primários competindo',
-    ).toBe(2)
-    /**
-     * ⭐⭐ E A PÍLULA "% do pedido" (05/10) usa o degrau **`-bg`** (fundo suave + tinta `-ink`),
-     * nunca o `-mid` preenchido — é isso que a mantém **fora da disputa de primário** mesmo
-     * sendo colorida em toda linha da lista.
-     */
-    const pilula = tela.slice(tela.indexOf('{pil && ('), tela.indexOf('{pil && (') + 600)
-    expect(pilula, 'a pílula pinta com o fundo suave da família').toMatch(/fam\(TOM_DO_PEDIDO\[pil\.tom\]\)\.bg/)
-    expect(pilula, 'e a tinta é o `ink` da MESMA família (nunca preto em fundo colorido)').toMatch(/\.ink/)
-    expect(/-mid\)'/.test(pilula), 'pílula preenchida de cor forte competiria com o "Nova ordem"').toBe(false)
-    // ⭐ a ação principal é UMA, e ela usa o par de tokens (fundo + tinta)
-    expect(acao.length, 'o "Nova ordem" é o primário da TELA').toBe(1)
-    expect(tela, 'e a TINTA dele também é token — senão o escuro fica ilegível').toMatch(
-      /color: 'var\(--prod-acao-ink\)'/,
-    )
-    // o outro é o primário do painel transiente, e ele é índigo (nunca outra família)
-    for (const u of familia) expect(u[0]).toContain('--fam-indigo-mid')
+    // ⛔ nada de `--fam-*-mid` como fundo inline na tela (era o "primário competindo")
+    expect([...tela.matchAll(/background: 'var\(--fam-[a-z]+-mid\)'/g)].length).toBe(0)
+    // ⭐ o botão de criar ordem é o índigo da ação, com a TINTA em token (senão o escuro fica ilegível)
+    expect(tela).toMatch(/\.pp \.bt\{[^}]*background:var\(--indigo\);color:var\(--indigo-on\)/)
+    expect(tela).toMatch(/--indigo:var\(--prod-acao-bg\);--indigo-on:var\(--prod-acao-ink\)/)
+    // ⭐ e as pílulas pintam com o fundo SUAVE + tinta `-ink` da mesma família (nunca `-mid` preenchido)
+    for (const f of ['verde', 'ambar', 'coral']) {
+      expect(tela).toMatch(new RegExp(`\\.pp-pill\\.${f}\\{background:var\\(--fam-${f}-bg\\);color:var\\(--fam-${f}-ink\\)\\}`))
+    }
+    expect(tela, 'a pílula do pedido usa a classe da família, pela régua da lib').toMatch(/className=\{`pp-pill \$\{TOM_DO_PEDIDO\[pil\.tom\]\}`\}/)
   })
 
   /**
    * ⛔ Os 6 chips são IGUAIS. Acender um diria que o dono está DENTRO daquela sub-tela —
    * e ele está na principal.
    */
-  it('⭐⭐ os 6 chips de navegação, nenhum com estado aceso', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⭐⭐ os chips da lei v9 (5 telas + Equipe/CSV tracejados), nenhum aceso', () => {
     const tela = semComentario(ler(TELA))
-    const chips = [...tela.matchAll(/<ChipNav href=/g)]
-    expect(chips.length, 'os 6 atalhos do mock').toBe(6)
-
-    /** ⚠️ a fatia terminava em `function PilulaEf`, que o dono APOSENTOU em 04/10 — com
-     *  `indexOf` devolvendo −1 o slice passou a varrer a tela inteira e mordeu o `ativo` do
-     *  `CardMetrica` (que é filtro legítimo). Reapontado pro vizinho que existe. */
-    const comp = tela.slice(tela.indexOf('function ChipNav'), tela.indexOf('function dataPorExtenso'))
-    expect(comp, 'o ChipNav não pode ter prop de ativo/aceso').not.toMatch(/\bativo\b|\baceso\b|\batual\b/)
-    expect(comp, 'nem estilo condicional (um ternário de cor é um chip aceso disfarçado)').not.toMatch(/\?.*background|background.*\?/)
+    const chips = [...tela.matchAll(/<a className="pp-chip" href=[^>]+>([^<]+)<\/a>/g)].map((m) => m[1])
+    expect(chips).toEqual(['Hoje ao vivo', 'Por dia', 'Receitas', 'Por pessoa', 'Relatórios'])
+    expect(tela).toMatch(/<a className="pp-chip mut" href="\/equipe\?filtro=cozinha">Equipe<\/a>/)
+    const csv = tela.slice(tela.lastIndexOf('<button', tela.indexOf('>CSV</button>')), tela.indexOf('>CSV</button>'))
+    expect(csv, 'o CSV é ferramenta: chip tracejado').toMatch(/className="pp-chip mut"/)
+    expect(tela, 'nenhum chip aceso: quem diz onde estou é o título').not.toMatch(/pp-chip on|pp-chip\$\{/)
   })
 })
 
@@ -138,24 +107,16 @@ describe('⛔⛔ a linha ATRASADA fala CORAL — e o banner bege morreu', () => 
     expect(tela, 'e ele continua sendo o botão que filtra').toMatch(/onClick=\{onFiltrarOntem\}/)
   })
 
-  it('⛔ a linha atrasada NÃO ganha fundo — só o fio, o ícone e o selo', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⛔ a linha atrasada NÃO ganha fundo — só o filete coral e o selo', () => {
     const tela = semComentario(ler(TELA))
     const lista = tela.slice(tela.indexOf('function ListaAbertas'), tela.indexOf('function ListaConcluidas'))
-    // o filete coral existe…
-    expect(lista).toMatch(/borderLeft: `3px solid \$\{t\.mid\}`/)
-    expect(lista, 'o relógio coral no quadradinho').toMatch(/familia: 'coral', Icone: Clock/)
+    expect(lista, 'a ordem de ontem ganha o estado "at"').toMatch(/const estado = atrasada \? 'at'/)
+    expect(lista).toMatch(/className=\{`pp-row e3 \$\{estado\}`\}/)
+    expect(tela, 'o filete é coral').toMatch(/\.pp-row\.e3\.at::before\{background:var\(--fam-coral-mid\)\}/)
     expect(lista, 'e o selo "atrasada"').toMatch(/>atrasada</)
-    /**
-     * …e NENHUM background na LINHA.
-     * ⚠️ **A 1ª versão deste teste estava errada, não a tela:** a fatia ia até o `</a>` e
-     * engolia a PÍLULA "atrasada" — que tem fundo coral-50 **por pedido do dono**. O que é
-     * proibido é a linha INTEIRA pintada (o fundo bege), e isso mora na tag de ABERTURA do
-     * `<a>`. *Guard largo demais reprova o certo e ensina a afrouxar.*
-     */
-    const abre = lista.slice(lista.indexOf('<a key={o.id}'))
-    const tagDeAbertura = abre.slice(0, abre.indexOf('}}>') + 3)
-    expect(/background:/.test(tagDeAbertura), 'fundo na linha inteira foi proibido pelo dono').toBe(false)
-    expect(tagDeAbertura, 'o que a linha pinta é só o filete').toMatch(/borderLeft/)
+    const regraDaLinha = tela.match(/\.pp-row\{[^}]*\}/)![0]
+    expect(/background/.test(regraDaLinha), 'fundo na linha inteira foi proibido pelo dono').toBe(false)
   })
 
   /**
@@ -183,10 +144,11 @@ describe('⭐ as listas: avatar, par tipográfico e pílula', () => {
     expect(tela).toMatch(/pedidoOrigem === 'DECLARADO' \? 'pedidas' : 'esperadas'/)
   })
 
-  it('⭐⭐ o avatar é o MESMO componente da tela "Por dia"', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⛔ (v9) a linha não tem avatar — e sem responsável não inventa pessoa', () => {
     const tela = semComentario(ler(TELA))
-    expect(tela).toMatch(/import \{ AvatarPessoa \} from '@\/components\/estoque\/avatar-pessoa'/)
-    expect(tela, 'e ele desenha só o círculo — o nome está na sublinha').toMatch(/<AvatarPessoa [^>]*apenasAvatar/)
+    expect(tela, 'a lei v9 tira o avatar da linha (nome 700 + apoio)').not.toMatch(/<AvatarPessoa/)
+    expect(tela).toMatch(/\{c\.colaboradorNome \?\? 'sem responsável'\}/)
   })
 
   /**
@@ -204,17 +166,16 @@ describe('⭐ as listas: avatar, par tipográfico e pílula', () => {
    * números COM AS PALAVRAS, e o percentual vive onde tem a coluna do pedido ao lado (a tela
    * "Por dia") e no bloco de eficiência da ordem.
    */
-  it('⛔⛔ a tela NÃO divide nada — e a pílula SAIU da lista', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⛔⛔ a tela NÃO divide nada — o % vem da lib, a régua é a cabecinha', () => {
     const tela = semComentario(ler(TELA))
     const lista = tela.slice(tela.indexOf('function ListaConcluidas'))
-    expect(lista, 'a pílula de % voltou pra lista e o par volta a parecer fez÷pedido').not.toMatch(/PilulaEf/)
+    expect(lista, 'a pílula da FICHA (P8) não volta').not.toMatch(/PilulaEf/)
     expect(
       /qtdGerada\s*\/|\/\s*pf\?\.pedido|\/\s*pedido\b/.test(lista),
       'nenhuma divisão: percentual nenhum nasce aqui',
     ).toBe(false)
-    // ⭐ o que ficou: os DOIS números com as PALAVRAS escritas (nunca dois números soltos)
-    expect(lista, 'a palavra "pedido" ao lado do número').toMatch(/>pedido </)
-    expect(lista, 'a palavra "fez" ao lado do número').toMatch(/>fez </)
+    expect(lista, 'a régua que diz qual número é qual').toMatch(/FEZ \/ PED\./)
   })
 
   /**

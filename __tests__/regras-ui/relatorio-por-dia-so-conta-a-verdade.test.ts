@@ -131,18 +131,13 @@ describe('⭐⭐ e a maçaneta existe (a família que esta casa pagou 11 vezes)'
    * confere o `ChipNav`, e isso vale pros SEIS de uma vez. *Ação escondida sem afordância não
    * existe, principalmente no celular, onde hover não existe* (30/08).
    */
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
   it('⭐ a Produção leva pro relatório, com afordância visível (não hover-only)', () => {
-    const tela = semComentario(ler(TELA_DA_PRODUCAO))
-    // o atalho existe e aponta pro relatório
-    expect(tela, 'nada aponta pro relatório por dia').toMatch(/<ChipNav href=\{`\/empresas\/\$\{id\}\/estoque\/producao\/por-dia`\}/)
-
-    // e o componente que ele usa desenha um <a> com contorno VISÍVEL (não hover-only)
-    const chip = tela.slice(tela.indexOf('function ChipNav'))
-    expect(chip, 'o ChipNav tem que renderizar um <a> de verdade').toMatch(/<a\s/)
-    expect(
-      /rounded-full|boxShadow: 'inset/.test(chip.slice(0, chip.indexOf('</a>'))),
-      'o chip precisa de contorno/fundo — no celular não existe hover',
-    ).toBe(true)
+    const tela = ler(TELA_DA_PRODUCAO)
+    const limpa = semComentario(tela)
+    expect(limpa, 'nada aponta pro relatório por dia').toMatch(/<a className="pp-chip" href=\{`\/empresas\/\$\{id\}\/estoque\/producao\/por-dia`\}>Por dia<\/a>/)
+    // e o chip tem contorno VISÍVEL no CSS da tela (no celular não existe hover)
+    expect(tela, 'o chip precisa de contorno — no celular não existe hover').toMatch(/\.pp-chip\{[^}]*border:1px solid var\(--linha\)/)
   })
 
   /**

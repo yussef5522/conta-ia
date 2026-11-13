@@ -15,12 +15,11 @@
  * ⚠️ E o fetch só sai **depois** de as permissões carregarem: disparar antes queimaria um 403
  * por carregamento de página no tablet — a cicatriz do badge que levava 1.391 403/dia (28/09).
  *
- * ⭐ REGRA 12 — **uma composição, dois viewports**: a linha quebra com `flex-wrap` e os botões
- * têm **42px** (dedo). **O gerente confere do CELULAR, com o login dele.**
+ * ⭐ REGRA 12 — **uma composição, dois viewports**: a grade da lei v9 (LOTE · FEZ/PED. ·
+ * VEREDITO) vira 2ª linha com rótulo no celular (CSS do painel, `data-r`). **O gerente confere
+ * do CELULAR, com o login dele.** As classes `pp-*` vêm do CSS da página do painel.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Clock, Pencil, ShieldCheck } from 'lucide-react'
-import { LogoDaReceita } from './logo-da-receita'
 import { PainelDeConferencia } from './painel-de-conferencia'
 import { confirmarNaRota } from './gesto-de-conferencia'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
@@ -79,6 +78,8 @@ export function ConferenciaDoDia({ id, podeGerenciar, carregandoPerm, onMudou }:
   const [carimbando, setCarimbando] = useState<string | null>(null)
   const [feito, setFeito] = useState<string | null>(null)
   const [recusa, setRecusa] = useState<string | null>(null)
+  /** ⭐ (lei v9) o ⓘ da seção — a prosa mora nele */
+  const [info, setInfo] = useState(false)
 
   const carregar = useCallback(async () => {
     const r = await fetchComTimeout<Fila>(`/api/empresas/${id}/estoque/producao/conferencia`)
@@ -137,8 +138,7 @@ export function ConferenciaDoDia({ id, podeGerenciar, carregandoPerm, onMudou }:
   if (carregandoPerm || !podeGerenciar) return null
   if (erro) {
     return (
-      <section className="mb-4 rounded-xl p-3 text-[12.5px]"
-        style={{ background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
+      <section className="pp-painel pp-aviso">
         Não consegui carregar a conferência do dia — {erro}{' '}
         <button type="button" onClick={() => void carregar()} className="underline">tentar de novo</button>
       </section>
@@ -149,143 +149,78 @@ export function ConferenciaDoDia({ id, podeGerenciar, carregandoPerm, onMudou }:
 
   return (
     /** ⭐ a ÂNCORA do aviso do sininho (item 2d): `#conferencia-do-dia` cai aqui. */
-    <section id="conferencia-do-dia" className="mb-5 scroll-mt-20">
-      <div className="mb-1 flex items-center gap-2">
-        <ShieldCheck className="h-4 w-4" style={{ color: 'var(--fam-indigo-mid)' }} />
-        <h2 className="text-[13px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-primary)' }}>
-          Conferência do dia
-        </h2>
-        <span className="rounded-full px-2 py-0.5 text-[11.5px] font-bold tabular-nums"
-          style={{
-            background: fila.atrasados > 0 ? 'var(--fam-coral-bg)' : 'var(--fam-indigo-bg)',
-            color: fila.atrasados > 0 ? 'var(--fam-coral-ink)' : 'var(--fam-indigo-ink)',
-          }}>
-          {fila.aguardando} aguardando
-        </span>
-        {/* ⚠️ o atraso vai NOMEADO, nunca só como cor — cor sozinha não diz o degrau */}
-        {fila.atrasados > 0 && (
-          <span className="text-[11.5px]" style={{ color: 'var(--fam-coral-ink)' }}>
-            {fila.atrasados} parada{fila.atrasados > 1 ? 's' : ''} há mais de 3h
-          </span>
-        )}
-      </div>
+    <section id="conferencia-do-dia" className="pp-painel scroll-mt-20">
       {/**
-        * ⭐⭐ A LINHA DA ASSINATURA — **UMA, no cabeçalho** (ordem do dono: *"nunca por cartão"*).
-        * ⚠️ Ela era repetida em cada cartão; numa rajada de 10 lotes isso é a frase que se
-        * aprende a não ler. Aqui ela é a regra da seção, dita uma vez.
+        * ⭐⭐ (lei v9 M7.b) A PROSA SAIU DA TELA — "assina no teu nome · quem fez não confere a
+        * própria" mora no ⓘ, junto da regra dos dois botões e de que TAREFA não entra aqui.
         */}
-      <p className="mb-2 text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-        assina no teu nome · quem fez não confere a própria
-      </p>
-      {feito && (
-        <p className="mb-2 rounded-lg px-3 py-2 text-[12.5px]"
-          style={{ background: 'var(--fam-verde-bg)', color: 'var(--fam-verde-ink)' }}>{feito}</p>
-      )}
-      {recusa && (
-        <p className="mb-2 rounded-lg px-3 py-2 text-[12.5px]"
-          style={{ background: 'var(--fam-coral-bg)', color: 'var(--fam-coral-ink)' }}>{recusa}</p>
-      )}
+      <h3>
+        Conferência do dia <span className="pp-pill coral">{fila.aguardando} aguardando</span>
+        {/* ⚠️ o atraso vai NOMEADO, nunca só como cor — cor sozinha não diz o degrau */}
+        {fila.atrasados > 0 && <> <span className="pp-pill ambar">{fila.atrasados} parada{fila.atrasados > 1 ? 's' : ''} há mais de 3h</span></>}
+        <button type="button" className="pp-i" aria-label="como funciona a conferência" aria-expanded={info}
+          onClick={() => setInfo((v) => !v)}>i</button>
+        {info && <span className="pp-pop" data-testid="conferencia-info">assina no teu nome · quem fez não confere a própria · ✓ confere com um toque · ✎ corrige pedindo o número certo e o motivo · tarefa não entra aqui: não tem número a conferir</span>}
+      </h3>
+      {feito && <span className="pp-pill verde pp-msg">{feito}</span>}
+      {recusa && <span className="pp-pill coral pp-msg">{recusa}</span>}
 
-      <div className="flex flex-col gap-1.5">
-        {fila.cartoes.map((c) => {
-          const suspeita = c.fiscalOk === false
-          const abertoAqui = editando === c.conclusaoId
-          /**
-           * ⭐ o DENOMINADOR que a tela mostra: com retalho é o esperado (`~`), senão é o
-           * pedido. ⚠️ Os dois saem do SERVIDOR já formatados (`fmtPedido`) — um `Math.round`
-           * aqui seria o 5º arredondamento do pedido nesta casa.
-           */
-          const refTxt = c.esperadoTxt ?? c.pedidoTxt
-          const comRetalho = c.esperadoTxt != null
-          return (
-            <div key={c.conclusaoId}
-              className="rounded-xl transition-opacity duration-150"
-              style={{
-                background: 'var(--prod-surface)',
-                boxShadow: 'var(--prod-sombra)',
-                /** ⭐ a borda coral de 3px da suspeita (ordem do dono) */
-                borderLeft: suspeita ? '3px solid var(--fam-coral-mid)' : '3px solid transparent',
-                opacity: saindo === c.conclusaoId ? 0 : 1,
-              }}>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
-                <LogoDaReceita nome={c.produto} tamanho={34} />
-                {/* ── nome + quem · há Xh ── */}
-                <div className="min-w-[150px] flex-1">
-                  <p className="text-[13.5px] font-semibold leading-tight" style={{ color: 'var(--prod-primary)' }}>
-                    {c.produto}
-                  </p>
-                  <p className="flex items-center gap-1 text-[11.5px]"
-                    style={{ color: c.atrasado ? 'var(--fam-coral-ink)' : 'var(--prod-muted)' }}>
-                    {/* ⚠️ sem PIN a tela NÃO inventa pessoa (a lição de 04/10) — fala do lote */}
-                    {c.declaradoPor ?? 'sem PIN'}
-                    <Clock className="h-3 w-3" />
-                    {haQuantoTempo(c.minutosEsperando)}
-                  </p>
-                </div>
-
-                {/* ── O NÚMERO GRANDE: declarou / pedido ── */}
-                <p className="tabular-nums leading-none" style={{ color: 'var(--prod-primary)' }}>
-                  <span className="text-[22px] font-bold">{c.declaradoTxt}</span>
-                  {refTxt && (
-                    <span className="text-[13px] font-medium" style={{ color: 'var(--prod-muted)' }}>
-                      {' / '}{comRetalho ? '~' : ''}{refTxt}{comRetalho ? '' : ' ped.'}
-                    </span>
-                  )}
-                </p>
-
-                {/* ── O VEREDITO CURTO, COM NÚMERO ── */}
-                <p className="rounded-lg px-2 py-1 text-[12px] font-semibold tabular-nums"
-                  style={{
-                    background: suspeita ? 'var(--fam-coral-bg)' : c.fiscalOk === true ? 'var(--fam-verde-bg)' : 'var(--prod-surface-1)',
-                    color: suspeita ? 'var(--fam-coral-ink)' : c.fiscalOk === true ? 'var(--fam-verde-ink)' : 'var(--prod-muted)',
-                  }}>
-                  {/* ⚠️ "não deu pra medir" NUNCA vira acusação — a régua do próprio fiscal */}
-                  {c.fiscalResumo == null ? 'sem material' : suspeita ? `⚠ ${c.fiscalResumo}` : `✓ ${c.fiscalResumo}`}
-                </p>
-
-                {/* ── OS DOIS BOTÕES DE DEDO (42px) ── */}
-                <div className="ml-auto flex gap-1.5">
-                  <button type="button" aria-label={`conferir ${c.produto}`}
-                    disabled={carimbando === c.conclusaoId}
-                    onClick={() => void carimbar(c)}
-                    className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-lg disabled:opacity-40"
-                    style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
-                    <Check className="h-5 w-5" />
-                  </button>
-                  <button type="button" aria-label={`corrigir ${c.produto}`}
-                    onClick={() => setEditando(abertoAqui ? null : c.conclusaoId)}
-                    className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-lg border"
-                    style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}>
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/**
-                * ⭐⭐ CORRIGIR INLINE — o ✏️ expande **o próprio cartão**, com o MESMO painel
-                * (versão nova, rastro, delta com preview). *Só a roupa muda* (`compacto`).
-                */}
-              {abertoAqui && (
-                <div className="px-3 pb-2">
-                  <PainelDeConferencia
-                    id={id}
-                    alvo={{
-                      conclusaoId: c.conclusaoId,
-                      produto: c.produto,
-                      unidade: c.unidade,
-                      declarado: c.declarado,
-                      declaradoTxt: c.declaradoTxt,
-                    }}
-                    compacto
-                    onFeito={(frase) => removerDaFila(c.conclusaoId, frase)}
-                    onFechar={() => setEditando(null)}
-                  />
-                </div>
-              )}
+      <div className="pp-head c4"><span>LOTE</span><span className="r">FEZ / PED.</span><span className="r">VEREDITO</span><span /></div>
+      {fila.cartoes.map((c) => {
+        const suspeita = c.fiscalOk === false
+        const abertoAqui = editando === c.conclusaoId
+        /**
+         * ⭐ o DENOMINADOR que a tela mostra: com retalho é o esperado (`~`), senão é o
+         * pedido. ⚠️ Os dois saem do SERVIDOR já formatados (`fmtPedido`) — um `Math.round`
+         * aqui seria o 5º arredondamento do pedido nesta casa.
+         */
+        const refTxt = c.esperadoTxt ?? c.pedidoTxt
+        const comRetalho = c.esperadoTxt != null
+        return (
+          <div key={c.conclusaoId} className="pp-bloco" style={{ opacity: saindo === c.conclusaoId ? 0 : 1, transition: 'opacity 150ms' }}>
+            <div className="pp-row c4">
+              <span className="pp-nm">{c.produto}
+                {/* ⚠️ sem PIN a tela NÃO inventa pessoa (a lição de 04/10) — fala do lote */}
+                <span className={`pp-sub2${c.atrasado ? ' at' : ''}`}>{c.declaradoPor ?? 'sem PIN'} · {haQuantoTempo(c.minutosEsperando)}</span>
+              </span>
+              <span className="pp-num" data-r="fez / ped.">{c.declaradoTxt}{refTxt && <i> / {comRetalho ? '~' : ''}{refTxt}</i>}</span>
+              {/* ⚠️ "não deu pra medir" NUNCA vira acusação — a régua do próprio fiscal */}
+              <span className="pp-vered" data-r="veredito">
+                {c.fiscalResumo == null
+                  ? <span className="pp-pill mut2">sem material</span>
+                  : <span className={`pp-pill ${suspeita ? 'ambar' : 'verde'}`}>{suspeita ? `⚠ ${c.fiscalResumo}` : `✓ ${c.fiscalResumo}`}</span>}
+              </span>
+              <span className="pp-acoes">
+                <button type="button" className="pp-ok" aria-label={`conferir ${c.produto}`}
+                  disabled={carimbando === c.conclusaoId} onClick={() => void carimbar(c)}>✓</button>
+                <button type="button" className="pp-ed" aria-label={`corrigir ${c.produto}`}
+                  onClick={() => setEditando(abertoAqui ? null : c.conclusaoId)}>✎</button>
+              </span>
             </div>
-          )
-        })}
-      </div>
+            {/**
+              * ⭐⭐ CORRIGIR INLINE — o ✎ expande **a própria linha**, com o MESMO painel
+              * (versão nova, rastro, delta com preview). *Só a roupa muda* (`compacto`).
+              */}
+            {abertoAqui && (
+              <div className="pb-2">
+                <PainelDeConferencia
+                  id={id}
+                  alvo={{
+                    conclusaoId: c.conclusaoId,
+                    produto: c.produto,
+                    unidade: c.unidade,
+                    declarado: c.declarado,
+                    declaradoTxt: c.declaradoTxt,
+                  }}
+                  compacto
+                  onFeito={(frase) => removerDaFila(c.conclusaoId, frase)}
+                  onFechar={() => setEditando(null)}
+                />
+              </div>
+            )}
+          </div>
+        )
+      })}
     </section>
   )
 }

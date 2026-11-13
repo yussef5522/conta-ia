@@ -19,7 +19,8 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 
 const RAIZ = process.cwd()
-const ler = (p: string) => readFileSync(join(RAIZ, p), 'utf8')
+// ⚠️ (lei v9, 13/11) as listas do painel mudaram de arquivo (components/estoque/listas-do-painel.tsx, pra serem renderizadas em teste): o painel é lido com elas — mesmo texto, dois arquivos
+const ler = (p: string) => readFileSync(join(RAIZ, p), 'utf8') + (p === HOME ? '\n' + readFileSync(join(RAIZ, 'components/estoque/listas-do-painel.tsx'), 'utf8') : '')
 const semComentario = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '')
 
@@ -93,10 +94,13 @@ describe('⛔⛔ 2. "pedido N · fez M" — as PALAVRAS sempre visíveis', () =>
     return h.slice(h.indexOf('function ListaConcluidas'))
   }
 
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
   it('⭐⭐ as duas palavras aparecem na linha da concluída', () => {
-    const l = lista()
-    expect(l, 'a palavra "pedido" ao lado do número').toMatch(/>pedido </)
-    expect(l, 'a palavra "fez" ao lado do número').toMatch(/>fez </)
+    // v9: a régua é a CABECINHA da grade ("FEZ / PED.") — e no celular cada número leva o rótulo (data-r)
+    const l = semComentario(lista())
+    expect(l, 'a cabecinha diz qual é qual').toMatch(/<span className="r">FEZ \/ PED\.<\/span>/)
+    expect(l, 'e no celular o número carrega o rótulo').toMatch(/data-r="fez \/ ped\."/)
+    expect(ler(HOME), 'o CSS desenha o rótulo no celular').toMatch(/\[data-r\]::before\{content:attr\(data-r\)/)
   })
 
   /**
@@ -114,13 +118,11 @@ describe('⛔⛔ 2. "pedido N · fez M" — as PALAVRAS sempre visíveis', () =>
    * (*"o pedido é condicional, o fez é sempre"*); o que mudou é que a decisão de **como o
    * pedido aparece** saiu do JSX e ganhou dono na lib.
    */
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
   it('⭐ o "pedido" é condicional; o "fez" é sempre', () => {
-    const l = lista()
-    const bloco = l.slice(l.indexOf('{pedidoTxt && ('), l.indexOf('{pil &&'))
-    expect(bloco, 'o "pedido" vive dentro do gate de existência').toMatch(/\{pedidoTxt && \([\s\S]*?>pedido </)
-    // ⭐ e o "fez" está FORA do gate
-    const depoisDoGate = bloco.slice(bloco.lastIndexOf('</>'))
-    expect(depoisDoGate).toMatch(/>fez </)
+    const l = semComentario(lista())
+    const cel = l.slice(l.indexOf('data-r="fez / ped."'), l.indexOf('{pil &&'))
+    expect(cel, 'o "fez" é sempre, e o pedido vive dentro do gate de existência').toMatch(/\{fmtQtd\(c\.qtdGerada\)\}\{pedidoTxt && <i> \/ \{pedidoTxt\}<\/i>\}/)
     /** ⛔⛔ e o número do pedido vem da LIB, nunca de um `Math.round` na tela */
     expect(l, 'o arredondamento tem dono').toMatch(/fmtPedido\(pf\?\.pedido, un\)/)
     expect(/Math\.round\(pf\?\.pedido|Math\.round\(pedido/.test(l), 'round na tela é a 2ª régua').toBe(false)
@@ -213,35 +215,15 @@ describe('⛔⛔ 3. o fiscal no lugar certo — ordem · sininho · pontinho', (
    * que ele acusa, e o guard agora exige também o **anel da superfície** (sem ele, coral sobre
    * o fundo rosa do logo vira mancha e o sinal que existe pra ser visto some).
    */
-  it('⛔⛔ (c) o pontinho do fiscal mora no CANTO DO LOGO — e sem número', () => {
-    const h = ler(HOME)
-    const l = h.slice(h.indexOf('function ListaConcluidas'))
-    expect(l, 'a lista passa o alerta pro logo').toMatch(/alerta=\{c\.fiscalImpossivel \?/)
-    expect(/c\.fiscalImpossivel && \(/.test(semComentario(l)), 'o pontinho solto no fim da linha saiu').toBe(false)
-
-    /** ⚠️ REAPONTADO em 05/10: o logo (e o pontinho) viraram componente ÚNICO, porque a página
-     *  da ordem pede o mesmo quadradinho. A régua é a mesma; o dono do desenho mudou de casa. */
-    const logo = ler('components/estoque/logo-da-receita.tsx')
-    const ponto = logo.slice(logo.indexOf('{alerta && ('))
-    expect(ponto, 'é um círculo').toMatch(/rounded-full/)
-    expect(ponto, 'posicionado em cima do logo').toMatch(/absolute rounded-full \$\{m\.ponto\}/)
-    /**
-     * ⭐ e o canto vem da MEDIDA — **TODO degrau** põe o ponto no canto.
-     *
-     * ⚠️⚠️ **REAPONTADO em 09/10: ele CONTAVA `.toBe(3)` e quebrou COM A TELA CERTA** quando o
-     * degrau de 34px entrou (o cartão-placar da conferência). ***Guard que conta cresce junto
-     * com a tela e cobra por cada degrau novo: ele mede o TAMANHO, não a doença.*** A doença é
-     * um degrau SEM o canto — e é isso que ele afirma agora, derivando a contagem das próprias
-     * chaves do mapa.
-     */
-    const medida = logo.slice(logo.indexOf('const MEDIDA'), logo.indexOf('} as const'))
-    const degraus = (medida.match(/^\s*\d+: \{/gm) ?? []).length
-    expect(degraus, 'o mapa de medidas foi achado').toBeGreaterThan(0)
-    expect((medida.match(/-right-\[3px\] -top-\[3px\]/g) ?? []).length, 'em TODO degrau de tamanho').toBe(degraus)
-    expect(ponto, 'coral — a cor do alarme da casa').toMatch(/var\(--fam-coral-mid\)/)
-    expect(ponto, 'com anel da superfície pra não virar mancha sobre o logo colorido').toMatch(/boxShadow: '0 0 0 2px var\(--prod-surface\)'/)
-    expect(ponto, 'e com nome pra leitor de tela').toMatch(/aria-label=/)
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⛔⛔ (c) o pontinho do fiscal mora COLADO NO NOME do lote — e sem número', () => {
+    // v9: a linha não tem logo (lei M7.a); o sinal continua colado no que acusa, com nome e sem número
+    const l = semComentario(ler(HOME).slice(ler(HOME).indexOf('function ListaConcluidas')))
+    const ponto = l.slice(l.indexOf('{c.fiscalImpossivel && <span'), l.indexOf("{nomePorOrdem.get(c.ordemId) ?? '—'}"))
+    expect(ponto, 'o sinal existe e vem antes do nome').toMatch(/className="pp-fiscal"/)
+    expect(ponto, 'com nome pra leitor de tela').toMatch(/aria-label="o declarado não cabe no material separado/)
     expect(ponto, 'o pontinho não imprime número nenhum').not.toMatch(/\{Math\.round|fmtQtd|%/)
+    expect(ler(HOME), 'é um círculo coral, a cor do alarme').toMatch(/\.pp-fiscal\{[^}]*border-radius:50%;background:var\(--fam-coral-mid\)/)
   })
 
   /**

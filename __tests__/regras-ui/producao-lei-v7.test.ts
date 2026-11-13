@@ -22,8 +22,9 @@ const TAREFAS = semComentario(ler('components/estoque/tarefas-do-dia.tsx'))
 const FINALIZAR = semComentario(ler('app/api/empresas/[id]/estoque/producao/minhas-tarefas/finalizar/route.ts'))
 
 describe('a lei mora no repo', () => {
-  it('o arquivo é a v7 APROVADA', () => {
-    expect(LEI).toContain('<title>Produção — referência v7 APROVADA</title>')
+  // ⚠️ REAPONTADO em 13/11: a v9 SUBSTITUI a v7 no repo (contém G1–G12 + M1–M7); as regras v7 abaixo seguem valendo
+  it('o arquivo é a v9 APROVADA (que contém a v7)', () => {
+    expect(LEI).toContain('<title>Produção — referência v9 APROVADA</title>')
   })
 })
 
@@ -52,9 +53,10 @@ describe('M1/M2 · o cartão da cozinha (tokens e textos 1:1 com a lei)', () => 
     expect(LEI).toContain('<span class="selo-tarefa">TAREFA</span>')
     expect(LEI).toContain('placeholder="o que fazer? ex.: ABRIR LATAS DE MILHO"')
   })
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
   it('o escritório tem o cartão "Nova tarefa" com os textos da lei', () => {
-    expect(PAINEL).toContain('<TarefasDoDia id={id}')
-    for (const t of ['Nova tarefa', 'placeholder="o que fazer? ex.: ABRIR LATAS DE MILHO"', 'placeholder="instrução, ex.: 3 LATAS"', '<option value="">quem faz?</option>', 'liberada pra equipe', "'CRIAR TAREFA'"]) {
+    expect(PAINEL).toContain('<NovaTarefa id={id}')
+    for (const t of ['Nova tarefa', 'placeholder="o que fazer? ex.: ABRIR LATAS DE MILHO"', 'placeholder="instrução, ex.: 3 LATAS"', '<option value="">quem faz?</option>', 'liberada pra equipe', "'Criar tarefa'"]) {
       expect(TAREFAS).toContain(t)
     }
   })
@@ -68,8 +70,8 @@ describe('M5 · a vassoura do dossiê', () => {
     expect(ORDEM).not.toMatch(/escalaReceitas\}× a receita/)
   })
   it('"Concluídas" segue o filtro', () => {
-    expect(PAINEL).toContain('rotulo={rotuloDasConcluidas(periodo, custom)}')
-    expect(PAINEL).not.toContain('rotulo="Concluídas hoje"')
+    expect(PAINEL).toContain('<span className="r">{rotuloDasConcluidas(periodo, custom)}</span>')
+    expect(PAINEL).not.toMatch(/>concluídas hoje<|rotulo="Concluídas hoje"/)
   })
   it('links mortos consertados: fila do Radar e "cadastrar equipe"', () => {
     expect(MESA).not.toContain('/estoque/producao/conferencia`')

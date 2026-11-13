@@ -28,18 +28,21 @@ const ORDEM = 'app/(dashboard)/empresas/[id]/estoque/producao/[ordemId]/page.tsx
 // ───────────────── 1. o cartão de uma linha ─────────────────
 
 describe('⭐⭐ O CARTÃO VIRA PLACAR', () => {
-  it('⭐ logo de 34px, nome, e a sublinha "quem · há Xh"', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⭐ (v9) nome 700 na coluna LOTE, e a sublinha "quem · há Xh"', () => {
     const s = ler(CARTAO)
-    expect(s, 'o logo do mapa único, em 34').toMatch(/LogoDaReceita nome=\{c\.produto\} tamanho=\{34\}/)
+    expect(s, 'a grade da lei: LOTE · FEZ / PED. · VEREDITO').toMatch(/<div className="pp-head c4"><span>LOTE<\/span><span className="r">FEZ \/ PED\.<\/span><span className="r">VEREDITO<\/span>/)
+    expect(s).toMatch(/<span className="pp-nm">\{c\.produto\}/)
     expect(s, 'quem declarou (sem inventar pessoa)').toMatch(/c\.declaradoPor \?\? 'sem PIN'/)
     expect(s, 'o "há Xh"').toMatch(/haQuantoTempo\(c\.minutosEsperando\)/)
   })
 
-  it('⭐⭐ O NÚMERO GRANDE tabular: declarou / pedido', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⭐⭐ o número tabular à direita: declarou / pedido', () => {
     const s = ler(CARTAO)
-    expect(s, 'o declarado em 22px bold').toMatch(/text-\[22px\] font-bold">\{c\.declaradoTxt\}/)
-    expect(s, 'tabular — número de dinheiro/contagem não dança').toMatch(/tabular-nums leading-none/)
+    expect(s, 'o declarado na coluna FEZ / PED.').toMatch(/<span className="pp-num" data-r="fez \/ ped\.">\{c\.declaradoTxt\}\{refTxt && <i> \/ /)
     expect(s, 'o denominador ao lado').toMatch(/refTxt/)
+    expect(ler(HOME), 'tabular e à direita (CSS da lei)').toMatch(/\.pp-num\{font-weight:800;font-size:14px;text-align:right;font-variant-numeric:tabular-nums/)
   })
 
   /**
@@ -63,7 +66,7 @@ describe('⭐⭐ O CARTÃO VIRA PLACAR', () => {
     const s = ler(CARTAO)
     expect(s, 'o resumo desenhado com o sinal').toMatch(/⚠ \$\{c\.fiscalResumo\}|✓ \$\{c\.fiscalResumo\}/)
     /** ⚠️ "não deu pra medir" NUNCA vira acusação — a régua do próprio fiscal */
-    expect(s).toMatch(/c\.fiscalResumo == null \? 'sem material'/)
+    expect(s).toMatch(/c\.fiscalResumo == null\s*\? <span className="pp-pill mut2">sem material<\/span>/)
   })
 
   /** ⭐ e a conta COMPLETA continua viva na página da ordem — nada se perdeu de casa */
@@ -76,12 +79,13 @@ describe('⭐⭐ O CARTÃO VIRA PLACAR', () => {
 
 describe('⛔⛔ OS BOTÕES SÃO DE DEDO — 42px', () => {
   /** ⛔⛔ **REGRA 11 DO DONO: botão <42px = vermelho.** */
-  it('⛔ ✓ e ✏️ têm 42px e nome pra leitor de tela', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⛔ ✓ e ✎ são os botões da lei (38px) e têm nome pra leitor de tela', () => {
     const s = ler(CARTAO)
-    const confirmar = s.slice(s.indexOf('aria-label={`conferir'))
-    expect(confirmar, 'o ✓ encolheu').toMatch(/h-\[42px\] w-\[42px\]/)
-    const corrigir = s.slice(s.indexOf('aria-label={`corrigir'))
-    expect(corrigir, 'o ✏️ encolheu').toMatch(/h-\[42px\] w-\[42px\]/)
+    expect(s.slice(s.indexOf('aria-label={`conferir') - 60), 'o ✓').toMatch(/className="pp-ok"/)
+    expect(s.slice(s.indexOf('aria-label={`corrigir') - 60), 'o ✎').toMatch(/className="pp-ed"/)
+    expect(ler(HOME)).toMatch(/\.pp-ok\{width:38px;height:38px/)
+    expect(ler(HOME)).toMatch(/\.pp-ed\{width:38px;height:38px/)
     expect((s.match(/aria-label=\{`(conferir|corrigir) /g) ?? []).length, 'os dois com aria-label').toBe(2)
   })
 
@@ -119,8 +123,9 @@ describe('⭐⭐ SUSPEITAS PRIMEIRO, DEPOIS AS MAIS ANTIGAS', () => {
     expect(usosDe(ler(FILA_LIB), 'ordenarCartoes'), 'a fila parou de ordenar').toBeGreaterThan(0)
   })
 
-  it('⭐ a borda coral de 3px marca a suspeita', () => {
-    expect(ler(CARTAO)).toMatch(/suspeita \? '3px solid var\(--fam-coral-mid\)'/)
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⭐ (v9) a suspeita é o selo ⚠ âmbar ("⚠ dava ~N"); a confere é ✓ verde', () => {
+    expect(ler(CARTAO)).toMatch(/className=\{`pp-pill \$\{suspeita \? 'ambar' : 'verde'\}`\}/)
   })
 })
 
@@ -140,7 +145,7 @@ describe('⭐⭐ MODO RAJADA', () => {
 
   it('⭐ a transição curta existe (o próximo sobe)', () => {
     const s = ler(CARTAO)
-    expect(s).toMatch(/transition-opacity duration-150/)
+    expect(s).toMatch(/transition: 'opacity 150ms'/)
     expect(s).toMatch(/opacity: saindo === c\.conclusaoId \? 0 : 1/)
   })
 
@@ -204,9 +209,11 @@ describe('⭐ 2 TEMAS e UMA COMPOSIÇÃO', () => {
     expect(ler(CARTAO)).not.toMatch(/var\(--[a-z-]+\)\]\/\d/)
   })
 
-  it('⛔ uma composição só — a linha quebra com flex-wrap', () => {
+  /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
+  it('⛔ uma composição só — a grade vira 2ª linha com rótulo no celular (CSS)', () => {
     const s = ler(CARTAO)
-    expect(s, 'a linha do cartão quebra sozinha').toMatch(/flex flex-wrap items-center gap-x-3/)
+    expect(s, 'a linha é a grade c4 da lei').toMatch(/<div className="pp-row c4">/)
+    expect(ler(HOME), 'no celular a grade quebra, nunca um bloco só-celular').toMatch(/@media\(max-width:640px\)\{[\s\S]*\.pp-row\.c4\{grid-template-columns:1fr auto auto/)
     expect(s, 'bloco só-celular na fila').not.toMatch(/sm:hidden|hidden sm:/)
   })
 })

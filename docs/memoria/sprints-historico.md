@@ -6373,3 +6373,22 @@ Lei: `docs/producao-referencia.html` (v7 APROVADA; G1–G12 intocáveis, M1–M6
   links do Radar/cadastrar equipe, controles de designar/plano/gestos por permissão.
 - Testes: `tarefa-tipo-proprio.integration.test.ts` (18) + `__tests__/regras-ui/producao-lei-v7.test.ts` (10);
   12 replantios mordem.
+
+## ⭐⭐ PRODUÇÃO — A LEI v9 VIRA TELA: O PAINEL DO ESCRITÓRIO (13/11/2026)
+
+Só tela, zero banco (sem migration). Lei: `docs/producao-referencia.html` agora é a **v9 APROVADA**
+(substitui a v7; contém G1–G12 + M1–M7).
+- **Ordem da tela = a da amostra** (guard lê a lei): título → chips → 4 KPIs → filtros → ZONA DE CRIAR
+  (Nova ordem | Nova tarefa, fixos, empilham <760px) → Conferência do dia → Em aberto → Concluídas.
+- **Morreram:** o subtítulo serifado, o "+ Nova ordem" do topo (um caminho só de criar), a seção
+  Sugestão de produção (a tela de Receitas tem o "produzir"), o chip Cardápio (está no menu lateral),
+  logo/avatar nas linhas (nome 700 + apoio). ⚠️ O texto do item M7.g da lei ainda fala em "cartão OCULTO
+  que abre pelo botão" — a amostra e o pedido do dono dizem FIXO; segui a amostra.
+- **M7.e:** tarefa tem linha própria (`lib/stock/producao/linha-da-tarefa.ts`, o tipo NÃO tem campo de
+  custo/pedido/%): Em aberto "para {quem} · ninguém iniciou ainda" + instrução + cancelar; Concluídas
+  "quem · hora" + DURAÇÃO medida (`minutosDaEtapa`). `tarefasDoEscritorio` ganhou o período `de/ate`
+  (a mesma régua das Concluídas) e devolve `finalizadoEm`/`minutos`.
+- Listas do painel em `components/estoque/listas-do-painel.tsx` (page do Next não exporta nomeado) pra
+  serem RENDERIZADAS em teste (`painel-v9-tarefa-na-lista.test.tsx`). Guards antigos (mock v3, lista v4,
+  placar da conferência) reapontados à v9 com o motivo escrito; catraca de hex 107 → 106.
+- Testes: `producao-painel-lei-v9.test.ts` (16) + render (9) + integração (+2); 13 replantios mordem.

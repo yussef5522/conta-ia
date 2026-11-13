@@ -1,642 +1,267 @@
 'use client'
 
-// ESTOQUE FASE 2 item 2.1 — home da PRODUÇÃO: lista de ordens (por estado) + nova ordem
-// (escolhe a ficha + escala do lote base + data + setor). A conclusão ("quantos saíram?")
-// é 2.2. Sem sugestão por min/max ainda (2.4).
+// ⭐⭐⭐ PAINEL DE PRODUÇÃO DO ESCRITÓRIO — lei v9 M7 (docs/producao-referencia.html, "Produção —
+// referência v9 APROVADA", 13/11/2026). Ordem EXATA da tela: título → chips → 4 KPIs → filtros
+// → ZONA DE CRIAR (Nova ordem | Nova tarefa) → Conferência do dia → Em aberto → Concluídas.
+//
+// ⛔ MESMOS gestos e endpoints de antes — zero função nova. O que mudou é a cara:
+//  · o subtítulo serifado MORREU (M7.b, dono 13/11: "texto largado sem motivo");
+//  · o "+ Nova ordem" do topo MORREU: criar é pela zona de criar, UM caminho só (M7.g);
+//  · a Sugestão de produção SAIU do painel (M7.f) — o chip "Receitas" leva à tela própria;
+//  · TAREFA tem linha própria (M7.e): selo + nome + instrução + quem + duração — NUNCA R$/un,
+//    % do pedido, "UN pedidas" nem Conferência (`lib/stock/producao/linha-da-tarefa.ts`).
+// ⭐ A tela usa a ÁREA ÚTIL do app (sem teto de largura herdado do mock) e a grade vira 2ª linha
+// com rótulo no celular (S18). O CSS é o da lei, com os hex trocados pelos tokens `--prod-*`.
 
 import { useEffect, useState, use } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-// ⚠️ "×" SAIU DA TELA (01/09, decisão do dono): *"a pessoa fala em porções e em kg, nunca
-// em '×'"*. O `escalaReceitas` continua no banco e no motor — só não aparece mais.
-import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
-import { TotalsBar } from '@/components/ui/totals-bar'
-import { SortableTh, useSort } from '@/components/ui/sortable-th'
+import { Loader2 } from 'lucide-react'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
-import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio, BarChart3, CalendarDays, Beef, Wheat, Scissors, ChefHat, Flame, Gauge, Clock, Milk, Pizza, Drumstick, Ham, Slice, Droplet, Egg, Carrot, AlertTriangle } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
-import { formatarDuracao } from '@/lib/format/duracao'
-import { AvatarPessoa } from '@/components/estoque/avatar-pessoa'
-import { LogoDaReceita } from '@/components/estoque/logo-da-receita'
-import { SeloDaConferencia } from '@/components/estoque/selo-da-conferencia'
 import { ConferenciaDoDia } from '@/components/estoque/conferencia-do-dia'
 import { usePermissoes } from '@/lib/hooks/use-permissoes'
-import { TarefasDoDia } from '@/components/estoque/tarefas-do-dia'
+import { NovaTarefa } from '@/components/estoque/tarefas-do-dia'
 import { rotuloDasConcluidas } from '@/lib/stock/producao/rotulos-do-painel'
+import { tarefasDoPainel, type LinhaDaTarefa } from '@/lib/stock/producao/linha-da-tarefa'
+import { ListaAbertas, ListaConcluidas, type Aberta, type Contexto, type PedidoFeito, type Conclusao } from '@/components/estoque/listas-do-painel'
+import type { TarefaDoEscritorio } from '@/lib/stock/producao/tarefa'
 /**
  * ⭐⭐ O PEDIDO NA TELA e a pílula "% do pedido" têm DONO ÚNICO (05/10) — a tela não arredonda
  * nem divide por conta própria. Quatro telas mostram pedido; quatro `Math.round` divergiriam.
  */
-import { fmtPedido, pilulaDoPedido } from '@/lib/stock/producao/pedido-na-tela'
+import { fmtPedido } from '@/lib/stock/producao/pedido-na-tela'
 import type { OrigemDoPedido } from '@/lib/stock/producao/pedido-da-ordem'
-import type { Quantidade } from '@/lib/stock/producao/desempenho'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null }
-interface Sugestao { fichaId: string; itemProduzidoId: string; nome: string; unidade: string; saldo: number; estoqueMin: number; estoqueMax: number | null; faltam: number; escalaSugerida: number | null; rendimentoMedio: number | null }
-interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string; loteBase: number; unidadeLoteBase: string; rendimentoMedio: number | null; rendimentoLotes: number; tipoProduto: string; componentes?: { itemId: string; nome: string; unidade: string; qtdPlanejada: number; custoMedio: number | null }[] }
+interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string; loteBase: number; unidadeLoteBase: string; rendimentoMedio: number | null; rendimentoLotes: number; tipoProduto: string }
 interface Setor { id: string; nome: string; ativo: boolean }
 interface Painel { emAberto: number; valorEmProducao: number; concluidasNoPeriodo: number; valorProduzidoNoPeriodo: number; rendimentoPeriodo: number | null; lotesNaMedia: number; faixaRendimento: string; abertasDeOntem: number }
-type Aberta = Ordem & { deOntem?: boolean }
-/** ⭐ o que a rota passou a mandar pro mock v3 (quem/começou/pedido) */
-/**
- * ⚠️⚠️ A ORIGEM **DERIVA DO TIPO DA LIB** (`OrigemDoPedido`), não de uma união escrita à mão.
- *
- * Esta linha tinha `'DECLARADO' | 'DERIVADO'` digitado, e ao nascer o `AGUARDANDO` (11/10) o
- * `tsc` acusou *"esta comparação não tem sobreposição"* — ou seja, **a tela não conseguia nem
- * mencionar o estado novo**. É a dívida registrada em 01/09 (*"interface escrita à mão sobre
- * payload é promessa, não prova"*) cobrando: foi assim que o `bankAccount.name` derrubou a
- * carteira com `tsc` verde. Derivando, valor novo no servidor aparece aqui de graça.
- */
-interface Contexto { pedido: number | null; pedidoOrigem: OrigemDoPedido | null; quem: string[]; comecouEm: string | null }
-interface PedidoFeito { pedido: number | null; origem: 'DECLARADO' | 'DERIVADO' | null }
-interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string; pct: number | null; faixa: string; motivo: string | null; selo: 'FICHA' | 'SEM_DADO'
-  /**
-   * ⭐⭐ O FISCAL: `true` quando o declarado NÃO cabe no material separado (>120% físico).
-   * ⚠️ Vem do SERVIDOR calculado — a tela não divide nada. Se ela derivasse, seria a 2ª régua
-   * do fiscal, e ela discordaria do sininho e da página da ordem no 1º ajuste de teto.
-   */
-  fiscalImpossivel: boolean
-  /**
-   * ⭐ O SELO DA CONFERÊNCIA (item 2c) — vem do SERVIDOR, derivado da tabela de carimbo.
-   * ⚠️ `null` nunca acontece na prática (o leitor devolve AGUARDANDO pra quem não tem linha),
-   * mas o tipo o admite pra a tela não quebrar se a rota ficar atrás num deploy.
-   */
-  conferencia: { estado: 'AGUARDANDO_CONFERENCIA' | 'CONFERIDA' | 'CORRIGIDA_E_CONFERIDA'
-    conferidoPorNome: string | null; corrigiuDe: number | null; motivoDaCorrecao: string | null } | null }
-
-// ⭐ PALETA APROVADA NO MOCKUP (01/09/2026). Cor SÓ com significado — status, desvio,
-// dinheiro parado. Texto sobre fundo colorido usa o tom escuro da MESMA família, nunca
-// preto puro. Flat: sem sombra, sem gradiente, pesos 400/500.
-const C = {
-  fundo: '#F5F4EF', card: '#FFFFFF', borda: 'rgba(0,0,0,0.08)',
-  primario: '#534AB7', primarioTexto: '#EEEDFE',
-  ambarBg: '#FAEEDA', ambarTx: '#633806', ambarAc: '#854F0B',
-  verdeBg: '#EAF3DE', verdeTx: '#27500A', verdeAc: '#3B6D11',
-  azulBg: '#E6F1FB', azulTx: '#0C447C',
-  coralBg: '#FAECE7', coralTx: '#993C1D',
-  cinzaBg: '#F1EFE8', cinzaTx: '#5F5E5A',
-  vermelhoBg: '#FCEBEB', vermelhoTx: '#791F1F',
-  txt2: '#5F5E5A', txt3: '#888780',
-  // ⭐ ESCALA TIPOGRÁFICA aprovada em mockup (01/09). REGRA: no máximo DUAS coisas em
-  // peso 500 escuro por linha (o nome e o custo). O resto desce um degrau por vez —
-  // é o que faz a linha ter hierarquia em vez de virar um bloco cinza uniforme.
-  // ⚠️ Mobile usa os MESMOS tamanhos: encolher texto em tela pequena é onde a leitura morre.
-  nomeTx: '#2C2C2A', qtdTx: '#444441', tituloTx: '#444441',
-}
-const T = {
-  nome: 'text-[15px]', custo: 'text-[14px]', qtd: 'text-[14px]',
-  quem: 'text-[13px]', hora: 'text-[13px]', pill: 'text-[12px]',
-  cardNum: 'text-[25px]', cardRot: 'text-[12px]', titulo: 'text-[14px]',
-}
-const PILL: Record<string, { bg: string; tx: string }> = {
-  PLANEJADA: { bg: C.cinzaBg, tx: C.cinzaTx },
-  SEPARADA: { bg: C.azulBg, tx: C.azulTx },
-  EM_PRODUCAO: { bg: C.ambarBg, tx: C.ambarTx },
-  CONCLUIDA: { bg: C.verdeBg, tx: C.verdeTx },
-  CANCELADA: { bg: C.vermelhoBg, tx: C.vermelhoTx },
-}
-/**
- * ⚠️ **O `brl` LOCAL MORREU (09/10, item 4b).** Ele era uma SEGUNDA formatação de dinheiro na
- * MESMA tela que já usava `formatBRL` — a saída era idêntica (mesma config do `Intl`), e é
- * justamente isso que torna duas implementações perigosas: elas concordam até o dia em que
- * alguém ajusta uma. ⭐ `formatBRL` é a porta da casa; o `?? '—'` virou o ternário no chamador,
- * porque **ausência não é R$ 0,00**.
- */
-const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-
-const ESTADO: Record<string, { label: string; cls: string }> = {
-  PLANEJADA: { label: 'Planejada', cls: 'bg-slate-100 text-slate-600' },
-  SEPARADA: { label: 'Separada', cls: 'bg-amber-50 text-amber-700' },
-  EM_PRODUCAO: { label: 'Em produção', cls: 'bg-sky-50 text-sky-700' },
-  CONCLUIDA: { label: 'Concluída', cls: 'bg-emerald-50 text-emerald-700' },
-  CANCELADA: { label: 'Cancelada', cls: 'bg-rose-50 text-rose-600' },
-}
-/**
- * ⭐ o TOM da pílula "% do pedido" → família de token. ⛔ O **vermelho usa `coral`**, que é a
- * cor do alarme desta casa (ordem atrasada, saldo negativo) — e é justamente por isso que
- * nenhuma RECEITA pode ser coral: o alarme precisa do contraste. A régua que decide o tom mora
- * na lib (`pilulaDoPedido`), nunca aqui: número de faixa digitado na tela é a 2ª régua.
- */
-const TOM_DO_PEDIDO: Record<'verde' | 'ambar' | 'vermelho', string> = {
-  verde: 'verde', ambar: 'ambar', vermelho: 'coral',
-}
 
 const PAGINA = 25
-const fmtQtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 const fmtDia = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
-
-
-/**
- * ⭐⭐ A FAMÍLIA DE COR EM 3 DEGRAUS — o pedido do dono: *"fundo tom 50, textos tons 600/800 DA
- * MESMA família, nunca preto em fundo colorido"*. Os tokens vivem no `globals.css` escopados em
- * `[data-tela='producao-home']`, com o espelho escuro invertendo 50↔800.
- */
-const fam = (f: string) => ({
-  bg: `var(--fam-${f}-bg)`,
-  mid: `var(--fam-${f}-mid)`,
-  ink: `var(--fam-${f}-ink)`,
-})
-
-/**
- * ⭐⭐ O LOGO DA RECEITA mudou de casa em 05/10 (`components/estoque/logo-da-receita.tsx`): a
- * página da ORDEM pede *"o quadradinho 48px do mapa v4, **mesma família/ícone da lista**"* —
- * e duas traduções de `nome → (ícone, cor)` divergiriam no 1º grupo novo, fazendo a MESMA
- * receita ter caras diferentes em duas telas. Aqui fica só o apelido local.
- */
-const IconeDaFicha = LogoDaReceita
-
-/**
- * ⭐⭐ O CARTÃO DE MÉTRICA — colorido com disciplina.
- * ⚠️ O número grande é 26px/peso 500/tabular; o rótulo e a sublinha ficam no `mid` da família,
- * nunca em cinza neutro (seria o "preto em fundo colorido" que o dono proibiu).
- */
-function CardMetrica({ familia, Icone, rotulo, valor, sub, barra, ativo, onClick }: {
-  familia: string; Icone: typeof Beef; rotulo: string; valor: string; sub?: string
-  /** 0..1 — a mini-barra no tom da família (só o cartão de rendimento usa) */
-  barra?: number | null
-  ativo?: boolean; onClick?: () => void
-}) {
-  const t = fam(familia)
-  const Tag = onClick ? 'button' : 'div'
-  return (
-    <Tag onClick={onClick}
-      className={`rounded-xl px-3.5 py-3 text-left ${onClick ? 'transition-opacity hover:opacity-95' : ''}`}
-      style={{ background: t.bg, boxShadow: ativo ? `inset 0 0 0 1.5px ${t.mid}` : undefined }}>
-      <div className="flex items-center gap-1.5">
-        <Icone className="h-3.5 w-3.5 shrink-0" style={{ color: t.mid }} />
-        <p className="text-[12px] font-medium" style={{ color: t.mid }}>{rotulo}</p>
-      </div>
-      <p className="num mt-0.5 text-[26px] font-medium leading-tight" style={{ color: t.ink }}>{valor}</p>
-      {sub && <p className="text-[12px]" style={{ color: t.mid }}>{sub}</p>}
-      {barra != null && (
-        /* ⚠️ a barra é VISUAL do mesmo número — nunca uma 2ª conta. Teto em 100% só pra não
-           estourar a caixa; o valor de verdade está escrito acima (ex. 205%). */
-        <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full" style={{ background: t.mid, opacity: 0.18 }}>
-          <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, barra * 100))}%`, background: t.mid, opacity: 1 }} />
-        </div>
-      )}
-    </Tag>
-  )
-}
-
-/**
- * ⭐ A NAVEGAÇÃO — os 6 links como chips IGUAIS.
- *
- * ⛔⛔ **NENHUM aceso, por decisão do dono:** *"esta é a tela principal, não estamos dentro de
- * nenhuma delas; quem diz onde estou é o título"*. Acender um deles aqui diria que o dono está
- * numa sub-tela — e aí o chip mentiria sobre onde ele está.
- */
-function ChipNav({ href, Icone, children }: { href: string; Icone: typeof Beef; children: React.ReactNode }) {
-  return (
-    <a href={href}
-      className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] transition-colors"
-      style={{ boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
-      <Icone className="h-3.5 w-3.5" /> {children}
-    </a>
-  )
-}
-
-/**
- * ⛔⛔ **A PÍLULA DE EFICIÊNCIA FOI APAGADA DAQUI (decisão do dono, 04/10).**
- *
- * *"A pílula de % SAI DA LISTA da home — ela confundia: parecia fez÷pedido e não é."*
- *
- * ⛔ **Apagada, não comentada:** *função sem chamador é função que alguém religa por descuido*
- * (a régua da faxina de 15/09). Enquanto o componente existisse aqui, a próxima volta desta
- * tela o recolocaria na linha "porque já estava pronto".
- *
- * ⭐ **A régua não morreu e nem virou cópia:** quem pinta o degrau é `faixaDoSelo`, e ele
- * continua servindo a tela **"Por dia"** (que é relatório, onde a coluna do pedido está ao
- * lado e o percentual tem régua visível) e o **juiz P8**. O que saiu foi o percentual na tela
- * de TRABALHO, ao lado de dois números que não são o denominador dele.
- */
-
-/** ⭐ a data por extenso da linha editorial — `null` nunca vira data de hoje chutada */
-function dataPorExtenso(iso: string): string {
-  const [a, m, d] = iso.split('-').map(Number)
-  const dt = new Date(Date.UTC(a, m - 1, d))
-  const f = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
-  return f.format(dt)
-}
 
 export default function ProducaoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  /** ⚠️ REGRA 9 — hook NO TOPO, nunca perto de onde é usado: a tela tem early-returns
-   *  (`ordens === undefined` / `null`), e hook depois deles muda a contagem entre renders
-   *  e derruba o cliente com "Rendered more hooks" (mordeu 2×: 21/08 e 25/08). */
+  /** ⚠️ REGRA 9 — hook NO TOPO: a tela tem early-returns, e hook depois deles derruba o cliente. */
   const { pode: podePerm, carregando: carregandoPerm } = usePermissoes(id)
   const [ordens, setOrdens] = useState<Ordem[] | null | undefined>(undefined)
-  const [sugestoes, setSugestoes] = useState<Sugestao[]>([])
   /**
-   * ⭐ 22/09 — `?ficha=` abre a nova ordem COM a ficha escolhida. É a porta que a recusa
-   * do item negativo oferece ("registrar a produção que faltou"); sem ler o parâmetro, o
-   * dono cairia num dropdown pra procurar de novo o que o sistema acabou de nomear — o
-   * defeito do Bamberg (13/09). Lido no 1º render, como o `?aba=`: em `useEffect` a tela
-   * piscaria fechada antes de abrir, e "voltar e não ver nada" parece que não gravou.
+   * ⭐ 22/09 — `?ficha=` chega na Nova ordem COM a ficha escolhida (a porta que a recusa do item
+   * negativo oferece). ⭐ v9: o cartão é FIXO na zona de criar, então ele já está aberto — o
+   * `fichaInicial` só pré-escolhe a receita. Lido no 1º render (sem piscar).
    */
   const fichaDaUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ficha') : null
-  const [novo, setNovo] = useState(!!fichaDaUrl)
-  const [criando, setCriando] = useState<string | null>(null)
   const [painel, setPainel] = useState<Painel | null>(null)
   const [abertas, setAbertas] = useState<Aberta[]>([])
   const [concluidas, setConcluidas] = useState<Conclusao[]>([])
-  /** ⭐ o que a rota passou a mandar pro mock v3 — a tela só DESENHA isso */
   const [contexto, setContexto] = useState<Record<string, Contexto>>({})
   const [pedidoFeito, setPedidoFeito] = useState<Record<string, PedidoFeito>>({})
-  /**
-   * ⭐ O PEDIDO RESOLVIDO de cada ordem da lista (11/10) — vem do SERVIDOR, pelo dono único.
-   * ⛔ Derivar `escala × loteBase` aqui seria a 2ª régua do pedido, e ela diria *"1 lote"* na
-   * ordem recém-criada (escala no default) como se fosse o número que o dono pediu.
-   */
+  /** ⭐ O PEDIDO RESOLVIDO de cada ordem da lista — vem do SERVIDOR, pelo dono único (11/10). */
   const [pedidoDasOrdens, setPedidoDasOrdens] = useState<Record<string, { pedido: number | null; origem: OrigemDoPedido | null }>>({})
-  /**
-   * ⭐⭐ A RECEITA DAS CONCLUÍDAS vem resolvida POR ID (05/10). ⛔ Antes a lista montava nome e
-   * unidade a partir do `ordens`, que é **truncado em 200 encerradas** — e com 30 dias de
-   * período isso deixava 200 das 379 linhas com nome "—", sem logo e sem pílula.
-   */
+  /** ⭐⭐ A RECEITA DAS CONCLUÍDAS vem resolvida POR ID (05/10) — o `ordens` é truncado. */
   const [receitaConcl, setReceitaConcl] = useState<Record<string, { nome: string; unidade: string }>>({})
-  const [hoje, setHoje] = useState<{ dia: string; produzido: Quantidade; lotes: number } | null>(null)
+  /** ⭐ (lei v9 M7.e) as tarefas do escritório: vivas + encerradas no período, pela rota de sempre */
+  const [tarefas, setTarefas] = useState<TarefaDoEscritorio[]>([])
+  const [nomesDeTarefa, setNomesDeTarefa] = useState<string[]>([])
+  const [cancelando, setCancelando] = useState<string | null>(null)
+  const [erroTarefa, setErroTarefa] = useState<string | null>(null)
   const [periodo, setPeriodo] = useState<'hoje' | 'semana' | 'mes'>('hoje')
   const [busca, setBusca] = useState('')
   const [soDeOntem, setSoDeOntem] = useState(false)
-  // ⭐ ITEM 4 — período livre + paginação. São a MESMA feature (decisão do dono): período
-  // grande sem "carregar mais" vira lista infinita, e paginação sem calendário não tem o
-  // que paginar.
+  // ⭐ período livre + paginação são a MESMA feature (decisão do dono)
   const [custom, setCustom] = useState<{ de: string; ate: string } | null>(null)
   const [abrirCal, setAbrirCal] = useState(false)
   const [mostrar, setMostrar] = useState(PAGINA)
 
-  // ⚠️⚠️ O DIA É O DE SÃO PAULO, NUNCA `toISOString()` (que é UTC). Das 21h à meia-noite —
-  // justamente quando a cozinha fecha e lança a produção — o UTC já virou, a tela pedia o dia
-  // SEGUINTE e "hoje" abria VAZIO. Medido em prod às 22:16 de 05/09: 9 lotes do dia, zero na
-  // tela. O mesmo dia vem do MESMO lugar que o servidor usa pra recortar.
+  // ⚠️⚠️ O DIA É O DE SÃO PAULO, NUNCA `toISOString()` (UTC): das 21h à meia-noite "hoje" abria vazio.
   const janela = (p: typeof periodo) => {
     if (custom) return custom
     const hoje = diaEmSaoPaulo()
     const dias = p === 'semana' ? -6 : p === 'mes' ? -29 : 0
     return { de: somarDias(hoje, dias), ate: hoje }
   }
+  const carregarTarefas = () => {
+    const { de, ate } = janela(periodo)
+    return fetch(`/api/empresas/${id}/estoque/producao/tarefas?de=${de}&ate=${ate}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j) { setTarefas(j.tarefas ?? []); setNomesDeTarefa(j.nomes ?? []) } })
+      .catch(() => {})
+  }
   const carregar = () => {
     const { de, ate } = janela(periodo)
+    void carregarTarefas()
     return fetch(`/api/empresas/${id}/estoque/producao/ordens?de=${de}&ate=${ate}`).then((r) => r.json()).then((j) => {
-      setOrdens(j.ordens ?? []); setSugestoes(j.sugestoes ?? [])
+      setOrdens(j.ordens ?? [])
       setPainel(j.painel ?? null); setAbertas(j.abertas ?? []); setConcluidas(j.concluidas ?? [])
-      setContexto(j.contexto ?? {}); setPedidoFeito(j.pedidoDasConcluidas ?? {}); setHoje(j.hoje ?? null)
+      setContexto(j.contexto ?? {}); setPedidoFeito(j.pedidoDasConcluidas ?? {})
       setReceitaConcl(j.receitaDasConcluidas ?? {}); setPedidoDasOrdens(j.pedidoDasOrdens ?? {})
     }).catch(() => setOrdens(null))
   }
   useEffect(() => { setMostrar(PAGINA); carregar() }, [id, periodo, custom]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const produzirSugestao = async (s: Sugestao) => {
-    setCriando(s.fichaId)
+  /** ⭐ o "cancelar" da tarefa — o MESMO gesto e a MESMA rota do cartão antigo, agora na linha aberta */
+  const cancelarTarefa = async (t: LinhaDaTarefa) => {
+    setCancelando(t.tarefaId); setErroTarefa(null)
     try {
-      const hoje = diaEmSaoPaulo()
-      /**
-       * ⭐⭐ A SUGESTÃO MANDA A ESCALA DELA, E ISSO **NÃO É UMA 2ª PERGUNTA** (11/10).
-       *
-       * ⚠️ `escalaReceitas` aqui é um **PLANO** do mín/máx, não um pedido declarado: a ordem
-       * nasce sem `stock_ordem_meta`, então o `pedidoDaOrdem` a devolve **AGUARDANDO** e a
-       * página abre na pergunta do mesmo jeito. ⭐ `origem: 'SUGESTAO'` é o que faz a tela da
-       * pergunta mostrar *"o mín/máx sugeriu ~N"* — **ao lado do campo, nunca dentro dele**
-       * (*"número sugerido vira número confirmado sem ninguém contar"*).
-       */
-      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fichaId: s.fichaId, escalaReceitas: s.escalaSugerida ?? 1, origem: 'SUGESTAO', dataProducao: hoje }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/producao/tarefas/${t.tarefaId}/cancelar`, { method: 'POST' })
       const j = await r.json().catch(() => null)
-      if (r.ok && j?.ordemId) window.location.href = `/empresas/${id}/estoque/producao/${j.ordemId}`
-    } finally { setCriando(null) }
+      if (!r.ok) setErroTarefa(j?.erro ?? 'Não consegui cancelar.')
+      await carregarTarefas()
+    } finally { setCancelando(null) }
   }
 
   if (ordens === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (ordens === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar a produção.</div>
 
+  const termo = busca.trim().toLowerCase()
+  const casa = (nome: string) => !termo || nome.toLowerCase().includes(termo)
+  const tp = tarefasDoPainel(tarefas, new Date())
+  const podeOperar = !carregandoPerm && podePerm('stock.operate')
 
   return (
-    <div data-tela="producao-home" className="space-y-4 -m-4 p-4 lg:-m-6 lg:p-6"
-      style={{ background: 'var(--prod-bg)', minHeight: '100%' }}>
-      {/* ──────────────────────────────────────────────────────────────────────
-          ⭐⭐⭐ 1. O TOPO (mock v3) — título grande + linha EDITORIAL serifada.
-          O dono: *"sábado, 4 de outubro — a cozinha já produziu N unidades hoje"*.
-          ⛔ O número vem do `hoje.produzido.texto` do servidor, somado POR UNIDADE
-          (`somarQuantidades`): porção em UN e massa em KG nunca viram um número só.
-          ⚠️ Enquanto o dado não chegou, a frase NÃO afirma produção nenhuma — dizer
-          "0 unidades" antes de carregar é afirmar um fato que ninguém mediu.
-          ────────────────────────────────────────────────────────────────────── */}
-      <div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 className="text-[24px] font-medium leading-tight" style={{ color: 'var(--prod-primary)' }}>Produção</h1>
-          {/* ⭐ a ÚNICA coisa preenchida de cor forte na tela — é a ação principal */}
-          {/* ⚠️ o TEXTO também é token (04/10): no tema escuro o fundo CLAREIA (#7F77DD) e
-              `text-white` cravado deixaria branco sobre lilás claro — ilegível justamente no
-              único botão forte da tela. */}
-          <button onClick={() => setNovo((v) => !v)}
-            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-[13px] font-medium transition-opacity hover:opacity-90"
-            style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
-            <Plus className="h-4 w-4" /> Nova ordem
-          </button>
-        </div>
-        <p className="editorial mt-1 text-[14px]" style={{ color: 'var(--prod-secondary)' }}>
-          {hoje
-            ? `${dataPorExtenso(hoje.dia)}${hoje.lotes > 0 ? ` — a cozinha já produziu ${hoje.produzido.texto} hoje` : ' — a cozinha ainda não fechou lote hoje'}`
-            : 'lendo o dia…'}
-        </p>
+    <div data-tela="producao-home" className="pp -m-4 p-4 lg:-m-6 lg:p-6">
+      <style>{CSS}</style>
 
-        {/* ⭐ 1b. NAVEGAÇÃO — 6 chips IGUAIS, nenhum aceso (ver `ChipNav`) */}
-        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          <ChipNav href={`/empresas/${id}/estoque/producao/hoje`} Icone={Radio}>Hoje ao vivo</ChipNav>
-          <ChipNav href={`/empresas/${id}/estoque/producao/por-dia`} Icone={CalendarDays}>Por dia</ChipNav>
-          <ChipNav href={`/empresas/${id}/estoque/producao/receitas`} Icone={ClipboardList}>Receitas</ChipNav>
-          <ChipNav href={`/empresas/${id}/estoque/producao/pessoas`} Icone={Users}>Por pessoa</ChipNav>
-          <ChipNav href={`/empresas/${id}/estoque/cardapio`} Icone={UtensilsCrossed}>Cardápio</ChipNav>
-          <ChipNav href={`/empresas/${id}/estoque/producao/relatorios`} Icone={BarChart3}>Relatórios</ChipNav>
-          {/* ⚠️ Equipe e CSV ficam FORA dos 6 do mock: não são telas de produção, são
-              ferramentas. Mantidos discretos pra não perder a maçaneta (a lição das 11 voltas). */}
-          <a href="/equipe?filtro=cozinha" className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px]"
-            style={{ color: 'var(--prod-muted)' }}><UserPlus className="h-3.5 w-3.5" /> Equipe</a>
-          <button onClick={() => baixarCsv(`ordens-producao-${hojeArquivo()}`,
+      {/* ⭐ 1. TOPO — só o título. ⛔ Nada escrito solto embaixo; nenhum botão de criar aqui. */}
+      <div className="pp-topo"><h1 className="pp-h1">Produção</h1></div>
+
+      {/* ⭐ 2. CHIPS — nenhum aceso (quem diz onde estou é o título). Equipe e CSV são ferramentas: tracejados. */}
+      <div className="pp-chips">
+        <a className="pp-chip" href={`/empresas/${id}/estoque/producao/hoje`}>Hoje ao vivo</a>
+        <a className="pp-chip" href={`/empresas/${id}/estoque/producao/por-dia`}>Por dia</a>
+        <a className="pp-chip" href={`/empresas/${id}/estoque/producao/receitas`}>Receitas</a>
+        <a className="pp-chip" href={`/empresas/${id}/estoque/producao/pessoas`}>Por pessoa</a>
+        <a className="pp-chip" href={`/empresas/${id}/estoque/producao/relatorios`}>Relatórios</a>
+        <a className="pp-chip mut" href="/equipe?filtro=cozinha">Equipe</a>
+        <button type="button" className="pp-chip mut" disabled={ordens.length === 0}
+          onClick={() => baixarCsv(`ordens-producao-${hojeArquivo()}`,
             ['Produto', 'Quanto', 'Data', 'Setor', 'Estado'],
-            /**
-              * ⚠️ O CSV LÊ O MESMO PEDIDO RESOLVIDO da tela (11/10) — arquivo com um número e
-              * tela com outro é a divergência que ninguém descobre até alguém somar no Excel.
-              */
+            /** ⚠️ o CSV LÊ O MESMO PEDIDO RESOLVIDO da tela (11/10) */
             ordens.map((o) => {
               const p = pedidoDasOrdens[o.id]
               const t = p?.origem === 'AGUARDANDO' || p?.pedido == null ? null : fmtPedido(p.pedido, o.unidadeProduzido)
               return [o.nomeProduzido, t == null ? 'a definir' : `${t} ${o.unidadeProduzido}`, fmtDia(o.dataProducao), o.setorNome ?? '', o.estado]
-            }))}
-            disabled={ordens.length === 0}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] disabled:opacity-40"
-            style={{ color: 'var(--prod-muted)' }}><Download className="h-3.5 w-3.5" /> CSV</button>
-        </div>
+            }))}>CSV</button>
       </div>
 
-      {/* ──────────────────────────────────────────────────────────────────────
-          ⭐⭐ 2. OS 4 CARTÕES — cada um numa FAMÍLIA de cor, com os 3 degraus.
-          ⛔ Zero conta nova: todo número vem do `painel` que o servidor já montava
-          (`cardsDoPainel`). A tela escolhe a COR, nunca o valor.
-          ────────────────────────────────────────────────────────────────────── */}
+      {/**
+        * ⭐⭐ 3. OS 4 KPIs (M7.c) — rótulo caps, número grande tabular, apoio curto.
+        * ⛔ Zero conta nova: todo número vem do `painel` do servidor. A tela escolhe a COR, nunca o valor.
+        * ⭐ RENDIMENTO: a cor segue a régua do P8 (verde ≥90, âmbar 70-90, coral <70); `null` é "a apurar", sem cor.
+        */}
       {painel && (
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-          <CardMetrica familia="indigo" Icone={Flame} rotulo="Em aberto"
-            valor={String(painel.emAberto)} sub="ordens andando"
-            ativo={!soDeOntem} onClick={() => setSoDeOntem(false)} />
-          <CardMetrica familia="azul" Icone={ChefHat} rotulo="Na bancada"
-            valor={formatBRL(painel.valorEmProducao)}
-            sub={painel.valorEmProducao > 0 ? 'insumo fora da prateleira' : 'nada parado agora'} />
-          <CardMetrica familia="verde" Icone={CheckCircle2} rotulo={rotuloDasConcluidas(periodo, custom)}
-            valor={String(painel.concluidasNoPeriodo)}
-            sub={`${formatBRL(painel.valorProduzidoNoPeriodo)} produzidos`} />
-          {/**
-            * ⭐ RENDIMENTO — *"a cor segue o valor, mesma régua do P8"*: âmbar 70-90, verde ≥90,
-            * vermelho <70. ⛔ `null` é CINZA com "a apurar": pintar de verde o que ninguém
-            * mediu seria afirmar que bateu (a régua do "sem contagem" do Radar).
-            */}
-          <CardMetrica
-            familia={painel.rendimentoPeriodo == null ? 'cinza'
-              : painel.rendimentoPeriodo >= 0.9 ? 'verde'
-                : painel.rendimentoPeriodo >= 0.7 ? 'ambar' : 'coral'}
-            Icone={Gauge} rotulo="Rendimento do dia"
-            valor={painel.rendimentoPeriodo == null ? 'a apurar' : `${Math.round(painel.rendimentoPeriodo * 100)}%`}
-            sub={painel.lotesNaMedia > 0 ? `de ${painel.lotesNaMedia} ${painel.lotesNaMedia === 1 ? 'lote' : 'lotes'}` : 'nada concluído'}
-            barra={painel.rendimentoPeriodo} />
+        <div className="pp-kpis">
+          <div className="pp-kpi"><span className="r">em aberto</span><b>{painel.emAberto}</b><span className="s">ordens andando</span></div>
+          <div className="pp-kpi"><span className="r">na bancada</span><b>{formatBRL(painel.valorEmProducao)}</b>
+            <span className="s">{painel.valorEmProducao > 0 ? 'insumo fora da prateleira' : 'nada parado agora'}</span></div>
+          <div className="pp-kpi"><span className="r">{rotuloDasConcluidas(periodo, custom)}</span><b>{painel.concluidasNoPeriodo}</b>
+            <span className="s">{formatBRL(painel.valorProduzidoNoPeriodo)} produzidos</span></div>
+          <div className="pp-kpi"><span className="r">rendimento do dia</span>
+            <b className={painel.rendimentoPeriodo == null ? 'mudo' : painel.rendimentoPeriodo >= 0.9 ? 'ok' : painel.rendimentoPeriodo >= 0.7 ? 'atencao' : 'ruim'}>
+              {painel.rendimentoPeriodo == null ? 'a apurar' : `${Math.round(painel.rendimentoPeriodo * 100)}%`}</b>
+            <span className="s">{painel.lotesNaMedia > 0 ? `de ${painel.lotesNaMedia} ${painel.lotesNaMedia === 1 ? 'lote' : 'lotes'}` : 'nada concluído'}</span></div>
         </div>
       )}
 
-      {/**
-        * ⛔⛔ **O BLOCO DE AVISOS INLINE MORREU (decisão do dono, 04/10).** Ele ficou ~2 horas na
-        * tela e saiu: *"avisos SÓ no sininho do topo (contador + painel). Home limpa: título →
-        * cartões → listas."*
-        *
-        * ⭐ **A FUNÇÃO NÃO MORREU — ela já tinha casa:** o sininho global mostra os mesmos
-        * avisos, agrupados por setor, com contador e "marcar lido". *Remoção sem realocação é
-        * perda* (a régua de 10/09); aqui a realocação já existia, e o que saiu foi a SEGUNDA
-        * vitrine do mesmo dado no meio da tela de trabalho.
-        *
-        * ⚠️ `components/avisos/bloco-do-setor.tsx` fica GUARDADO com selo de dívida — e o guard
-        * `avisos-so-no-sininho.test.ts` proíbe qualquer tela de voltar a montá-lo **sem o dono
-        * pedir**. Não é lixo: é uma capacidade que espera a palavra dele.
-        */}
-
-      {/**
-        * ⛔⛔ **O BANNER ÂMBAR MORREU (decisão de design do dono, 04/10):** *"NADA de fundo bege
-        * na linha inteira — o fio e o selo bastam"*. A FUNÇÃO não morreu: o alerta virou o
-        * *"N desde ontem"* com ponto coral no cabeçalho da seção «Em aberto», e ele continua
-        * sendo o BOTÃO que filtra. *Remoção sem realocação é perda* (a régua de 10/09).
-        */}
-
-      {/**
-        * ⭐ 4. CHIPS de período + busca — MESMA função, roupa nova. Período governa SÓ as
-        * concluídas (ordem aberta nunca obedece filtro: trabalho aberto não é histórico).
-        *
-        * ⚠️ O chip ativo é `indigo-bg` + `indigo-ink`, **nunca preenchido de cor forte**: o dono
-        * foi explícito que o "Nova ordem" é a ÚNICA coisa preenchida de cor forte na tela. Dois
-        * primários competindo é o que faz a ação principal deixar de ser óbvia.
-        */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {(['hoje', 'semana', 'mes'] as const).map((p) => {
-          const on = !custom && periodo === p
-          return (
-            <button key={p} onClick={() => { setCustom(null); setPeriodo(p) }}
-              className="h-8 rounded-full px-3 text-[12.5px] font-medium"
-              style={on
-                ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)' }
-                : { boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
-              {p === 'hoje' ? 'hoje' : p === 'semana' ? 'semana' : 'mês'}
-            </button>
-          )
-        })}
-        <button onClick={() => setAbrirCal((v) => !v)} className="h-8 rounded-full px-3 text-[12.5px] font-medium"
-          style={custom
-            ? { background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)' }
-            : { boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>
+      {/* ⭐ FILTROS — período governa SÓ as concluídas (trabalho aberto não é histórico) */}
+      <div className="pp-filtros">
+        {(['hoje', 'semana', 'mes'] as const).map((p) => (
+          <button key={p} type="button" className={`pp-f${!custom && periodo === p ? ' on' : ''}`}
+            onClick={() => { setCustom(null); setPeriodo(p) }}>{p === 'mes' ? 'mês' : p}</button>
+        ))}
+        <button type="button" className={`pp-f${custom ? ' on' : ''}`} onClick={() => setAbrirCal((v) => !v)}>
           {custom ? `${fmtDia(custom.de)} – ${fmtDia(custom.ate)}` : 'período…'}
         </button>
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar receita…"
-          className="h-8 w-[200px] rounded-lg px-2.5 text-[12.5px] outline-none"
-          style={{ background: 'var(--prod-surface)', color: 'var(--prod-primary)', boxShadow: 'inset 0 0 0 1px var(--prod-line-strong)' }} />
+        <input className="pp-busca" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar receita…" aria-label="buscar receita" />
       </div>
 
       {abrirCal && (
-        <div className="flex flex-wrap items-end gap-2 rounded-xl p-3"
-          style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
-          <label className="text-[11px]" style={{ color: 'var(--prod-secondary)' }}>de
-            <input type="date" defaultValue={custom?.de ?? janela(periodo).de} id="pdDe"
-              className="num mt-1 block h-8 rounded-lg px-2 text-[12.5px] outline-none"
-              style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }} />
-          </label>
-          <label className="text-[11px]" style={{ color: 'var(--prod-secondary)' }}>até
-            <input type="date" defaultValue={custom?.ate ?? janela(periodo).ate} id="pdAte"
-              className="num mt-1 block h-8 rounded-lg px-2 text-[12.5px] outline-none"
-              style={{ background: 'var(--prod-surface-1)', color: 'var(--prod-primary)' }} />
-          </label>
-          <button onClick={() => {
+        <div className="pp-painel pp-cria">
+          <label className="pp-rot">de<input type="date" defaultValue={custom?.de ?? janela(periodo).de} id="pdDe" /></label>
+          <label className="pp-rot">até<input type="date" defaultValue={custom?.ate ?? janela(periodo).ate} id="pdAte" /></label>
+          <button type="button" className="bt" onClick={() => {
             const de = (document.getElementById('pdDe') as HTMLInputElement)?.value
             const ate = (document.getElementById('pdAte') as HTMLInputElement)?.value
-            // ⚠️ intervalo invertido não vira query: a rota devolveria vazio e pareceria
-            // "não produziu nada", que é a mentira mais fácil de acreditar.
+            // ⚠️ intervalo invertido não vira query: vazio pareceria "não produziu nada"
             if (!de || !ate || de > ate) return
             setCustom({ de, ate }); setAbrirCal(false)
-          }} className="h-8 rounded-lg px-3 text-[12.5px] font-medium text-white"
-            style={{ background: 'var(--fam-indigo-mid)' }}>aplicar</button>
-          {custom && <button onClick={() => { setCustom(null); setAbrirCal(false) }}
-            className="h-8 rounded-lg px-3 text-[12.5px]" style={{ color: 'var(--prod-secondary)' }}>limpar</button>}
+          }}>aplicar</button>
+          {custom && <button type="button" className="pp-f" onClick={() => { setCustom(null); setAbrirCal(false) }}>limpar</button>}
         </div>
       )}
 
-      {novo && <NovaOrdem id={id} fichaInicial={fichaDaUrl} onCriada={(ordemId) => { window.location.href = `/empresas/${id}/estoque/producao/${ordemId}` }} onFechar={() => setNovo(false)} />}
-
       {/**
-        * ⭐ SUGESTÃO DE PRODUÇÃO (min/máx) — **mesma lógica, roupa nova.** Não está no mock, mas
-        * ficaria órfã no fundo novo (ela usava `Card` do shadcn com borda âmbar do Tailwind).
-        * Agora veste a família ÂMBAR por token, e o dark mode acompanha de graça.
+        * ⭐⭐ 4. ZONA DE CRIAR (M7.g) — os DOIS cartões FIXOS lado a lado (empilham no celular).
+        * ⛔ NENHUM outro botão de criar na tela inteira: nada oculto, nada repetido.
         */}
-      {sugestoes.length > 0 && (
-        <section>
-          <h2 className="mb-1.5 flex items-center gap-1.5 text-[13.5px] font-medium" style={{ color: 'var(--fam-ambar-ink)' }}>
-            <TrendingDown className="h-3.5 w-3.5" /> Sugestão de produção ({sugestoes.length})
-          </h2>
-          <div className="overflow-hidden rounded-xl" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
-            {sugestoes.map((sg, i) => (
-              <div key={sg.fichaId} className="flex items-center gap-3 px-3.5 py-[14px]"
-                style={{ borderLeft: '3px solid var(--fam-ambar-mid)', ...(i > 0 ? { borderTop: '1px solid var(--prod-line)' } : {}) }}>
-                <IconeDaFicha nome={sg.nome} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>{sg.nome}</p>
-                  <p className="num truncate text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
-                    saldo {fmtQtd(sg.saldo)} {sg.unidade} · abaixo do mínimo {sg.estoqueMin} · faltam ~{fmtQtd(sg.faltam)} {sg.unidade}
-                    {sg.rendimentoMedio == null && ' · rendimento a apurar'}
-                  </p>
-                </div>
-                <button onClick={() => produzirSugestao(sg)} disabled={criando === sg.fichaId}
-                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium disabled:opacity-50"
-                  style={{ background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
-                  {criando === sg.fichaId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Factory className="h-3.5 w-3.5" />}
-                  produzir {fmtQtd(sg.faltam)} {sg.unidade}
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
+      {podeOperar && (
+        <div className="pp-zcriar" data-testid="zona-de-criar">
+          <NovaOrdem id={id} fichaInicial={fichaDaUrl} onCriada={(ordemId) => { window.location.href = `/empresas/${id}/estoque/producao/${ordemId}` }} />
+          <NovaTarefa id={id} podeLiberar={podePerm('stock.manage')} nomes={nomesDeTarefa} onCriada={() => void carregarTarefas()} />
+        </div>
       )}
 
-      {/* ──────────────────────────────────────────────────────────────────────
-          ⭐⭐⭐ CONFERÊNCIA DO DIA — quatro olhos, SÓ pra gerência (09/10).
-          ⛔ O gate é do PAYLOAD (a rota exige `stock.manage`): o componente não desenha
-             nada por não ter dado. É o que impede o veredito do fiscal de viajar no JSON
-             até o tablet da cozinha — a cola de prova que a lei de 05/10 fechou.
-          ─────────────────────────────────────────────────────────────────────── */}
+      {/* ⭐⭐⭐ 5. CONFERÊNCIA DO DIA — só pra gerência (o gate é do PAYLOAD). ⛔ TAREFA nunca entra aqui. */}
       <ConferenciaDoDia id={id} podeGerenciar={podePerm('stock.manage')} carregandoPerm={carregandoPerm}
         onMudou={() => void carregar()} />
 
-      {/* ⭐⭐ (lei v7 M2) NOVA TAREFA — trabalho sem estoque que cai na hora no tablet */}
-      {!carregandoPerm && <TarefasDoDia id={id} podeOperar={podePerm('stock.operate')} podeLiberar={podePerm('stock.manage')} />}
+      {/* ⭐⭐ 6. EM ABERTO — ordem aberta NUNCA obedece o período; só a busca e o "desde ontem" filtram. */}
+      <ListaAbertas id={id} ctx={contexto}
+        deOntem={painel?.abertasDeOntem ?? 0}
+        soDeOntem={soDeOntem}
+        onFiltrarOntem={() => setSoDeOntem((v) => !v)}
+        ordens={abertas.filter((o) => !soDeOntem || o.deOntem).filter((o) => casa(o.nomeProduzido))}
+        tarefas={soDeOntem ? [] : tp.abertas.filter((t) => casa(t.nome))}
+        podeCancelar={podeOperar} cancelando={cancelando} onCancelar={cancelarTarefa} erroTarefa={erroTarefa} />
 
-      {ordens.length === 0 && !novo ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl p-10 text-center"
-          style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
-          <Factory className="h-10 w-10" style={{ color: 'var(--prod-muted)' }} />
-          <p className="text-[14px] font-medium" style={{ color: 'var(--prod-primary)' }}>Nenhuma ordem de produção ainda.</p>
-          <p className="max-w-md text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>Crie uma ordem a partir de uma ficha (ex: 200 porções de carne). O sistema já pré-preenche a separação com os insumos e as quantidades.</p>
-        </div>
-      ) : (
-        <>
-          {/* ⭐⭐ 5. ABERTAS — A REGRA CENTRAL: ordem aberta NUNCA obedece o período.
-              Planejada/Separada/Em produção aparecem SEMPRE, em qualquer filtro.
-              Trabalho aberto não é histórico — some do filtro e o dono perde o insumo
-              parado de vista. Só a busca e o clique na faixa de ontem as filtram. */}
-          <ListaAbertas id={id} ctx={contexto}
-            deOntem={painel?.abertasDeOntem ?? 0}
-            soDeOntem={soDeOntem}
-            onFiltrarOntem={() => setSoDeOntem((v) => !v)}
-            ordens={abertas
-              .filter((o) => !soDeOntem || o.deOntem)
-              .filter((o) => !busca.trim() || o.nomeProduzido.toLowerCase().includes(busca.trim().toLowerCase()))} />
-
-          {/* 6. CONCLUÍDAS — essas SIM obedecem os chips */}
-          <ListaConcluidas id={id} periodo={custom ? `${fmtDia(custom.de)} – ${fmtDia(custom.ate)}` : periodo}
-            mostrar={mostrar} onMais={() => setMostrar((m) => m + PAGINA)}
-            itens={concluidas.filter((c) => {
-              if (!busca.trim()) return true
-              const o = ordens.find((x) => x.id === c.ordemId)
-              return (o?.nomeProduzido ?? '').toLowerCase().includes(busca.trim().toLowerCase())
-            })}
-            /* ⭐ as duas fontes MESCLADAS: a lista geral (truncada) + a receita resolvida por
-               ID do período. A segunda manda, porque ela nunca depende do teto. */
-            nomePorOrdem={new Map([
-              ...ordens.map((o) => [o.id, o.nomeProduzido] as [string, string]),
-              ...Object.entries(receitaConcl).map(([id, r]) => [id, r.nome] as [string, string]),
-            ])}
-            unidadePorOrdem={new Map([
-              ...ordens.map((o) => [o.id, o.unidadeProduzido] as [string, string]),
-              ...Object.entries(receitaConcl).map(([id, r]) => [id, r.unidade] as [string, string]),
-            ])}
-            pedidoFeito={pedidoFeito} />
-        </>
-      )}
+      {/* 7. CONCLUÍDAS — essas SIM obedecem os filtros */}
+      <ListaConcluidas id={id} periodo={custom ? `${fmtDia(custom.de)} – ${fmtDia(custom.ate)}` : periodo}
+        mostrar={mostrar} onMais={() => setMostrar((m) => m + PAGINA)}
+        itens={concluidas.filter((c) => casa((receitaConcl[c.ordemId]?.nome ?? ordens.find((x) => x.id === c.ordemId)?.nomeProduzido) ?? ''))}
+        tarefas={tp.concluidas.filter((t) => casa(t.nome))}
+        /* ⭐ as duas fontes MESCLADAS: a lista geral (truncada) + a receita resolvida por
+           ID do período. A segunda manda, porque ela nunca depende do teto. */
+        nomePorOrdem={new Map([
+          ...ordens.map((o) => [o.id, o.nomeProduzido] as [string, string]),
+          ...Object.entries(receitaConcl).map(([id, r]) => [id, r.nome] as [string, string]),
+        ])}
+        unidadePorOrdem={new Map([
+          ...ordens.map((o) => [o.id, o.unidadeProduzido] as [string, string]),
+          ...Object.entries(receitaConcl).map(([id, r]) => [id, r.unidade] as [string, string]),
+        ])}
+        pedidoFeito={pedidoFeito} />
     </div>
   )
 }
 
-type CampoO = 'produto' | 'escala' | 'data' | 'setor' | 'estado'
 /**
- * ⛔⛔ `Secao` FOI APAGADA EM 11/10 — ela tinha **ZERO chamador** (as listas vivas são
- * `ListaAbertas` e `ListaConcluidas`) e era o último lugar que imprimia `escalaReceitas ×
- * loteBase` **cru** como se fosse o pedido.
- *
- * ⚠️ Não bastava consertar o número dela: *enquanto o componente existe no arquivo, alguém
- * religa* — foi assim que o `GruposSugeridos` do cardápio voltou (23/09). Apagar é o que
- * torna o fantasma inalcançável.
+ * ⭐⭐ NOVA ORDEM DE PRODUÇÃO — cartão FIXO da zona de criar (v9). Ficha + data + setor + "Criar
+ * ordem →". ⛔⛔ A QUANTIDADE NÃO É PERGUNTADA AQUI (G9, 11/10): a pergunta é UMA, na página da
+ * Ordem, onde dá pra ver a prateleira. O corpo do POST não manda quantidade (a rota é `.strict()`).
  */
-function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; fichaInicial?: string | null; onCriada: (ordemId: string) => void; onFechar: () => void }) {
+function NovaOrdem({ id, fichaInicial, onCriada }: { id: string; fichaInicial?: string | null; onCriada: (ordemId: string) => void }) {
   const [fichas, setFichas] = useState<FichaOpt[]>([])
   const [setores, setSetores] = useState<Setor[]>([])
   const [fichaId, setFichaId] = useState(fichaInicial ?? '')
-  const [data, setData] = useState('')
+  const [data, setData] = useState(() => diaEmSaoPaulo())
   const [setorId, setSetorId] = useState('')
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  /**
-   * ⛔⛔⛔ **A QUANTIDADE SAIU DAQUI EM 11/10 — e o retalho junto com ela.**
-   *
-   * **Defeito do dono:** *"a quantidade é perguntada 2× — na criação E depois de criar — e
-   * números diferentes deixam o 1º assombrando a tela."* Ele estava certo, e o mecanismo era
-   * pior que divergência de dado: o 2º campo (*"Quero fazer"*, na página da ordem) **só mexia
-   * em estado local** — recalculava a separação e **nunca regravava a meta nem a escala**. Quem
-   * separava obedecia ao número novo; quem IMPRIMIA (cabeçalho, home, lista, relatórios) seguia
-   * no da criação, porque todos leem o banco.
-   *
-   * ⭐ **A pergunta é UMA, no lugar certo: DEPOIS de criar, onde dá pra ver a prateleira.** Lá o
-   * dono digita o número e vê, a cada dígito, o que vai sair da câmara **contra o que tem** —
-   * decisão que aqui era impossível, porque esta tela não carrega saldo nenhum.
-   *
-   * ⚠️ E **o aviso do ato da criação (`avisosDaEscala`, 03/10) foi COM ela**, não morreu: ele é
-   * sobre o NÚMERO, então vive onde o número é digitado. *Remoção sem realocação é perda.*
-   */
-
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/fichas`).then((r) => r.json())
-      // ⛔ SÓ RECEITA DE PRODUÇÃO. Sem isto a busca listava XIS COMPLETO e PIZZA — produto
-      // de VENDA, montado na hora, que não se produz em lote. Régua compartilhada com a
-      // tela de Receitas (fonte única, não uma 2ª lista de tipos aqui).
+      // ⛔ SÓ RECEITA DE PRODUÇÃO — produto de VENDA não se produz em lote (régua única com a tela de Receitas)
       .then((j) => setFichas((j.fichas ?? []).filter(ehReceitaDeProducao))).catch(() => {})
     fetch(`/api/empresas/${id}/estoque/setores`).then((r) => r.json()).then((j) => setSetores(j.setores ?? [])).catch(() => {})
   }, [id])
 
-  const ficha = fichas.find((f) => f.id === fichaId) ?? null
-
   const criar = async () => {
     setErro(null)
-    if (!fichaId || !ficha) return setErro('Escolha a ficha.')
+    if (!fichaId || !fichas.some((f) => f.id === fichaId)) return setErro('Escolha a ficha.')
     if (!data) return setErro('Informe a data de produção.')
     setBusy(true)
     try {
-      /**
-       * ⛔⛔ **O CORPO NÃO MANDA QUANTIDADE** — e o schema da rota é `.strict()`, então mandar
-       * passaria a ser 400 com o nome do campo, nunca um valor recortado em silêncio. A ordem
-       * nasce PLANEJADA com `escalaReceitas` no default 1 do banco (a coluna é NOT NULL com
-       * CHECK > 0 — "sem quantidade" não é representável ali) e **AGUARDANDO** o pedido.
-       */
       const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fichaId, dataProducao: data, setorId: setorId || null }),
@@ -648,378 +273,126 @@ function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; ficha
   }
 
   return (
-    <Card><CardContent className="space-y-3 p-4">
-      <div className="flex items-center justify-between"><p className="text-sm font-semibold text-slate-900">Nova ordem de produção</p><button onClick={onFechar} className="text-xs text-slate-400 hover:text-slate-600">fechar</button></div>
-      {fichas.length === 0 ? (
-        <p className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>Nenhuma ficha ainda — <a href={`/empresas/${id}/estoque/fichas/nova`} className="underline" style={{ color: 'var(--prod-accent)' }}>crie uma ficha</a> primeiro.</p>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex-1 min-w-[200px] text-xs text-slate-500">Ficha (o que produzir)
-              <select value={fichaId} onChange={(e) => setFichaId(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 py-2 px-3 text-sm"><option value="">escolher…</option>{fichas.map((f) => <option key={f.id} value={f.id}>{f.nomeProduzido}</option>)}</select>
-            </label>
-            <label className="text-xs text-slate-500">Data de produção
-              <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm" />
-            </label>
-            <label className="text-xs text-slate-500">Setor
-              <select value={setorId} onChange={(e) => setSetorId(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm"><option value="">—</option>{setores.filter((s) => s.ativo).map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}</select>
-            </label>
-            {/* ⚠️ ATALHO, não segunda tela: o cadastro de gente mora em Sistema → Equipe. */}
-            <a href="/equipe?filtro=cozinha" className="inline-flex items-center gap-1 pb-2 text-[11px] text-slate-400 hover:text-slate-600"><Settings className="h-3 w-3" /> setores e equipe</a>
-          </div>
-          {/**
-            * ⭐ A TELA DIZ O QUE VEM DEPOIS — senão criar sem quantidade parece um formulário
-            * pela metade. ⚠️ E ela nomeia o ganho (ver a prateleira), não só o passo.
-            */}
-          <p className="text-[12px] leading-snug" style={{ color: 'var(--prod-muted)' }}>
-            Criar abre a ordem na pergunta <b style={{ color: 'var(--prod-secondary)' }}>&ldquo;quantas unidades produzir?&rdquo;</b> — lá
-            você digita o número e vê, a cada dígito, o que sai da câmara e o que tem na prateleira.
-          </p>
-          {erro && <p className="text-xs text-rose-600">{erro}</p>}
-          <button onClick={criar} disabled={busy} /**
-            * ⚠️⚠️ **ESTE HEX FICA, E O MOTIVO É UM ACHADO (item 4b, 09/10).** Trocá-lo por
-            * `--prod-acao-bg` faz o guard do mock morder: ele conta *"cor forte preenchida"* e
-            * passaria de 2 pra 3. O botão JÁ era um terceiro primário forte — só era invisível
-            * pro guard, que conta TOKEN e não hex. **Decisão do dono** se ele desce pra contorno
-            * ou se a régua passa a admitir o primário do formulário (que só existe com o form
-            * aberto, então não compete na tela principal).
-            */
-            className="w-full rounded-lg bg-[#185FA5] py-2 text-sm font-medium text-white disabled:opacity-50">
-            {busy ? 'Criando…' : 'Criar ordem →'}
-          </button>
-        </>
-      )}
-    </CardContent></Card>
-  )
-}
-
-/** Card do painel. Flat, cantos 12px, cor só quando significa. */
-function CardPainel({ rotulo, valor, sub, bg, tx, acento, ativo, onClick }: {
-  rotulo: string; valor: string; sub?: string; bg?: string; tx?: string; acento?: string
-  ativo?: boolean; onClick?: () => void
-}) {
-  const Tag = onClick ? 'button' : 'div'
-  return (
-    <Tag onClick={onClick}
-      className={`rounded-xl px-3.5 py-3 text-left ${onClick ? 'transition-colors hover:brightness-[0.99]' : ''}`}
-      style={{ background: bg ?? C.card, border: `1px solid ${ativo === false ? C.borda : C.borda}` }}>
-      <p className={T.cardRot} style={{ color: tx ? acento ?? tx : C.txt2, fontWeight: 500 }}>{rotulo}</p>
-      <p className={`mt-0.5 ${T.cardNum} tabular-nums`} style={{ color: tx ?? C.nomeTx, fontWeight: 500 }}>{valor}</p>
-      {sub && <p className="mt-0.5 text-[12px]" style={{ color: tx ? acento ?? tx : C.txt3 }}>{sub}</p>}
-    </Tag>
+    <div className="pp-painel pp-zc" data-testid="nova-ordem">
+      <h3>Nova ordem de produção</h3>
+      <div className="pp-cria">
+        <select value={fichaId} onChange={(e) => setFichaId(e.target.value)} aria-label="ficha (o que produzir)" className="longo">
+          <option value="">{fichas.length ? 'escolher a ficha…' : 'nenhuma ficha ainda'}</option>
+          {fichas.map((f) => <option key={f.id} value={f.id}>{f.nomeProduzido}</option>)}
+        </select>
+        <input type="date" value={data} onChange={(e) => setData(e.target.value)} aria-label="data de produção" />
+        <select value={setorId} onChange={(e) => setSetorId(e.target.value)} aria-label="setor">
+          <option value="">Setor: —</option>
+          {setores.filter((s) => s.ativo).map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
+        </select>
+        <button type="button" onClick={criar} disabled={busy} className="bt">{busy ? 'Criando…' : 'Criar ordem →'}</button>
+      </div>
+      {erro && <span className="pp-pill coral pp-msg">{erro}</span>}
+    </div>
   )
 }
 
 /**
- * ⭐⭐⭐ EM ABERTO (mock v3) — filete + quadradinho + nome + sublinha + PEDIDO grande à direita.
- *
- * **A linguagem da ordem ATRASADA é CORAL** (filete, ícone de relógio, sublinha e selo), e
- * ⛔ **sem fundo bege na linha** — *"o fio e o selo bastam"*, palavras do dono. O banner âmbar
- * que existia morreu; o alerta virou o *"N desde ontem"* no cabeçalho, que continua filtrando.
- *
- * ⚠️ Toda a hierarquia é do pedido do dono: nome em peso 500 escuro, o *"há X"* em índigo peso
- * 500, e o PEDIDO em 16px tabular à direita — porque é o número que ele compara com o que saiu.
+ * ⭐⭐ O CSS DA LEI v9 (bloco "M7 · Painel do escritório"), 1:1 nas medidas e grades, com os hex do
+ * mock trocados pelos tokens da casa (`--prod-*`/`--fam-*` — claro e escuro de graça).
+ * ⛔ Sem `max-width`: a tela ocupa a área útil do app (a lição das outras telas).
  */
-function ListaAbertas({ id, ordens, ctx, deOntem, soDeOntem, onFiltrarOntem }: {
-  id: string; ordens: Aberta[]; ctx: Record<string, Contexto>
-  deOntem: number; soDeOntem: boolean; onFiltrarOntem: () => void
-}) {
-  if (!ordens.length) return null
-  const coral = fam('coral')
-  const indigo = fam('indigo')
-  return (
-    <section>
-      <div className="mb-1.5 flex items-center gap-2">
-        <h2 className="text-[13.5px] font-medium" style={{ color: 'var(--prod-secondary)' }}>
-          Em aberto ({ordens.length})
-        </h2>
-        {/* ⭐ o alerta de ontem, na roupa nova: ponto coral + botão que filtra */}
-        {deOntem > 0 && (
-          <button onClick={onFiltrarOntem} className="ml-auto inline-flex items-center gap-1.5 text-[12.5px]"
-            style={{ color: coral.ink }}>
-            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: coral.mid }} />
-            {soDeOntem ? 'ver todas' : `${deOntem} desde ontem`}
-          </button>
-        )}
-      </div>
-
-      <div className="overflow-hidden rounded-xl" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)' }}>
-        {ordens.map((o, i) => {
-          const c = ctx[o.id]
-          const atrasada = !!o.deOntem
-          const t = atrasada ? coral : indigo
-          /**
-           * ⚠️ "há X" vem do `formatarDuracao` (o formatador único), nunca de `% 60` à mão: era
-           * ali que o float vazava e imprimia "3h21.830000000000013" (04/10).
-           */
-          const haQuanto = c?.comecouEm
-            ? formatarDuracao((Date.now() - new Date(c.comecouEm).getTime()) / 60000)
-            : null
-          return (
-            <a key={o.id} href={`/empresas/${id}/estoque/producao/${o.id}`}
-              /**
-               * ⚠️⚠️ **REGRA 12 com UMA marcação, não duas.** O pedido do dono é *"linha vira 2
-               * andares com o pedido embaixo à direita"* — e isso é o RESULTADO, não o
-               * mecanismo. Pra uma LINHA de lista, `flex-wrap` + `w-full lg:w-auto` entrega os
-               * dois andares com UM markup; duas composições (`lg:hidden` × `hidden lg:block`)
-               * é justamente o que o guard da casa existe pra policiar, porque elas divergem no
-               * primeiro selo novo. O `pl-11` alinha o 2º andar depois do quadradinho.
-               */
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-[14px] transition-colors hover:bg-[var(--prod-surface-1)]"
-              style={{
-                // ⭐ o FILETE de 3px — índigo normal, coral quando atrasada
-                borderLeft: `3px solid ${t.mid}`,
-                ...(i > 0 ? { borderTop: '1px solid var(--prod-line)' } : {}),
-              }}>
-              <IconeDaFicha nome={o.nomeProduzido}
-                forcar={atrasada ? { familia: 'coral', Icone: Clock } : undefined} />
-
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[14.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
-                  {o.nomeProduzido}
-                </span>
-                {atrasada ? (
-                  <span className="block text-[12.5px]" style={{ color: coral.ink }}>
-                    desde ontem {fmtDia(o.dataProducao)} — insumo saiu e não virou produto
-                  </span>
-                ) : (
-                  <span className="block truncate text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
-                    {c?.quem.length ? c.quem.join(' e ') : <i>ninguém pegou ainda</i>}
-                    {c?.comecouEm && ` · começou ${hhmm(c.comecouEm)}`}
-                    {haQuanto && <> · <b className="font-medium" style={{ color: indigo.mid }}>há {haQuanto}</b></>}
-                  </span>
-                )}
-              </span>
-
-              {/* ⭐⭐ O PEDIDO GRANDE — e ordem antiga sem pedido DIZ isso, em muted discreto */}
-              <span className="w-full shrink-0 pl-11 text-right lg:w-auto lg:pl-0">
-                {c?.pedido == null ? (
-                  /**
-                   * ⭐ DUAS AUSÊNCIAS DIFERENTES, DUAS FRASES (11/10): `AGUARDANDO` é a ordem
-                   * recém-criada esperando a pergunta — *"pedido a definir"* **convida**; já
-                   * *"sem pedido"* é a ordem velha, que nasceu antes do campo existir e nunca
-                   * vai ter um. Dizer "sem pedido" na ordem nova faria o estado normal parecer
-                   * defeito, e o dono iria procurar o que consertar.
-                   */
-                  <span className="text-[13px]" style={{ color: c?.pedidoOrigem === 'AGUARDANDO' ? 'var(--fam-indigo-mid)' : 'var(--prod-muted)' }}>
-                    {c?.pedidoOrigem === 'AGUARDANDO' ? 'pedido a definir →' : 'sem pedido'}
-                  </span>
-                ) : (
-                  <span className="num text-[16px] font-medium" style={{ color: 'var(--prod-primary)' }}>
-                    {/* ⭐ REDONDO aqui também (v4): "toda tela que mostra pedido em UN" */}
-                    {fmtPedido(c.pedido, o.unidadeProduzido)} {o.unidadeProduzido}
-                    {/**
-                      * ⚠️⚠️ **"pedidas" SÓ quando ele PEDIU.** O mock diz *"200 UN pedidas"* e
-                      * assume que a meta existe — mas a prova em prod mostrou que **as 5 ordens
-                      * abertas de hoje são todas DERIVADO**: o `stockOrdemMeta` só começou a ser
-                      * escrito em 04/10, e as 471 anteriores não têm. Chamar de *"pedidas"* um
-                      * número que o dono nunca digitou é a mesma mentira do *"pedido 0"* que a
-                      * tela Por dia teve que consertar — então o derivado diz **"esperadas"**,
-                      * a palavra que esta tela já usava antes do mock.
-                      * ⭐ `pedidoDaOrdem` já distingue os dois; a tela só não estava dizendo.
-                      */}
-                    <span className="ml-1 text-[12.5px] font-normal" style={{ color: 'var(--prod-muted)' }}>
-                      {c.pedidoOrigem === 'DECLARADO' ? 'pedidas' : 'esperadas'}
-                    </span>
-                  </span>
-                )}
-                {atrasada && (
-                  <span className="mt-0.5 block">
-                    <span className="rounded-full px-2 py-[2px] text-[11.5px] font-medium"
-                      style={{ background: coral.bg, color: coral.ink }}>atrasada</span>
-                  </span>
-                )}
-              </span>
-
-              <ChevronRight className="hidden h-4 w-4 shrink-0 lg:block" style={{ color: 'var(--prod-muted)' }} />
-            </a>
-          )
-        })}
-      </div>
-    </section>
-  )
+const CSS = `
+.pp{--card:var(--prod-surface);--linha:var(--prod-line-strong);--linha-fina:var(--prod-line);
+  --t1:var(--prod-primary);--t2:var(--prod-secondary);--t3:var(--prod-muted);
+  --indigo:var(--prod-acao-bg);--indigo-on:var(--prod-acao-ink);--verde:var(--prod-verde);
+  background:var(--prod-bg);color:var(--t1);min-height:100%}
+.pp-topo{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.pp-h1{font-size:21px;font-weight:800;letter-spacing:-.02em;margin:0}
+.pp-chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+.pp-chip{font-size:12px;font-weight:700;border:1px solid var(--linha);background:var(--card);
+  color:var(--t2);border-radius:999px;padding:7px 13px;cursor:pointer;text-decoration:none;font-family:inherit}
+.pp-chip.mut{border-style:dashed;color:var(--t3)}
+.pp-chip:disabled{opacity:.45;cursor:default}
+.pp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.pp-kpi{background:var(--card);border:1px solid var(--linha);border-radius:14px;padding:12px 14px}
+.pp-kpi .r{display:block;font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--t3);text-transform:uppercase}
+.pp-kpi b{display:block;font-size:23px;font-weight:800;letter-spacing:-.02em;margin-top:3px;font-variant-numeric:tabular-nums}
+.pp-kpi b.ok{color:var(--fam-verde-ink)}
+.pp-kpi b.atencao{color:var(--fam-ambar-ink)}
+.pp-kpi b.ruim{color:var(--fam-coral-ink)}
+.pp-kpi b.mudo{color:var(--t3)}
+.pp-kpi .s{display:block;font-size:11.5px;color:var(--t3);margin-top:2px}
+.pp-filtros{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.pp-f{font-size:12px;font-weight:700;border:1px solid var(--linha);background:var(--card);
+  color:var(--t2);border-radius:999px;padding:7px 14px;cursor:pointer;font-family:inherit}
+.pp-f.on{background:var(--indigo);border-color:var(--indigo);color:var(--indigo-on)}
+.pp-busca{flex:1 1 170px;min-height:36px;border:1px solid var(--linha);border-radius:999px;
+  background:var(--card);color:var(--t1);font-size:12.5px;font-weight:600;padding:0 14px;font-family:inherit}
+.pp-zcriar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+@media(max-width:760px){ .pp-zcriar{grid-template-columns:1fr} }
+.pp-painel{background:var(--card);border:1px solid var(--linha);border-radius:14px;padding:14px;margin-bottom:12px}
+.pp-painel.pp-zc{margin-bottom:0}
+.pp-painel h3{font-size:13.5px;font-weight:800;margin:0 0 10px}
+.pp-cria{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pp-cria input,.pp-cria select{min-height:42px;border:1px solid var(--linha);border-radius:10px;background:var(--card);
+  color:var(--t1);font-size:13px;font-weight:700;font-family:inherit;padding:0 11px;min-width:0}
+.pp-cria select{font-size:12.5px;padding:0 8px}
+.pp-cria .longo{flex:1 1 200px}.pp-cria .medio{width:140px}
+.pp-rot{font-size:11px;font-weight:800;color:var(--t3);display:flex;flex-direction:column;gap:3px}
+.pp .bt{min-height:42px;border:0;border-radius:10px;background:var(--indigo);color:var(--indigo-on);
+  font-size:13px;font-weight:800;cursor:pointer;padding:0 15px;font-family:inherit}
+.pp .bt.verde2{background:var(--fam-verde-solid);color:var(--fam-verde-on)}
+.pp .bt:disabled{opacity:.5;cursor:default}
+.pp-msg{display:inline-block;margin-top:9px;white-space:normal;font-size:12.5px;padding:6px 12px}
+.pp-pill{font-size:10.5px;font-weight:800;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.pp-pill.verde{background:var(--fam-verde-bg);color:var(--fam-verde-ink)}
+.pp-pill.ambar{background:var(--fam-ambar-bg);color:var(--fam-ambar-ink)}
+.pp-pill.coral{background:var(--fam-coral-bg);color:var(--fam-coral-ink)}
+.pp-pill.mut2{background:var(--prod-bg);color:var(--t3);border:1px solid var(--linha)}
+.pp-btn-selo{cursor:pointer;font-family:inherit}
+.pp-i{width:17px;height:17px;border-radius:50%;border:1px solid var(--linha);background:var(--card);color:var(--t3);
+  font-size:11px;font-weight:700;cursor:pointer;vertical-align:2px;margin-left:6px;line-height:1;padding:0}
+.pp-pop{display:block;font-size:11.5px;color:var(--t2);background:var(--card);border:1px solid var(--linha);
+  border-radius:10px;padding:8px 11px;margin:8px 0 2px;line-height:1.6;font-weight:500}
+.pp-head{display:grid;gap:10px;font-size:9.5px;font-weight:800;letter-spacing:.07em;
+  color:var(--t3);text-transform:uppercase;padding:0 0 6px;border-bottom:2px solid var(--linha)}
+.pp-head.c4{grid-template-columns:1fr 92px 112px 84px}
+.pp-head.d4{grid-template-columns:1fr 86px 130px 150px}
+.pp-head .r{text-align:right}
+.pp-row{display:grid;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--linha-fina);color:inherit;text-decoration:none}
+.pp-row:last-child{border-bottom:0}
+.pp-bloco>.pp-row{border-bottom:1px solid var(--linha-fina)}
+.pp-bloco:last-child>.pp-row{border-bottom:0}
+a.pp-row:hover{background:var(--prod-surface-1)}
+.pp-row.c4{grid-template-columns:1fr 92px 112px 84px}
+.pp-row.d4{grid-template-columns:1fr 86px 130px 150px}
+.pp-row.e3{grid-template-columns:8px 1fr auto;padding-left:0}
+.pp-row.e3::before{content:'';width:4px;height:30px;border-radius:4px;background:var(--linha)}
+.pp-row.e3.fz::before{background:var(--indigo)}
+.pp-row.e3.at::before{background:var(--fam-coral-mid)}
+.pp-nm{font-weight:700;font-size:13.5px;line-height:1.3;min-width:0}
+.pp-sub2{display:block;font-size:11.5px;font-weight:600;color:var(--t3);margin-top:1px;font-variant-numeric:tabular-nums}
+.pp-sub2.at{color:var(--fam-coral-ink)}
+.pp-num{font-weight:800;font-size:14px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pp-num i{font-style:normal;font-weight:700;font-size:11.5px;color:var(--t3)}
+.pp-vered,.pp-conf{text-align:right}
+.pp-selo-l{margin-left:6px}
+.pp-acoes{display:flex;gap:6px;justify-content:flex-end}
+.pp-ok{width:38px;height:38px;border-radius:10px;border:0;background:var(--indigo);color:var(--indigo-on);font-size:15px;font-weight:800;cursor:pointer}
+.pp-ok:disabled{opacity:.4}
+.pp-ed{width:38px;height:38px;border-radius:10px;border:1px solid var(--linha);background:var(--card);color:var(--t2);font-size:14px;cursor:pointer}
+.selo-t{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.06em;background:var(--prod-bg);border:1px solid var(--linha);
+  color:var(--t3);border-radius:999px;padding:2px 8px;margin-right:7px;vertical-align:2px}
+.pp-fiscal{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--fam-coral-mid);margin-right:6px;vertical-align:1px}
+.pp-cancelar{display:block;margin-left:auto;margin-top:2px;font-size:11.5px;font-weight:600;color:var(--t3);background:none;border:0;
+  text-decoration:underline;text-underline-offset:2px;cursor:pointer;padding:0;font-family:inherit}
+.pp-cancelar:disabled{opacity:.5}
+.pp-vazio{display:block;font-size:12.5px;color:var(--t3);padding:8px 0}
+.pp-mais{width:100%;padding:10px 0 0;font-size:12.5px;font-weight:700;color:var(--t2);background:none;border:0;
+  border-top:1px solid var(--linha-fina);cursor:pointer;font-family:inherit}
+@media(max-width:640px){
+  .pp-head.c4,.pp-head.d4{display:none}
+  .pp-row.c4{grid-template-columns:1fr auto auto;row-gap:6px}
+  .pp-row.d4{grid-template-columns:1fr 1fr;row-gap:6px}
+  .pp-row.c4 .pp-nm,.pp-row.d4 .pp-nm,.pp-row.d4 .pp-conf{grid-column:1/-1}
+  .pp-row [data-r]{text-align:left}
+  .pp-row.tar .vazio{display:none}
+  .pp-row [data-r]::before{content:attr(data-r);display:block;font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--t3);text-transform:uppercase;margin-bottom:1px}
 }
-
-/**
- * ⭐⭐⭐ CONCLUÍDAS — avatar colorido + nome + sublinha + **"pedido N · fez M"**, com as PALAVRAS.
- *
- * ⛔⛔ **A PÍLULA DE % SAIU DAQUI (decisão do dono, 04/10) — e o motivo é o que ele viu na tela:**
- * *"ela confundia: parecia fez÷pedido e não é"*. O doc antigo deste bloco até explicava que os
- * denominadores eram diferentes (a pílula é *"saiu ÷ o que a FICHA promete"*, congelada pro
- * juiz P8) — **mas explicação em comentário não chega na tela**. Dois números e um percentual
- * lado a lado, o percentual **não** sendo a razão dos dois, é uma conta que o olho faz errado
- * e ninguém desmente. *A régua: número em tela de dinheiro/produção sem régua visível é pior
- * que ausência.* ⭐ **A eficiência não morreu — ela está na PÁGINA DA ORDEM**, com a conta
- * aberta componente a componente, e no SININHO quando vira padrão.
- *
- * ⭐⭐ **E AS PALAVRAS SÃO OBRIGATÓRIAS:** *"nunca dois números soltos pra adivinhar"*. `120 →
- * 148` exige que o leitor saiba qual é qual; `pedido 120 · fez 148` não exige nada.
- *
- * ⭐ O avatar é o MESMO componente da tela "Por dia" (`AvatarPessoa`): cor estável por hash do
- * nome, iniciais 1º+último. Dois avatares com hashes próprios dariam cores diferentes pra mesma
- * pessoa em duas telas — e a coluna existe justamente pra ser reconhecida.
- */
-function ListaConcluidas({ id, itens, periodo, nomePorOrdem, unidadePorOrdem, pedidoFeito, mostrar, onMais }: {
-  id: string; itens: Conclusao[]; periodo: string
-  nomePorOrdem: Map<string, string>; unidadePorOrdem: Map<string, string>
-  pedidoFeito: Record<string, PedidoFeito>
-  mostrar: number; onMais: () => void
-}) {
-  const rotulo = periodo === 'hoje' ? 'hoje' : periodo === 'semana' ? 'últimos 7 dias' : periodo === 'mes' ? 'últimos 30 dias' : periodo
-  // ⚠️ PAGINAÇÃO: período grande não pode travar a tela. E o "carregar mais" DIZ quantos
-  // faltam — botão que só some quando acaba deixa a pessoa sem saber se viu tudo.
-  const visiveis = itens.slice(0, mostrar)
-  const faltam = itens.length - visiveis.length
-  return (
-    <section>
-      <h2 className="mb-1.5 text-[13.5px] font-medium" style={{ color: 'var(--prod-secondary)' }}>
-        Concluídas · {rotulo} ({itens.length})
-      </h2>
-      {itens.length === 0 ? (
-        <div className="rounded-xl px-3.5 py-6 text-center text-[12.5px]"
-          style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)', color: 'var(--prod-muted)' }}>
-          Nada concluído {rotulo}. As ordens abertas continuam acima.
-        </div>
-      ) : (
-        /**
-          * ⭐⭐ **LINHAS MAIS FORTES (visual v4):** moldura de 1px na lista, divisória no
-          * `line-strong` e **zebrado suave** alternando `surface-1`.
-          *
-          * ⚠️⚠️ O zebrado vai por CLASSE, nunca por `style` inline — **estilo inline ganha de
-          * classe**, e o `hover:` deixaria de pintar justamente na linha alternada. Com as duas
-          * em classe, a variante `hover` do Tailwind vem depois no CSS e vence. E o hover sobe
-          * pro `surface-2`: se ele usasse o mesmo tom do zebrado, metade das linhas não
-          * responderia ao mouse.
-          */
-        <div className="overflow-hidden rounded-xl" style={{ background: 'var(--prod-surface)', boxShadow: 'var(--prod-sombra)', border: '1px solid var(--prod-line)' }}>
-          {visiveis.map((c, i) => {
-            const pf = pedidoFeito[c.ordemId]
-            const un = unidadePorOrdem.get(c.ordemId) ?? ''
-            const pedidoTxt = fmtPedido(pf?.pedido, un)
-            const pil = pilulaDoPedido(c.qtdGerada, pf?.pedido, un)
-            return (
-              <a key={c.id} href={`/empresas/${id}/estoque/producao/${c.ordemId}`}
-                /* ⚠️ 2 andares no celular com UMA marcação — ver o bloco em `ListaAbertas` */
-                className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3.5 py-[13px] transition-colors hover:bg-[var(--prod-surface-2)] ${i % 2 === 1 ? 'bg-[var(--prod-surface-1)]' : ''}`}
-                style={i > 0 ? { borderTop: '1px solid var(--prod-line-strong)' } : undefined}>
-                {/**
-                  * ⭐⭐ O LOGO DA RECEITA abre a linha (38px, raio 11) — o olho acha a porção de
-                  * queijo pelo quadradinho antes de ler o nome. **E o pontinho do fiscal mora no
-                  * canto dele**, não solto no fim da linha: assim o sinal fica colado no que ele
-                  * acusa, e não disputa espaço com os números.
-                  */}
-                <IconeDaFicha
-                  nome={nomePorOrdem.get(c.ordemId) ?? ''}
-                  tamanho={38}
-                  alerta={c.fiscalImpossivel ? { titulo: 'o declarado não cabe no material separado — abra a ordem pra ver a conta' } : null}
-                />
-
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14.5px] font-medium" style={{ color: 'var(--prod-primary)' }}>
-                    {nomePorOrdem.get(c.ordemId) ?? '—'}
-                  </span>
-                  {/**
-                    * ⭐ QUEM FEZ vira mini-avatar com iniciais (cor estável por pessoa) + nome,
-                    * na sublinha. ⛔ Sem responsável registrado NÃO inventa pessoa: o componente
-                    * desenha o bonequinho cinza e o texto vai em itálico discreto — *ninguém
-                    * assinou* é um FATO, não um nome a adivinhar (e o "?" morreu por ordem do dono).
-                    */}
-                  <span className="flex min-w-0 items-center gap-1.5 truncate text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>
-                    <AvatarPessoa nome={c.colaboradorNome} apenasAvatar tamanho={18} />
-                    {c.colaboradorNome ?? <i>sem responsável</i>}
-                    <span> · {hhmm(c.criadoEm)}</span>
-                    {/* ⛔ moeda pelo formatador da casa — o "R$ 638,5" de hoje nasceu de formatar à mão */}
-                    {c.custoUnitarioReal != null && <span> · {formatBRL(c.custoUnitarioReal)}/un</span>}
-                    {c.motivo && <i> · {c.motivo}</i>}
-                  </span>
-                  {/**
-                    * ⭐⭐ O SELO DA CONFERÊNCIA (item 2c) — três estados, cada um com cor própria.
-                    *
-                    * ⚠️ Ele diz ESTADO, nunca o veredito do fiscal: *"aguardando"* / *"✓✓
-                    * conferido · nome"* / *"✓✓ corrigido e conferido (era X)"*. O número
-                    * esperado — a cola de prova — segue só na fila do gerente.
-                    * ⛔ E o "era X" não é enfeite: sem ele, a linha corrigida mostraria um
-                    * número que ninguém declarou, e o rastro do que a cozinha disse se perderia
-                    * da vista.
-                    */}
-                  {c.conferencia && (
-                    /** ⛔ o MESMO selo da página da ordem — dois seriam dois estados pro mesmo fato */
-                    <SeloDaConferencia c={c.conferencia} unidade={unidadePorOrdem.get(c.ordemId) ?? ''} />
-                  )}
-                </span>
-
-                {/**
-                  * ⭐⭐ O PAR "pedido → fez", tipográfico: o pedido desce um degrau (muted), a seta
-                  * é muted, e o FEZ é o protagonista (16px, escuro, peso 500).
-                  * ⚠️ Ordem antiga sem pedido mostra SÓ o "fez" — inventar um pedido pra completar
-                  * o par seria o "pedido 0" que a tela Por dia já teve que consertar.
-                  */}
-                {/**
-                  * ⭐⭐ SÓ DOIS NÚMEROS, COM AS PALAVRAS AO LADO — *"pedido 120 · fez 148"*.
-                  * ⚠️ Ordem antiga sem pedido mostra **só o "fez"**: inventar um pedido pra
-                  * completar o par seria o *"pedido 0"* que a tela Por dia já teve que consertar
-                  * — e ali ele se lia como *"pedi zero"*.
-                  */}
-                <span className="num ml-auto shrink-0 whitespace-nowrap pl-[50px] text-right lg:ml-0 lg:pl-0">
-                  {/**
-                    * ⭐⭐ O PEDIDO VAI **REDONDO** (ordem do dono, v4): `84,8608 → 85`. Ninguém
-                    * pede 84,8608 porções — aquele número é artefato de `escala × loteBase`.
-                    * ⛔ Só exibição: o gravado não muda, e em KG/LT a fração FICA (o
-                    * `fmtPedido` decide pela unidade, e a régua da unidade é a da casa).
-                    */}
-                  {pedidoTxt && (
-                    <>
-                      <span className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>pedido </span>
-                      <span className="text-[14.5px]" style={{ color: 'var(--prod-secondary)' }}>{pedidoTxt}</span>
-                      <span className="mx-1.5 text-[12.5px]" style={{ color: 'var(--prod-line-strong)' }}>·</span>
-                    </>
-                  )}
-                  <span className="text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>fez </span>
-                  <span className="text-[16px] font-medium" style={{ color: 'var(--prod-primary)' }}>
-                    {fmtQtd(c.qtdGerada)}
-                  </span>
-                  {un && <span className="ml-1 text-[12.5px]" style={{ color: 'var(--prod-muted)' }}>{un}</span>}
-                </span>
-
-                {/**
-                  * ⭐⭐⭐ A PÍLULA VOLTA **COM SOBRENOME**: *"N% do pedido"* — `fez ÷ pedido`, com a
-                  * régua escrita DENTRO dela. Foi a falta do sobrenome que aposentou a pílula
-                  * antiga em 04/10 (*"parecia fez÷pedido e não é"*): ela mostrava a eficiência
-                  * da FICHA ao lado do par, sem nada dizendo de que percentual se tratava.
-                  *
-                  * ⛔⛔ **ELA NÃO É O FISCAL NEM O P8.** A régua da receita (eficiência congelada)
-                  * continua no pontinho do logo, na página da ordem e no sininho — intocada.
-                  * Aqui é outra pergunta: *"saiu o que eu pedi?"*.
-                  * ⚠️ Sem pedido não há pílula: `pilulaDoPedido` devolve `null` e nada é
-                  * desenhado (inventar denominador seria o *"pedido 0"* de volta).
-                  *
-                  * ⭐ No celular ela desce pro 2º andar **junto do par** (o `flex-wrap` da linha
-                  * com o `pl-[50px]` alinhando os dois abaixo do logo) — é o mesmo mecanismo das
-                  * abertas, com UMA marcação, não duas composições (REGRA 12).
-                  */}
-                {pil && (
-                  <span
-                    className="num inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-[3px] text-[12px] font-medium"
-                    style={{ background: fam(TOM_DO_PEDIDO[pil.tom]).bg, color: fam(TOM_DO_PEDIDO[pil.tom]).ink }}
-                    title={`fez ${fmtQtd(c.qtdGerada)} de um pedido de ${pedidoTxt} ${un}`.trim()}
-                  >
-                    {pil.alarme && <AlertTriangle className="h-3 w-3" aria-hidden />}
-                    {pil.texto}
-                  </span>
-                )}
-
-                <ChevronRight className="hidden h-4 w-4 shrink-0 lg:block" style={{ color: 'var(--prod-muted)' }} />
-              </a>
-            )
-          })}
-          {faltam > 0 && (
-            <button onClick={onMais} className="w-full py-2.5 text-[12.5px] transition-colors hover:bg-[var(--prod-surface-1)]"
-              style={{ borderTop: '1px solid var(--prod-line)', color: 'var(--prod-secondary)' }}>
-              carregar mais ({faltam} restante{faltam > 1 ? 's' : ''})
-            </button>
-          )}
-        </div>
-      )}
-    </section>
-  )
-}
+`
