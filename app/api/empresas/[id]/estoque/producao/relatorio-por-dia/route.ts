@@ -14,8 +14,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
-import { relatorioPorDia } from '@/lib/stock/producao/relatorio-por-dia'
-import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
+import { relatorioPorDia, janelaDoPorDia } from '@/lib/stock/producao/relatorio-por-dia'
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 import { lerOcultas, aplicarDelta } from '@/lib/stock/producao/receitas-ocultas'
 
 interface Params { params: Promise<{ id: string }> }
@@ -25,16 +25,10 @@ interface Params { params: Promise<{ id: string }> }
  * quando a cozinha fecha e lança a produção — o UTC já virou e "hoje" abriria VAZIO (medido em
  * prod às 22:16 de 05/09: 9 lotes no dia, zero na tela).
  */
+// ⭐ (13/11) a janela é o DIA DE BRASÍLIA — a régua mora na lib (`janelaDoPorDia`), testada.
+// ⛔ Era `T00:00:00.000Z`/`T23:59:59.999Z` (UTC): 26 de 631 lotes de 30 dias caíam no dia errado.
 function janelaDaUrl(sp: URLSearchParams) {
-  const hoje = diaEmSaoPaulo()
-  const de = sp.get('de') || somarDias(hoje, -29)
-  const ate = sp.get('ate') || hoje
-  return {
-    de,
-    ate,
-    // ⚠️ `ate` inclusivo: o fim do dia, senão o lote lançado às 18h do último dia sumiria
-    janela: { de: new Date(`${de}T00:00:00.000Z`), ate: new Date(`${ate}T23:59:59.999Z`) },
-  }
+  return janelaDoPorDia(sp.get('de'), sp.get('ate'), diaEmSaoPaulo())
 }
 
 export async function GET(request: NextRequest, { params }: Params) {

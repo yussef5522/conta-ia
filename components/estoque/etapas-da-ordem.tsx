@@ -41,7 +41,7 @@ interface Etapa {
   estado: 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA' | 'FINALIZADA_PELO_GERENTE' | 'ENCERRADA_SEM_FINALIZAR'
   minutos: number | null
   /** ⛔ a ordem acabou e levou a etapa aberta junto — sem tempo medido */
-  encerradaPor: 'ORDEM_CONCLUIDA' | 'ORDEM_CANCELADA' | null
+  encerradaPor: 'ORDEM_CONCLUIDA' | 'ORDEM_CANCELADA' | 'ENCERRADA_ADMINISTRATIVAMENTE' | null
   /** ⭐ o rastro do gesto do gerente */
   finalizadaPorNome: string | null
   emNomeDeNome: string | null

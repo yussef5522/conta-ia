@@ -169,14 +169,18 @@ export async function lotesDoPeriodo(
     select: { conclusaoId: true, motivo: true, pctTeorico: true, pctMedia: true, lotesNaMedia: true },
   })
   const desvioPorConclusao = new Map(desvios.map((d) => [d.conclusaoId, d]))
+  // ⭐ (13/11) as versões das fichas numa consulta só (era uma por conclusão)
+  const versoes = await db.stockFichaVersao.findMany({
+    where: { companyId, fichaId: { in: [...new Set(ordens.map((o) => o.fichaId))] } },
+    select: { fichaId: true, versao: true, loteBase: true },
+  })
+  const versaoDe = new Map(versoes.map((v) => [`${v.fichaId}:${v.versao}`, v]))
 
   const out: LoteDoPeriodo[] = []
   for (const c of conclusoes) {
     const o = porOrdem.get(c.ordemId)
     if (!o) continue
-    const versao = await db.stockFichaVersao.findFirst({
-      where: { companyId, fichaId: o.fichaId, versao: o.versaoFicha }, select: { loteBase: true },
-    })
+    const versao = versaoDe.get(`${o.fichaId}:${o.versaoFicha}`)
     const medido = await rendimentoMedidoDaFicha(companyId, o.fichaId, db, c.id)
     const regua = { teorico: versao?.loteBase ?? 1, medido: medido.media, lotes: medido.lotes }
     const p = preverSaida(c.escalaConsumida, regua)
@@ -208,18 +212,23 @@ export async function cardsDoPainel(
   periodo: { de: Date; ate: Date },
   agora: Date,
   db: PrismaClient = defaultPrisma,
+  /**
+   * ⭐ (13/11) o que quem chama JÁ leu — a mesa da cozinha lê os lotes do dia e o custo (do cache)
+   * pra ela mesma; sem isto o cartão relia os dois (o lote do dia e o Σ de TODOS os movimentos).
+   */
+  pre: { lotes?: LoteDoPeriodo[]; custo?: Map<string, number | null> } = {},
 ): Promise<CardsPainel> {
-  const ordens = await db.stockProductionOrder.findMany({
-    where: { companyId },
+  // ⭐ (13/11) SÓ AS ABERTAS: o cartão nunca usou as encerradas — eram ~1.280 ordens lidas a cada recarga
+  const abertas = await db.stockProductionOrder.findMany({
+    where: { companyId, estado: { in: [...ESTADOS_ABERTOS] } },
     select: { id: true, estado: true, atualizadoEm: true, dataProducao: true, fichaId: true, versaoFicha: true },
   })
-  const abertas = ordens.filter((o) => (ESTADOS_ABERTOS as readonly string[]).includes(o.estado))
 
   const [mapa, custo, lotes] = await Promise.all([
     lerEmProducao(companyId, db, abertas.map((o) => o.id)),
-    custoMedioPorItem(db, companyId),
+    pre.custo ?? custoMedioPorItem(db, companyId),
     // ⭐ A MESMA lista que a tela usa por linha — o card e o selo não podem discordar.
-    lotesDoPeriodo(companyId, periodo, db),
+    pre.lotes ?? lotesDoPeriodo(companyId, periodo, db),
   ])
   const pond = rendimentoPonderado(lotes)
 

@@ -20,7 +20,7 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import { registrarAviso, reconciliarOrigem } from '../central'
 import { avaliarLinguaDoBalcao } from '../lingua-do-balcao'
 import { acharPadrao, fraseDoPadrao, type LoteMedido } from '../padrao-de-rendimento'
-import { faixaDoSelo, DESVIO_GRAVE } from '@/lib/stock/producao/eficiencia-da-ordem'
+import { faixaDoSelo, DESVIO_GRAVE, pctDoDiario } from '@/lib/stock/producao/eficiencia-da-ordem'
 import { fichasParaConverter } from '@/lib/stock/producao/fichas-para-converter'
 import { fiscalDeOrdens, fichasComLoteTorto, type FiscalDoLote } from '@/lib/stock/producao/fiscal-dos-lotes'
 import type { NovoAviso } from '../tipos'
@@ -129,7 +129,7 @@ async function padraoDeRendimento(companyId: string, r: ResumoDaCarga, db: Db): 
     porFicha.get(chave)!.lotes.push({
       ordemId: d.ordemId,
       encerradoEm: d.criadoEm.toISOString(),
-      pct: d.pctTeorico,
+      pct: pctDoDiario(d.pctTeorico),
       quem: (() => {
         const cid = colabDaConclusao.get(d.conclusaoId)
         return cid ? (nomeDoColab.get(cid) ?? null) : null
@@ -320,12 +320,10 @@ async function loteDeGrandezaImpossivel(companyId: string, r: ResumoDaCarga, db:
     select: { id: true, fichaId: true },
   })
   const fichaDaOrdem = new Map(ordensDoPeriodo.map((o) => [o.id, o.fichaId]))
-  const fora = desvios.filter(
-    (d) =>
-      faixaDoSelo(d.pctTeorico) === 'EXTREMO' &&
-      d.pctTeorico >= TETO &&
-      !loteTorto.has(fichaDaOrdem.get(d.ordemId) ?? ''),
-  )
+  const fora = desvios.filter((d) => {
+    const pct = pctDoDiario(d.pctTeorico)
+    return pct != null && faixaDoSelo(pct) === 'EXTREMO' && pct >= TETO && !loteTorto.has(fichaDaOrdem.get(d.ordemId) ?? '')
+  })
 
   const ordens = fora.length
     ? await db.stockProductionOrder.findMany({
@@ -351,9 +349,9 @@ async function loteDeGrandezaImpossivel(companyId: string, r: ResumoDaCarga, db:
         companyId,
         setor: 'producao',
         severidade: 'vermelho',
-        titulo: `Confira o lote de ${n} — saiu ${Math.round(d.pctTeorico)}% do esperado`,
+        titulo: `Confira o lote de ${n} — saiu ${Math.round(pctDoDiario(d.pctTeorico) ?? 0)}% do esperado`,
         corpo:
-          `Um lote de ${n} rendeu ${Math.round(d.pctTeorico)}% do que a ficha promete. ` +
+          `Um lote de ${n} rendeu ${Math.round(pctDoDiario(d.pctTeorico) ?? 0)}% do que a ficha promete. ` +
           `Isso não é variação de cozinha: ou a quantidade foi digitada em outra unidade, ou a ficha está errada.`,
         oQueFazer: `Abra a ordem e confira quantas unidades saíram de verdade — e em qual unidade elas foram contadas.`,
         acaoRotulo: 'abrir a ordem',

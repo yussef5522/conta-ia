@@ -322,3 +322,15 @@ export function fraseDaEficiencia(ef: EficienciaDaOrdem, unidadeProduto: string)
     ? `${base} — saiu menos do que a receita promete${onde}`
     : `${base} — saiu mais do que a receita promete${onde}`
 }
+
+/**
+ * ⭐⭐ (13/11/2026) A PORTA ÚNICA ENTRE O DIÁRIO E A RÉGUA. `stock_producao_desvio.pctTeorico` é
+ * RAZÃO (saiu ÷ ficha: 1,0 = bateu — medido em prod, 1.152 linhas, mediana 1,0) e `faixaDoSelo`
+ * recebe PORCENTAGEM (100 = bateu). ⛔ O produtor de avisos passava a razão crua: 1,049 virava
+ * "1%" → TODO lote EXTREMO e "rendeu menos" → 48 avisos de "padrão de rendimento" vivos em 13/11,
+ * um deles repetido 45×. E o "lote impossível" (≥ 1.250%) nunca disparava: 10,27 < 1.250.
+ * ⚠️ `0` no diário é "sem régua" (gravado quando a ficha não tem esperado) → `null`, nunca 0%.
+ */
+export function pctDoDiario(pctTeorico: number | null | undefined): number | null {
+  return pctTeorico != null && Number.isFinite(pctTeorico) && pctTeorico > 0 ? round4(pctTeorico * 100) : null
+}

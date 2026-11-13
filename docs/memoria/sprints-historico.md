@@ -6392,3 +6392,23 @@ Só tela, zero banco (sem migration). Lei: `docs/producao-referencia.html` agora
   serem RENDERIZADAS em teste (`painel-v9-tarefa-na-lista.test.tsx`). Guards antigos (mock v3, lista v4,
   placar da conferência) reapontados à v9 com o motivo escrito; catraca de hex 107 → 106.
 - Testes: `producao-painel-lei-v9.test.ts` (16) + render (9) + integração (+2); 13 replantios mordem.
+
+## ⭐⭐ PRODUÇÃO — LIMPEZA DE SINAL (13/11/2026)
+
+Consertos que as telas novas exigem (sem tela nova, sem migration).
+- **Etapas "fantasma":** das 26 etapas iniciadas e nunca finalizadas em ordem encerrada, 25 JÁ tinham
+  registro de encerramento do sistema (as telas sempre as mostraram como "encerrada sem finalizar" —
+  o "26 rodando" do raio-X foi consulta crua minha). 1 real: "QUEM VAI PRODUZIR", ordem cancelada
+  14/09 sem registro → `encerrarEtapaFantasma` (motivo `ENCERRADA_ADMINISTRATIVAMENTE`, sem carimbar fim,
+  nada apagado); a tela diz "encerrada administrativamente em DD/MM — ordem já estava encerrada".
+- **Desvio "que dispara sempre":** o diário `stock_producao_desvio` é de TODO lote de propósito (linha de
+  base; 4 leitores). O defeito era a RÉGUA do produtor de avisos: lia `pctTeorico` (RAZÃO, 1,0 = bateu)
+  como PORCENTAGEM → todo lote "1%", EXTREMO → 48 avisos de padrão vivos (um 45×); e o "lote impossível"
+  nunca disparava. Porta única `pctDoDiario` (razão → %, 0 = sem régua). Na régua certa: 108/611 lotes de
+  30 dias fora da faixa, 61 extremos. Fixture de teste antiga gravava 70 (%), escondendo o defeito.
+- **Por dia no dia de Brasília** (`janelaDoPorDia`): 12/11 tinha 15 lotes na tela × 17 no dia real.
+- **Relatórios:** execução no período do FECHAMENTO do lote (mesma régua); barra "unidades por pessoa"
+  = um bloco por unidade, barra = número escrito (era lotes ao lado de UN). Link "por dia" da mesa → /por-dia.
+- **Hoje ao vivo:** "hoje" só quando o dia é hoje (`palavraDoDia`); falha do dia ao vivo mostra erro com
+  "tentar de novo". Peso: cartão lê só ordens abertas, lotes do dia e saldo (cache, 288/288 igual ao Σ)
+  uma vez, média só das tarefas do dia, sem `notIn` de todas as canceladas, versões da ficha em lote.

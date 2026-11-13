@@ -45,12 +45,18 @@ export async function GET(request: NextRequest, { params }: Params) {
   const visaoGeral = !tarefa
 
   const janela = janelaDoDiaSP(de, ate)
-  const [lotesTudo, execucoesTudo, historico] = await Promise.all([
+  /**
+   * ⭐⭐ (13/11) UMA RÉGUA DE PERÍODO PRA LOTE E EXECUÇÃO: o FECHAMENTO DO LOTE. Antes o lote era
+   * recortado pelo fechamento e a execução pelo INÍCIO — o trabalho começado na véspera e fechado
+   * hoje caía em períodos diferentes nos dois painéis. Agora a execução entra no período em que o
+   * lote da ordem dela fechou.
+   */
+  const [lotesTudo, historico] = await Promise.all([
     lotesDaJanela(companyId, janela, prisma),
-    execucoesDaJanela(companyId, { ...janela, colaboradorId }, prisma),
     // ⭐ a média vem da história INTEIRA, nunca da janela do filtro
     execucoesParaMedia(companyId, prisma),
   ])
+  const execucoesTudo = await execucoesDaJanela(companyId, { ordemIds: lotesTudo.map((l) => l.ordemId), colaboradorId }, prisma)
 
   /**
    * ⭐ **O MESMO PRINCÍPIO PRA PESSOA** (ordem do dono): *"escolhi pessoa → tudo é dela, e

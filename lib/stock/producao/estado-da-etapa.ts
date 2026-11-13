@@ -86,7 +86,7 @@ export function trabalhoConcluido(estado: EstadoDaEtapa): boolean {
  */
 export function rotuloDoEstado(
   estado: EstadoDaEtapa,
-  ctx?: { iniciou: boolean; ordemCancelada?: boolean; gerente?: string | null; pessoa?: string | null },
+  ctx?: { iniciou: boolean; ordemCancelada?: boolean; gerente?: string | null; pessoa?: string | null; administrativaEm?: Date | null },
 ): string {
   switch (estado) {
     case 'AGUARDANDO': return 'na fila'
@@ -98,6 +98,11 @@ export function rotuloDoEstado(
         ? `finalizada por ${ctx.gerente}${ctx.pessoa ? ` em nome de ${ctx.pessoa}` : ''} · tempo a apurar`
         : 'finalizada pelo gerente · tempo a apurar'
     case 'ENCERRADA_SEM_FINALIZAR':
+      // ⭐ (13/11) a fantasma fechada pelo escritório DIZ isso, com a data — nunca finge que a ordem a levou
+      if (ctx?.administrativaEm) {
+        const dm = ctx.administrativaEm.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' })
+        return `encerrada administrativamente em ${dm} — ordem já estava encerrada`
+      }
       // ⚠️ duas leituras diferentes, e a diferença importa pra quem confere o dia: uma etapa
       // que COMEÇOU e ficou aberta ≠ uma que ninguém chegou a pegar.
       return ctx?.iniciou === false

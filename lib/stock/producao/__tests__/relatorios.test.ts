@@ -142,7 +142,7 @@ describe('⭐ o geral e as barras por pessoa', () => {
     const b = unidadesPorPessoa([
       ex({ tarefa: QUEIJO, colaboradorId: 'rodrigo', minutos: 100, unidades: 1410 }),
       ex({ tarefa: QUEIJO, colaboradorId: 'eliane', minutos: 60, unidades: 150 }),
-    ])
+    ])[0].pessoas
     expect(b[0].nome).toBe('rodrigo')
     expect(b[0].quantidade.total).toBe(1410)
     expect(b[0].proporcao).toBe(1)

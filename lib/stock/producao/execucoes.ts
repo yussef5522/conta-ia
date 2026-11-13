@@ -25,6 +25,14 @@ export interface JanelaDeExecucoes {
   /** filtrar por tarefa (o item produzido) */
   tarefa?: string
   colaboradorId?: string
+  /**
+   * ⭐ (13/11) A RÉGUA DO LOTE: só as execuções destas ordens. Os Relatórios passam as ordens cujo
+   * LOTE fechou no período — assim execução e lote usam a MESMA régua (o fechamento), e as unidades
+   * por pessoa somam exatamente os lotes do período. Com `ordemIds`, `de/ate` não se aplicam.
+   */
+  ordemIds?: readonly string[]
+  /** ⭐ (13/11) só a história destas TAREFAS (nome do item) — a média do dia não precisa do resto */
+  tarefas?: readonly string[]
 }
 
 /**
@@ -39,7 +47,9 @@ export async function execucoesDaJanela(
       companyId,
       // ⚠️ só quem COMEÇOU tem execução; a fila não é trabalho feito
       iniciadoEm: { not: null },
-      ...(janela.de || janela.ate ? { iniciadoEm: { not: null, ...(janela.de ? { gte: janela.de } : {}), ...(janela.ate ? { lte: janela.ate } : {}) } } : {}),
+      ...(janela.ordemIds ? { ordemId: { in: [...janela.ordemIds] } } : {}),
+      ...(janela.tarefas ? { ordemId: { in: await ordensDasTarefas(companyId, janela.tarefas, db) } } : {}),
+      ...(!janela.ordemIds && (janela.de || janela.ate) ? { iniciadoEm: { not: null, ...(janela.de ? { gte: janela.de } : {}), ...(janela.ate ? { lte: janela.ate } : {}) } } : {}),
       ...(janela.colaboradorId ? { executorId: janela.colaboradorId } : {}),
     },
     select: { id: true, ordemId: true, nome: true, executorId: true, colaboradorId: true, iniciadoEm: true, finalizadoEm: true },
@@ -105,6 +115,19 @@ export async function execucoesDaJanela(
 }
 
 /** ⭐ casca fina: a história inteira, que é o que forma as médias */
-export function execucoesParaMedia(companyId: string, db: Db = defaultPrisma): Promise<Execucao[]> {
-  return execucoesDaJanela(companyId, {}, db)
+export function execucoesParaMedia(companyId: string, db: Db = defaultPrisma, tarefas?: readonly string[]): Promise<Execucao[]> {
+  return execucoesDaJanela(companyId, tarefas ? { tarefas } : {}, db)
+}
+
+/**
+ * as ordens (de TODA a história) cujo item produzido tem um destes nomes. ⚠️ Pelo NOME, não pelo id:
+ * a média é chaveada por `tarefa` (= nome do item), então dois itens homônimos dividem a história —
+ * restringir por id mudaria a média. Assim a resposta é a MESMA, só sem ler as tarefas que o dia não tem.
+ */
+async function ordensDasTarefas(companyId: string, tarefas: readonly string[], db: Db): Promise<string[]> {
+  if (!tarefas.length) return []
+  const itens = await db.stockItem.findMany({ where: { companyId, nome: { in: [...tarefas] } }, select: { id: true } })
+  if (!itens.length) return []
+  const ordens = await db.stockProductionOrder.findMany({ where: { companyId, itemProduzidoId: { in: itens.map((i) => i.id) } }, select: { id: true } })
+  return ordens.map((o) => o.id)
 }

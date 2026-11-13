@@ -90,3 +90,16 @@ export async function recomputeSaldoCache(db: Db, companyId: string): Promise<nu
   }
   return saldos.length
 }
+
+/**
+ * ⭐⭐ (13/11/2026) O SALDO PELO CACHE — pra tela que recarrega de 30 em 30s (Hoje ao vivo).
+ *
+ * `stock_saldo_cache` é recomputado por TODO escritor de movimento (`recomputeSaldoCache`) e o juiz
+ * E1 confere cache == Σ. ⭐ Medido em prod em 13/11: 288 de 288 itens, 0 diferença no saldo E no
+ * custo médio. ⛔ Só leitura AO VIVO usa isto; conta de dinheiro (custo do lote, conferência,
+ * ledger) continua no Σ dos movimentos — o cache é conveniência, nunca fonte.
+ */
+export async function saldosDoCache(db: Db, companyId: string): Promise<{ itemId: string; saldo: number; custoMedio: number | null }[]> {
+  const cs = await db.stockSaldoCache.findMany({ where: { companyId }, select: { itemId: true, saldo: true, custoMedio: true } })
+  return cs.map((c) => ({ itemId: c.itemId, saldo: round2(c.saldo), custoMedio: c.custoMedio }))
+}

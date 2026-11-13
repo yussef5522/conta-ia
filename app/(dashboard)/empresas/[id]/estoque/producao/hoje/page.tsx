@@ -203,7 +203,10 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {d === undefined ? <div className="flex items-center gap-2 p-6 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> carregando…</div>
-        : d === null ? <p className="p-6 text-sm text-slate-500">Não consegui carregar o dia.</p>
+        : d === null ? (
+          /* ⭐ (13/11) erro honesto: diz e oferece o gesto — nunca uma tela parada sem saída */
+          <p className="p-6 text-sm text-slate-500" data-testid="dia-falhou">Não consegui carregar o dia. <button type="button" onClick={carregar} className="font-semibold underline">tentar de novo</button></p>
+        )
         : (
           <>
             {/*
@@ -218,7 +221,17 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
              * quando `d` não é `undefined` nem `null`) — o `!` é o compilador pedindo a prova
              * que o fluxo já deu.
              */}
-            <MesaDaCozinhaUI mesa={mesa!} />
+            <MesaDaCozinhaUI mesa={mesa!} onTentarDeNovo={carregar} />
+
+            {/* ⛔⛔ (13/11) A LEITURA DO DIA AO VIVO FALHOU → DIZ, nunca "Cozinha em silêncio" / listas vazias
+                fingindo que o dia não teve nada. */}
+            {mesa!.naoAlcancado.includes('dia ao vivo') ? (
+              <p className="rounded-2xl border px-[18px] py-5 text-center text-sm" data-testid="vivo-falhou"
+                style={{ background: 'var(--fam-ambar-bg)', borderColor: 'var(--fam-ambar-mid)', color: 'var(--fam-ambar-ink)' }}>
+                Não consegui ler o dia ao vivo (agora, o dia de cada uma e a linha do tempo).{' '}
+                <button type="button" onClick={carregar} className="font-semibold underline">tentar de novo</button>
+              </p>
+            ) : (<>
 
             {/* ── AGORA ─────────────────────────────────────────────────────────────── */}
             {/* ⛔ dia passado não tem "agora" — o bloco some em vez de aparecer vazio */}
@@ -415,6 +428,7 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                 </ol>
               )}
             </section>
+            </>)}
           </>
         )}
     </div>

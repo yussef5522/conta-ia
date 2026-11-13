@@ -27,6 +27,7 @@
  * CREATE-only (o isolamento proíbe ALTER).
  */
 
+import { janelaDoDiaSP, somarDias } from '@/lib/datas/dia-sao-paulo'
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { lotesDaJanela, type JanelaDeLotes } from './lotes'
@@ -414,4 +415,16 @@ export function agruparPorReceita(linhas: LinhaDoRelatorio[]): PorReceitaNoPerio
     // ⭐ ordena pelo que mais produziu em LOTES, não em unidades: ordenar por unidade compararia
     // UN com KG (a correção de 13/09 no "top tarefa")
     .sort((a, b) => b.lotes - a.lotes || a.tarefa.localeCompare(b.tarefa))
+}
+
+/**
+ * ⭐⭐ A JANELA DO "POR DIA" É O DIA DE BRASÍLIA (13/11/2026). ⛔ Era `${de}T00:00:00.000Z` →
+ * `${ate}T23:59:59.999Z` (UTC): o lote fechado entre 21h e 23h59 do último dia caía FORA do
+ * período, e o das 21h+ da véspera do 1º dia entrava — medido em prod: 26 de 631 lotes de 30 dias
+ * do lado errado da meia-noite. Mesma régua (`janelaDoDiaSP`) de todas as outras rotas.
+ */
+export function janelaDoPorDia(de: string | null, ate: string | null, hoje: string): { de: string; ate: string; janela: { de: Date; ate: Date } } {
+  const ateOk = ate || hoje
+  const deOk = de || somarDias(hoje, -29)
+  return { de: deOk, ate: ateOk, janela: janelaDoDiaSP(deOk, ateOk) }
 }

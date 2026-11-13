@@ -225,30 +225,46 @@ export function geralDoPeriodo(lotes: Lote[]): GeralDoPeriodo {
 export interface BarraDaPessoa {
   colaboradorId: string
   nome: string
+  /** o que a pessoa produziu NESTA unidade (texto pronto: "1.238 UN") */
   quantidade: Quantidade
+  total: number
   lotes: number
+  /** total ÷ maior total DA MESMA UNIDADE — a barra e o número ao lado medem a MESMA coisa */
   proporcao: number
-  /** ⚠️ a barra mede LOTES (unidades mistas na janela) — a tela tem que DIZER */
-  emLotes: boolean
+}
+
+/** ⭐ um bloco de barras por UNIDADE — UN com UN, KG com KG, nunca na mesma régua (lei S20) */
+export interface BarrasDaUnidade {
+  unidade: string
+  pessoas: BarraDaPessoa[]
 }
 
 /**
- * ⭐ Quanto cada pessoa produziu na janela — respeitando a unidade.
+ * ⭐⭐ Quanto cada pessoa produziu na janela — UM BLOCO POR UNIDADE (13/11/2026).
  *
- * ⛔ Quando a janela atravessa tarefas de unidades diferentes (queijo em UN, massa em KG),
- * a BARRA passa a medir **lotes**: é a única magnitude comparável, e a tela diz qual é.
- * Somar UN com KG pra ter uma barra bonita foi o que produziu o *"1.415,84 un"* do print.
+ * ⛔⛔ O GRÁFICO MENTIA: com UN e KG na mesma janela a barra passava a medir LOTES enquanto o
+ * número ao lado dizia UNIDADES — no print do dono, rodrigo "1.238 UN" com a barra MENOR que edmar
+ * "1.003 UN" (menos lotes, mais unidades). Agora cada unidade é um bloco com a própria escala:
+ * a barra é `total ÷ maior total da unidade`, a mesma grandeza do número escrito. Somar UN com KG
+ * continua impossível: a pessoa que fez nas duas aparece nos DOIS blocos.
  */
-export function unidadesPorPessoa(execucoes: Execucao[]): BarraDaPessoa[] {
-  const porPessoa = new Map<string, Execucao[]>()
-  for (const e of execucoes) porPessoa.set(e.colaboradorId, [...(porPessoa.get(e.colaboradorId) ?? []), e])
-  const misto = new Set(execucoes.map((e) => e.unidade)).size > 1
-  const mag = (es: Execucao[]) => misto ? es.length : es.reduce((s, e) => s + e.unidades, 0)
-  const max = Math.max(1, ...[...porPessoa.values()].map(mag))
-  return [...porPessoa.entries()]
-    .map(([colaboradorId, es]) => ({
-      colaboradorId, nome: es[0].nome, quantidade: somarQuantidades(es), lotes: es.length,
-      proporcao: r2(mag(es) / max), emLotes: misto,
-    }))
-    .sort((a, b) => b.proporcao - a.proporcao || b.lotes - a.lotes)
+export function unidadesPorPessoa(execucoes: Execucao[]): BarrasDaUnidade[] {
+  const porUnidade = new Map<string, Execucao[]>()
+  for (const e of execucoes) porUnidade.set(e.unidade, [...(porUnidade.get(e.unidade) ?? []), e])
+  return [...porUnidade.entries()]
+    .map(([unidade, es]) => {
+      const porPessoa = new Map<string, Execucao[]>()
+      for (const e of es) porPessoa.set(e.colaboradorId, [...(porPessoa.get(e.colaboradorId) ?? []), e])
+      const total = (xs: Execucao[]) => r2(xs.reduce((s, e) => s + e.unidades, 0))
+      const max = Math.max(0, ...[...porPessoa.values()].map(total))
+      const pessoas = [...porPessoa.entries()]
+        .map(([colaboradorId, xs]) => ({
+          colaboradorId, nome: xs[0].nome, quantidade: somarQuantidades(xs), total: total(xs), lotes: xs.length,
+          proporcao: max > 0 ? r2(total(xs) / max) : 0,
+        }))
+        .sort((a, b) => b.total - a.total || b.lotes - a.lotes)
+      return { unidade, pessoas, peso: es.length }
+    })
+    .sort((a, b) => b.peso - a.peso)
+    .map(({ unidade, pessoas }) => ({ unidade, pessoas }))
 }

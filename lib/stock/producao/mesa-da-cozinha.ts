@@ -29,11 +29,12 @@
  * duas verdades na mesma tela, a doença que esta casa mais paga. Uma leitura, um instante.
  */
 
+import { palavraDoDia } from './palavra-do-dia'
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { janelaDoDiaSP, somarDias, horaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 import { formatBRL } from '@/lib/format/money'
-import { saldosDaEmpresa } from '@/lib/stock/saldo'
+import { saldosDoCache } from '@/lib/stock/saldo'
 import { cardsDoPainel, lotesDoPeriodo, type CardsPainel } from './painel-producao'
 import { diaAoVivo, type DiaAoVivo } from './dia-ao-vivo'
 import { filaDeConferencia } from './fila-de-conferencia'
@@ -152,13 +153,25 @@ export async function lerMesaDaCozinha(
   const inicioDaSemana = somarDias(dia, -(DIAS_DA_SEMANA_DA_COZINHA - 1))
   const janelaDaSemana = janelaDoDiaSP(inicioDaSemana, dia)
 
+  /**
+   * ⭐⭐ (13/11) PESO: os lotes do dia e o saldo são lidos UMA vez e o cartão do placar recebe os dois
+   * (antes ele relia os lotes e somava TODOS os movimentos de novo). O saldo vem do CACHE
+   * (`saldosDoCache` — medido igual ao Σ em 288/288 itens); a resposta é a mesma, só mais leve.
+   */
+  const lotesDoDiaP = porta('lotes do dia', () => lotesDoPeriodo(empresaId, janela, db), falhas)
+  const saldosP = porta('saldos', () => saldosDoCache(db, empresaId), falhas)
   const [cards, vivo, fila, lotesDoDia, lotesSemana, saldos, conclusoes] = await Promise.all([
-    porta('placar', () => cardsDoPainel(empresaId, janela, agora, db), falhas),
+    porta('placar', async () => {
+      const [l, s] = await Promise.all([lotesDoDiaP, saldosP])
+      return cardsDoPainel(empresaId, janela, agora, db, {
+        lotes: l ?? undefined, custo: s ? new Map(s.map((x) => [x.itemId, x.custoMedio])) : undefined,
+      })
+    }, falhas),
     porta('dia ao vivo', () => diaAoVivo({ companyId: empresaId, dia, agora }, db), falhas),
     porta('fila de conferência', () => filaDeConferencia(empresaId, db, agora), falhas),
-    porta('lotes do dia', () => lotesDoPeriodo(empresaId, janela, db), falhas),
+    lotesDoDiaP,
     porta('a semana', () => lotesDaJanela(empresaId, janelaDaSemana, db), falhas),
-    porta('saldos', () => saldosDaEmpresa(db, empresaId), falhas),
+    saldosP,
     porta('conclusões', () => conclusoesNoPeriodo(empresaId, janela.de, janela.ate, db), falhas),
   ])
 
@@ -331,6 +344,7 @@ export async function lerMesaDaCozinha(
         nadaSaiu: saiuHoje.porUnidade.length === 0,
         paradas,
         aguardando: fila?.aguardando ?? 0,
+        palavra: palavraDoDia(dia, agora),
       }),
     },
     radar,
@@ -375,10 +389,13 @@ export function faixaDoRodape(e: {
   nadaSaiu: boolean
   paradas: number
   aguardando: number
+  /** ⭐ (13/11) "hoje" só quando o dia olhado É hoje (`palavraDoDia`); sem ele, hoje */
+  palavra?: ReturnType<typeof palavraDoDia>
 }): string {
+  const p = e.palavra ?? { ehHoje: true, dia: 'hoje', ainda: 'ainda hoje' }
   const produziu = e.nadaSaiu
-    ? 'nenhum lote fechado ainda hoje'
-    : `a cozinha já produziu ${e.saiu} hoje`
+    ? `nenhum lote fechado ${p.ainda}`
+    : `a cozinha ${p.ehHoje ? 'já produziu' : 'produziu'} ${e.saiu} ${p.dia}`
   const paradas =
     e.paradas > 0 ? `${e.paradas} etapa(s) parada(s) há horas` : 'nenhuma etapa parada'
   const conferencia =

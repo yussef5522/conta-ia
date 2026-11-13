@@ -53,7 +53,7 @@ describe('⛔⛔ escolhi uma tarefa → NADA de outra tarefa na tela', () => {
   const { lotes, execucoes } = recorte(MASSA)
 
   it('⭐ "unidades por pessoa" vira as unidades DAQUELA tarefa — eliane e acabou', () => {
-    const b = unidadesPorPessoa(execucoes)
+    const b = unidadesPorPessoa(execucoes).flatMap((u) => u.pessoas)
     expect(b.map((p) => p.nome)).toEqual(['eliane'])
     expect(b.map((p) => p.nome)).not.toContain('rodrigo')
     expect(b[0].quantidade.texto).toBe('390 KG')
@@ -102,19 +102,20 @@ describe('⛔⛔ NÚMERO COMPOSTO DE UNIDADES DIFERENTES NUNCA', () => {
     expect(g.quantidade.texto).toBe('1.410 UN · 522 KG')
   })
 
-  it('⭐ a barra por pessoa vira LOTES quando as unidades se misturam', () => {
+  // ⚠️⚠️ REAPONTADO em 13/11 por ordem do dono: a barra em LOTES mentia ao lado de um número em
+  // UNIDADES (rodrigo 1.238 UN com barra menor que edmar 1.003 UN). A régua nova é UM BLOCO POR UNIDADE.
+  it('⭐ unidades misturadas viram DOIS blocos, cada um na sua escala — nunca UN com KG', () => {
     const b = unidadesPorPessoa(EXECS)
-    expect(b.every((p) => p.emLotes)).toBe(true)
-    // eliane 2 execuções × rodrigo 1 → ela lidera a barra, mesmo com menos "números"
-    expect(b[0].nome).toBe('eliane')
-    expect(b[0].quantidade.texto).toBe('390 KG')
-    expect(b[1].quantidade.texto).toBe('1.410 UN')
+    expect(b.map((u) => u.unidade).sort()).toEqual(['KG', 'UN'])
+    const kg = b.find((u) => u.unidade === 'KG')!, un = b.find((u) => u.unidade === 'UN')!
+    expect(kg.pessoas.map((p) => [p.nome, p.quantidade.texto, p.proporcao])).toEqual([['eliane', '390 KG', 1]])
+    expect(un.pessoas.map((p) => [p.nome, p.quantidade.texto, p.proporcao])).toEqual([['rodrigo', '1.410 UN', 1]])
   })
 
-  it('⭐ com UMA unidade só, a barra volta a medir unidades', () => {
+  it('⭐ com UMA unidade só, um bloco, e a barra mede unidades', () => {
     const b = unidadesPorPessoa(EXECS.filter((e) => e.unidade === 'KG'))
-    expect(b.every((p) => p.emLotes)).toBe(false)
-    expect(b[0].quantidade.total).toBe(390)
+    expect(b).toHaveLength(1)
+    expect(b[0].pessoas[0].quantidade.total).toBe(390)
   })
 
   it('⛔ e o PLACAR não soma UN com KG — era o "1.415,84 un" do print', () => {

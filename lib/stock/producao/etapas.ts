@@ -283,6 +283,7 @@ export async function etapasDaOrdem(
         iniciou: !!r.iniciadoEm, ordemCancelada: res.ordemCancelada,
         gerente: res.finalizadaPorNome,
         pessoa: res.emNomeDeNome ?? (r.executorId ? nome.get(r.executorId) ?? null : null),
+        administrativaEm: res.administrativaEm,
       }),
     }
   })

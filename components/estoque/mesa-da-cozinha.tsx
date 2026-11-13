@@ -18,6 +18,7 @@
  * ⛔ **ZERO HEX DE COR** — tudo por token, com par nos dois temas.
  */
 
+import { palavraDoDia } from '@/lib/stock/producao/palavra-do-dia'
 import Link from 'next/link'
 import type { MesaDaCozinha } from '@/lib/stock/producao/mesa-da-cozinha'
 import { fraseDaFitaDaCozinhaVazia } from '@/lib/stock/producao/fita-da-cozinha'
@@ -61,7 +62,9 @@ export type MesaParaTela = Omit<MesaDaCozinha, 'diaAoVivo'> & {
   diaAoVivo: { ehHoje: boolean }
 }
 
-export function MesaDaCozinhaUI({ mesa }: { mesa: MesaParaTela }) {
+export function MesaDaCozinhaUI({ mesa, onTentarDeNovo }: { mesa: MesaParaTela; onTentarDeNovo?: () => void }) {
+  /** ⭐ (13/11) "hoje" só quando o dia olhado é hoje — o relógio é o do SERVIDOR, que montou a mesa */
+  const pd = palavraDoDia(mesa.dia, new Date(mesa.agoraServidor))
   const E = `/empresas/${mesa.empresaId}`
   const p = mesa.placar
 
@@ -155,7 +158,7 @@ export function MesaDaCozinhaUI({ mesa }: { mesa: MesaParaTela }) {
       >
         <div className="px-[6px] pb-[8px] pt-[2px]">
           {mesa.quemFezODia.length === 0 ? (
-            <Vazio>ninguém registrou tarefa hoje</Vazio>
+            <Vazio>ninguém registrou tarefa {pd.dia}</Vazio>
           ) : (
             mesa.quemFezODia.map((q) => (
               <div
@@ -198,13 +201,13 @@ export function MesaDaCozinhaUI({ mesa }: { mesa: MesaParaTela }) {
         span={6}
         titulo="ÚLTIMAS CONCLUSÕES"
         link={{
-          rotulo: `as ${mesa.conclusoesNoDia} de hoje`,
+          rotulo: `as ${mesa.conclusoesNoDia} ${pd.ehHoje ? 'de hoje' : 'do dia'}`,
           href: `${E}/estoque/producao?aba=concluidas`,
         }}
       >
         <div className="px-[6px] pb-[8px] pt-[2px]">
           {mesa.ultimasConclusoes.length === 0 ? (
-            <Vazio>nenhum lote fechado ainda hoje</Vazio>
+            <Vazio>nenhum lote fechado {pd.ainda}</Vazio>
           ) : (
             mesa.ultimasConclusoes.map((c) => (
               <Link
@@ -240,7 +243,7 @@ export function MesaDaCozinhaUI({ mesa }: { mesa: MesaParaTela }) {
       <Mod
         span={6}
         titulo={`A SEMANA DA COZINHA · ${mesa.semana.barraEmLotes ? 'LOTES' : 'POR DIA'}`}
-        link={{ rotulo: 'por dia', href: `${E}/estoque/producao/relatorios` }}
+        link={{ rotulo: 'por dia', href: `${E}/estoque/producao/por-dia` }}
       >
         <div className="flex h-[120px] items-end gap-[6px] px-[16px] pb-[14px] pt-[8px]">
           {mesa.semana.dias.map((d) => (
@@ -292,6 +295,7 @@ export function MesaDaCozinhaUI({ mesa }: { mesa: MesaParaTela }) {
           }}
         >
           não consegui ler: {mesa.naoAlcancado.join(' · ')} — o resto da mesa está completo
+          {onTentarDeNovo && <> · <button type="button" onClick={onTentarDeNovo} className="underline" data-testid="mesa-tentar-de-novo">tentar de novo</button></>}
         </div>
       )}
     </MesaGrid>

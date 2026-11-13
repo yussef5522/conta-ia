@@ -309,7 +309,8 @@ describe('⛔⛔ o PRODUTOR lê o nome de quem FEZ (não o usuário do sistema)'
       })
       await prisma.stockProducaoDesvio.create({
         data: {
-          companyId, conclusaoId: conc.id, ordemId: ordem.id, pctTeorico: 70,
+          // ⚠️ (13/11) RAZÃO, como a conclusão grava (0,70 = 70%) — a fixture antiga usava 70 e escondia o defeito da escala
+          companyId, conclusaoId: conc.id, ordemId: ordem.id, pctTeorico: 0.7,
           /** ⛔ o `criadoPorId` do desvio é o USUÁRIO do sistema — medido em prod: 78 de 400
            *  linhas, e NENHUM casa com `stock_colaborador`. Está aqui de propósito, com um id
            *  que não é colaborador nenhum: se o produtor voltar a ler daqui, o nome desaparece. */

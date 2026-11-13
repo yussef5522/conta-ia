@@ -12,7 +12,7 @@ import { use, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { fetchJson } from '@/lib/http/fetch-json'
-import type { RelatorioDaTarefa, GeralDoPeriodo, BarraDaPessoa } from '@/lib/stock/producao/relatorios'
+import type { RelatorioDaTarefa, GeralDoPeriodo, BarrasDaUnidade } from '@/lib/stock/producao/relatorios'
 import { formatarDuracao } from '@/lib/format/duracao'
 // ⭐ o piso vem do DONO ÚNICO — digitar "5" na tela seria a 2ª régua no dia em que ele mudar
 import { PISO_DE_DURACAO_MIN } from '@/lib/stock/producao/desempenho'
@@ -31,7 +31,7 @@ interface Dados {
   visaoGeral: boolean
   tarefas: { tarefa: string; lotes: number; unidades: number; unidade: string }[]
   porTarefa: RelatorioDaTarefa | null
-  porPessoa: BarraDaPessoa[]
+  porPessoa: BarrasDaUnidade[]
   geral: GeralDoPeriodo
 }
 
@@ -131,7 +131,7 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
             className="cursor-pointer bg-transparent text-[13px] outline-none"
             style={{ color: pessoa ? '#fff' : M.ink }}>
             <option value="" style={{ color: M.ink }}>todas</option>
-            {(d?.porPessoa ?? []).map((p) => (
+            {[...new Map((d?.porPessoa ?? []).flatMap((b) => b.pessoas).map((p) => [p.colaboradorId, p] as const)).values()].map((p) => (
               <option key={p.colaboradorId} value={p.colaboradorId} style={{ color: M.ink }}>{p.nome}</option>
             ))}
           </select>
@@ -288,22 +288,23 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
 
           {/* ── POR PESSOA (todas as tarefas) ──────────────────────────────────── */}
           <Painel titulo={d.visaoGeral ? 'Unidades por pessoa' : 'Quem produziu essa tarefa'}
-            nota={d.visaoGeral
-              ? `· no período, todas as tarefas${d.porPessoa[0]?.emLotes ? ' · barra em LOTES (unidades mistas)' : ''}`
-              : `· ${d.tarefa}`}>
+            nota={d.visaoGeral ? '· no período, todas as tarefas · uma régua por unidade' : `· ${d.tarefa}`}>
             {d.porPessoa.length === 0
               ? <p className="text-[13px] italic" style={{ color: M.sub }}>ninguém produziu no filtro</p>
-              : d.porPessoa.map((p, i) => (
-                <div key={p.colaboradorId} className="flex items-center gap-2.5 py-1.5">
-                  <span className="w-[86px] shrink-0 truncate text-[12px]">{p.nome}</span>
-                  <span className="h-4 flex-1 overflow-hidden rounded-full" style={{ background: M.slateFraco }}>
-                    <i className="block h-full rounded-full"
-                      style={{ width: `${Math.round(p.proporcao * 100)}%`, background: ['#534AB7', '#8b84d6', '#b3aee6', '#d5d2f0'][Math.min(i, 3)] }} />
-                  </span>
-                  <span className="w-[96px] shrink-0 text-right text-[11.5px] font-bold">
-                    {p.quantidade.texto}
-                    {p.emLotes && <small className="block font-normal" style={{ color: M.sub }}>{p.lotes} lote(s)</small>}
-                  </span>
+              /* ⭐ (13/11) UM BLOCO POR UNIDADE: a barra mede o MESMO número escrito ao lado — nunca UN com KG */
+              : d.porPessoa.map((b) => (
+                <div key={b.unidade} className="pb-2" data-testid={`barras-${b.unidade}`}>
+                  {d.porPessoa.length > 1 && <p className="pt-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: M.sub }}>em {b.unidade}</p>}
+                  {b.pessoas.map((p, i) => (
+                    <div key={p.colaboradorId} className="flex items-center gap-2.5 py-1.5">
+                      <span className="w-[86px] shrink-0 truncate text-[12px]">{p.nome}</span>
+                      <span className="h-4 flex-1 overflow-hidden rounded-full" style={{ background: M.slateFraco }}>
+                        <i className="block h-full rounded-full"
+                          style={{ width: `${Math.round(p.proporcao * 100)}%`, background: ['#534AB7', '#8b84d6', '#b3aee6', '#d5d2f0'][Math.min(i, 3)] }} />
+                      </span>
+                      <span className="w-[96px] shrink-0 text-right text-[11.5px] font-bold">{p.quantidade.texto}</span>
+                    </div>
+                  ))}
                 </div>
               ))}
           </Painel>

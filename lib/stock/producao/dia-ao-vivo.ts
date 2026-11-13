@@ -155,11 +155,8 @@ export async function diaAoVivo(
   // ⛔ ORDEM CANCELADA FICA DE FORA dos três blocos — a mesma régua do relatório por pessoa:
   // trabalho em ordem que não produziu não conta pra ninguém. Mostrar aqui e esconder lá faria
   // as duas telas discordarem sobre o mesmo dia.
-  const canceladas = await db.stockProductionOrder.findMany({
-    where: { companyId: input.companyId, estado: 'CANCELADA' }, select: { id: true },
-  })
-  const fora = canceladas.map((o) => o.id)
-  const semCanceladas = fora.length ? { ordemId: { notIn: fora } } : {}
+  // ⭐ (13/11) PESO: a régua é a mesma, mas sem montar a lista de TODAS as canceladas da história
+  // num `notIn` (crescia pra sempre): as etapas lidas são filtradas pelo estado da ordem DELAS, abaixo.
 
   // ⛔⛔ A FILA VEM DA `dataProducao` DA ORDEM, NÃO DE `designadoEm` — e essa distinção é um
   // bug que o teste pegou antes de ir pra tela. O gestor designa na SEXTA as tarefas do
@@ -184,10 +181,9 @@ export async function diaAoVivo(
 
   // ⚠️ e uma etapa também entra pelo que ACONTECEU nela — a ordem pode ser de ontem e o toque
   // ser de hoje (produção que virou o dia).
-  const etapas = await db.stockOrdemEtapa.findMany({
+  const etapasLidas = await db.stockOrdemEtapa.findMany({
     where: {
       companyId: input.companyId,
-      ...semCanceladas,
       OR: [
         { ordemId: { in: doDia.map((o) => o.id) } },
         { iniciadoEm: { gte: janela.de, lte: janela.ate } },
@@ -200,6 +196,11 @@ export async function diaAoVivo(
     },
     orderBy: [{ ordemId: 'asc' }, { posicao: 'asc' }],
   })
+  const canceladas = new Set((await db.stockProductionOrder.findMany({
+    where: { companyId: input.companyId, estado: 'CANCELADA', id: { in: [...new Set(etapasLidas.map((e) => e.ordemId))] } },
+    select: { id: true },
+  })).map((o) => o.id))
+  const etapas = etapasLidas.filter((e) => !canceladas.has(e.ordemId))
 
   const ordemIds = [...new Set(etapas.map((e) => e.ordemId))]
   const [ordens, conclusoes, colaboradores] = await Promise.all([
@@ -277,7 +278,9 @@ export async function diaAoVivo(
    * ⚠️ Se a média saísse do próprio dia, "a média da tarefa" seria a própria pessoa de hoje
    * e o placar compararia cada um consigo mesmo. A janela muda; a régua não.
    */
-  const historico = await execucoesParaMedia(input.companyId, db)
+  // ⭐ (13/11) PESO: só a história das TAREFAS QUE O DIA TEM (a média é por tarefa) — a MESMA média,
+  // sem ler as ~1.600 execuções das tarefas que não aparecem neste dia, a cada 30s
+  const historico = await execucoesParaMedia(input.companyId, db, [...new Set(itens.map((i) => i.nome))])
   const mediasPorTarefa = new Map<string, ReturnType<typeof mediaDaTarefa>>()
   for (const t of new Set(historico.map((h: Execucao) => h.tarefa))) mediasPorTarefa.set(t, mediaDaTarefa(t, historico))
 
@@ -313,6 +316,7 @@ export async function diaAoVivo(
       rotulo: rotuloDoEstado(res.estado, {
         iniciou: !!e.iniciadoEm, ordemCancelada: res.ordemCancelada,
         gerente: res.finalizadaPorNome, pessoa: res.emNomeDeNome,
+        administrativaEm: res.administrativaEm,
       }),
       loteFechado: conc ? { ...conc, unidade: item?.unidadeControle ?? '' } : null,
       // ⭐ pedido → entregue, pela régua única (`desempenho.ts`)
