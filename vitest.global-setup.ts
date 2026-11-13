@@ -10,6 +10,7 @@
 
 import { PrismaClient } from '@prisma/client'
 import { fotografarEmpresas, limparResiduo } from './lib/testing/limpar-residuo'
+import { instalarChecksNoSqlite } from './lib/testing/checks-do-postgres'
 
 let antes: Set<string> = new Set()
 
@@ -18,6 +19,16 @@ export async function setup() {
   try {
     antes = await fotografarEmpresas(db)
   } catch { /* sem banco disponível: o guard de banco já barra o que importa */ }
+  /**
+   * ⭐⭐ (13/11) AS CHECKs DE LISTA DO POSTGRES VIRAM TRIGGER NO SQLITE DE TESTE — sem isto a suíte
+   * aceitava gravar o que prod recusa (o `ENCERRADA_ADMINISTRATIVAMENTE` passou verde e prod deu 23514).
+   * ⛔ Falha aqui DERRUBA a rodada: rodar sem as CHECKs é voltar ao verde falso.
+   */
+  const ehSqlite = await db.$queryRawUnsafe('SELECT sqlite_version()').then(() => true, () => false)
+  if (ehSqlite) {
+    const n = await instalarChecksNoSqlite(db)
+    if (n === 0) throw new Error('nenhuma CHECK do Postgres instalada no banco de teste — o verde falso voltaria')
+  }
   await db.$disconnect().catch(() => {})
 }
 

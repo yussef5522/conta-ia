@@ -87,10 +87,9 @@ beforeEach(async () => {
   await criarMovimento(prisma, { companyId, itemId: coca, tipo: 'BAIXA_VENDA', quantidade: -12, custoUnitario: 3, custoTotal: -36, origem: 'MANUAL', dataMovimento: FATO.dia })
   await criarMovimento(prisma, { companyId, itemId: queijo, tipo: 'PRODUCAO_GERACAO', quantidade: 20, custoUnitario: 4, custoTotal: 80, origem: 'MANUAL', dataMovimento: FATO.meio })
   await criarMovimento(prisma, { companyId, itemId: queijo, tipo: 'BAIXA_VENDA', quantidade: -5, custoUnitario: 4, custoTotal: -20, origem: 'MANUAL', dataMovimento: FATO.dia })
-  await prisma.stockRadarWatchlist.createMany({ data: [
-    { companyId, lista: 'REVENDA', itemId: coca },
-    { companyId, lista: 'PORCOES', itemId: queijo },
-  ] })
+  // ⚠️ (13/11) a gravação em `stock_radar_watchlist` SAIU daqui: nenhum código lê essa tabela (o
+  // vocabulário mora em lib/stock/radar/watchlist.ts) e ela gravava `lista: 'REVENDA'`, que a CHECK
+  // de prod (`chk_stock_radar_lista`: CAROS|PORCOES) RECUSA — só passava porque o SQLite não tinha a CHECK.
 })
 afterEach(async () => {
   for (const t of ['stockContagemItem', 'stockContagem', 'stockRadarWatchlist', 'stockMesaPreferencia', 'stockMovement', 'stockItem', 'stockSaldoCache'] as const) {

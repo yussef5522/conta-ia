@@ -6412,3 +6412,13 @@ Consertos que as telas novas exigem (sem tela nova, sem migration).
 - **Hoje ao vivo:** "hoje" só quando o dia é hoje (`palavraDoDia`); falha do dia ao vivo mostra erro com
   "tentar de novo". Peso: cartão lê só ordens abertas, lotes do dia e saldo (cache, 288/288 igual ao Σ)
   uma vez, média só das tarefas do dia, sem `notIn` de todas as canceladas, versões da ficha em lote.
+
+## ⭐ FANTASMA PELA DECISÃO (b) + AS CHECKs DO POSTGRES NO TESTE (13/11/2026)
+- A etapa fantasma ("QUEM VAI PRODUZIR", ordem cancelada 14/09) ganha o registro que o sistema teria
+  gravado: motivo ORDEM_CANCELADA. O caminho do motivo administrativo SAIU do código (sem uso).
+- ⛔ O verde falso: a suíte roda no SQLite (`db push`) e as CHECKs vivem nas migrations SQL do Postgres.
+  `lib/testing/checks-do-postgres.ts` lê as 26 CHECKs de lista das migrations (iguais 26/26 ao catálogo
+  de prod em 13/11) e o global setup as instala como TRIGGER no SQLite (NULL passa, como no PG).
+  ⚠️ CHECK de expressão (trim/length, coerência) NÃO é traduzida — segue a prova contra Postgres (REGRA 13).
+- Achado ao ligar: a fixture do radar gravava `lista: 'REVENDA'` em `stock_radar_watchlist`, que prod
+  recusa (CAROS|PORCOES) — tabela que nenhum código lê mais; a gravação morta saiu do teste.

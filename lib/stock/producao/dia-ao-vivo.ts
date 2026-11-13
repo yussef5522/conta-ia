@@ -316,7 +316,6 @@ export async function diaAoVivo(
       rotulo: rotuloDoEstado(res.estado, {
         iniciou: !!e.iniciadoEm, ordemCancelada: res.ordemCancelada,
         gerente: res.finalizadaPorNome, pessoa: res.emNomeDeNome,
-        administrativaEm: res.administrativaEm,
       }),
       loteFechado: conc ? { ...conc, unidade: item?.unidadeControle ?? '' } : null,
       // ⭐ pedido → entregue, pela régua única (`desempenho.ts`)

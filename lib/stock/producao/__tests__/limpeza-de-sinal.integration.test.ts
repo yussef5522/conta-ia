@@ -11,7 +11,7 @@ import { etapasDaOrdem, designarEtapa } from '../etapas'
 import { iniciarTarefa } from '../minhas-tarefas'
 import { concluir } from '../conclusao'
 import { cadastrarPessoa } from '../cadastrar-pessoa'
-import { encerrarEtapaFantasma, EtapaFantasmaError } from '../encerrar-etapas-abertas'
+import { checksDeListaDasMigrations } from '@/lib/testing/checks-do-postgres'
 import { relatorioPorDia, janelaDoPorDia } from '../relatorio-por-dia'
 import { lotesDaJanela } from '../lotes'
 import { execucoesDaJanela, execucoesParaMedia } from '../execucoes'
@@ -71,40 +71,25 @@ const fecharLote = async (ordemId: string, qtd: number, quando: Date) => {
   return r.conclusaoId
 }
 
-describe('1 · ETAPA FANTASMA — fechada com marca, tempo a apurar, nada apagado', () => {
-  /** o caso real: "QUEM VAI PRODUZIR" iniciada 14/09 18:06, ordem CANCELADA sem registro de encerramento */
-  async function fantasma() {
+describe('1 · O BANCO DE TESTE RECUSA O QUE O POSTGRES DE PROD RECUSA (o verde falso de 13/11)', () => {
+  it('motivo fora da CHECK de prod (chk_etapa_encerrada_motivo) é RECUSADO — gravar e atualizar', async () => {
     const ordemId = await ordemSeparada()
     const etapaId = await etapaIniciada(ordemId, emSP(18, 6))
-    await prisma.stockProductionOrder.update({ where: { id: ordemId }, data: { estado: 'CANCELADA' } }) // o caminho antigo, sem levar a etapa
-    return { ordemId, etapaId }
-  }
-
-  it('fecha com o motivo administrativo, sem carimbar fim, e a tela DIZ', async () => {
-    const { ordemId, etapaId } = await fantasma()
-    const antes = { etapas: await prisma.stockOrdemEtapa.count({ where: { companyId } }), enc: await prisma.stockEtapaEncerrada.count({ where: { companyId } }) }
-    expect(antes.enc).toBe(0)
-    await encerrarEtapaFantasma({ companyId, etapaId }, prisma)
-    const reg = await prisma.stockEtapaEncerrada.findUniqueOrThrow({ where: { etapaId } })
-    expect(reg.motivo).toBe('ENCERRADA_ADMINISTRATIVAMENTE')
-    const e = await prisma.stockOrdemEtapa.findUniqueOrThrow({ where: { id: etapaId } })
-    expect(e.finalizadoEm, 'carimbou um fim que ninguém mediu').toBeNull()
-    expect(e.executorId, 'o rastro de quem começou não se apaga').toBe(rodrigo)
-    expect(await prisma.stockOrdemEtapa.count({ where: { companyId } }), 'apagou etapa').toBe(antes.etapas)
-    const [vista] = await etapasDaOrdem(companyId, ordemId, new Date(), prisma)
-    expect(vista.estado).toBe('ENCERRADA_SEM_FINALIZAR')
-    expect(vista.minutos, 'tempo a apurar').toBeNull()
-    const dm = reg.encerradaEm.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' })
-    expect(vista.rotulo).toBe(`encerrada administrativamente em ${dm} — ordem já estava encerrada`)
-  })
-  it('⛔ recusa a 2ª vez, a ordem viva e a etapa já finalizada — sem escrever', async () => {
-    const { etapaId } = await fantasma()
-    await encerrarEtapaFantasma({ companyId, etapaId }, prisma)
-    await expect(encerrarEtapaFantasma({ companyId, etapaId }, prisma)).rejects.toThrow(EtapaFantasmaError)
-    const viva = await ordemSeparada()
-    const ev = await etapaIniciada(viva, emSP(15))
-    await expect(encerrarEtapaFantasma({ companyId, etapaId: ev }, prisma)).rejects.toThrow(/ordem ainda está viva/)
+    await expect(prisma.stockEtapaEncerrada.create({ data: { companyId, etapaId, ordemId, motivo: 'ENCERRADA_ADMINISTRATIVAMENTE' } }))
+      .rejects.toThrow(/chk_etapa_encerrada_motivo/)
+    // ⭐ o motivo que prod aceita continua passando — a decisão (b) do dono: "ordem cancelada"
+    const r = await prisma.stockEtapaEncerrada.create({ data: { companyId, etapaId, ordemId, motivo: 'ORDEM_CANCELADA' } })
+    await expect(prisma.stockEtapaEncerrada.update({ where: { id: r.id }, data: { motivo: 'QUALQUER' } })).rejects.toThrow(/chk_etapa_encerrada_motivo/)
     expect(await prisma.stockEtapaEncerrada.count({ where: { companyId } })).toBe(1)
+  })
+  it('a irmã também morde: estado de ordem fora de chk_production_order_estado', async () => {
+    const ordemId = await ordemSeparada()
+    await expect(prisma.stockProductionOrder.update({ where: { id: ordemId }, data: { estado: 'FANTASIA' } })).rejects.toThrow(/chk_production_order_estado/)
+  })
+  it('a lista vem das migrations e bate com o que o Postgres tem (26 CHECKs de lista, medidas em prod 13/11)', () => {
+    const cs = checksDeListaDasMigrations()
+    expect(cs.find((c) => c.nome === 'chk_etapa_encerrada_motivo')).toEqual({ tabela: 'stock_etapa_encerrada', nome: 'chk_etapa_encerrada_motivo', coluna: 'motivo', valores: ['ORDEM_CONCLUIDA', 'ORDEM_CANCELADA'] })
+    expect(cs.length).toBeGreaterThanOrEqual(26)
   })
 })
 

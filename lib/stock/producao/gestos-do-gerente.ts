@@ -34,8 +34,6 @@ export interface EtapaResolvida {
   pedidoEm: Date | null
   /** motivo do encerramento pela ordem, quando houve registro */
   encerradaPor: MotivoDoEncerramento | null
-  /** ⭐ (13/11) quando o escritório fechou a etapa fantasma — só no motivo administrativo */
-  administrativaEm: Date | null
   ordemViva: boolean
   ordemCancelada: boolean
 }
@@ -62,14 +60,13 @@ export async function resolverEstadoDasEtapas(
     // ⭐ (12/11, lei v7 M2) a etapa de uma TAREFA tem o cabeçalho em `stock_tarefa`: cancelada
     // lá = "ordem cancelada" aqui — o MESMO desfecho, pela MESMA régua (solta a pessoa, cala o alarme)
     db.stockTarefa.findMany({ where: { companyId, id: { in: ordemIds } }, select: { id: true, canceladaEm: true } }),
-    db.stockEtapaEncerrada.findMany({ where: { companyId, etapaId: { in: ids } }, select: { etapaId: true, motivo: true, encerradaEm: true } }),
+    db.stockEtapaEncerrada.findMany({ where: { companyId, etapaId: { in: ids } }, select: { etapaId: true, motivo: true } }),
     db.stockEtapaFinalizadaGerente.findMany({ where: { companyId, etapaId: { in: ids } }, select: { etapaId: true, finalizadaPorId: true, emNomeDeId: true } }),
     db.stockEtapaPedidoFinalizar.findMany({ where: { companyId, etapaId: { in: ids }, atendidoEm: null }, select: { etapaId: true, pedidoEm: true } }),
   ])
 
   const estadoOrdem = new Map<string, string>([...ordens.map((o) => [o.id, o.estado] as const), ...tarefas.filter((t) => t.canceladaEm).map((t) => [t.id, 'CANCELADA'] as const)])
   const encMap = new Map(encerradas.map((e) => [e.etapaId, e.motivo as MotivoDoEncerramento]))
-  const encEm = new Map(encerradas.map((e) => [e.etapaId, e.encerradaEm]))
   const gerMap = new Map(gerentes.map((g) => [g.etapaId, g]))
   const pedMap = new Map(pedidos.map((p) => [p.etapaId, p.pedidoEm]))
 
@@ -97,7 +94,6 @@ export async function resolverEstadoDasEtapas(
       pedidoEmAberto: pedMap.has(e.id),
       pedidoEm: pedMap.get(e.id) ?? null,
       encerradaPor: encMap.get(e.id) ?? null,
-      administrativaEm: encMap.get(e.id) === 'ENCERRADA_ADMINISTRATIVAMENTE' ? encEm.get(e.id) ?? null : null,
       ordemViva,
       ordemCancelada: est === 'CANCELADA',
     })

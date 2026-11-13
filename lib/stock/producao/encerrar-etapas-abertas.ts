@@ -21,13 +21,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
-/**
- * ⭐ (13/11) `ENCERRADA_ADMINISTRATIVAMENTE` — a etapa FANTASMA: iniciada, nunca finalizada, numa
- * ordem que JÁ estava encerrada sem que o encerramento a levasse junto (ordens anteriores à regra de
- * 06/09). O escritório fecha com marca explícita; o tempo segue "a apurar" (`finalizadoEm` NULL de
- * propósito — carimbar um fim inventaria um horário que ninguém mediu). Nada é apagado.
- */
-export type MotivoDoEncerramento = 'ORDEM_CONCLUIDA' | 'ORDEM_CANCELADA' | 'ENCERRADA_ADMINISTRATIVAMENTE'
+export type MotivoDoEncerramento = 'ORDEM_CONCLUIDA' | 'ORDEM_CANCELADA'
 
 export interface EtapaAberta {
   etapaId: string
@@ -118,33 +112,3 @@ export async function encerramentosDasEtapas(
 // conclusão é client component e importar daqui arrastaria o Prisma pro bundle. Re-exportada
 // pra quem já está no servidor não precisar saber disso.
 export { avisoDeEtapasAbertas, type EtapaAbertaResumo } from './aviso-etapas-abertas'
-
-export class EtapaFantasmaError extends Error {}
-
-/**
- * ⭐⭐ FECHAR UMA ETAPA FANTASMA (13/11/2026) — UMA linha de encerramento com o motivo
- * administrativo. ⛔ Recusa (sem escrever) se a etapa não for fantasma: não iniciada, já
- * finalizada, já encerrada, ou de ordem VIVA (essa ainda tem gesto: o tablet ou o gerente).
- * Idempotente pelo `etapaId @unique` da tabela: encerrar 2× é impossível por construção.
- */
-export async function encerrarEtapaFantasma(
-  input: { companyId: string; etapaId: string; userId?: string | null },
-  db: Db = defaultPrisma,
-): Promise<{ etapaId: string; ordemId: string }> {
-  const e = await db.stockOrdemEtapa.findFirst({
-    where: { id: input.etapaId, companyId: input.companyId },
-    select: { id: true, ordemId: true, iniciadoEm: true, finalizadoEm: true },
-  })
-  if (!e) throw new EtapaFantasmaError('Etapa não encontrada nesta empresa.')
-  if (!e.iniciadoEm || e.finalizadoEm) throw new EtapaFantasmaError('Só etapa iniciada e nunca finalizada é fantasma.')
-  const ordem = await db.stockProductionOrder.findFirst({ where: { id: e.ordemId, companyId: input.companyId }, select: { estado: true } })
-  if (!ordem || (ordem.estado !== 'CONCLUIDA' && ordem.estado !== 'CANCELADA')) {
-    throw new EtapaFantasmaError('A ordem ainda está viva — essa etapa se resolve pelo tablet ou pelo gerente.')
-  }
-  const ja = await db.stockEtapaEncerrada.findUnique({ where: { etapaId: e.id }, select: { id: true } })
-  if (ja) throw new EtapaFantasmaError('Essa etapa já tem registro de encerramento.')
-  await db.stockEtapaEncerrada.create({
-    data: { companyId: input.companyId, etapaId: e.id, ordemId: e.ordemId, motivo: 'ENCERRADA_ADMINISTRATIVAMENTE', encerradaPorId: input.userId ?? null },
-  })
-  return { etapaId: e.id, ordemId: e.ordemId }
-}
