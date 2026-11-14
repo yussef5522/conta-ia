@@ -43,9 +43,15 @@ describe('tokens --esc-* POR VALOR (as 4 leis declaram o mesmo :root)', () => {
 })
 
 describe('R1 — os chips da produção', () => {
-  it('a porta única tem os 5 chips, na ordem da lei', () => {
+  // ⭐ (13/11) a família R continua: a lei MAIS NOVA (Rotinas, R25–R31) desenha os 6 chips e manda;
+  // as 4 leis anteriores desenharam os 5 primeiros — eles seguem iguais, na mesma ordem (prefixo)
+  it('a porta única tem os chips da lei mais nova (Rotinas), na ordem dela', () => {
+    expect(CHIPS_DA_PRODUCAO.map((c) => c.rotulo)).toEqual(filhos(ler('docs/rotinas-referencia.html'), 'chips'))
+  })
+  it('as 4 leis anteriores são o PREFIXO da família (nenhum chip mudou de nome nem de lugar)', () => {
     for (const n of ['ao-vivo', 'desempenho', 'receitas', 'equipe']) {
-      expect(CHIPS_DA_PRODUCAO.map((c) => c.rotulo), n).toEqual(filhos(LEI(n), 'chips'))
+      const daLei = filhos(LEI(n), 'chips')
+      expect(CHIPS_DA_PRODUCAO.map((c) => c.rotulo).slice(0, daLei.length), n).toEqual(daLei)
     }
   })
   it.each([['ao-vivo', 'ao-vivo'], ['desempenho', 'desempenho'], ['receitas', 'receitas'], ['equipe', 'equipe']])('%s acende o próprio chip', (n, aba) => {

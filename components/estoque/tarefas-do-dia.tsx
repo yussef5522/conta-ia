@@ -7,6 +7,8 @@
 // tarefas saiu daqui — elas aparecem em «Em aberto» e «Concluídas», com linha própria
 // (`lib/stock/producao/linha-da-tarefa.ts`), e o "cancelar" vai junto, na linha aberta.
 // ⚠️ As classes (`pp-painel`, `pp-cria`, `bt`) vêm do CSS da página do painel.
+// ⭐⭐ R31 (Rotinas, 13/11) — A PONTE "isso repete →": marcou, o cartão NÃO cria avulsa — leva pra tela
+// Rotinas com nome, instrução (vira o item) e quem carregados. ⛔ O Painel NÃO cria rotina.
 
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
@@ -25,12 +27,23 @@ export function NovaTarefa({ id, podeLiberar, nomes, onCriada }: {
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
+  const [repete, setRepete] = useState(false)
 
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/colaboradores`).then((r) => (r.ok ? r.json() : null)).then((j) => setPessoas((j?.colaboradores ?? []).filter((p: Pessoa) => p.ativo !== false))).catch(() => {})
   }, [id])
 
+  /** ⭐ R31 — a ponte: monta a URL da tela Rotinas com os campos; nada é gravado aqui */
+  const irPraRotinas = () => {
+    const q = new URLSearchParams()
+    if (nome.trim()) q.set('nome', nome.trim())
+    if (instr.trim()) q.set('item', instr.trim())
+    if (quem) q.set('quem', quem === 'EQUIPE' ? 'LIVRE' : quem)
+    window.location.href = `/empresas/${id}/estoque/producao/rotinas?${q.toString()}`
+  }
+
   const criar = async () => {
+    if (repete) { irPraRotinas(); return }
     if (!nome.trim() || !quem) return
     setBusy(true); setErro(null); setOk(null)
     try {
@@ -62,10 +75,15 @@ export function NovaTarefa({ id, podeLiberar, nomes, onCriada }: {
           {podeLiberar && <option value="EQUIPE">liberada pra equipe</option>}
         </select>
         <input type="date" value={dia} onChange={(e) => setDia(e.target.value)} aria-label="prazo" />
-        <button type="button" onClick={criar} disabled={busy || !nome.trim() || !quem} className="bt verde2">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Criar tarefa'}
+        <button type="button" onClick={criar} disabled={busy || (!repete && (!nome.trim() || !quem))} className="bt verde2" data-testid="criar-tarefa">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : repete ? 'montar rotina →' : 'Criar tarefa'}
         </button>
       </div>
+      {podeLiberar && (
+        <label className="pp-repete" data-testid="isso-repete">
+          <input type="checkbox" checked={repete} onChange={(e) => setRepete(e.target.checked)} /> isso repete →
+        </label>
+      )}
       {ok && <span className="pp-pill verde pp-msg" data-testid="tarefa-criada">{ok}</span>}
       {erro && <span className="pp-pill coral pp-msg">{erro}</span>}
     </div>

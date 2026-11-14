@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
+import { garantirSemeaduraDeHoje } from '@/lib/stock/producao/rotinas-do-banco'
 import { aoVivo } from '@/lib/stock/producao/ao-vivo'
 
 interface Params { params: Promise<{ id: string }> }
@@ -11,5 +12,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
   const a = await guardStock(request, companyId, 'stock.manage')
   if (a.erro) return a.erro
+  // ⭐ R25 — disparo da LEITURA: se o agendador da meia-noite falhou, a primeira leitura do dia semeia
+  await garantirSemeaduraDeHoje(companyId, new Date(), prisma)
   return NextResponse.json(await aoVivo(companyId, new Date(), prisma))
 }

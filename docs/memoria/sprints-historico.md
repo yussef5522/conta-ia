@@ -6458,3 +6458,21 @@ segue o filtro). Emenda datada na lei `docs/producao-referencia.html`. LAVAR ALF
 (18 ordens/18 lotes, 24/10→13/11, 1 ingrediente) — não é tarefa; migrar é decisão do dono. O guard da criação
 enxuta (`pergunta-do-pedido-uma-vez`) recortava a NovaOrdem até o fim do arquivo COLADO às listas e passou a ler só
 o page.tsx. Replantios: tarefa no bloco de lotes, tarefa com R$, blocos misturados, estado de quantidade na NovaOrdem — 4/4.
+
+## ⭐⭐ ROTINAS — tarefas que se repetem sozinhas, com checklist em grupo (13/11/2026)
+Lei `docs/rotinas-referencia.html` ("ROTINAS (produção) — referência v1 APROVADA", R25–R31, 12 pinos portados em
+`lib/stock/producao/rotinas.ts`, rodam em `leis-r-pinos.test.ts` — o extrator agora tira comentário HTML: a lei
+escreve "Pinos no <script>" no próprio comentário). Migration CREATE-only `20261113230000_stock_rotina` (4 tabelas:
+`stock_rotina`, `stock_rotina_item`, `stock_tarefa_rotina` com UNIQUE(rotinaId, dia) = a idempotência NO BANCO, e
+`stock_tarefa_item` com CHECK do tique assinado). Prova de CHECK: `scripts/prova-check-rotina.ts`.
+- **Semeadura (R25):** `semearRotinasDoDia` (porta única) chama `criarTarefa` — a tarefa semeada é tarefa NORMAL.
+  Dois disparos: node-cron 00:01 SP (`rotinas-scheduler.ts`, registrado no `instrumentation.ts`) + `garantirSemeaduraDeHoje`
+  nas leituras (entrar da Janela, GET tarefas do Painel, Ao vivo, Rotinas).
+- **R27 dia limpo:** `filtroDasVivas` (tarefa.ts) — avulsa vencida continua migrando; rotina vive só no dia dela
+  (exceção: relógio correndo). `tarefasDoEscritorio` também pula rotina de outro dia não feita.
+- **Grupo (R26):** sem INICIAR/FINALIZAR (as duas rotas recusam); `ticarItem` trava a linha da tarefa
+  (`UPDATE … SET nome = nome`) e o último tique fecha a etapa (início = 1º tique, executor = quem fechou).
+- **Ponte (R31):** "isso repete →" no cartão Nova tarefa navega pra Rotinas com campos; emenda E2 na lei do Painel.
+- **Decisões medidas:** GET das Rotinas = `stock.view` (a casa manda "ler é ler"; escrita = `stock.manage`); Ao vivo
+  ganhou as rotinas atrasadas fora da mão de alguém (âmbar) dentro do bloco "Na mão agora"; "dias da semana" é tipo
+  `dias` (a lei só desenhou o `<select>`). Replantios: 10/10.

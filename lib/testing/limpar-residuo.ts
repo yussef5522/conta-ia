@@ -24,6 +24,8 @@ const TABELAS_POR_COMPANY = [
   'stockImpressaoJob', 'stockImpressora', 'stockEtiquetaModelo',
   'stockVendaLinha', 'stockVendaImport', 'stockVendaProdutoMap',
   'stockProducaoConclusao', 'stockProductionOrder', 'stockTarefa',
+  // ⚠️ depois da tarefa: o vínculo (cascata da tarefa) segura a rotina por FK RESTRICT
+  'stockRotina',
   'stockFichaComponente', 'stockFichaVersao', 'stockFicha',
   'stockEntradaManualItem', 'stockEntradaManual',
   'stockPayableLink', 'stockPayableSuggestion', 'stockParcelaCombinada',

@@ -43,10 +43,16 @@ function MioloDoCartao({ t, grande }: { t: Tarefa; grande: string }) {
   if (t.tipo === 'TAREFA') {
     return (
       <>
-        <span className="inline-block rounded-full border border-slate-600 bg-[#273449] px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider text-slate-400" data-testid="selo-tarefa">TAREFA</span>
+        {t.rotina
+          ? <span className="inline-block rounded-[7px] bg-violet-400/15 px-2.5 py-0.5 text-[10.5px] font-extrabold tracking-wider text-violet-400" data-testid="selo-tarefa">TAREFA · ROTINA</span>
+          : <span className="inline-block rounded-full border border-slate-600 bg-[#273449] px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider text-slate-400" data-testid="selo-tarefa">TAREFA</span>}
         <p className={`mt-1 ${grande} font-semibold leading-tight text-slate-50`}>{t.produto}</p>
         {t.instrucao && <p className="mt-0.5 text-[30px] font-extrabold leading-tight text-amber-400" data-testid="instrucao">{t.instrucao}</p>}
         {t.colega && <p className="mt-1 text-[13px] font-bold text-slate-400">com <b className="text-slate-100">{t.colega}</b></p>}
+        {t.rotina?.limite && (
+          <p className="mt-1 text-[12.5px] font-bold tabular-nums text-slate-400">até {t.rotina.limite}
+            {t.rotina.atrasada && <> · <span className="text-amber-400" data-testid="rotina-atrasada">atrasada</span></>}</p>
+        )}
       </>
     )
   }
@@ -63,6 +69,41 @@ function MioloDoCartao({ t, grande }: { t: Tarefa; grande: string }) {
   )
 }
 
+/**
+ * ⭐⭐ R26 — O GRUPO DE ROTINA (lei docs/rotinas-referencia.html, amostra da Janela): UM cartão com os
+ * itens ticáveis. Cada tique vai pro servidor com o PIN da sessão (quem assina é o PIN, nunca a tela);
+ * o cartão conclui SOZINHO no último item. ⛔ Sem INICIAR/FINALIZAR. Item não ticado nunca some.
+ * R27: "atrasada" em ÂMBAR — nunca vermelho.
+ */
+function CartaoDoGrupo({ t, busy, onTicar }: { t: Tarefa; busy: boolean; onTicar: (itemId: string) => void }) {
+  const itens = t.rotina!.itens
+  const feitas = itens.filter((i) => i.feito).length
+  const prog = `${feitas}/${itens.length}`
+  return (
+    <div data-testid="cartao-grupo">
+      <span className="inline-block rounded-[7px] bg-violet-400/15 px-2.5 py-0.5 text-[10.5px] font-extrabold tracking-wider text-violet-400">TAREFA · ROTINA</span>
+      <p className="mt-2 text-[20px] font-extrabold leading-tight text-slate-50">{t.produto}</p>
+      <p className="mt-0.5 text-[12.5px] font-bold tabular-nums text-slate-400">
+        {t.rotina!.limite && <>até {t.rotina!.limite} · </>}{t.minha ? 'sua' : 'livre — quem pegar'} · {prog}
+        {t.rotina!.atrasada && <> · <span className="text-amber-400" data-testid="rotina-atrasada">atrasada</span></>}
+      </p>
+      <div className="mt-3 mb-1 flex items-center gap-2.5">
+        <div className="h-[7px] flex-1 overflow-hidden rounded-full bg-[#223050]"><i className="block h-full rounded-full bg-emerald-400" style={{ width: `${(feitas / itens.length) * 100}%` }} /></div>
+        <span className="text-[13px] font-extrabold tabular-nums" data-testid="progresso-grupo">{prog}</span>
+      </div>
+      {itens.map((i) => (
+        <button key={i.id} type="button" disabled={busy || i.feito} onClick={() => onTicar(i.id)} data-testid="item-grupo"
+          className="flex w-full items-center gap-3 border-b border-[#1E2B48] px-0.5 py-3 text-left last:border-b-0 disabled:cursor-default">
+          <span className={`flex h-[30px] w-[30px] flex-none items-center justify-center rounded-[9px] border-2 text-base font-extrabold ${i.feito ? 'border-emerald-400 bg-emerald-400 text-slate-900' : 'border-[#38507E]'}`}>{i.feito ? '✓' : ''}</span>
+          <span className={`flex-1 text-[15px] font-bold ${i.feito ? 'text-slate-400 line-through decoration-[1.5px]' : 'text-slate-50'}`}>{i.texto}</span>
+          {i.feito && <span className="whitespace-nowrap text-[11.5px] font-bold tabular-nums text-slate-400">{i.quem} · {i.hora}</span>}
+        </button>
+      ))}
+      <p className="mt-2.5 text-[11.5px] font-bold text-slate-400">cada tique assina com o PIN de quem ticou · o cartão conclui sozinho no último item</p>
+    </div>
+  )
+}
+
 export default function CozinhaPage({ params }: { params: Promise<{ empresaId: string }> }) {
   const { empresaId } = use(params)
   const [pin, setPin] = useState('')
@@ -70,7 +111,7 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
   const [tarefas, setTarefas] = useState<Tarefa[]>([])
   const [erro, setErro] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [feito, setFeito] = useState<{ nome: string; minutos: number; qtdGerada?: number } | null>(null)
+  const [feito, setFeito] = useState<{ nome: string; minutos: number | null; qtdGerada?: number } | null>(null)
   // ⭐ "quantos saíram?" na ÚLTIMA etapa — o número vem de quem sabe, na ponta
   const [fechando, setFechando] = useState<Tarefa | null>(null)
   /** ⭐ o aviso de GRANDEZA (22864 KG?) — pergunta com o número provável em 1 toque */
@@ -196,7 +237,8 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
         <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/20"><Check className="h-10 w-10 text-emerald-400" /></div>
         <p className="mt-5 text-lg font-medium">Tarefa finalizada</p>
         <p className="mt-1 text-slate-300">{feito.nome}</p>
-        <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-400">{duracao(feito.minutos)}</p>
+        {/* ⚠️ grupo de rotina não tem cronômetro: o tempo é do 1º ao último tique (gravado no servidor) — a tela não inventa "0min" */}
+        {feito.minutos != null && <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-400">{duracao(feito.minutos)}</p>}
         {feito.qtdGerada != null && (
           <p className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-sm text-slate-300">
             lote fechado · <strong className="tabular-nums text-slate-100">{feito.qtdGerada}</strong> saíram
@@ -393,6 +435,14 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
       ) : (
         <ul className="mt-3 space-y-3">
           {tarefas.map((t) => (
+            t.rotina && t.rotina.itens.length > 0 ? (
+              <li key={t.etapaId} className="rounded-2xl border border-[#283756] bg-[#15203A] p-4">
+                <CartaoDoGrupo t={t} busy={busy} onTicar={async (itemId) => {
+                  const j = await chamar('ticar', { etapaId: t.etapaId, itemId })
+                  if (j?.concluiu) setFeito({ nome: t.produto, minutos: null })
+                }} />
+              </li>
+            ) : (
             <li key={t.etapaId} className="rounded-2xl bg-slate-800 p-4">
               {/* ⭐⭐ O NOME INTEIRO DO PRODUTO É O PROTAGONISTA (08/09) — decisão do dono:
                   *"quem olha de longe na cozinha tem que ler O QUE é sem apertar os olhos"*.
@@ -436,6 +486,7 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
                   : t.esperandoEtapaAnterior ? `aguardando “${t.esperandoEtapaAnterior}”` : 'INICIAR'}
               </button>
             </li>
+            )
           ))}
         </ul>
       )}

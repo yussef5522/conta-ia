@@ -5795,7 +5795,7 @@ model SuitDiaMaterializado {
 // nenhuma segunda janela de INICIAR/FINALIZAR.
 // ⚠️ Estado DERIVADO, nunca coluna: cancelada = `canceladaEm`; feita = a etapa finalizada.
 model StockTarefa {
-  id             String    @id @default(cuid())
+  id             String             @id @default(cuid())
   companyId      String
   nome           String
   /// a instrução livre que a cozinha lê em destaque ("5 LATAS")
@@ -5803,12 +5803,88 @@ model StockTarefa {
   /// o dia da tarefa (meio-dia de São Paulo, como o resto do módulo)
   dia            DateTime
   criadoPorId    String?
-  criadoEm       DateTime  @default(now())
+  criadoEm       DateTime           @default(now())
   canceladaEm    DateTime?
   canceladaPorId String?
+  /// ⭐ (R31) ORIGEM: com linha em stock_tarefa_rotina = semeada por rotina; sem = avulsa do Painel
+  rotina         StockTarefaRotina?
+  /// ⭐ (R26) itens ticáveis do grupo (só rotina com 2+ itens)
+  itens          StockTarefaItem[]
 
   @@index([companyId, dia])
   @@map("stock_tarefa")
+}
+
+// ⭐⭐ ROTINA — A FÁBRICA DE TAREFAS (lei docs/rotinas-referencia.html, R25–R31, 13/11/2026).
+// Regra de repetição (JSON validado por `regraValida`): diaria · dias{dows} · semanal{dow} · mensal{dia}.
+// Estado DERIVADO: pausada = `pausadaEm`; excluída com história (R29) = `excluidaEm` (some das telas).
+model StockRotina {
+  id            String              @id @default(cuid())
+  companyId     String
+  nome          String
+  regra         String
+  /// hora limite em minutos do dia (0–1439); null = sem limite (R27)
+  limiteMin     Int?
+  /// pessoa fixa (R28); null = livre — quem pegar primeiro
+  colaboradorId String?
+  pausadaEm     DateTime?
+  pausadaPorId  String?
+  excluidaEm    DateTime?
+  excluidaPorId String?
+  criadoPorId   String?
+  criadoEm      DateTime            @default(now())
+  atualizadoEm  DateTime            @default(now())
+  itens         StockRotinaItem[]
+  semeadas      StockTarefaRotina[]
+
+  @@index([companyId, excluidaEm])
+  @@map("stock_rotina")
+}
+
+model StockRotinaItem {
+  id       String      @id @default(cuid())
+  rotinaId String
+  posicao  Int
+  texto    String
+  rotina   StockRotina @relation(fields: [rotinaId], references: [id], onDelete: Cascade)
+
+  @@unique([rotinaId, posicao])
+  @@map("stock_rotina_item")
+}
+
+// ⭐⭐ O VÍNCULO TAREFA-SEMEADA ↔ ROTINA+DIA. `@@unique([rotinaId, dia])` é a IDEMPOTÊNCIA da
+// semeadura (R25) no BANCO: rodar duas vezes — ou dois disparos ao mesmo tempo — não duplica.
+// `limiteMin` é SNAPSHOT: editar a rotina depois não reescreve o atraso de um dia passado.
+model StockTarefaRotina {
+  id        String      @id @default(cuid())
+  companyId String
+  tarefaId  String      @unique
+  rotinaId  String
+  dia       DateTime
+  limiteMin Int?
+  criadoEm  DateTime    @default(now())
+  tarefa    StockTarefa @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  rotina    StockRotina @relation(fields: [rotinaId], references: [id], onDelete: Restrict)
+
+  @@unique([rotinaId, dia])
+  @@index([companyId, dia])
+  @@map("stock_tarefa_rotina")
+}
+
+// ⭐ (R26) item do grupo NA TAREFA DO DIA — snapshot do texto + o tique: quem (o PIN da sessão) e quando.
+model StockTarefaItem {
+  id         String      @id @default(cuid())
+  companyId  String
+  tarefaId   String
+  posicao    Int
+  texto      String
+  feitoEm    DateTime?
+  feitoPorId String?
+  tarefa     StockTarefa @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+
+  @@unique([tarefaId, posicao])
+  @@index([companyId, tarefaId])
+  @@map("stock_tarefa_item")
 }
 
 // ⭐ PAPEL DA CONTA DA EQUIPE (R20/R13, 13/11). Sem linha = COZINHA. ESCRITORIO e APARELHO

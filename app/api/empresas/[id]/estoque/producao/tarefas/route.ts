@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
+import { garantirSemeaduraDeHoje } from '@/lib/stock/producao/rotinas-do-banco'
 import { criarTarefa, tarefasDoEscritorio, nomesDeTarefasUsados, TarefaTipoError, MAX_NOME_TAREFA, MAX_INSTRUCAO } from '@/lib/stock/producao/tarefa'
 
 interface Params { params: Promise<{ id: string }> }
@@ -12,6 +13,8 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
   const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
+  // ⭐ R25 — disparo da LEITURA: se o agendador da meia-noite falhou, a primeira leitura do dia semeia
+  await garantirSemeaduraDeHoje(companyId, new Date(), prisma)
   // ⭐ (lei v9) o período das Concluídas do painel — mesmo `de/ate` da rota de ordens; sem ele, hoje
   const sp = request.nextUrl.searchParams
   const de = sp.get('de'), ate = sp.get('ate')

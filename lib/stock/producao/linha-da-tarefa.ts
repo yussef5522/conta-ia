@@ -22,6 +22,10 @@ export interface LinhaDaTarefa {
   duracao: string | null
   fazendo: boolean
   podeCancelar: boolean
+  /** ⭐ (R31) a origem guardada — a linha é a MESMA, só ganha "rotina" no apoio */
+  origem: 'ROTINA' | 'AVULSA'
+  /** ⭐ (R27) passou do "até" sem concluir — pílula ÂMBAR, nunca vermelho */
+  atrasada: boolean
 }
 
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
@@ -36,18 +40,27 @@ export function linhaDaTarefaAberta(t: TarefaDoEscritorio, agora: Date): LinhaDa
   const fazendo = t.estado === 'EM_ANDAMENTO' && !!t.iniciadoEm
   const apoio = fazendo
     ? `${quem ?? '—'} · começou ${hhmm(t.iniciadoEm!)} · há ${formatarDuracao(Math.max(0, (agora.getTime() - new Date(t.iniciadoEm!).getTime()) / 60000))}`
-    : `${t.quem.length ? `para ${t.quem.join(' e ')}` : t.liberada ? 'liberada pra equipe' : 'sem ninguém'} · ninguém iniciou ainda`
-  return { tarefaId: t.tarefaId, selo: 'TAREFA', nome: t.nome, instrucao: t.instrucao, apoio, duracao: null, fazendo, podeCancelar: true }
+    : `${t.quem.length ? `para ${t.quem.join(' e ')}` : t.liberada ? 'liberada pra equipe' : 'sem ninguém'} · ${t.progresso && t.progresso[0] !== '0' ? `${t.progresso} feitos` : 'ninguém iniciou ainda'}`
+  return {
+    tarefaId: t.tarefaId, selo: 'TAREFA', nome: t.nome, instrucao: t.instrucao, apoio: prefixoDaRotina(t) + apoio, duracao: null, fazendo,
+    podeCancelar: true, origem: t.origem, atrasada: t.atrasada,
+  }
+}
+
+/** "rotina · até 11:00 · " — a origem e o limite na frente do apoio (só rotina) */
+function prefixoDaRotina(t: TarefaDoEscritorio): string {
+  if (t.origem !== 'ROTINA') return ''
+  return `rotina${t.limite ? ` · até ${t.limite}` : ''} · `
 }
 
 /** ⭐ a tarefa CONCLUÍDA: quem · hora · DURAÇÃO — sem R$/un, sem %, sem conferência. */
 export function linhaDaTarefaConcluida(t: TarefaDoEscritorio): LinhaDaTarefa {
   const quem = quemDe(t) ?? 'sem responsável'
-  const apoio = t.finalizadoEm ? `${quem} · ${hhmm(t.finalizadoEm)}` : quem
+  const apoio = prefixoDaRotina(t).replace(/ · até [0-9:]+/, '') + (t.finalizadoEm ? `${quem} · ${hhmm(t.finalizadoEm)}` : quem)
   return {
     tarefaId: t.tarefaId, selo: 'TAREFA', nome: t.nome, instrucao: t.instrucao, apoio,
     duracao: t.minutos != null ? formatarDuracao(t.minutos) : '·',
-    fazendo: false, podeCancelar: false,
+    fazendo: false, podeCancelar: false, origem: t.origem, atrasada: false,
   }
 }
 

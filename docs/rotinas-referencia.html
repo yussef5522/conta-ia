@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ROTINAS (produção) — referência v1 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════
+ROTINAS — tarefas que se repetem sozinhas. Decisão do dono (13/11):
+grupos-checklist já na v1; prova com foto fica pra fatia 2.
+Estudo de mercado: Jolt, Crunchtime/Zenput, Operandio, Trail —
+rotina criada uma vez cai sozinha; checklist em grupo; hora limite;
+conformidade. Diferença nossa: integrado à Janela da Cozinha (PIN,
+cronômetro honesto) e ao Desempenho.
+Este arquivo tem DUAS amostras: a tela Rotinas (escritório claro,
+--esc-*) e como o grupo cai na Janela da Cozinha (tablet, tema
+escuro). As faixas divisórias pretas são da AMOSTRA, não do real.
+Família R continua (R17–R19 Receitas, R20–R23 Equipe, R24 Receitas).
+Herdadas: S15, S16, S18, S19.
+
+R25 — ROTINA SEMEIA SOZINHA. Rotina salva tem regra de repetição
+      (todo dia · dias da semana · toda semana num dia · dia N do
+      mês), hora limite opcional e quem faz. No virar do dia de
+      Brasília o sistema SEMEIA as tarefas do dia automaticamente.
+      Semeadura idempotente: rodar duas vezes não duplica (semear()
+      só cria o que falta). Ninguém enche tarefa manual de manhã.
+
+R26 — ROTINA PODE SER GRUPO. 1 ou N itens. Na Janela da Cozinha o
+      grupo é UM cartão com itens ticáveis; cada tique grava quem
+      e quando (o PIN da sessão assina); o grupo conclui SOZINHO
+      quando o último item tica. Item não ticado nunca some.
+
+R27 — HORA LIMITE HONESTA. "até HH:MM" é opcional. Passou sem
+      concluir → "atrasada" em âmbar (nunca vermelho pânico) na
+      Janela, no Painel e no Ao vivo. O dia seguinte não herda
+      atraso: rotina de ontem não feita fica registrada "não
+      feita" no dia dela, e hoje nasce limpa.
+
+R28 — QUEM FAZ É POR ROTINA. Pessoa fixa (designada — só ela tica)
+      ou livre (quem chegar primeiro tica). Mesma regra das ordens.
+
+R29 — PAUSAR E EXCLUIR DE VERDADE (irmã da R23/R24). Pausar para
+      de semear e a lista mostra "pausada". Excluir: rotina que
+      nunca semeou apaga DE VEZ; com história, some das telas e as
+      tarefas já semeadas/feitas ficam intactas. Confirmação com
+      números.
+
+R30 — O DIA SE VÊ NA PRÓPRIA TELA. Cada rotina de hoje mostra
+      "N/M feitas" e atraso ali na linha. Placar histórico de
+      conformidade (% no prazo por dia/pessoa) entra no DESEMPENHO
+      na fatia 2, junto com a prova por foto.
+
+R31 — UM NASCIMENTO POR CAMINHO (decisão do dono 13/11). A rotina
+      é a FÁBRICA (regra que cria tarefas sozinha; mora aqui); o
+      cartão "Nova tarefa" do PAINEL é a MÃO (tarefa avulsa de
+      HOJE, sem repetição; continua no Painel). No cartão do
+      Painel entra a ponte "isso repete →": marcou, não cria
+      avulsa — leva pra tela Rotinas com os campos carregados.
+      A tela Rotinas NÃO cria tarefa avulsa; o Painel NÃO cria
+      rotina. Lá na frente (Janela, Concluídas, Desempenho) tudo
+      é a MESMA tarefa do dia, com a origem guardada (rotina ×
+      avulsa). Zero formulário duplicado.
+
+Pinos no <script>. Datas da amostra: sexta 13/11/2026, agora 10:40.
+═══════════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --esc-bg:#F3F5FA; --esc-card:#FFFFFF; --esc-linha:#C9D0E3;
+  --esc-tinta:#0A0F1E; --esc-tinta2:#46516B; --esc-tinta3:#8B94AD;
+  --esc-indigo:#4F46E5; --esc-indigo50:#EEF0FE; --esc-indigo-t:#3730A3;
+  --esc-verde:#0E9F6E; --esc-verde50:#E4F7EF; --esc-verde-t:#065F46;
+  --esc-ambar50:#FCF0DC; --esc-ambar-t:#7C4A03; --esc-ambar:#B45309;
+  --esc-roxo:#7C3AED; --esc-roxo50:#F3EFFE; --esc-roxo-t:#5B21B6;
+  --jan-bg:#0C1322; --jan-card:#15203A; --jan-linha:#283756;
+  --jan-tinta:#EDF2FB; --jan-tinta2:#9FB0CC; --jan-verde:#34D399;
+  --jan-ambar:#FBBF24; --jan-roxo:#A78BFA;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--esc-bg);color:var(--esc-tinta);font-family:var(--font)}
+body{padding:0 0 46px}
+.num{font-variant-numeric:tabular-nums}
+.nav{position:sticky;top:0;z-index:5;display:flex;gap:7px;flex-wrap:wrap;
+  background:#0A0F1E;padding:9px 14px}
+.nav button{border:1px solid #334155;background:#1E293B;color:#CBD5E1;border-radius:999px;
+  padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.nav button.on{background:#F1F5F9;color:#0A0F1E;border-color:#F1F5F9}
+.faixa{background:#0A0F1E;color:#8FA0BF;font-size:10px;font-weight:800;letter-spacing:.12em;
+  text-transform:uppercase;padding:7px 18px}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 18px 10px}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.top h1{margin:0;font-size:21px;font-weight:800;letter-spacing:-.01em}
+.agora{font-size:13px;font-weight:700;color:var(--esc-tinta2)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
+.chips button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);
+  border-radius:999px;height:34px;padding:0 15px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.chips button.on{background:var(--esc-indigo);border-color:var(--esc-indigo);color:#fff}
+.card{background:var(--esc-card);border:1px solid var(--esc-linha);border-radius:14px;
+  padding:14px 16px;margin-bottom:16px}
+.chead{display:flex;align-items:center;gap:8px;font-size:9.5px;font-weight:800;
+  letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase;margin-bottom:4px}
+.chead .n{background:var(--esc-indigo50);color:var(--esc-indigo-t);border-radius:999px;
+  padding:1px 8px;font-size:10.5px;letter-spacing:0}
+.chead .sp{flex:1}
+.iwr{position:relative;display:inline-flex}
+.i{width:17px;height:17px;border-radius:50%;border:1px solid var(--esc-linha);background:var(--esc-card);
+  color:var(--esc-tinta3);font-size:10.5px;font-weight:800;cursor:pointer;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;padding:0;font-family:var(--font)}
+.pop{display:none;position:absolute;top:22px;left:-8px;z-index:9;width:270px;
+  background:#0A0F1E;color:#E2E8F0;border-radius:10px;padding:10px 12px;
+  font-size:11.5px;font-weight:600;line-height:1.5;letter-spacing:0;text-transform:none}
+.iwr.aberto .pop{display:block}
+
+/* nova rotina (cartão fixo) */
+.zr{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.1fr) 128px minmax(0,1fr) 140px;
+  gap:10px;align-items:end}
+.zr label{display:block;font-size:9.5px;font-weight:800;letter-spacing:.07em;
+  color:var(--esc-tinta3);text-transform:uppercase;margin-bottom:5px}
+.zr input,.zr select{width:100%;border:1px solid var(--esc-linha);border-radius:9px;height:36px;
+  background:var(--esc-card);color:var(--esc-tinta);font-size:13px;font-weight:700;
+  font-family:var(--font);padding:0 11px;outline:none}
+.btpri{border:0;background:var(--esc-indigo);color:#fff;border-radius:10px;height:36px;
+  font-size:13px;font-weight:800;cursor:pointer;font-family:var(--font);padding:0 16px}
+.itens{grid-column:1 / -1;border:1px dashed var(--esc-linha);border-radius:10px;padding:10px 12px}
+.itens .irow{display:flex;align-items:center;gap:9px;padding:5px 0;font-size:13px;font-weight:700}
+.itens .irow .ponto{width:7px;height:7px;border-radius:50%;background:var(--esc-indigo);flex:none}
+.itens .add{color:var(--esc-indigo);font-size:12px;font-weight:800;cursor:pointer;
+  background:none;border:0;font-family:var(--font);padding:5px 0 0}
+
+/* lista de rotinas */
+.rhead{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.85fr) 58px 86px minmax(0,.95fr) 212px;
+  gap:12px;font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);
+  text-transform:uppercase;padding:8px 0 6px;border-bottom:1px solid #E3E7F2}
+.rrow{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.85fr) 58px 86px minmax(0,.95fr) 212px;
+  gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #E3E7F2}
+.rrow:last-child{border-bottom:0}
+.rrow.pausada{opacity:.55}
+.rrow .rn{font-size:13.5px;font-weight:700}
+.rrow .rn small{display:block;font-size:11px;color:var(--esc-tinta3);font-weight:700;margin-top:2px}
+.rrow .rep{font-size:12.5px;font-weight:700;color:var(--esc-tinta2)}
+.rrow .hl,.rrow .qf{font-size:12.5px;font-weight:700;color:var(--esc-tinta2);text-align:right}
+.rrow .hoje{font-size:12.5px;font-weight:800;text-align:right}
+.rrow .hoje .ok{color:var(--esc-verde-t)}
+.rrow .hoje .amb{color:var(--esc-ambar-t)}
+.rrow .hoje small{display:block;font-size:10.5px;font-weight:700;color:var(--esc-tinta3);margin-top:2px}
+.rrow .acoes{display:flex;gap:7px;justify-content:flex-end}
+.rrow .acoes button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta);
+  border-radius:8px;height:30px;padding:0 10px;font-size:11.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.rrow .acoes .perigo{color:#B42318;border-color:#EBCDCB}
+.chip-p{display:inline-block;background:#E8EBF5;color:var(--esc-tinta2);border-radius:6px;
+  padding:1px 8px;font-size:10px;font-weight:800;margin-left:7px;vertical-align:1px}
+.rhead .dir{text-align:right}
+
+.rot2{display:none}
+/* celular */
+@media (max-width:760px){
+  .rot2{display:inline}
+  .zr{grid-template-columns:minmax(0,1fr)}
+  .rhead{display:none}
+  .rrow{grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:"rn hoje" "meta meta" "acoes acoes";row-gap:7px}
+  .rrow .rn{grid-area:rn}
+  .rrow .hoje{grid-area:hoje}
+  .rrow .metawrap{grid-area:meta;display:flex;gap:14px;flex-wrap:wrap;align-items:baseline}
+  .rrow .hl,.rrow .qf{text-align:left}
+  .rrow .acoes{grid-area:acoes;justify-content:flex-start}
+}
+@media (min-width:761px){
+  .rrow .metawrap{display:contents}
+}
+
+/* ───────── Janela da Cozinha (amostra escura) ───────── */
+.jan{background:var(--jan-bg);padding:26px 18px 34px}
+.jwrap{max-width:560px;margin:0 auto}
+.jcard{background:var(--jan-card);border:1px solid var(--jan-linha);border-radius:16px;
+  padding:16px 16px 14px;color:var(--jan-tinta)}
+.jtopo{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.jbadge{background:rgba(167,139,250,.16);color:var(--jan-roxo);border-radius:7px;
+  padding:2px 9px;font-size:10.5px;font-weight:800;letter-spacing:.05em}
+.jtit{font-size:20px;font-weight:800;letter-spacing:-.01em;margin:7px 0 2px}
+.jsub{font-size:12.5px;font-weight:700;color:var(--jan-tinta2)}
+.jsub .amb{color:var(--jan-ambar)}
+.jprog{display:flex;align-items:center;gap:10px;margin:12px 0 4px}
+.jprog .pb{flex:1;height:7px;border-radius:99px;background:#223050;overflow:hidden}
+.jprog .pb i{display:block;height:100%;background:var(--jan-verde);border-radius:99px}
+.jprog .pt{font-size:13px;font-weight:800}
+.jit{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid #1E2B48}
+.jit:last-of-type{border-bottom:0}
+.jit .cx{width:30px;height:30px;border-radius:9px;border:2px solid #38507E;flex:none;
+  display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:var(--jan-bg)}
+.jit.feito .cx{background:var(--jan-verde);border-color:var(--jan-verde)}
+.jit .tx{font-size:15px;font-weight:700;flex:1}
+.jit.feito .tx{color:var(--jan-tinta2);text-decoration:line-through;text-decoration-thickness:1.5px}
+.jit .quem{font-size:11.5px;font-weight:700;color:var(--jan-tinta2);white-space:nowrap}
+.jnota{font-size:11.5px;font-weight:700;color:var(--jan-tinta2);margin-top:10px}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button>Estoque</button><button>Vendas</button><button class="on">Produção</button>
+  <button>Financeiro</button><button>Cardápio</button>
+</nav>
+
+<div class="faixa">amostra · tela do escritório</div>
+
+<main class="wrap">
+  <header class="top">
+    <h1>Produção</h1>
+    <div class="agora num">sexta, 13/11 · 10:40</div>
+  </header>
+
+  <div class="chips">
+    <button>Painel</button><button>Ao vivo</button><button>Desempenho</button>
+    <button>Receitas</button><button>Equipe</button><button class="on">Rotinas</button>
+  </div>
+
+  <div class="card">
+    <div class="chead">Nova rotina
+      <span class="iwr"><button class="i" onclick="this.parentNode.classList.toggle('aberto')">i</button>
+        <span class="pop">A rotina cai sozinha na Janela da Cozinha nos dias da regra —
+        ninguém cria tarefa manual. Grupo com vários itens vira UM cartão
+        com tiques; cada tique grava quem fez e quando. Hora limite é
+        opcional: passou, fica "atrasada" em âmbar.</span></span>
+    </div>
+    <div class="zr">
+      <div><label>Nome</label><input value="ABERTURA DA COZINHA"></div>
+      <div><label>Repete</label><select><option>todo dia</option><option>dias da semana…</option><option>toda semana (escolher dia)</option><option>dia do mês…</option></select></div>
+      <div><label>Até · opcional</label><input value="11:00" class="num"></div>
+      <div><label>Quem faz</label><select><option>livre — quem pegar</option><option>Michele</option><option>Edmar</option><option>Cristian</option></select></div>
+      <div><button class="btpri">Criar rotina</button></div>
+      <div class="itens">
+        <div class="irow"><span class="ponto"></span>Ligar fritadeiras e chapa</div>
+        <div class="irow"><span class="ponto"></span>Conferir gás e exaustor</div>
+        <div class="irow"><span class="ponto"></span>Abastecer molhos da bancada</div>
+        <button class="add">+ item</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="chead">Rotinas <span class="n num" id="nrot"></span></div>
+    <div class="rhead"><span>Rotina</span><span>Repete</span><span class="dir">Até</span><span class="dir">Quem</span><span class="dir">Hoje</span><span class="dir"></span></div>
+    <div id="lrot"></div>
+  </div>
+</main>
+
+<div class="faixa">amostra · como cai na janela da cozinha (tablet)</div>
+
+<div class="jan">
+  <div class="jwrap">
+    <div class="jcard">
+      <div class="jtopo"><span class="jbadge">TAREFA · ROTINA</span></div>
+      <div class="jtit">ABERTURA DA COZINHA</div>
+      <div class="jsub num">até 11:00 · livre — quem pegar · <span id="jprogtxt"></span></div>
+      <div class="jprog"><div class="pb"><i id="jbar"></i></div><div class="pt num" id="jpt"></div></div>
+      <div id="jitens"></div>
+      <div class="jnota">cada tique assina com o PIN de quem ticou · o cartão conclui sozinho no último item</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══ ESPECIFICAÇÃO EXECUTÁVEL — ROTINAS v1 ═══ */
+
+/* R25 — a regra diz se semeia hoje (datas 'AAAA-MM-DD', dow 0=dom…6=sáb) */
+function semeiaHoje(regra, dataISO){
+  const d = new Date(dataISO + 'T12:00:00');
+  if (regra.tipo === 'diaria')  return true;
+  if (regra.tipo === 'semanal') return d.getDay() === regra.dow;
+  if (regra.tipo === 'mensal')  return d.getDate() === regra.dia;
+  return false;
+}
+/* R25 — idempotente: só cria o que ainda não existe no dia */
+function semear(aSemear, jaSemeadas){
+  return aSemear.filter(n => !jaSemeadas.includes(n));
+}
+/* próxima data em que a regra cai, a partir de (sem contar) dataISO */
+function proxima(regra, dataISO){
+  const d = new Date(dataISO + 'T12:00:00');
+  for (let k = 1; k <= 62; k++){
+    d.setDate(d.getDate() + 1);
+    const iso = d.toISOString().slice(0,10);
+    if (semeiaHoje(regra, iso)) return iso;
+  }
+  return null;
+}
+/* R27 — atrasada: tem limite, passou, e não terminou */
+function atrasada(agoraMin, limiteMin, feitas, total){
+  if (limiteMin == null) return false;
+  return agoraMin > limiteMin && feitas < total;
+}
+/* R26 — o grupo conclui sozinho no último tique */
+const grupoConcluido = itens => itens.every(i => i.feito);
+const progresso = itens => itens.filter(i=>i.feito).length + '/' + itens.length;
+const min = h => { const [a,b] = h.split(':').map(Number); return a*60+b; };
+
+/* ── amostra: sexta 13/11/2026, agora 10:40 ─────────────────── */
+const HOJE = '2026-11-13', AGORA = min('10:40');
+
+const ITENS_ABERTURA = [
+  {tx:'Ligar fritadeiras e chapa',      feito:true,  quem:'Débora · 06:12'},
+  {tx:'Conferir gás e exaustor',        feito:true,  quem:'Débora · 06:15'},
+  {tx:'Água nova do banho-maria',       feito:true,  quem:'Cristian · 06:40'},
+  {tx:'Descongelar beef do dia',        feito:true,  quem:'Cristian · 06:41'},
+  {tx:'Abastecer molhos da bancada',    feito:false},
+  {tx:'Temperatura do freezer anotada', feito:false},
+];
+
+const ROTINAS = [
+  {n:'ABERTURA DA COZINHA', itens:6, regra:{tipo:'diaria'}, rep:'todo dia',
+   ate:'11:00', quem:'livre', hoje:{feitas:4, total:6}},
+  {n:'TEMPERATURA DAS GELADEIRAS', itens:3, regra:{tipo:'diaria'}, rep:'todo dia',
+   ate:'09:00', quem:'Nadine', hoje:{feitas:3, total:3, fim:'08:12'}},
+  {n:'FECHAMENTO DO SALÃO', itens:5, regra:{tipo:'diaria'}, rep:'todo dia',
+   ate:'23:30', quem:'livre', hoje:{feitas:0, total:5}},
+  {n:'TROCA DO ÓLEO DA FRITADEIRA', itens:1, regra:{tipo:'semanal', dow:1}, rep:'toda segunda',
+   ate:null, quem:'Cristian', hoje:null},
+  {n:'LIMPEZA PROFUNDA DA CHAPA', itens:1, regra:{tipo:'mensal', dia:1}, rep:'dia 1 do mês',
+   ate:null, quem:'Edmar', hoje:null},
+  {n:'CONTAGEM DO FREEZER', itens:2, regra:{tipo:'semanal', dow:0}, rep:'todo domingo',
+   ate:null, quem:'livre', hoje:null, pausada:true},
+];
+
+/* ── pinos (rodam sempre; em node, só eles) ─────────────────── */
+const PINOS = [
+  ['diária semeia hoje',             semeiaHoje({tipo:'diaria'}, HOJE) === true],
+  ['toda segunda NÃO semeia sexta',  semeiaHoje({tipo:'semanal',dow:1}, HOJE) === false],
+  ['próxima segunda é 16/11',        proxima({tipo:'semanal',dow:1}, HOJE) === '2026-11-16'],
+  ['próximo dia 1 é 01/12',          proxima({tipo:'mensal',dia:1}, HOJE) === '2026-12-01'],
+  ['semear é idempotente',           JSON.stringify(semear(['a','b'], ['a'])) === '["b"]'],
+  ['semear de novo não duplica',     semear(['a','b'], ['a','b']).length === 0],
+  ['10:40 com limite 11:00 no prazo',atrasada(AGORA, min('11:00'), 4, 6) === false],
+  ['11:20 sem terminar é atrasada',  atrasada(min('11:20'), min('11:00'), 4, 6) === true],
+  ['terminada nunca atrasa',         atrasada(min('11:20'), min('11:00'), 6, 6) === false],
+  ['sem limite nunca atrasa',        atrasada(min('23:00'), null, 0, 5) === false],
+  ['grupo só conclui no último',     grupoConcluido(ITENS_ABERTURA) === false],
+  ['progresso 4/6',                  progresso(ITENS_ABERTURA) === '4/6'],
+];
+for (const [nome,ok] of PINOS) if (!ok) throw new Error('PINO FALHOU: '+nome);
+
+/* ── render ─────────────────────────────────────────────────── */
+function render(){
+  const $ = id => document.getElementById(id);
+  const dm = iso => iso.slice(8,10) + '/' + iso.slice(5,7);
+
+  $('nrot').textContent = ROTINAS.length;
+  $('lrot').innerHTML = ROTINAS.map(r=>{
+    let hoje;
+    if (r.pausada) hoje = '<span style="color:var(--esc-tinta3)">—</span>';
+    else if (!r.hoje) hoje = `<span style="color:var(--esc-tinta2)">próxima ${dm(proxima(r.regra, HOJE))}</span>`;
+    else {
+      const atras = atrasada(AGORA, r.ate ? min(r.ate) : null, r.hoje.feitas, r.hoje.total);
+      const cls = r.hoje.feitas === r.hoje.total ? 'ok' : (atras ? 'amb' : '');
+      hoje = `<span class="${cls} num">${r.hoje.feitas}/${r.hoje.total}${r.hoje.feitas===r.hoje.total?' ✓':''}</span>`
+           + (r.hoje.fim ? `<small class="num">terminou ${r.hoje.fim}</small>` : (atras ? '<small>atrasada</small>' : ''));
+    }
+    return `<div class="rrow${r.pausada?' pausada':''}">
+      <div class="rn">${r.n}${r.pausada?'<span class="chip-p">pausada</span>':''}<small class="num">${r.itens} ${r.itens===1?'item':'itens'}</small></div>
+      <div class="metawrap">
+        <div class="rep">${r.rep}</div>
+        <div class="hl num">${r.ate ? '<span class="rot2">até </span>' + r.ate : '—'}</div>
+        <div class="qf">${r.quem}</div>
+      </div>
+      <div class="hoje">${hoje}</div>
+      <div class="acoes">${r.pausada
+        ? '<button>retomar</button><button class="perigo">excluir</button>'
+        : '<button>editar</button><button>pausar</button><button class="perigo">excluir</button>'}</div>
+    </div>`;
+  }).join('');
+
+  const feitas = ITENS_ABERTURA.filter(i=>i.feito).length;
+  $('jprogtxt').textContent = progresso(ITENS_ABERTURA);
+  $('jpt').textContent = progresso(ITENS_ABERTURA);
+  $('jbar').style.width = (feitas/ITENS_ABERTURA.length*100) + '%';
+  $('jitens').innerHTML = ITENS_ABERTURA.map(i=>`<div class="jit${i.feito?' feito':''}">
+      <div class="cx">${i.feito?'✓':''}</div>
+      <div class="tx">${i.tx}</div>
+      ${i.quem?`<div class="quem num">${i.quem}</div>`:''}
+    </div>`).join('');
+}
+
+if (typeof document !== 'undefined') render();
+else console.log('PINOS OK — ' + PINOS.length + ' verdes');
+</script>
+</body>
+</html>

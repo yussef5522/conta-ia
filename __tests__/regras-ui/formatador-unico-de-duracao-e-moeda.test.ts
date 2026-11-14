@@ -49,11 +49,14 @@ function formataDuracaoNaMao(src: string): boolean {
  * - `lib/format/duracao.ts` é o DONO da régua (é ele que faz o `% 60`, uma vez);
  * - `cronometro.ts` formata **mm:ss** de um cronômetro em SEGUNDOS (inteiro por construção);
  * - `esqueci-senha` é contagem regressiva em segundos, não duração de trabalho.
+ * - `rotinas-do-banco.ts` (13/11) escreve a HORA DO RELÓGIO "até 11:00" de um minuto-do-dia INTEIRO
+ *   (`limiteMin`, CHECK 0–1439 no banco) — é hora, não duração, e não existe float ali.
  */
 const DONO = 'lib/format/duracao.ts'
 const OUTRA_PERGUNTA = [
   'lib/stock/producao/cronometro.ts',
   'app/(auth)/esqueci-senha/esqueci-senha-client.tsx',
+  'lib/stock/producao/rotinas-do-banco.ts',
 ]
 
 describe('⛔⛔ duração: um formatador, zero cópias', () => {

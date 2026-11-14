@@ -16,6 +16,7 @@ const AGORA = new Date('2026-11-12T18:14:00.000Z') // 15:14 de Brasília
 const base: TarefaDoEscritorio = {
   tarefaId: 't1', etapaId: 'e1', nome: 'ABRIR MILHO', instrucao: '3 LATAS', dia: '2026-11-12', quem: ['NATHALIA'],
   liberada: false, estado: 'FEITA', iniciadoEm: '2026-11-12T17:53:00.000Z', finalizadoEm: '2026-11-12T18:05:00.000Z', minutos: 12,
+  origem: 'AVULSA', limite: null, atrasada: false, progresso: null,
 }
 const lote: Conclusao = {
   id: 'c1', ordemId: 'o1', qtdGerada: 76, custoUnitarioReal: 0.31, custoLoteReal: 23.56, colaboradorNome: 'jessica', rendimento: 0.95,

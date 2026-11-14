@@ -23,6 +23,7 @@ import { validarEntrada, MAX_PARTICIPANTES } from './dupla-na-etapa'
 import { diaDaEtapa, pessoaVeAEtapa, nomeadosDaEtapa } from './plano-da-etapa'
 import { pedidoDaOrdem } from './pedido-da-ordem'
 import { tarefasVivasAte, type TipoDoTrabalho } from './tarefa'
+import { rotinasDasTarefas, rotinaAtrasada, ehGrupoDeRotina, type ItemDoGrupo } from './rotinas-do-banco'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -81,6 +82,11 @@ export interface MinhaTarefa {
   unidades: number | null
   /** ⭐ (lei v7 M1) etapa em dupla: o(s) nome(s) do(s) colega(s) — "com Edmar". `null` sozinha */
   colega: string | null
+  /**
+   * ⭐⭐ (R25–R28, 13/11) a tarefa veio de ROTINA: "até HH:MM", atraso âmbar e — no GRUPO — os itens
+   * ticáveis (cada tique assina com o PIN). `itens` vazio = rotina de 1 item (cartão normal). `null` = avulsa/produção.
+   */
+  rotina: { limite: string | null; atrasada: boolean; itens: ItemDoGrupo[] } | null
 }
 
 /**
@@ -129,6 +135,7 @@ export async function minhasTarefasDeHoje(
   const tarefas = await tarefasVivasAte(companyId, agora, db)
   if (!ordens.length && !tarefas.length) return []
   const tarefaDe = new Map(tarefas.map((t) => [t.id, t]))
+  const rotDe = await rotinasDasTarefas(companyId, tarefas.map((t) => t.id), db)
 
   const [etapas, itens, metas, versoes] = await Promise.all([
     db.stockOrdemEtapa.findMany({
@@ -224,6 +231,9 @@ export async function minhasTarefasDeHoje(
         esperandoEtapaAnterior: null, minha, pedidoPraFinalizar: res.pedidoEmAberto,
         ultima: false, continuacao: null,
         tipo: 'TAREFA', instrucao: tarefa.instrucao, unidades: null, colega,
+        rotina: rotDe.has(tarefa.id)
+          ? { limite: rotDe.get(tarefa.id)!.limite, atrasada: rotinaAtrasada(rotDe.get(tarefa.id)!, false, agora), itens: rotDe.get(tarefa.id)!.itens }
+          : null,
       })
       continue
     }
@@ -234,7 +244,7 @@ export async function minhasTarefasDeHoje(
       produto: nomeItem.get(o.itemProduzidoId) ?? '(produto)',
       unidadeProduto: unidadeItem.get(o.itemProduzidoId) ?? '',
       escalaReceitas: o.escalaReceitas,
-      tipo: 'PRODUCAO', instrucao: null, unidades: pedido.unidades, colega,
+      tipo: 'PRODUCAO', instrucao: null, unidades: pedido.unidades, colega, rotina: null,
       estado: res.estado,
       iniciadoEm: e.iniciadoEm?.toISOString() ?? null,
       minutos: minutosDaEtapa(e, agora, res.estado),
@@ -265,6 +275,8 @@ export async function iniciarTarefa(
   const etapa = await db.stockOrdemEtapa.findFirst({ where: { id: input.etapaId, companyId: input.companyId } })
   if (!etapa) throw new TarefaError('Tarefa não encontrada.')
   if (etapa.finalizadoEm) throw new TarefaError('Essa tarefa já foi finalizada.')
+  // ⛔ (R26, 13/11) GRUPO DE ROTINA não tem INICIAR: o relógio dele são os tiques
+  if (await ehGrupoDeRotina(input.companyId, etapa.id, db)) throw new TarefaError('Esse é um grupo de rotina — tique os itens.')
   // ⛔ (12/11, lei v7 M2) TAREFA cancelada pelo escritório não começa — a lista já a esconde,
   // e a rota recusa também (trava só visual não é trava, 06/09)
   const cab = await db.stockTarefa.findFirst({ where: { id: etapa.ordemId, companyId: input.companyId }, select: { canceladaEm: true } })
@@ -386,6 +398,8 @@ export async function finalizarTarefa(
   const agora = input.agora ?? new Date()
   const etapa = await db.stockOrdemEtapa.findFirst({ where: { id: input.etapaId, companyId: input.companyId } })
   if (!etapa) throw new TarefaError('Tarefa não encontrada.')
+  // ⛔ (R26, 13/11) GRUPO DE ROTINA só conclui no ÚLTIMO TIQUE — nunca pelo FINALIZAR com item aberto
+  if (await ehGrupoDeRotina(input.companyId, etapa.id, db)) throw new TarefaError('Esse é um grupo de rotina — ele conclui sozinho no último item.')
   if (!etapa.iniciadoEm) throw new TarefaError('Essa tarefa ainda não foi iniciada.')
   if (etapa.finalizadoEm) throw new TarefaError('Essa tarefa já foi finalizada.')
   // ⭐⭐ com a DUPLA, "quem finaliza é quem iniciou" vale POR PESSOA, não pela etapa

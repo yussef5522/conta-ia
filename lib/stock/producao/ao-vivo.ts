@@ -18,6 +18,7 @@ import { lerEtapas, medianasDasChaves, nomesDasContas, type EtapaLida } from './
 import { carimbosDoDia, carimbosDasConclusoes } from './conferencia'
 import { conclusoesVigentes } from './conclusoes-vigentes'
 import { corDoTempo, pctDaBarra, tempoDeMentira, posPulso } from './leis-r'
+import { rotinasDasTarefas, rotinaAtrasada } from './rotinas-do-banco'
 
 export interface LinhaNaMao {
   etapaId: string
@@ -33,7 +34,12 @@ export interface LinhaNaMao {
   medSeg: number | null
   cor: 'neutro' | 'ambar'
   pct: number | null
+  /** ⭐ (R27) tarefa de rotina que passou do "até" sem concluir — âmbar, nunca vermelho */
+  atrasada: boolean
 }
+
+/** ⭐ (R27, 13/11) rotina de HOJE que passou do "até" e ainda não concluiu — mesmo sem ninguém com ela na mão */
+export interface RotinaAtrasada { tarefaId: string; oQue: string; quem: string; limite: string; progresso: string }
 
 export type EventoDoDia =
   | { tipo: 'lote' | 'tarefa'; id: string; hhmm: string; quem: string; oQue: string; sub: string; seg: number | null; medSeg: number | null; cor: 'neutro' | 'ambar'; pct: number | null; mentira: boolean; aguardaConferencia: boolean; semTempo: boolean }
@@ -43,6 +49,8 @@ export interface AoVivo {
   agora: string
   dia: string
   naMao: LinhaNaMao[]
+  /** (R27) as rotinas de hoje atrasadas que NÃO estão na mão de ninguém */
+  rotinasAtrasadas: RotinaAtrasada[]
   /** do mais novo pro mais antigo */
   eventos: EventoDoDia[]
   concluidas: number
@@ -86,6 +94,7 @@ export async function aoVivo(companyId: string, agora: Date = new Date(), db: Pr
     nomesDasContas(companyId, ids, db),
     ordensDoDia.length ? conclusoesVigentes(companyId, { ordemIds: ordensDoDia }, db) : Promise.resolve([]),
   ])
+  const rot = await rotinasDasTarefas(companyId, emCurso.filter((e) => e.ehTarefa).map((e) => e.ordemId), db)
   const carimboDe = await carimbosDasConclusoes(companyId, conclusoes.map((c) => c.id), db)
   const aguardando = new Set(conclusoes.filter((c) => carimboDe.get(c.id)?.estado === 'AGUARDANDO_CONFERENCIA').map((c) => c.ordemId))
 
@@ -98,8 +107,10 @@ export async function aoVivo(companyId: string, agora: Date = new Date(), db: Pr
       return {
         etapaId: e.etapaId, ordemId: e.ordemId, ehTarefa: e.ehTarefa, quem, oQue: e.oQue, sub: subDa(e, quem),
         comecou: horaEmSaoPaulo(e.iniciadoEm!), seg, medSeg, cor: corDoTempo(seg, medSeg), pct: pctDaBarra(seg, medSeg),
+        atrasada: !!rot.get(e.ordemId) && rotinaAtrasada(rot.get(e.ordemId)!, false, agora),
       }
     })
+  const rotinasAtrasadas = await atrasadasForaDaMao(companyId, agora, new Set(emCurso.map((e) => e.ordemId)), db)
 
   // ⭐ a ÚLTIMA etapa feita de cada ordem é a que leva o chip "aguarda conferência"
   const ultimaDaOrdem = new Map<string, string>()
@@ -132,7 +143,7 @@ export async function aoVivo(companyId: string, agora: Date = new Date(), db: Pr
 
   const eixo = eixoDoPulso(comHora.map((x) => minutosDoDia(x.quando)))
   return {
-    agora: agora.toISOString(), dia, naMao,
+    agora: agora.toISOString(), dia, naMao, rotinasAtrasadas,
     eventos: comHora.map((x) => x.ev),
     concluidas: feitasHoje.length,
     pulso: {
@@ -141,4 +152,30 @@ export async function aoVivo(companyId: string, agora: Date = new Date(), db: Pr
     },
     recusasRegistradas: false,
   }
+}
+
+/** ⭐ (R27) as rotinas de HOJE com limite vencido, não concluídas, não canceladas, fora da mão de alguém */
+async function atrasadasForaDaMao(companyId: string, agora: Date, naMao: Set<string>, db: PrismaClient): Promise<RotinaAtrasada[]> {
+  const dia = diaEmSaoPaulo(agora)
+  const vs = await db.stockTarefaRotina.findMany({
+    where: { companyId, dia: janelaDoDiaSP(dia).de, limiteMin: { not: null }, tarefa: { canceladaEm: null } },
+    include: { tarefa: { select: { nome: true } } },
+  })
+  const ids = vs.map((v) => v.tarefaId).filter((id) => !naMao.has(id))
+  if (!ids.length) return []
+  const [etapas, rot] = await Promise.all([
+    db.stockOrdemEtapa.findMany({ where: { companyId, ordemId: { in: ids } }, select: { ordemId: true, finalizadoEm: true, colaboradorId: true } }),
+    rotinasDasTarefas(companyId, ids, db),
+  ])
+  const nomes = await nomesDasContas(companyId, etapas.map((e) => e.colaboradorId).filter((x): x is string => !!x), db)
+  const out: RotinaAtrasada[] = []
+  for (const v of vs) {
+    const r = rot.get(v.tarefaId), e = etapas.find((x) => x.ordemId === v.tarefaId)
+    if (!r || !e || e.finalizadoEm || !rotinaAtrasada(r, false, agora)) continue
+    out.push({
+      tarefaId: v.tarefaId, oQue: v.tarefa.nome, quem: e.colaboradorId ? nomes.get(e.colaboradorId) ?? '—' : 'livre',
+      limite: r.limite!, progresso: r.itens.length ? `${r.itens.filter((i) => i.feito).length}/${r.itens.length}` : '0/1',
+    })
+  }
+  return out
 }

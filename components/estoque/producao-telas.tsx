@@ -44,15 +44,16 @@ export const CSS_COMUM = `
 .rx-btn:disabled{opacity:.55;cursor:default}
 `
 
-export type AbaDaProducao = 'painel' | 'ao-vivo' | 'desempenho' | 'receitas' | 'equipe'
+export type AbaDaProducao = 'painel' | 'ao-vivo' | 'desempenho' | 'receitas' | 'equipe' | 'rotinas'
 
-/** ⭐ R1 — os 5 chips da produção, na ordem da lei */
+/** ⭐ R1 — os chips da produção, na ordem da lei (13/11: Rotinas entra em 6º — docs/rotinas-referencia.html) */
 export const CHIPS_DA_PRODUCAO: { aba: AbaDaProducao; rotulo: string; caminho: string }[] = [
   { aba: 'painel', rotulo: 'Painel', caminho: '' },
   { aba: 'ao-vivo', rotulo: 'Ao vivo', caminho: '/ao-vivo' },
   { aba: 'desempenho', rotulo: 'Desempenho', caminho: '/desempenho' },
   { aba: 'receitas', rotulo: 'Receitas', caminho: '/receitas' },
   { aba: 'equipe', rotulo: 'Equipe', caminho: '/equipe' },
+  { aba: 'rotinas', rotulo: 'Rotinas', caminho: '/rotinas' },
 ]
 
 export function ChipsDaProducao({ empresaId, aba, className = 'rx-chips', extra }: { empresaId: string; aba: AbaDaProducao | null; className?: string; extra?: ReactNode }) {

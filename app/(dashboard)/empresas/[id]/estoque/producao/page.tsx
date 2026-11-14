@@ -342,6 +342,7 @@ const CSS = `
 .pp .bt.verde2{background:var(--fam-verde-solid);color:var(--fam-verde-on)}
 .pp .bt:disabled{opacity:.5;cursor:default}
 .pp-msg{display:inline-block;margin-top:9px;white-space:normal;font-size:12.5px;padding:6px 12px}
+.pp-repete{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-size:12px;font-weight:800;color:var(--indigo);cursor:pointer}
 .pp-pill{font-size:10.5px;font-weight:800;border-radius:999px;padding:3px 10px;white-space:nowrap}
 .pp-pill.verde{background:var(--fam-verde-bg);color:var(--fam-verde-ink)}
 .pp-pill.ambar{background:var(--fam-ambar-bg);color:var(--fam-ambar-ink)}

@@ -9,5 +9,8 @@ export async function register() {
     // Sprint 4.0.4 — alertas de vencimento diários (08:00 BRT, dias úteis)
     const { startAlertsScheduler } = await import('./lib/email/alerts-scheduler')
     startAlertsScheduler()
+    // ⭐ R25 (13/11) — as rotinas semeiam as tarefas do dia no virar do dia de Brasília
+    const { startRotinasScheduler } = await import('./lib/stock/producao/rotinas-scheduler')
+    startRotinasScheduler()
   }
 }

@@ -10,12 +10,16 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import vm from 'node:vm'
 import * as L from '../leis-r'
+import * as R from '../rotinas'
 
-const LEI = (n: string) => readFileSync(join(process.cwd(), 'docs', `producao-${n}-referencia.html`), 'utf8')
+// 'rotinas' mora em docs/rotinas-referencia.html (lei R25–R31); as outras em docs/producao-<n>-referencia.html
+const LEI = (n: string) =>
+  readFileSync(join(process.cwd(), 'docs', n === 'rotinas' ? 'rotinas-referencia.html' : `producao-${n}-referencia.html`), 'utf8')
 
 /** o último <script> da lei */
 function scriptDaLei(html: string): string {
-  const blocos = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+  // ⚠️ comentário HTML fora: a lei das Rotinas escreve "Pinos no <script>" no próprio comentário
+  const blocos = [...html.replace(/<!--[\s\S]*?-->/g, '').matchAll(/<script>([\s\S]*?)<\/script>/g)]
   expect(blocos.length).toBeGreaterThan(0)
   return blocos[blocos.length - 1][1]
 }
@@ -63,6 +67,10 @@ const casos: [string, () => { nome: string; ok: boolean }[], number][] = [
   ['EQUIPE v2', () => rodarPinos('equipe', {
     validaPin: L.validaPin, foraDoRanking: L.foraDoRanking, destinoExclusao: L.destinoExclusaoConta, textoExcluir: L.textoExcluir,
   }), 10],
+  ['ROTINAS v1', () => rodarPinos('rotinas', {
+    semeiaHoje: R.semeiaHoje, semear: R.semear, proxima: R.proxima, atrasada: R.atrasada,
+    grupoConcluido: R.grupoConcluido, progresso: R.progresso,
+  }), 12],
 ]
 
 describe('os pinos das leis R rodam contra lib/stock/producao/leis-r.ts', () => {

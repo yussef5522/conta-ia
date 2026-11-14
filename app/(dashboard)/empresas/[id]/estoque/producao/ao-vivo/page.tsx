@@ -120,10 +120,19 @@ export default function AoVivoPage({ params }: { params: Promise<{ id: string }>
                     <div className="oq"><div className="prod">{r.ehTarefa ? <><span className="rx-badge-t">TAREFA</span>{r.oQue}</> : <a href={`/empresas/${id}/estoque/producao/${r.ordemId}`} style={{ color: 'inherit', textDecoration: 'none' }}>{r.oQue}</a>}</div><div className="sub">{r.sub}</div></div>
                     <div className="ini num">começou <b>{r.comecou}</b></div>
                     <div className={`av-tempo ${r.cor} num`}>
-                      <span className="t">{fmtDur(r.seg)}</span>{r.cor === 'ambar' && <span className="chip-a">acima do normal</span>}
+                      <span className="t">{fmtDur(r.seg)}</span>{r.cor === 'ambar' && <span className="chip-a">acima do normal</span>}{r.atrasada && <span className="chip-a" data-testid="rotina-atrasada">atrasada</span>}
                       <div className="med">{r.medSeg != null ? `mediana ${fmtDur(r.medSeg)}` : 'ainda sem mediana'}</div>
                       {r.pct != null && <div className="rx-bar"><i style={{ width: `${r.pct}%` }} /></div>}
                     </div>
+                  </div>
+                ))}
+                {/* ⭐ R27 (Rotinas, 13/11) — rotina de hoje que passou do "até" sem ninguém com ela na mão: âmbar, nunca vermelho */}
+                {dado.rotinasAtrasadas.map((r) => (
+                  <div key={r.tarefaId} className="av-mao tarefa" data-testid="rotina-atrasada-fora">
+                    <div className="rx-avt">{r.quem === 'livre' ? '—' : iniciais(r.quem)}</div>
+                    <div className="oq"><div className="prod"><span className="rx-badge-t">TAREFA</span>{r.oQue}</div><div className="sub num">rotina · {r.quem} · {r.progresso}</div></div>
+                    <div className="ini num">até <b>{r.limite}</b></div>
+                    <div className="av-tempo ambar num"><span className="chip-a" data-testid="rotina-atrasada">atrasada</span></div>
                   </div>
                 ))}
               </div>

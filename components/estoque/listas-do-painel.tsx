@@ -85,6 +85,7 @@ export function ListaAbertas({ id, ordens, ctx, deOntem, soDeOntem, onFiltrarOnt
           <span className="pp-nm"><span className="selo-t">{t.selo}</span>{t.nome}<span className="pp-sub2">{t.apoio}</span></span>
           <span className="pp-num">
             {t.instrucao ?? ''}
+            {t.atrasada && <span className="pp-pill ambar pp-selo-l" data-testid="tarefa-atrasada">atrasada</span>}
             {podeCancelar && t.podeCancelar && (
               <button type="button" className="pp-cancelar" disabled={cancelando === t.tarefaId} onClick={() => onCancelar(t)}>cancelar</button>
             )}

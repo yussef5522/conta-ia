@@ -22,6 +22,7 @@ import { resolverEstadoDasEtapas } from './gestos-do-gerente'
 import { naTransacao, type DbOuTx } from './transacao'
 import type { EstadoDaEtapa } from './estado-da-etapa'
 import { minutosDaEtapa } from './etapas'
+import { rotinasDasTarefas, rotinaAtrasada } from './rotinas-do-banco'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -127,12 +128,34 @@ export async function tarefasVivasAte(
   companyId: string, agora: Date, db: Db = defaultPrisma,
 ): Promise<{ id: string; nome: string; instrucao: string | null; dia: Date }[]> {
   const hoje = diaEmSaoPaulo(agora)
-  const fim = janelaDoDiaSP(hoje, hoje).ate
+  const j = janelaDoDiaSP(hoje, hoje)
   return db.stockTarefa.findMany({
-    where: { companyId, canceladaEm: null, dia: { lte: fim } },
+    where: { companyId, ...(await filtroDasVivas(companyId, j, db)) },
     select: { id: true, nome: true, instrucao: true, dia: true },
     orderBy: { criadoEm: 'asc' },
   })
+}
+
+/**
+ * ⭐⭐ R27 (Rotinas, 13/11) — O DIA SEGUINTE NASCE LIMPO. A tarefa AVULSA vencida continua à vista
+ * (regra de sempre); a tarefa SEMEADA POR ROTINA vive só no dia dela — ontem não feita fica "não
+ * feita" no dia dela, nunca migra. ⚠️ Exceção honesta: a que está COM O RELÓGIO CORRENDO (começou
+ * 23:50) segue à vista até quem iniciou finalizar — senão a pessoa ficaria presa numa tarefa invisível.
+ * Porta única: Janela (`tarefasVivasAte`) e Painel (`tarefasDoEscritorio`) usam ESTE filtro.
+ */
+export async function filtroDasVivas(companyId: string, j: { de: Date; ate: Date }, db: Db): Promise<Prisma.StockTarefaWhereInput> {
+  const correndo = await db.stockOrdemEtapa.findMany({
+    where: { companyId, posicao: 0, iniciadoEm: { not: null }, finalizadoEm: null }, select: { ordemId: true },
+  })
+  return {
+    canceladaEm: null,
+    dia: { lte: j.ate },
+    OR: [
+      { dia: { gte: j.de } },
+      { rotina: { is: null } },
+      ...(correndo.length ? [{ id: { in: correndo.map((c) => c.ordemId) } }] : []),
+    ],
+  }
 }
 
 export interface TarefaDoEscritorio {
@@ -149,6 +172,14 @@ export interface TarefaDoEscritorio {
   finalizadoEm: string | null
   /** minutos medidos (`minutosDaEtapa`, o dono único): só FEITA tem; correndo é o cronômetro; resto `null` */
   minutos: number | null
+  /** ⭐ (R31) a origem guardada: semeada por rotina × avulsa do Painel */
+  origem: 'ROTINA' | 'AVULSA'
+  /** (R27) "até HH:MM" da rotina — `null` sem limite ou avulsa */
+  limite: string | null
+  /** (R27) passou do limite sem concluir — âmbar, nunca vermelho */
+  atrasada: boolean
+  /** (R26) "N/M" do grupo — `null` sem itens */
+  progresso: string | null
 }
 
 /**
@@ -165,7 +196,8 @@ export async function tarefasDoEscritorio(
   const ate = periodo?.ate ?? hoje
   const janela = janelaDoDiaSP(de, ate)
   const ts = await db.stockTarefa.findMany({
-    where: { companyId, OR: [{ canceladaEm: null, dia: { lte: janelaDoDiaSP(hoje, hoje).ate } }, { dia: { gte: janela.de, lte: janela.ate } }] },
+    // ⭐ R27: as vivas pela MESMA porta da Janela (rotina de ontem não migra) + as do período
+    where: { companyId, OR: [await filtroDasVivas(companyId, janelaDoDiaSP(hoje, hoje), db), { dia: { gte: janela.de, lte: janela.ate } }] },
     select: { id: true, nome: true, instrucao: true, dia: true, canceladaEm: true },
     orderBy: { criadoEm: 'asc' },
   })
@@ -180,6 +212,7 @@ export async function tarefasDoEscritorio(
   ])
   const nome = new Map(pessoas.map((p) => [p.id, p.nome]))
   const lib = new Map(planos.map((p) => [p.etapaId, p.liberadaParaEquipe]))
+  const rot = await rotinasDasTarefas(companyId, ts.map((t) => t.id), db)
   const out: TarefaDoEscritorio[] = []
   for (const t of ts) {
     const e = etapaDe.get(t.id) ?? null
@@ -187,6 +220,9 @@ export async function tarefasDoEscritorio(
     // ⚠️ encerrada fora do período não é "do período": só as vivas e as do período aparecem
     const noPeriodo = (d: Date) => { const x = diaEmSaoPaulo(d); return x >= de && x <= ate }
     if (estado !== 'AGUARDANDO' && estado !== 'EM_ANDAMENTO' && !(e?.finalizadoEm ? noPeriodo(e.finalizadoEm) : noPeriodo(t.dia))) continue
+    const r = rot.get(t.id) ?? null
+    // ⛔ R27: rotina de outro dia não feita é "não feita" NO DIA DELA — nunca volta como aberta de hoje
+    if (r && r.dia < hoje && estado === 'AGUARDANDO') continue
     const ids = [...new Set([...parts.filter((p) => p.etapaId === e?.id).map((p) => p.colaboradorId), ...(e?.executorId ? [e.executorId] : []), ...(e?.colaboradorId ? [e.colaboradorId] : [])])]
     out.push({
       tarefaId: t.id, etapaId: e?.id ?? null, nome: t.nome, instrucao: t.instrucao, dia: diaEmSaoPaulo(t.dia),
@@ -195,6 +231,10 @@ export async function tarefasDoEscritorio(
       estado, iniciadoEm: e?.iniciadoEm?.toISOString() ?? null,
       finalizadoEm: e?.finalizadoEm?.toISOString() ?? null,
       minutos: e && estado !== 'CANCELADA' ? minutosDaEtapa(e, agora, estado) : null,
+      origem: r ? 'ROTINA' : 'AVULSA',
+      limite: r?.limite ?? null,
+      atrasada: !!r && estado !== 'CANCELADA' && rotinaAtrasada(r, !!e?.finalizadoEm, agora),
+      progresso: r && r.itens.length ? `${e?.finalizadoEm ? r.itens.length : r.itens.filter((i) => i.feito).length}/${r.itens.length}` : null,
     })
   }
   return out

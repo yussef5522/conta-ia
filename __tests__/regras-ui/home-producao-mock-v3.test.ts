@@ -84,10 +84,11 @@ describe('⭐⭐ o topo: título, linha editorial e UM primário', () => {
    * e ele está na principal.
    */
   /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
-  it('⭐⭐ os chips da lei R1 (13/11: Painel · Ao vivo · Desempenho · Receitas · Equipe) + CSV tracejado, nenhum aceso', async () => {
+  /** ⚠️ (13/11) a família R continua: a lei das Rotinas (docs/rotinas-referencia.html) põe "Rotinas" em 6º */
+  it('⭐⭐ os chips da lei R1 (13/11: Painel · Ao vivo · Desempenho · Receitas · Equipe · Rotinas) + CSV tracejado, nenhum aceso', async () => {
     const tela = semComentario(ler(TELA))
     const { CHIPS_DA_PRODUCAO } = await import('@/components/estoque/producao-telas')
-    expect(CHIPS_DA_PRODUCAO.map((c) => c.rotulo)).toEqual(['Painel', 'Ao vivo', 'Desempenho', 'Receitas', 'Equipe'])
+    expect(CHIPS_DA_PRODUCAO.map((c) => c.rotulo)).toEqual(['Painel', 'Ao vivo', 'Desempenho', 'Receitas', 'Equipe', 'Rotinas'])
     expect(tela, 'o Painel desenha os chips da porta única (nunca uma lista cravada)').toMatch(/CHIPS_DA_PRODUCAO\.map\(\(c\) => \(\s*<a key=\{c\.aba\} className="pp-chip"/)
     const csv = tela.slice(tela.lastIndexOf('<button', tela.indexOf('>CSV</button>')), tela.indexOf('>CSV</button>'))
     expect(csv, 'o CSV é ferramenta: chip tracejado').toMatch(/className="pp-chip mut"/)

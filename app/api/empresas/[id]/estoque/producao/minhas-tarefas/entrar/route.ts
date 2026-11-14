@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
+import { garantirSemeaduraDeHoje } from '@/lib/stock/producao/rotinas-do-banco'
 import { quemEstaComOPin } from '@/lib/stock/producao/pin'
 import { minhasTarefasDeHoje } from '@/lib/stock/producao/minhas-tarefas'
 
@@ -26,6 +27,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
   const a = await guardStock(request, companyId, ['stock.executar', 'stock.operate'])
   if (a.erro) return a.erro
+  // ⭐ R25 — disparo da LEITURA: se o agendador da meia-noite falhou, a primeira leitura do dia semeia
+  await garantirSemeaduraDeHoje(companyId, new Date(), prisma)
   const parsed = schema.safeParse(await request.json().catch(() => null))
   // ⚠️ a MESMA resposta pra formato inválido e pra PIN que não existe: distinguir ensinaria
   // a enumerar, e "PIN não confere" é a única coisa que a pessoa precisa saber.
