@@ -13,6 +13,7 @@
 // ⭐ A tela usa a ÁREA ÚTIL do app (sem teto de largura herdado do mock) e a grade vira 2ª linha
 // com rótulo no celular (S18). O CSS é o da lei, com os hex trocados pelos tokens `--prod-*`.
 
+import { CHIPS_DA_PRODUCAO } from '@/components/estoque/producao-telas'
 import { useEffect, useState, use } from 'react'
 import { Loader2 } from 'lucide-react'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
@@ -126,14 +127,12 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
       {/* ⭐ 1. TOPO — só o título. ⛔ Nada escrito solto embaixo; nenhum botão de criar aqui. */}
       <div className="pp-topo"><h1 className="pp-h1">Produção</h1></div>
 
-      {/* ⭐ 2. CHIPS — nenhum aceso (quem diz onde estou é o título). Equipe e CSV são ferramentas: tracejados. */}
+      {/* ⭐ 2. CHIPS — os 5 da lei R1 (13/11): Painel · Ao vivo · Desempenho · Receitas · Equipe. Nenhum aceso
+          aqui (quem diz onde estou é o título, lei v9); o CSV é ferramenta: tracejado. */}
       <div className="pp-chips">
-        <a className="pp-chip" href={`/empresas/${id}/estoque/producao/hoje`}>Hoje ao vivo</a>
-        <a className="pp-chip" href={`/empresas/${id}/estoque/producao/por-dia`}>Por dia</a>
-        <a className="pp-chip" href={`/empresas/${id}/estoque/producao/receitas`}>Receitas</a>
-        <a className="pp-chip" href={`/empresas/${id}/estoque/producao/pessoas`}>Por pessoa</a>
-        <a className="pp-chip" href={`/empresas/${id}/estoque/producao/relatorios`}>Relatórios</a>
-        <a className="pp-chip mut" href="/equipe?filtro=cozinha">Equipe</a>
+        {CHIPS_DA_PRODUCAO.map((c) => (
+          <a key={c.aba} className="pp-chip" href={`/empresas/${id}/estoque/producao${c.caminho}`}>{c.rotulo}</a>
+        ))}
         <button type="button" className="pp-chip mut" disabled={ordens.length === 0}
           onClick={() => baixarCsv(`ordens-producao-${hojeArquivo()}`,
             ['Produto', 'Quanto', 'Data', 'Setor', 'Estado'],

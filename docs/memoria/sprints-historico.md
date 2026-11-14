@@ -6422,3 +6422,31 @@ Consertos que as telas novas exigem (sem tela nova, sem migration).
   ⚠️ CHECK de expressão (trim/length, coerência) NÃO é traduzida — segue a prova contra Postgres (REGRA 13).
 - Achado ao ligar: a fixture do radar gravava `lista: 'REVENDA'` em `stock_radar_watchlist`, que prod
   recusa (CAROS|PORCOES) — tabela que nenhum código lê mais; a gravação morta saiu do teste.
+
+## ⭐⭐ PRODUÇÃO — AS 4 TELAS (2 novas + 2 reformadas, 4 velhas morrem) (13/11/2026)
+
+**Leis:** `docs/producao-{ao-vivo,desempenho,receitas,equipe}-referencia.html` (v3/v2/v2/v2 APROVADAS, R1–R24;
+md5 3357b26f · f04b8927 · a2fab294 · 0c255e2b). Os PINOS de cada `<script>` rodam contra `lib/stock/producao/leis-r.ts`
+(o teste tira a definição da lei e injeta a da lib — `leis-r-pinos.test.ts`, 51 pinos).
+- **R1:** chips `Painel · Ao vivo · Desempenho · Receitas · Equipe` (porta única `CHIPS_DA_PRODUCAO`). Hoje ao vivo /
+  Por dia / Por pessoa / Relatórios → redirect (ao-vivo / desempenho). Saíram 4 componentes (mesa-da-cozinha, placar,
+  ações-do-gerente-hoje, redesignar-inline) e 5 rotas (mesa, dia-ao-vivo, relatorio-pessoas, relatorio-por-dia,
+  relatorios). Os gestos do gerente seguem na página da ordem (`etapas-da-ordem`); a linha do Ao vivo abre a ordem.
+- **AO VIVO** (`ao-vivo.ts`): mediana da MESMA etapa (`P:{item}:{etapa}` / `T:{tarefa}`), ≥5 medições ≥30s; âmbar >1,5×;
+  barra trava em 100%; <30s "tempo não mediu". Leitura LEVE a cada 30s (etapas em andamento + finalizadas no dia;
+  mediana lê só os nomes na tela). ⚠️ RECUSAS ficaram FORA: o sistema não registra recusa (nenhuma tabela criada).
+  "Hoje" = dia de Brasília (a régua do módulo) — turno que passa da meia-noite aparece em dois dias.
+- **DESEMPENHO** (`desempenho-da-producao.ts`): régua do LOTE (conclusão vigente no período). Barra em ESCALA ÚNICA
+  calculada no motor (`escalaUnica` — a tela não tem como errar). Papel ≠ cozinha → "fora da comparação".
+- **RECEITAS** (`catalogo-de-receitas.ts` + régua pura `catalogo-regua.ts`): contadores e filtro pela MESMA função;
+  "1 UN usa" = dose ÷ rendimento MEDIDO (sem rendimento, a ficha mostra a receita-base e diz por quê).
+  **R24:** excluir com lotes → `stock_ficha_excluida` + ativo=false (some até de Desativadas); reativar tira a marca.
+  N+1 ×2 do `fichas/conversao`: em prod 57 consultas na fila e 114 na rota (antes).
+- **EQUIPE** (`contas-da-equipe.ts`): PIN nunca sai (tipo sem campo de PIN; teste nas 3 rotas). Excluir sem história
+  apaga de vez (conta+PIN+papel); com história = inativar (some do PIN e das listas; nome vive no Desempenho).
+- **Migrations (CREATE-only — a regra `migration-isolation` proíbe ALTER no estoque):** `stock_colaborador_papel`
+  (CHECK COZINHA|ESCRITORIO|APARELHO; sem linha = cozinha) e `stock_ficha_excluida` (CHECK lotes > 0).
+- **Trava:** Ao vivo e Desempenho em `stock.manage` (herdam a trava do placar/relatórios — o tablet nunca vê o placar).
+- **Tokens:** `--esc-*` em `app/globals.css` (claro = lei por valor; escuro espelha `--prod-*`), zero hex nas telas.
+- Replantios: 10/10 morderam (régua dupla, UN+KG, <30s mediana e ritmo, escritório no ranking, excluir com história,
+  PIN em resposta, rota sem redirect, token fora da lei, R5 replantada). Guard de UI: `producao-quatro-telas-lei`.

@@ -112,7 +112,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       {/*
        * ───────────── O TOPO ─────────────
        * ⭐ Os chips ① / ② são a navegação entre as duas mesas. ⚠️ O ② é um `Link` de verdade,
-       * não um `onClick` fingindo navegação: a mesa ② é OUTRA rota (`estoque/producao/hoje`), e
+       * não um `onClick` fingindo navegação: a mesa ② é OUTRA rota (`estoque/producao/ao-vivo`), e
        * link é o que dá teclado, botão do meio e "abrir em nova aba" de graça.
        */}
       <div
@@ -135,7 +135,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             ① Dashboard
           </span>
           <Link
-            href={`/empresas/${empresaAtual.id}/estoque/producao/hoje`}
+            href={`/empresas/${empresaAtual.id}/estoque/producao/ao-vivo`}
             className="rounded-full border px-[15px] py-[7px] text-[12.5px] font-extrabold"
             style={{
               borderColor: 'var(--prod-line-strong)',

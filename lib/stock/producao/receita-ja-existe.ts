@@ -113,6 +113,8 @@ export async function reativarFicha(companyId: string, fichaId: string, db: Db =
   const f = await db.stockFicha.findFirst({ where: { id: fichaId, companyId }, select: { id: true, itemProduzidoId: true } })
   if (!f) throw new Error('Ficha não encontrada.')
   await db.stockFicha.update({ where: { id: f.id }, data: { ativo: true } })
+  // ⭐ R24 (13/11): reativar tira a marca de excluída (a mesma regra do `atualizarFicha`)
+  await db.stockFichaExcluida.deleteMany({ where: { companyId, fichaId: f.id } })
   // ⚠️ o item-invólucro volta junto: ficha ativa com item inativo some do cardápio e do
   // planejar, e o dono acharia que a reativação não pegou.
   await db.stockItem.update({ where: { id: f.itemProduzidoId }, data: { ativo: true } })

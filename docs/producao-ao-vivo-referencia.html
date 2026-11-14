@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AO VIVO (produção) — referência v3 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════
+AO VIVO — a primeira das duas telas que substituem os 4 relatórios
+fracos da produção (Hoje ao vivo, Por dia, Por pessoa, Relatórios).
+Tema: escritório claro (--esc-*), mesma família do Painel v9.
+Herdadas: S15 (tela muda), S16 (linha é coluna), S18 (celular nunca
+esconde dinheiro), S19 (dado se prova), S20 (nunca misturar unidade
+e total), S22 (custo incompleto não se disfarça).
+
+LEIS NOVAS — família R (relatórios da produção):
+
+R1 — DUAS TELAS NO LUGAR DE QUATRO. Hoje ao vivo, Por dia, Por
+     pessoa e Relatórios morrem. Nascem AO VIVO (o agora) e
+     DESEMPENHO (a história). Equipe e Receitas continuam telas
+     próprias. Os chips da produção passam a ser:
+     Painel · Ao vivo · Desempenho · Receitas · Equipe.
+
+R2 — AO VIVO RESPONDE DUAS PERGUNTAS, NESTA ORDEM:
+     quem tá na mão agora (e quanto tá demorando)? ·
+     o que acabou de acontecer?
+     Nenhum KPI repetido do Painel (lotes do dia, custo do dia etc.
+     moram lá). Nada de pódio aqui — ranking é história, não agora.
+
+R3 — TEMPO SE COMPARA COM A PRÓPRIA ETAPA. Ao lado do cronômetro
+     de cada etapa em andamento, a mediana da MESMA etapa (mínimo
+     5 medições válidas; senão "ainda sem mediana"). Âmbar só
+     acima de 1,5× a mediana, com a palavra "acima do normal".
+     Vermelho nunca — cozinha não é alarme de incêndio. A barrinha
+     mostra tempo/mediana e trava em 100%.
+
+R4 — TEMPO DE MENTIRA SE DECLARA. Etapa concluída em menos de 30
+     segundos aparece na fita como "tempo não mediu" e fica FORA
+     de qualquer mediana (ver mediana() — filtra t<30s). Nunca
+     entra em ranking nem em comparação.
+
+R5 — VETADA PELO DONO (13/11). O bloco "o que vence" NÃO entra
+     no AO VIVO. Não replantar sem o dono pedir.
+
+R6 — VETADA PELO DONO (13/11). O bloco "a noite vai pedir"
+     (previsão de demanda por venda) NÃO entra em tela nenhuma.
+     "Não tem como saber, vai dar sempre errado." Não replantar
+     sem o dono pedir.
+
+R7 — CONCLUÍDAS COM A MESMA LÍNGUA DA LISTA AO VIVO (rodada v3,
+     pedido do dono: "só texto não é moderno"). Cada conclusão do
+     dia é uma linha VISUAL: avatar + hora, o quê, tempo grande e
+     barrinha contra a mediana da mesma etapa — idêntico ao bloco
+     "na mão agora". No topo, o PULSO DO DIA: bolinhas na linha
+     do tempo, uma por acontecimento (conclusão índigo, conferência
+     verde, recusa âmbar). Conferências e recusas entram como
+     linhas miúdas (frase exata do servidor, "nada foi gravado").
+     Sem parabéns, sem emoji, sem cor de pânico — o único
+     julgamento continua sendo o âmbar de 1,5× (R3) e o
+     "tempo não mediu" (R4).
+
+R8 — GENTE DE ESCRITÓRIO NÃO DISPUTA COZINHA. Conta de
+     gerente/escritório pode aparecer na fita (fez, apareceu),
+     mas nunca em comparação ou ranking de equipe (vale pro
+     DESEMPENHO também).
+
+A navegação .nav no topo é da AMOSTRA (não existe no real).
+Números da amostra vêm do raio-X de 13/11 (medianas reais:
+beef ~78min, porção ~50min).
+═══════════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --esc-bg:#F3F5FA; --esc-card:#FFFFFF; --esc-linha:#C9D0E3;
+  --esc-tinta:#0A0F1E; --esc-tinta2:#46516B; --esc-tinta3:#8B94AD;
+  --esc-indigo:#4F46E5; --esc-indigo50:#EEF0FE; --esc-indigo-t:#3730A3;
+  --esc-verde:#0E9F6E; --esc-verde50:#E4F7EF; --esc-verde-t:#065F46;
+  --esc-ambar50:#FCF0DC; --esc-ambar-t:#7C4A03; --esc-ambar:#B45309;
+  --esc-roxo:#7C3AED; --esc-roxo50:#F3EFFE; --esc-roxo-t:#5B21B6;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--esc-bg);color:var(--esc-tinta);font-family:var(--font)}
+body{padding:0 0 46px}
+.num{font-variant-numeric:tabular-nums}
+
+/* navegação da AMOSTRA */
+.nav{position:sticky;top:0;z-index:5;display:flex;gap:7px;flex-wrap:wrap;
+  background:#0A0F1E;padding:9px 14px}
+.nav button{border:1px solid #334155;background:#1E293B;color:#CBD5E1;border-radius:999px;
+  padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.nav button.on{background:#F1F5F9;color:#0A0F1E;border-color:#F1F5F9}
+
+.wrap{max-width:1180px;margin:0 auto;padding:22px 18px 0}
+
+/* topo */
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.top h1{margin:0;font-size:21px;font-weight:800;letter-spacing:-.01em}
+.agora{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--esc-tinta2)}
+.agora .dot{width:8px;height:8px;border-radius:50%;background:var(--esc-verde);
+  box-shadow:0 0 0 0 rgba(14,159,110,.5);animation:pulsa 2s infinite}
+@keyframes pulsa{0%{box-shadow:0 0 0 0 rgba(14,159,110,.45)}70%{box-shadow:0 0 0 7px rgba(14,159,110,0)}100%{box-shadow:0 0 0 0 rgba(14,159,110,0)}}
+
+/* chips da produção (R1) */
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
+.chips button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);
+  border-radius:999px;height:34px;padding:0 15px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.chips button.on{background:var(--esc-indigo);border-color:var(--esc-indigo);color:#fff}
+
+/* grade */
+.grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;align-items:start}
+.card{background:var(--esc-card);border:1px solid var(--esc-linha);border-radius:14px;
+  padding:14px 16px;margin-bottom:16px}
+.chead{display:flex;align-items:center;gap:8px;font-size:9.5px;font-weight:800;
+  letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase;margin-bottom:4px}
+.chead .n{background:var(--esc-indigo50);color:var(--esc-indigo-t);border-radius:999px;
+  padding:1px 8px;font-size:10.5px;letter-spacing:0}
+.chead .sp{flex:1}
+.chead a{color:var(--esc-indigo);font-size:11.5px;font-weight:800;letter-spacing:0;
+  text-transform:none;text-decoration:none}
+
+/* ⓘ */
+.iwr{position:relative;display:inline-flex}
+.i{width:17px;height:17px;border-radius:50%;border:1px solid var(--esc-linha);background:var(--esc-card);
+  color:var(--esc-tinta3);font-size:10.5px;font-weight:800;cursor:pointer;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;padding:0;font-family:var(--font)}
+.pop{display:none;position:absolute;top:22px;left:-8px;z-index:9;width:250px;
+  background:#0A0F1E;color:#E2E8F0;border-radius:10px;padding:10px 12px;
+  font-size:11.5px;font-weight:600;line-height:1.5;letter-spacing:0;text-transform:none}
+.iwr.aberto .pop{display:block}
+
+/* NA MÃO AGORA */
+.mao{display:grid;grid-template-columns:34px minmax(0,1.5fr) 72px minmax(0,1fr);gap:12px;
+  align-items:center;padding:12px 0;border-bottom:1px solid #E3E7F2}
+.mao:last-child{border-bottom:0}
+.mao.tarefa{border-left:3px solid var(--esc-roxo);padding-left:10px;margin-left:-13px}
+.avt{width:34px;height:34px;border-radius:50%;background:var(--esc-indigo50);color:var(--esc-indigo-t);
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.mao .oq .prod{font-size:14px;font-weight:700}
+.mao .oq .sub{font-size:12px;color:var(--esc-tinta2);font-weight:600;margin-top:2px}
+.badge-t{display:inline-block;background:var(--esc-roxo50);color:var(--esc-roxo-t);border-radius:6px;
+  padding:1px 7px;font-size:10px;font-weight:800;letter-spacing:.05em;margin-right:6px;vertical-align:1px}
+.mao .ini{font-size:12px;color:var(--esc-tinta3);font-weight:700;text-align:right}
+.mao .ini b{display:block;color:var(--esc-tinta2);font-size:12.5px}
+.tempo .t{font-size:19px;font-weight:800;letter-spacing:-.01em}
+.tempo.ambar .t{color:var(--esc-ambar)}
+.tempo .med{font-size:11px;color:var(--esc-tinta3);font-weight:700;margin-top:2px}
+.tempo .chip-a{display:inline-block;background:var(--esc-ambar50);color:var(--esc-ambar-t);
+  border-radius:6px;padding:1px 7px;font-size:10px;font-weight:800;margin-left:6px;vertical-align:2px}
+.bar{height:4px;border-radius:99px;background:#E8EBF5;margin-top:6px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--esc-indigo)}
+.tempo.ambar .bar i{background:var(--esc-ambar)}
+
+/* cabecinha de lista (S16) */
+.lhead{display:grid;grid-template-columns:34px minmax(0,1.5fr) 72px minmax(0,1fr);gap:12px;
+  font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);
+  text-transform:uppercase;padding:8px 0 6px;border-bottom:1px solid #E3E7F2}
+.lhead .dir{text-align:right}
+
+/* CONCLUÍDAS HOJE — pulso do dia */
+.pulso{position:relative;height:46px;margin:10px 2px 6px}
+.pulso .eixo{position:absolute;left:0;right:0;top:15px;height:2px;background:#E8EBF5;border-radius:2px}
+.pulso .pt{position:absolute;top:10px;width:12px;height:12px;border-radius:50%;
+  background:var(--esc-indigo);border:2px solid var(--esc-card);box-shadow:0 0 0 1px #D9DEEC;
+  transform:translateX(-50%)}
+.pulso .pt.conf{background:var(--esc-verde)}
+.pulso .pt.rec{background:var(--esc-ambar)}
+.pulso .hr{position:absolute;top:31px;font-size:9.5px;font-weight:800;color:var(--esc-tinta3);
+  transform:translateX(-50%)}
+
+/* CONCLUÍDAS HOJE — linhas visuais */
+.ev{display:grid;grid-template-columns:36px minmax(0,1fr) minmax(0,104px);gap:10px;
+  align-items:center;padding:11px 0;border-bottom:1px solid #E3E7F2}
+.ev:last-child{border-bottom:0}
+.ev.slim{grid-template-columns:36px minmax(0,1fr)}
+.ev.slim .txt{font-size:12px;font-weight:600;color:var(--esc-tinta2)}
+.ev.slim .txt b{color:var(--esc-tinta)}
+.ev.slim .txt .vok{color:var(--esc-verde-t);font-weight:800}
+.avt2{width:28px;height:28px;border-radius:50%;background:var(--esc-indigo50);color:var(--esc-indigo-t);
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;margin:0 auto}
+.ev .col1 .h{font-size:9.5px;font-weight:800;color:var(--esc-tinta3);text-align:center;margin-top:3px}
+.ev .oq .prod{font-size:13px;font-weight:700}
+.ev .oq .sub{font-size:11.5px;color:var(--esc-tinta2);font-weight:600;margin-top:1px}
+.chip-v,.chip-m{display:inline-block;border-radius:6px;padding:1px 7px;font-size:10px;
+  font-weight:800;margin-top:4px;white-space:nowrap}
+.chip-v{background:var(--esc-verde50);color:var(--esc-verde-t)}
+.chip-m{background:var(--esc-ambar50);color:var(--esc-ambar-t)}
+.tempo2{text-align:right}
+.tempo2 .t{font-size:16.5px;font-weight:800;letter-spacing:-.01em}
+.tempo2.ambar .t{color:var(--esc-ambar)}
+.tempo2 .med{font-size:10.5px;color:var(--esc-tinta3);font-weight:700;margin-top:1px}
+.tempo2 .bar{margin-left:auto;max-width:104px}
+.tempo2.ambar .bar i{background:var(--esc-ambar)}
+
+/* celular */
+@media (max-width:760px){
+  .grid{grid-template-columns:minmax(0,1fr)}
+  .lhead{display:none}
+  .mao{grid-template-columns:34px minmax(0,1fr) minmax(0,92px);grid-template-areas:"av oq tempo" "av ini tempo"}
+  .mao .avt{grid-area:av}
+  .mao .oq{grid-area:oq}
+  .mao .ini{grid-area:ini;text-align:left;display:flex;gap:5px}
+  .mao .ini b{display:inline}
+  .mao .tempo{grid-area:tempo;text-align:right}
+  .mao .bar{margin-left:auto;max-width:92px}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button>Estoque</button><button>Vendas</button><button class="on">Produção</button>
+  <button>Financeiro</button><button>Cardápio</button>
+</nav>
+
+<main class="wrap">
+  <header class="top">
+    <h1>Produção</h1>
+    <div class="agora num"><span class="dot"></span> agora 01:52 · quinta, 13/11</div>
+  </header>
+
+  <div class="chips">
+    <button>Painel</button><button class="on">Ao vivo</button><button>Desempenho</button>
+    <button>Receitas</button><button>Equipe</button>
+  </div>
+
+  <div class="grid">
+    <section>
+      <div class="card">
+        <div class="chead">Na mão agora <span class="n num" id="nmao"></span>
+          <span class="iwr"><button class="i" onclick="this.parentNode.classList.toggle('aberto')">i</button>
+            <span class="pop">O tempo de cada etapa é comparado com a mediana da própria etapa
+            (mínimo 5 medições). Fica âmbar só acima de 1,5× a mediana.
+            Conclusões em menos de 30 segundos não entram na mediana.</span></span>
+          <span class="sp"></span><a href="#">abrir janela da cozinha →</a>
+        </div>
+        <div class="lhead"><span></span><span>Quem · o quê</span><span class="dir">Começou</span><span class="dir">Tempo</span></div>
+        <div id="lmao"></div>
+      </div>
+    </section>
+
+    <aside>
+      <div class="card">
+        <div class="chead">Concluídas hoje <span class="n num" id="nconc"></span></div>
+        <div class="pulso" id="pulso"><div class="eixo"></div></div>
+        <div id="lfita"></div>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<script>
+/* ═══ ESPECIFICAÇÃO EXECUTÁVEL — AO VIVO v1 ═══ */
+
+/* R4 — medições abaixo de 30s ficam fora da mediana */
+function mediana(ts){
+  const v = ts.filter(t => t >= 30).sort((a,b)=>a-b);
+  if (v.length === 0) return null;
+  const m = Math.floor(v.length/2);
+  return v.length % 2 ? v[m] : (v[m-1]+v[m])/2;
+}
+
+/* R3 — âmbar só acima de 1,5× a mediana; sem mediana, neutro */
+function corDoTempo(seg, medSeg){
+  if (medSeg == null) return 'neutro';
+  return seg > 1.5*medSeg ? 'ambar' : 'neutro';
+}
+
+function fmtDur(seg){
+  if (seg < 60) return Math.round(seg) + 's';
+  const m = Math.round(seg/60);
+  if (m < 60) return m + 'min';
+  return Math.floor(m/60) + 'h' + String(m%60).padStart(2,'0');
+}
+/* ── amostra (números do raio-X de 13/11) ───────────────────── */
+const AGORA = '01:52';
+
+const NA_MAO = [
+  {quem:'Michele', ini:'00:40', prod:'BEEF ACEBOLADO', sub:'pedido 100 UN · 2 receitas',
+   seg:72*60,  medSeg:78*60},                          /* 1h12 · mediana 1h18 → neutro  */
+  {quem:'Edmar',   ini:'23:31', prod:'MASSA DE PIZZA GRANDE', sub:'pedido 40 UN · com Nadine',
+   seg:141*60, medSeg:50*60},                          /* 2h21 · mediana 50min → âmbar  */
+  {quem:'Nadine',  ini:'01:20', prod:'PORÇÃO DE FRITAS', sub:'pedido 30 UN',
+   seg:32*60,  medSeg:50*60},                          /* 32min · mediana 50min → neutro*/
+  {quem:'Cristian',ini:'01:30', prod:'ABRIR 5 LATAS DE ERVILHA', tarefa:true,
+   seg:22*60,  medSeg:null},                           /* tarefa · ainda sem mediana    */
+];
+
+/* eixo do pulso: 22h → 02h (da primeira à última conclusão do dia) */
+const PULSO_INI = 22*60, PULSO_FIM = (24+2)*60;
+function posPulso(h){
+  const [hh,mm] = h.split(':').map(Number);
+  let m = hh*60 + mm; if (m < PULSO_INI) m += 1440;
+  return Math.max(0, Math.min(100, (m - PULSO_INI)/(PULSO_FIM - PULSO_INI)*100));
+}
+
+const EVENTOS = [
+  {h:'01:31', tipo:'lote',    quem:'Eliane',  prod:'PORÇÃO DE FRITAS', seg:47*60, medSeg:50*60, conf:'aguarda'},
+  {h:'01:29', tipo:'tarefa',  quem:'Cristian',prod:'LIMPA VIDRO',      seg:18*60, medSeg:null},
+  {h:'01:05', tipo:'conferiu',quem:'Tauan',   txt:'conferiu <b>MAIONESE DA CASA</b> · 3,2 KG <span class="vok">✓</span>'},
+  {h:'00:58', tipo:'lote',    quem:'Rodrigo', prod:'XIS BASE',         seg:14,    medSeg:22*60},
+  {h:'00:41', tipo:'lote',    quem:'Nadine',  prod:'BACON EM CUBOS',   seg:12*60, medSeg:13*60},
+  {h:'00:12', tipo:'recusa',  quem:'Débora',  txt:'recusado: “Separação é de outra pessoa.” · nada foi gravado'},
+  {h:'23:58', tipo:'lote',    quem:'Edmar',   prod:'CALABRESA MOÍDA',  seg:55*60, medSeg:50*60, conf:'aguarda'},
+];
+
+/* ── pinos (rodam sempre; em node, só eles) ─────────────────── */
+const PINOS = [
+  ['mediana filtra tempo de mentira', mediana([25,4680,4700,4800]) === 4700],
+  ['mediana vazia é null',            mediana([12,8]) === null],
+  ['1h12 contra 1h18 é neutro',       corDoTempo(72*60,78*60) === 'neutro'],
+  ['2h21 contra 50min é âmbar',       corDoTempo(141*60,50*60) === 'ambar'],
+  ['sem mediana é neutro',            corDoTempo(50*60,null) === 'neutro'],
+  ['fmtDur 4320s = 1h12',             fmtDur(4320) === '1h12'],
+  ['fmtDur 2700s = 45min',            fmtDur(2700) === '45min'],
+  ['fmtDur 14s = 14s',                fmtDur(14) === '14s'],
+  ['32min contra 50min é neutro',     corDoTempo(32*60,50*60) === 'neutro'],
+  ['55min contra 50min é neutro',     corDoTempo(55*60,50*60) === 'neutro'],
+  ['meia-noite cai no meio do pulso', posPulso('00:00') === 50],
+  ['23:58 fica antes do meio',        posPulso('23:58') < 50],
+  ['tempo de mentira é seg < 30',     EVENTOS.find(e=>e.prod==='XIS BASE').seg < 30],
+];
+for (const [nome,ok] of PINOS) if (!ok) throw new Error('PINO FALHOU: '+nome);
+
+/* ── render ─────────────────────────────────────────────────── */
+function render(){
+  const $ = id => document.getElementById(id);
+  const ini = s => s.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+
+  $('nmao').textContent = NA_MAO.length;
+  $('lmao').innerHTML = NA_MAO.map(r=>{
+    const cor = corDoTempo(r.seg, r.medSeg);
+    const pct = r.medSeg ? Math.min(100, r.seg/r.medSeg*100) : 0;
+    const med = r.medSeg ? 'mediana ' + fmtDur(r.medSeg) : 'ainda sem mediana';
+    return `<div class="mao${r.tarefa?' tarefa':''}">
+      <div class="avt">${ini(r.quem)}</div>
+      <div class="oq"><div class="prod">${r.tarefa?'<span class="badge-t">TAREFA</span>':''}${r.prod}</div>
+        <div class="sub">${r.quem}${r.sub ? ' · '+r.sub : ''}</div></div>
+      <div class="ini num">começou <b>${r.ini}</b></div>
+      <div class="tempo ${cor} num"><span class="t">${fmtDur(r.seg)}</span>${cor==='ambar'?'<span class="chip-a">acima do normal</span>':''}
+        <div class="med">${med}</div>
+        ${r.medSeg?`<div class="bar"><i style="width:${pct}%"></i></div>`:''}</div>
+    </div>`;
+  }).join('');
+
+  $('nconc').textContent = EVENTOS.filter(e=>e.tipo==='lote'||e.tipo==='tarefa').length;
+
+  const cor = {lote:'',tarefa:'',conferiu:'conf',recusa:'rec'};
+  $('pulso').innerHTML = '<div class="eixo"></div>'
+    + ['22h','23h','00h','01h','02h'].map((h,k)=>{
+        const tx = k===0 ? 'translateX(0)' : (k===4 ? 'translateX(-100%)' : 'translateX(-50%)');
+        return `<span class="hr num" style="left:${k*25}%;transform:${tx}">${h}</span>`;
+      }).join('')
+    + EVENTOS.map(e=>`<span class="pt ${cor[e.tipo]}" style="left:${posPulso(e.h)}%"></span>`).join('');
+
+  $('lfita').innerHTML = EVENTOS.map(e=>{
+    if (e.tipo==='conferiu' || e.tipo==='recusa')
+      return `<div class="ev slim">
+        <div class="col1"><div class="avt2">${ini(e.quem)}</div><div class="h num">${e.h}</div></div>
+        <div class="txt"><b>${e.quem}</b> · ${e.txt}</div>
+      </div>`;
+    const mentira = e.seg < 30;
+    const c = mentira ? '' : corDoTempo(e.seg, e.medSeg);
+    const pct = e.medSeg ? Math.min(100, e.seg/e.medSeg*100) : 0;
+    const med = e.medSeg ? 'mediana ' + fmtDur(e.medSeg) : 'sem mediana';
+    return `<div class="ev">
+      <div class="col1"><div class="avt2">${ini(e.quem)}</div><div class="h num">${e.h}</div></div>
+      <div class="oq">
+        <div class="prod">${e.tipo==='tarefa'?'<span class="badge-t">TAREFA</span>':''}${e.prod}</div>
+        <div class="sub">${e.quem}</div>
+        ${e.conf==='aguarda'?'<span class="chip-v">aguarda conferência</span>':''}
+        ${mentira?'<span class="chip-m">tempo não mediu</span>':''}
+      </div>
+      <div class="tempo2 ${c} num"><span class="t">${fmtDur(e.seg)}</span>
+        <div class="med">${med}</div>
+        ${e.medSeg && !mentira ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</div>
+    </div>`;
+  }).join('');
+}
+
+if (typeof document !== 'undefined') render();
+else console.log('PINOS OK — ' + PINOS.length + ' verdes');
+</script>
+</body>
+</html>

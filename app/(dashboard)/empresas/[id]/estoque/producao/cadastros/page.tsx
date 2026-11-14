@@ -22,8 +22,7 @@ import { redirect } from 'next/navigation'
 interface PageProps { params: Promise<{ id: string }> }
 
 export default async function CadastrosPage({ params }: PageProps) {
-  await params
-  // ⚠️ `?filtro=cozinha` porque quem chega por um link da PRODUÇÃO está pensando na cozinha
-  // — cai na lista já filtrada, e desmarca se quiser ver todo mundo.
-  redirect('/equipe?filtro=cozinha')
+  const { id } = await params
+  // ⭐ (13/11, lei R20) a conta da cozinha mora na EQUIPE da produção — conta, papel e PIN
+  redirect(`/empresas/${id}/estoque/producao/equipe`)
 }

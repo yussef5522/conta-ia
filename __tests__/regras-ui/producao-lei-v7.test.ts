@@ -15,8 +15,7 @@ const LEI = ler('docs/producao-referencia.html')
 const COZINHA = semComentario(ler('app/cozinha/[empresaId]/page.tsx'))
 const ORDEM = semComentario(ler('app/(dashboard)/empresas/[id]/estoque/producao/[ordemId]/page.tsx'))
 const PAINEL = semComentario(ler('app/(dashboard)/empresas/[id]/estoque/producao/page.tsx'))
-const MESA = semComentario(ler('components/estoque/mesa-da-cozinha.tsx'))
-const HOJE = semComentario(ler('app/(dashboard)/empresas/[id]/estoque/producao/hoje/page.tsx'))
+// ⚠️ (13/11, lei R1) a mesa da cozinha e o HOJE morreram — os links que eles consertavam morreram junto
 const ETAPAS = semComentario(ler('components/estoque/etapas-da-ordem.tsx'))
 const TAREFAS = semComentario(ler('components/estoque/tarefas-do-dia.tsx'))
 const FINALIZAR = semComentario(ler('app/api/empresas/[id]/estoque/producao/minhas-tarefas/finalizar/route.ts'))
@@ -74,10 +73,9 @@ describe('M5 · a vassoura do dossiê', () => {
     expect(PAINEL).not.toMatch(/>concluídas hoje<|rotulo="Concluídas hoje"/)
   })
   it('links mortos consertados: fila do Radar e "cadastrar equipe"', () => {
-    expect(MESA).not.toContain('/estoque/producao/conferencia`')
-    expect(MESA).toContain('/estoque/producao#conferencia-do-dia`')
-    expect(HOJE).not.toContain('href={`/empresas/${id}/equipe`}')
-    expect(HOJE).toContain('href="/equipe?filtro=cozinha"')
+    // a tela de cadastro velha redireciona pra EQUIPE da produção (lei R20), nunca pra /empresas/:id/equipe
+    const cad = semComentario(ler('app/(dashboard)/empresas/[id]/estoque/producao/cadastros/page.tsx'))
+    expect(cad).toContain('/estoque/producao/equipe')
   })
   it('controles de designar/plano/gestos somem pra quem não pode', () => {
     expect(ETAPAS).toContain("const podeDesignar = !carregandoPerm && pode('stock.operate')")

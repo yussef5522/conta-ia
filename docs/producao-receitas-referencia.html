@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RECEITAS (produção) — referência v2 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════
+RECEITAS — a tela que fica (decisão do dono 13/11): o catálogo das
+receitas de produção, no padrão visual da casa. A mais usada das
+satélites (22 aberturas em 15 dias) e a mais suja (39/55 sem
+validade, custo incompleto, 6 nunca produzidas).
+Tema: escritório claro (--esc-*), família do Painel v9 / AO VIVO v3
+/ DESEMPENHO v1. Família R continua (R1–R8 na AO VIVO, R9–R16 na
+DESEMPENHO). Herdadas: S15, S16, S17, S18, S19, S20, S22.
+
+R17 — RECEITAS É O CATÁLOGO QUE SE VIGIA. Cada receita mostra:
+      ingredientes, custo por unidade, validade e última produção.
+      O que falta se declara na linha: "sem validade" ⚠, custo
+      incompleto "≥ R$ X" ⚠ (S22), "nunca produzida". Os filtros
+      são CONTADORES VIVOS (Sem validade · 39) — a sujeira vira
+      fila de trabalho, não segredo.
+
+R18 — A FICHA DIZ O QUE 1 UN USA E O QUE DESCONTA. A linha abre a
+      ficha ali mesmo: ingrediente, quantidade por unidade, custo.
+      Ingrediente sem preço ganha ⚠ e NÃO trava a soma dos outros
+      (S22: soma o que tem preço, nunca se disfarça). O rodapé diz
+      a verdade operacional: "desconta do estoque ao concluir".
+
+R19 — CADA RECEITA NA SUA UNIDADE (irmã da R14). Custo é por UN ou
+      por KG conforme a receita rende; nunca se mistura.
+
+R24 — EXCLUIR EXISTE E É HONESTO (13/11, pedido do dono; irmã da
+      R23 da EQUIPE). O botão "excluir receita" está na ficha,
+      sempre. Por dentro:
+      · receita SEM nenhum lote (nunca produzida, criada por
+        engano): apaga DE VEZ, some do banco;
+      · receita COM lotes: some de TUDO — catálogo, busca, criação
+        de ordem. O registro sobrevive apenas por dentro, para os
+        lotes antigos e o custo histórico não quebrarem.
+      A confirmação diz a verdade com números (quantos lotes ficam
+      na história). "Desativar" continua existindo só para receita
+      sazonal que volta (ex. BLACK FRIDAY) — desativada aparece no
+      filtro; excluída, não.
+
+A navegação .nav é da AMOSTRA. Contadores dos filtros vêm do
+raio-X de 13/11 (55 receitas, 39 sem validade, 2 custo incompleto,
+6 nunca produzidas, 3 desativadas).
+═══════════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --esc-bg:#F3F5FA; --esc-card:#FFFFFF; --esc-linha:#C9D0E3;
+  --esc-tinta:#0A0F1E; --esc-tinta2:#46516B; --esc-tinta3:#8B94AD;
+  --esc-indigo:#4F46E5; --esc-indigo50:#EEF0FE; --esc-indigo-t:#3730A3;
+  --esc-verde:#0E9F6E; --esc-verde50:#E4F7EF; --esc-verde-t:#065F46;
+  --esc-ambar50:#FCF0DC; --esc-ambar-t:#7C4A03; --esc-ambar:#B45309;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--esc-bg);color:var(--esc-tinta);font-family:var(--font)}
+body{padding:0 0 46px}
+.num{font-variant-numeric:tabular-nums}
+.nav{position:sticky;top:0;z-index:5;display:flex;gap:7px;flex-wrap:wrap;
+  background:#0A0F1E;padding:9px 14px}
+.nav button{border:1px solid #334155;background:#1E293B;color:#CBD5E1;border-radius:999px;
+  padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.nav button.on{background:#F1F5F9;color:#0A0F1E;border-color:#F1F5F9}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 18px 0}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.top h1{margin:0;font-size:21px;font-weight:800;letter-spacing:-.01em}
+.busca{display:flex;align-items:center;gap:8px;border:1px solid var(--esc-linha);
+  background:var(--esc-card);border-radius:10px;height:36px;padding:0 12px;min-width:230px}
+.busca input{border:0;outline:0;font-size:13px;font-weight:600;color:var(--esc-tinta);
+  font-family:var(--font);width:100%;background:transparent}
+.busca .lupa{color:var(--esc-tinta3);font-size:13px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 14px}
+.chips button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);
+  border-radius:999px;height:34px;padding:0 15px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.chips button.on{background:var(--esc-indigo);border-color:var(--esc-indigo);color:#fff}
+.filtros{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+.filtros button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);
+  border-radius:999px;height:32px;padding:0 13px;font-size:12px;font-weight:800;cursor:pointer;
+  font-family:var(--font);display:inline-flex;align-items:center;gap:7px}
+.filtros button.on{background:var(--esc-tinta);border-color:var(--esc-tinta);color:#fff}
+.filtros .n{background:#E8EBF5;color:var(--esc-tinta2);border-radius:999px;padding:1px 8px;
+  font-size:10.5px;font-weight:800}
+.filtros button.on .n{background:#2A3350;color:#D7DCF0}
+.filtros .amb{color:var(--esc-ambar-t)}
+.card{background:var(--esc-card);border:1px solid var(--esc-linha);border-radius:14px;
+  padding:14px 16px;margin-bottom:16px}
+.chead{display:flex;align-items:center;gap:8px;font-size:9.5px;font-weight:800;
+  letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase;margin-bottom:4px}
+.chead .sp{flex:1}
+.iwr{position:relative;display:inline-flex}
+.i{width:17px;height:17px;border-radius:50%;border:1px solid var(--esc-linha);background:var(--esc-card);
+  color:var(--esc-tinta3);font-size:10.5px;font-weight:800;cursor:pointer;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;padding:0;font-family:var(--font)}
+.pop{display:none;position:absolute;top:22px;left:-8px;z-index:9;width:260px;
+  background:#0A0F1E;color:#E2E8F0;border-radius:10px;padding:10px 12px;
+  font-size:11.5px;font-weight:600;line-height:1.5;letter-spacing:0;text-transform:none}
+.iwr.aberto .pop{display:block}
+.ver{color:var(--esc-indigo);font-size:11.5px;font-weight:800;text-decoration:none;white-space:nowrap}
+
+/* lista */
+.ghead{display:grid;grid-template-columns:minmax(0,1.5fr) 96px minmax(0,1fr) 104px 120px 52px;
+  gap:12px;font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);
+  text-transform:uppercase;padding:8px 0 6px;border-bottom:1px solid #E3E7F2}
+.ghead .dir{text-align:right}
+.grow{display:grid;grid-template-columns:minmax(0,1.5fr) 96px minmax(0,1fr) 104px 120px 52px;
+  gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #E3E7F2;cursor:pointer}
+.grow .rn{font-size:13.5px;font-weight:700}
+.grow .ing{font-size:12.5px;font-weight:700;color:var(--esc-tinta2);text-align:right}
+.grow .custo{font-size:13px;font-weight:800;text-align:right}
+.grow .custo small{font-size:10.5px;font-weight:800;color:var(--esc-tinta3)}
+.grow .custo .alerta{display:block;font-size:10px;font-weight:800;color:var(--esc-ambar-t);margin-top:2px}
+.grow .val,.grow .up{font-size:12.5px;font-weight:700;color:var(--esc-tinta2);text-align:right}
+.amb-t{color:var(--esc-ambar-t);font-weight:800}
+.grow .vercel{text-align:right}
+
+/* ficha aberta na linha (R18) */
+.ficha{border-left:3px solid var(--esc-indigo);background:#F8F9FD;border-radius:0 10px 10px 0;
+  margin:2px 0 10px;padding:12px 14px}
+.ficha .fhead{display:grid;grid-template-columns:minmax(0,1fr) 92px 86px;gap:10px;
+  font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);
+  text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #E3E7F2}
+.ficha .frow{display:grid;grid-template-columns:minmax(0,1fr) 92px 86px;gap:10px;
+  align-items:center;padding:7px 0;border-bottom:1px solid #E8EBF5;font-size:12.5px}
+.ficha .frow:last-of-type{border-bottom:0}
+.ficha .frow .fi{font-weight:700}
+.ficha .frow .fq{font-weight:700;color:var(--esc-tinta2);text-align:right}
+.ficha .frow .fc{font-weight:800;text-align:right}
+.ficha .ftot{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  border-top:1px solid #E3E7F2;margin-top:2px;padding-top:9px;font-size:12.5px;font-weight:800}
+.ficha .ftot .rot{font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);text-transform:uppercase}
+.ficha .fnota{font-size:11px;font-weight:700;color:var(--esc-tinta3);margin-top:8px}
+.ficha .fbts{display:flex;gap:8px;margin-top:11px}
+.ficha .fbts button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta);
+  border-radius:9px;height:32px;padding:0 14px;font-size:12px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.ficha .fbts .pri{background:var(--esc-indigo);border-color:var(--esc-indigo);color:#fff}
+.ficha .fbts .perigo{color:#B42318;border-color:#EBCDCB;margin-left:auto}
+.ghead .dir2{text-align:right}
+
+/* celular */
+.rot2{display:none}
+@media (max-width:760px){
+  .ghead{display:none}
+  .rot2{display:inline;font-size:10px;font-weight:800;letter-spacing:.05em;
+    color:var(--esc-tinta3);text-transform:uppercase}
+  .grow{grid-template-columns:minmax(0,1fr) 104px;grid-template-areas:"rn custo" "meta meta";row-gap:6px}
+  .grow .rn{grid-area:rn}
+  .grow .custo{grid-area:custo}
+  .grow .metawrap{grid-area:meta;display:flex;gap:12px;flex-wrap:wrap}
+  .grow .ing,.grow .val,.grow .up{text-align:left}
+  .grow .vercel{display:none}
+  .busca{min-width:0;width:100%}
+}
+@media (min-width:761px){
+  .grow .metawrap{display:contents}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button>Estoque</button><button>Vendas</button><button class="on">Produção</button>
+  <button>Financeiro</button><button>Cardápio</button>
+</nav>
+
+<main class="wrap">
+  <header class="top">
+    <h1>Produção</h1>
+    <div class="busca"><span class="lupa">⌕</span><input placeholder="buscar receita"></div>
+  </header>
+
+  <div class="chips">
+    <button>Painel</button><button>Ao vivo</button><button>Desempenho</button>
+    <button class="on">Receitas</button><button>Equipe</button>
+  </div>
+
+  <div class="filtros" id="lfiltros"></div>
+
+  <div class="card">
+    <div class="chead">Catálogo · 55 receitas
+      <span class="iwr"><button class="i" onclick="this.parentNode.classList.toggle('aberto')">i</button>
+        <span class="pop">A linha abre a ficha: o que 1 unidade usa e desconta do estoque
+        ao concluir o lote. Ingrediente sem preço não trava a soma dos
+        outros — o custo vira "≥" com aviso. Excluir receita nunca
+        produzida apaga de vez; com lotes na história, ela some do
+        catálogo e das ordens, e os lotes antigos continuam certos.</span></span>
+    </div>
+    <div class="ghead"><span>Receita</span><span class="dir">Ingredientes</span><span class="dir">Custo</span><span class="dir">Validade</span><span class="dir">Última produção</span><span></span></div>
+    <div id="lista"></div>
+  </div>
+</main>
+
+<script>
+/* ═══ ESPECIFICAÇÃO EXECUTÁVEL — RECEITAS v1 ═══ */
+
+/* S22/E3 — porta única do custo: soma o que tem preço, declara o que falta */
+function custoParcial(ings){
+  const comPreco = ings.filter(i => i.custo != null);
+  return {
+    custo: comPreco.reduce((s,i)=>s+i.custo, 0),
+    completo: comPreco.length === ings.length,
+    faltam: ings.length - comPreco.length
+  };
+}
+const brl2 = n => n.toFixed(2).replace('.', ',');
+function rotCusto(cp, un){
+  if (cp.completo) return 'R$ ' + brl2(cp.custo) + '/' + un;
+  if (cp.custo === 0) return 'sem preço nos ingredientes';
+  return '≥ R$ ' + brl2(cp.custo) + '/' + un;
+}
+function fmtVal(d){
+  if (d == null) return null;
+  return d === 1 ? '1 dia' : d + ' dias';
+}
+
+/* R24 — o que o excluir faz por dentro depende da história */
+function destinoExclusao(nLotes){
+  return nLotes === 0 ? 'apaga' : 'some-das-telas';
+}
+
+/* contadores do raio-X de 13/11 — os filtros são contadores vivos (R17) */
+const FILTROS = [
+  {rot:'Todas',             n:55, on:true},
+  {rot:'⚠ Sem validade',    n:39, amb:true},
+  {rot:'⚠ Custo incompleto',n:2,  amb:true},
+  {rot:'Nunca produzidas',  n:6},
+  {rot:'Desativadas',       n:3},
+];
+
+const RECEITAS = [
+  {r:'BEEF ACEBOLADO', un:'UN', val:3, up:'12/11', aberta:true, ings:[
+    {i:'BEEF BOVINO',      q:'120 g', custo:2.04},
+    {i:'CEBOLA',           q:'60 g',  custo:0.54},
+    {i:'TEMPERO DA CASA',  q:'8 g',   custo:0.35},
+    {i:'ÓLEO',             q:'15 ml', custo:0.37},
+  ]},
+  {r:'MAIONESE DA CASA', un:'KG', val:2, up:'11/11', ings:[
+    {i:'OVOS',q:'',custo:2.1},{i:'ÓLEO',q:'',custo:3.2},{i:'LIMÃO',q:'',custo:0.6},
+    {i:'ALHO',q:'',custo:0.7},{i:'SAL',q:'',custo:0.1},{i:'LEITE',q:'',custo:0.5}]},
+  {r:'MINI FRITAS', un:'UN', val:null, up:'12/11', ings:[
+    {i:'BATATA',q:'',custo:0.85},{i:'ÓLEO',q:'',custo:0.2}]},
+  {r:'PIZZA GRANDE BLACK FRIDAY', un:'UN', val:null, up:null, ings:[
+    {i:'MASSA',q:'',custo:1.95},{i:'MOLHO',q:'',custo:0.8},{i:'QUEIJO',q:'',custo:1.35},
+    {i:'CALABRESA',q:'',custo:null},{i:'ORÉGANO',q:'',custo:0.05}]},
+  {r:'MASSA DE PIZZA GRANDE', un:'UN', val:5, up:'12/11', ings:[
+    {i:'FARINHA',q:'',custo:0.9},{i:'FERMENTO',q:'',custo:0.25},{i:'ÓLEO',q:'',custo:0.3},
+    {i:'SAL',q:'',custo:0.05},{i:'AÇÚCAR',q:'',custo:0.45}]},
+  {r:'CEBOLA CARAMELIZADA', un:'KG', val:4, up:'09/11', ings:[
+    {i:'CEBOLA',q:'',custo:9.4},{i:'AÇÚCAR',q:'',custo:1.2},{i:'MANTEIGA',q:'',custo:1.2}]},
+];
+
+/* ── pinos (rodam sempre; em node, só eles) ─────────────────── */
+const _cpBeef  = custoParcial(RECEITAS[0].ings);
+const _cpBlack = custoParcial(RECEITAS[3].ings);
+const PINOS = [
+  ['ficha completa soma 3,30',        brl2(_cpBeef.custo) === '3,30' && _cpBeef.completo],
+  ['incompleta soma o que tem preço', brl2(_cpBlack.custo) === '4,15' && !_cpBlack.completo && _cpBlack.faltam === 1],
+  ['incompleta vira "≥"',             rotCusto(_cpBlack,'UN') === '≥ R$ 4,15/UN'],
+  ['completa não leva "≥"',           rotCusto(_cpBeef,'UN') === 'R$ 3,30/UN'],
+  ['nenhum preço nunca vira ≥ 0,00',  rotCusto(custoParcial([{custo:null}]),'UN') === 'sem preço nos ingredientes'],
+  ['validade 1 vira "1 dia"',         fmtVal(1) === '1 dia'],
+  ['validade 3 vira "3 dias"',        fmtVal(3) === '3 dias'],
+  ['sem validade é null (vira ⚠)',    fmtVal(null) === null],
+  ['contadores do raio-X',            FILTROS[0].n === 55 && FILTROS[1].n === 39 && FILTROS[3].n === 6],
+  ['nunca produzida apaga de vez',    destinoExclusao(0) === 'apaga'],
+  ['com lotes some das telas',        destinoExclusao(44) === 'some-das-telas'],
+];
+for (const [nome,ok] of PINOS) if (!ok) throw new Error('PINO FALHOU: '+nome);
+
+/* ── render ─────────────────────────────────────────────────── */
+function render(){
+  const $ = id => document.getElementById(id);
+
+  $('lfiltros').innerHTML = FILTROS.map(f=>
+    `<button class="${f.on?'on':''}"><span class="${f.amb&&!f.on?'amb':''}">${f.rot}</span><span class="n num">${f.n}</span></button>`
+  ).join('');
+
+  $('lista').innerHTML = RECEITAS.map(r=>{
+    const cp = custoParcial(r.ings);
+    const val = fmtVal(r.val);
+    const linha = `<div class="grow">
+      <div class="rn">${r.r}</div>
+      <div class="metawrap">
+        <div class="ing num">${r.ings.length}<span class="rot2"> ing</span></div>
+        <div class="custo num">${cp.completo ? 'R$ '+brl2(cp.custo) : '≥ R$ '+brl2(cp.custo)} <small>/${r.un}</small>
+          ${cp.completo?'':`<span class="alerta">⚠ ${cp.faltam} sem preço</span>`}</div>
+        <div class="val num">${val ? val : '<span class="amb-t">⚠ sem validade</span>'}</div>
+        <div class="up num">${r.up ? r.up : '<span class="amb-t">nunca produzida</span>'}</div>
+      </div>
+      <div class="vercel"><a class="ver" href="#">abrir →</a></div>
+    </div>`;
+    if (!r.aberta) return linha;
+    const temQ = r.ings.every(i=>i.q);
+    return linha + `<div class="ficha">
+      <div class="fhead"><span>1 ${r.un} usa</span><span style="text-align:right">Quantidade</span><span style="text-align:right">Custo</span></div>
+      ${r.ings.map(i=>`<div class="frow">
+        <span class="fi">${i.i}${i.custo==null?' <span class="amb-t">⚠ sem preço</span>':''}</span>
+        <span class="fq num">${i.q||''}</span>
+        <span class="fc num">${i.custo!=null?'R$ '+brl2(i.custo):'—'}</span>
+      </div>`).join('')}
+      <div class="ftot"><span class="rot">custo por ${r.un}</span><span class="num">${rotCusto(cp,r.un).replace('/'+r.un,'')}</span></div>
+      <div class="fnota">validade ${fmtVal(r.val)||'—'} · desconta do estoque ao concluir o lote</div>
+      <div class="fbts"><button class="pri">editar receita</button><button>desativar</button><button class="perigo">excluir receita</button></div>
+    </div>`;
+  }).join('');
+}
+
+if (typeof document !== 'undefined') render();
+else console.log('PINOS OK — ' + PINOS.length + ' verdes');
+</script>
+</body>
+</html>

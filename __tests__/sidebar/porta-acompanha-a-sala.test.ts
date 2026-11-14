@@ -90,7 +90,9 @@ describe('⛔⛔ /equipe — o menu não pode ser mais restrito que a página', 
   it('⭐ a Produção continua oferecendo o atalho pra Equipe', () => {
     // ⚠️ é o caminho que o gerente usa de fato: ele vive na Produção, não no menu Sistema.
     const prod = readFileSync(join(raiz, 'app/(dashboard)/empresas/[id]/estoque/producao/page.tsx'), 'utf-8')
-    expect(prod).toContain('/equipe?filtro=cozinha')
+    // ⭐ (13/11, lei R1/R20) o chip "Equipe" da produção leva à EQUIPE da produção (conta, papel e PIN)
+    expect(prod).toContain('CHIPS_DA_PRODUCAO.map')
+    expect(readFileSync(join(raiz, 'components/estoque/producao-telas.tsx'), 'utf-8')).toContain("caminho: '/equipe'")
   })
 })
 

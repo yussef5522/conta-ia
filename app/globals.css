@@ -760,6 +760,36 @@
   --prod-acao-ink: #0b0e1c;
 }
 
+/* ⭐⭐ --esc-* — o tema ESCRITÓRIO CLARO das 4 telas da produção (Ao vivo · Desempenho · Receitas · Equipe),
+   leis R1–R24 de 13/11/2026 (docs/producao-*-referencia.html). Os 18 primeiros são os da lei, POR VALOR
+   (o guard producao-quatro-telas-lei abre as referências e compara). Os demais são os tons de apoio que as
+   referências usam soltos no CSS (linha fina, trilho de barra, faixa do rendimento, perigo do excluir).
+   ⚠️ O escuro espelha a família --prod-* do Painel (a tela é a mesma família). */
+:root {
+  --esc-bg: #f3f5fa; --esc-card: #ffffff; --esc-linha: #c9d0e3;
+  --esc-tinta: #0a0f1e; --esc-tinta2: #46516b; --esc-tinta3: #8b94ad;
+  --esc-indigo: #4f46e5; --esc-indigo50: #eef0fe; --esc-indigo-t: #3730a3;
+  --esc-verde: #0e9f6e; --esc-verde50: #e4f7ef; --esc-verde-t: #065f46;
+  --esc-ambar50: #fcf0dc; --esc-ambar-t: #7c4a03; --esc-ambar: #b45309;
+  --esc-roxo: #7c3aed; --esc-roxo50: #f3effe; --esc-roxo-t: #5b21b6;
+  --esc-on: #ffffff; --esc-linha2: #e3e7f2; --esc-trilho: #e8ebf5; --esc-trilho2: #edf0f8;
+  --esc-faixa: #dcefe6; --esc-ficha: #f8f9fd; --esc-abas: #e4e8f3; --esc-pt-borda: #d9deec;
+  --esc-perigo: #b42318; --esc-perigo-linha: #ebcdcb; --esc-perigo-bg: #fdf7f6;
+  --esc-n-on: #2a3350; --esc-n-on-t: #d7dcf0; --esc-pop: #0a0f1e; --esc-pop-t: #e2e8f0;
+}
+.dark {
+  --esc-bg: #0b0e1c; --esc-card: #141829; --esc-linha: #333b58;
+  --esc-tinta: #edf0fb; --esc-tinta2: #9aa3c0; --esc-tinta3: #6a7390;
+  --esc-indigo: #818cf8; --esc-indigo50: #23264f; --esc-indigo-t: #c7cbfa;
+  --esc-verde: #34d399; --esc-verde50: #0c2e24; --esc-verde-t: #6ee7b7;
+  --esc-ambar50: #352508; --esc-ambar-t: #fcd34d; --esc-ambar: #f59e0b;
+  --esc-roxo: #a78bfa; --esc-roxo50: #2a1f4d; --esc-roxo-t: #c4b5fd;
+  --esc-on: #0b0e1c; --esc-linha2: #242a41; --esc-trilho: #23283f; --esc-trilho2: #1f2438;
+  --esc-faixa: #0f3a2c; --esc-ficha: #1a1f33; --esc-abas: #1a1f33; --esc-pt-borda: #333b58;
+  --esc-perigo: #f87168; --esc-perigo-linha: #5a2a26; --esc-perigo-bg: #3a1917;
+  --esc-n-on: #333b58; --esc-n-on-t: #d7dcf0; --esc-pop: #0a0f1e; --esc-pop-t: #e2e8f0;
+}
+
 /* ⭐ a fonte TABULAR que o dono pediu pros números — alinhamento de coluna financeira.
    ⚠️ Esta regra fica GLOBAL (e não escopada como antes): ela não é token, é utilitário —
    qualquer tela que queira coluna de número alinhada põe `.num` e pronto. */
@@ -1359,3 +1389,4 @@
     transform: translateX(-50%);
   }
 }
+

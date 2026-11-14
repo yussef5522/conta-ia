@@ -152,7 +152,9 @@ describe('⛔⛔ 2. "pedido N · fez M" — as PALAVRAS sempre visíveis', () =>
    * (relatório, onde o percentual tem a coluna do pedido ao lado) e o juiz P8.
    */
   it('⭐⭐ `faixaDoSelo` continua viva onde ela tem régua visível', () => {
-    expect(ler('app/(dashboard)/empresas/[id]/estoque/producao/por-dia/page.tsx')).toMatch(/faixaDoSelo/)
+    // ⭐ (13/11) a tela "Por dia" morreu (lei R1) — a régua segue no texto da linha e no aviso de padrão
+    expect(ler('lib/stock/producao/pedido-na-tela.ts')).toMatch(/faixaDoSelo/)
+    expect(ler('lib/avisos/produtores/producao.ts')).toMatch(/faixaDoSelo/)
     expect(ler('lib/stock/producao/producao-invariants.ts')).toMatch(/DESVIO_ALERTA|eficienciaDaOrdem|faixaDoSelo/)
   })
 })

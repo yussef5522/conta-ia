@@ -80,7 +80,7 @@ export function montarRadarDaCozinha(f: FatosDaCozinha): LinhaDoRadar[] {
             : 'o estoque já baixou com o número declarado'
           : null,
       gravidade: f.conferencia.aguardando > 0 ? 'CORAL' : 'VERDE',
-      href: `${base}/estoque/producao/hoje`,
+      href: `${base}/estoque/producao/ao-vivo`,
     },
 
     /**
@@ -100,7 +100,7 @@ export function montarRadarDaCozinha(f: FatosDaCozinha): LinhaDoRadar[] {
             ? 'conferir contra a ficha'
             : null,
       gravidade: f.rendimento.foraDaFaixa > 0 ? 'AMBAR' : 'VERDE',
-      href: `${base}/estoque/producao/relatorios`,
+      href: `${base}/estoque/producao/desempenho`,
     },
 
     /**
@@ -153,7 +153,7 @@ export function montarRadarDaCozinha(f: FatosDaCozinha): LinhaDoRadar[] {
           ? 'registro retroativo — fora do ritmo medido, o volume conta'
           : null,
       gravidade: f.semTempoMedido > 0 ? 'AMBAR' : 'VERDE',
-      href: `${base}/estoque/producao/relatorios`,
+      href: `${base}/estoque/producao/desempenho`,
     },
   ]
 }

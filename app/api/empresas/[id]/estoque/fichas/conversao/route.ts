@@ -29,7 +29,8 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (a.erro) return a.erro
 
   const prog = await fichasParaConverter(companyId)
-  const esperam = await rendimentosPendentes(companyId)
+  // ⚡ (13/11) a fila é lida UMA vez e entregue (antes: lida de novo dentro de rendimentosPendentes)
+  const esperam = await rendimentosPendentes(companyId, undefined, prog)
 
   /**
    * ⭐ Cada linha já vem com as SUGESTÕES: sem elas a tela abriria 37 fichas com um campo vazio

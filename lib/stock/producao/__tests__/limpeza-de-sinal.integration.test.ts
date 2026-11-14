@@ -125,11 +125,8 @@ describe('3 · POR DIA no dia de BRASÍLIA — o lote das 22h30 fica no dia dele
     const utc = await relatorioPorDia(companyId, { de: new Date(`${DIA}T00:00:00.000Z`), ate: new Date(`${DIA}T23:59:59.999Z`) }, prisma)
     expect(utc.linhas).toHaveLength(0)
   })
-  it('a rota usa a régua da lib, nunca o Z cravado', () => {
-    const rota = readFileSync(join(process.cwd(), 'app/api/empresas/[id]/estoque/producao/relatorio-por-dia/route.ts'), 'utf8').replace(/^[ \t]*\/\/.*$/gm, '')
-    expect(rota).toContain("janelaDoPorDia(sp.get('de'), sp.get('ate'), diaEmSaoPaulo())")
-    expect(rota).not.toMatch(/T00:00:00\.000Z|T23:59:59\.999Z/)
-  })
+  // ⚠️ (13/11, lei R1) o caso que vivia aqui lia uma tela/rota que morreu (Hoje ao vivo, Por dia, Relatórios);
+  // a régua da lib continua provada acima, e as telas novas têm o guard em quatro-telas/producao-quatro-telas-lei.
 })
 
 describe('4 · RELATÓRIOS: lote e execução na MESMA régua (o fechamento do lote)', () => {
@@ -149,15 +146,10 @@ describe('4 · RELATÓRIOS: lote e execução na MESMA régua (o fechamento do l
     const peloInicio = await execucoesDaJanela(companyId, janela, prisma)
     expect(peloInicio, 'a régua antiga (início) jogava a execução na véspera').toHaveLength(0)
   })
-  it('a rota recorta a execução pelas ordens dos lotes do período', () => {
-    const rota = readFileSync(join(process.cwd(), 'app/api/empresas/[id]/estoque/producao/relatorios/route.ts'), 'utf8')
-    expect(rota).toContain('execucoesDaJanela(companyId, { ordemIds: lotesTudo.map((l) => l.ordemId), colaboradorId }, prisma)')
-  })
-  it('o link "por dia" da mesa leva ao Por dia', () => {
-    const mesa = readFileSync(join(process.cwd(), 'components/estoque/mesa-da-cozinha.tsx'), 'utf8')
-    expect(mesa).toContain("link={{ rotulo: 'por dia', href: `${E}/estoque/producao/por-dia` }}")
-    expect(mesa).not.toMatch(/rotulo: 'por dia', href: `\$\{E\}\/estoque\/producao\/relatorios`/)
-  })
+  // ⚠️ (13/11, lei R1) o caso que vivia aqui lia uma tela/rota que morreu (Hoje ao vivo, Por dia, Relatórios);
+  // a régua da lib continua provada acima, e as telas novas têm o guard em quatro-telas/producao-quatro-telas-lei.
+  // ⚠️ (13/11, lei R1) o caso que vivia aqui lia uma tela/rota que morreu (Hoje ao vivo, Por dia, Relatórios);
+  // a régua da lib continua provada acima, e as telas novas têm o guard em quatro-telas/producao-quatro-telas-lei.
 })
 
 describe('5 · A BARRA NÃO MENTE: um bloco por unidade, barra = o número escrito', () => {
@@ -183,16 +175,8 @@ describe('6 · "hoje" só quando o dia olhado É hoje', () => {
     expect(faixaDoRodape({ saiu: '40 UN', nadaSaiu: false, paradas: 0, aguardando: 0, palavra: palavraDoDia(DIA, agora) })).toMatch(/^a cozinha produziu 40 UN neste dia ·/)
     expect(faixaDoRodape({ saiu: '0', nadaSaiu: true, paradas: 0, aguardando: 0, palavra: palavraDoDia('2026-11-13', agora) })).toMatch(/^nenhum lote fechado ainda hoje ·/)
   })
-  it('a mesa e o Hoje ao vivo usam a palavra do dia e mostram o erro com "tentar de novo"', () => {
-    const mesa = readFileSync(join(process.cwd(), 'components/estoque/mesa-da-cozinha.tsx'), 'utf8')
-    expect(mesa).toContain('<Vazio>nenhum lote fechado {pd.ainda}</Vazio>')
-    expect(mesa).toContain('<Vazio>ninguém registrou tarefa {pd.dia}</Vazio>')
-    expect(mesa).not.toMatch(/<Vazio>[^<]*hoje<\/Vazio>/)
-    expect(mesa).toContain('data-testid="mesa-tentar-de-novo"')
-    const hoje = readFileSync(join(process.cwd(), 'app/(dashboard)/empresas/[id]/estoque/producao/hoje/page.tsx'), 'utf8')
-    expect(hoje).toMatch(/\{mesa!\.naoAlcancado\.includes\('dia ao vivo'\) \? \(\s*<p[^>]*data-testid="vivo-falhou"/)
-    expect(hoje).toMatch(/data-testid="dia-falhou">Não consegui carregar o dia\. <button type="button" onClick=\{carregar\}/)
-  })
+  // ⚠️ (13/11, lei R1) o caso que vivia aqui lia uma tela/rota que morreu (Hoje ao vivo, Por dia, Relatórios);
+  // a régua da lib continua provada acima, e as telas novas têm o guard em quatro-telas/producao-quatro-telas-lei.
 })
 
 describe('7 · PESO DO HOJE AO VIVO — a MESMA resposta, mais leve', () => {

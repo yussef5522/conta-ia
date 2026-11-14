@@ -91,7 +91,7 @@ describe('⭐⭐ a maçaneta existe — nos dois pontos que o dono pediu', () =>
     expect(iTagChip, 'nenhum <a> leva à ficha com o campo aceso').toBeGreaterThan(-1)
     const antes = tela.slice(Math.max(0, iTagChip - 120), iTagChip)
     expect(
-      /\{esperam\[f\.id\]\s*&&/.test(antes),
+      /\{esperam\[r\.fichaId\]\s*&&\s*\(?\s*$/.test(antes),
       'o chip tem que ser gateado pela pendência DAQUELA ficha — nem solto, nem em ramo morto',
     ).toBe(true)
     expect(tela, 'e com o caminho de volta pra lista').toContain('voltar=')

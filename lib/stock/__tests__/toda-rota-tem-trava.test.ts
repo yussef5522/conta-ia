@@ -69,18 +69,16 @@ describe('toda rota de estoque tem trava', () => {
   // então ali a chave alta protege o CONTEÚDO, não a escrita. Afrouxar a regra pra todo GET
   // teria escondido isso; a exceção com motivo escrito deixa à vista.
   const LEITURA_SENSIVEL: Record<string, string> = {
-    'producao/relatorio-pessoas/route.ts':
-      'comparativo de desempenho entre pessoas — decisão do dono (06/09): só gerência, nunca em tela compartilhada da cozinha',
-    'producao/dia-ao-vivo/route.ts':
-      'mostra o ritmo de cada pessoa lado a lado no dia — mesma régua do relatório por pessoa: '
-      + 'conversa de gestão, nunca telão de cozinha. A janela do tablet segue mostrando só as tarefas de quem está com o PIN',
-    'producao/relatorios/route.ts':
-      'relatórios de produção (13/09) — tempo, rendimento e custo por PESSOA lado a lado, em período livre. '
-      + 'Mesma régua das duas acima, e a ordem do dono é explícita: "SÓ na tela do dono/gerente — o TABLET DA COZINHA '
-      + 'NUNCA mostra o placar". Guard próprio em __tests__/regras-ui/tablet-nunca-ve-o-placar.ts prova os dois lados',
-    'producao/relatorio-por-dia/route.ts':
-      'relatório de produção por dia (04/10) — mostra QUEM CONCLUIU cada lote e a eficiência dele lado a lado, '
-      + 'em período livre. Mesma régua das três acima: conversa de gestão, nunca telão de cozinha',
+    'producao/ao-vivo/route.ts':
+      'AO VIVO (13/11, lei R3) — o tempo de cada pessoa contra a mediana da etapa, lado a lado, agora. '
+      + 'Herda a trava do `dia-ao-vivo` e da `mesa` que ele substituiu: conversa de gestão, nunca telão de cozinha',
+    'producao/desempenho/route.ts':
+      'DESEMPENHO (13/11, leis R9–R16) — lotes, horas e NO RITMO por PESSOA lado a lado, em período livre. '
+      + 'Herda a trava do `relatorio-pessoas`/`relatorios`/`relatorio-por-dia` que ele substituiu: a ordem do dono é '
+      + '"SÓ na tela do dono/gerente — o TABLET DA COZINHA NUNCA mostra o placar" (guard tablet-nunca-ve-o-placar)',
+    'producao/equipe/[colaboradorId]/route.ts':
+      'EQUIPE (13/11, lei R23) — a prévia do EXCLUIR: quantos lotes e tarefas a pessoa tem na história. '
+      + 'É a pergunta de quem vai excluir (gerência), e o número é a vida de trabalho de alguém',
     'producao/ordens/[ordemId]/consumo/route.ts':
       'o detalhe que a linha do relatório por dia abre ("o que saiu do estoque pra esta ordem", com custo). '
       + 'Mesma trava da tela que o abre — se fosse `view`, o relatório de gestão teria uma porta lateral aberta',
@@ -90,14 +88,6 @@ describe('toda rota de estoque tem trava', () => {
       + 'Em `stock.view` esse veredito viajaria no JSON até o tablet da cozinha, e a cola estaria a um DevTools de '
       + 'distância — exatamente o canal lateral que a lei fechou quando o campo de motivo deixou de aparecer '
       + 'condicional. O guard `conclusao-nao-da-cola` prova o outro lado: a tela de declarar segue cega',
-    'producao/mesa/route.ts':
-      '⛔⛔ A MESA DA COZINHA ② (15/10) — o orquestrador que a tela do HOJE carrega. Ela devolve '
-      + 'TRÊS coisas que já são `stock.manage` por si: o RADAR (que carrega a fila de conferência '
-      + 'COM o veredito do fiscal), o QUEM FEZ O DIA (o ritmo de cada pessoa lado a lado) e o dia '
-      + 'ao vivo inteiro. Em `stock.view` a cola de prova da lei de 05/10 viajaria no JSON até o '
-      + 'tablet — o mesmo canal lateral de `producao/conferencia` e `producao/dia-ao-vivo`, agora '
-      + 'num payload só. ⚠️ A trava é a MESMA das três portas que ela orquestra: afrouxar aqui '
-      + 'abriria uma lateral pra todas de uma vez',
   }
 
   it('GET nunca exige operar/gerenciar (ler é ler), fora as leituras sensíveis nomeadas', () => {

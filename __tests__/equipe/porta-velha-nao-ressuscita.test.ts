@@ -77,11 +77,12 @@ describe('⛔⛔ nenhum link aponta pro lugar morto', () => {
 
   it('⭐⭐ a Produção tem o ATALHO pra Equipe, e ele não está escondido num formulário', () => {
     const src = readFileSync(join(RAIZ, 'app/(dashboard)/empresas/[id]/estoque/producao/page.tsx'), 'utf-8')
-    expect(src).toMatch(/href="\/equipe/)
+    // ⭐ (13/11, lei R1) o atalho é o chip "Equipe" da porta única CHIPS_DA_PRODUCAO
+    expect(readFileSync(join(RAIZ, 'components/estoque/producao-telas.tsx'), 'utf-8')).toMatch(/aba: 'equipe', rotulo: 'Equipe', caminho: '\/equipe'/)
     // ⛔⛔ O DEFEITO ERA A POSIÇÃO: o link antigo vivia DENTRO do `NovaOrdem`, e por isso só
     // aparecia depois de clicar em "nova ordem". O atalho tem que estar ANTES desse
     // componente no arquivo — ou seja, no cabeçalho da tela.
-    const posLink = src.indexOf('href="/equipe')
+    const posLink = src.indexOf('CHIPS_DA_PRODUCAO.map')
     const posNovaOrdem = src.indexOf('function NovaOrdem')
     expect(posLink).toBeGreaterThan(-1)
     expect(posLink, 'o atalho voltou pra dentro do formulário de nova ordem').toBeLessThan(posNovaOrdem)

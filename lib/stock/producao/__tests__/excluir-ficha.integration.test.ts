@@ -8,7 +8,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { preverExclusaoDaFicha, excluirFicha } from '../excluir-ficha'
-import { listFichas } from '../fichas'
+import { listFichas, atualizarFicha } from '../fichas'
+import { catalogoDeReceitas } from '../catalogo-de-receitas'
 
 let companyId = ''
 let insumoId = ''
@@ -39,6 +40,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  await prisma.stockFichaExcluida.deleteMany({ where: { companyId } })
   await prisma.stockProductionOrder.deleteMany({ where: { companyId } })
   await prisma.stockFichaComponente.deleteMany({ where: { companyId } })
   await prisma.stockFichaVersao.deleteMany({ where: { companyId } })
@@ -99,8 +101,27 @@ describe('⭐⭐ CASO 2 — receita COM lotes: desativa, e o passado fica', () =
     const p = await preverExclusaoDaFicha(companyId, fichaId, prisma)
     expect(p.caso).toBe('DESATIVA')
     expect(p.lotes).toBe(1)
-    expect(p.frase).toContain('DESATIVADA')
-    expect(p.frase, 'não prometeu preservar o histórico').toContain('histórico preservado')
+    // ⭐ R24 (13/11): a frase diz a verdade com números — some de tudo, os lotes ficam na história
+    expect(p.frase).toContain('some do catálogo, da busca e da criação de ordem')
+    expect(p.frase, 'não disse quantos lotes ficam na história').toContain('os 1 lote ficam na história')
+  })
+
+  /**
+   * ⭐⭐ R24 (13/11/2026) — EXCLUÍDA COM HISTÓRIA ≠ DESATIVADA. A excluída ganha a marca em
+   * `stock_ficha_excluida` (com os lotes da hora) e some até do filtro "Desativadas" do catálogo;
+   * a desativada sazonal NÃO tem marca. Reativar (o dono trazendo de volta) tira a marca.
+   */
+  it('⭐⭐ R24 — excluída ganha a marca e some do catálogo inteiro (até de Desativadas)', async () => {
+    const { fichaId } = await comHistoria('molho r24')
+    await excluirFicha(companyId, fichaId, prisma, 'user-r24')
+    const marca = await prisma.stockFichaExcluida.findUnique({ where: { fichaId } })
+    expect(marca, 'excluiu com história e não marcou — ela reaparece em Desativadas').toBeTruthy()
+    expect(marca!.lotesNaHistoria).toBe(1)
+    const cat = await catalogoDeReceitas(companyId, prisma)
+    expect(cat.receitas.map((r) => r.fichaId), 'a excluída continua no catálogo').not.toContain(fichaId)
+
+    await atualizarFicha(companyId, fichaId, { ativo: true }, prisma)
+    expect(await prisma.stockFichaExcluida.count({ where: { fichaId } }), 'reativou e a marca ficou').toBe(0)
   })
 
   /**

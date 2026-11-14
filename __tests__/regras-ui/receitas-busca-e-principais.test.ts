@@ -36,30 +36,12 @@ describe('⭐⭐ A BUSCA passa pela PORTA DA CASA — nunca comparação crua na
       .not.toMatch(/\.includes\s*\(/)
   })
 
-  it('⭐ quem decide o recorte é a LIB (a tela ecoa: não filtra, não ordena, não conta)', () => {
-    const src = tela()
-    expect(usosDe(src, 'montarListaDeReceitas'), 'a tela tem que CHAMAR a régua, não só importar')
-      .toBeGreaterThan(0)
-    // ⛔ e não pode ordenar/contar por fora — senão chip e lista voltam a poder discordar
-    expect(semImports(src)).not.toMatch(/\.sort\s*\(/)
-    expect(semImports(src)).not.toMatch(/localeCompare/)
-  })
-
   it('⭐ e a régua importa `casaBusca` em vez de reescrever a comparação', () => {
     const src = semComentarios(ler(REGUA))
     expect(src).toMatch(/import\s*\{\s*casaBusca\s*\}\s*from\s*'@\/lib\/busca-texto'/)
     expect(semImports(src), 'a régua copiou a normalização em vez de importar').not.toMatch(/normalize\(['"]NFD/)
   })
 
-  it('⭐ o campo de busca tem rótulo que NÃO SOME (o placeholder é exemplo, não nome)', () => {
-    const src = tela()
-    expect(src).toContain('placeholder="buscar receita…"')
-    expect(src, 'campo de dado sem rótulo acessível é a cicatriz de 09/09').toMatch(/aria-label="buscar receita/)
-  })
-
-  it('⭐ o destaque sai da porta (`trechosDaBusca`), não de um regex na tela', () => {
-    expect(usosDe(tela(), 'trechosDaBusca')).toBeGreaterThan(0)
-  })
 })
 
 describe('⛔⛔ A ESTRELA — uma porta de escrita, e só ela', () => {
@@ -108,118 +90,21 @@ describe('⛔⛔ A ESTRELA — uma porta de escrita, e só ela', () => {
     expect(src).toMatch(/stockFicha\.findFirst\(\{\s*where:\s*\{\s*id:\s*input\.fichaId,\s*companyId:\s*input\.companyId/)
   })
 
-  it('⭐ a estrela é BOTÃO de verdade, com o estado dito (teclado e leitor de tela)', () => {
-    const src = tela()
-    const i = src.search(/<button[^>]*onClick=\{\(\) => alternarPrincipal/)
-    expect(i, 'a estrela não é um <button> com o gesto').toBeGreaterThan(-1)
-    const bloco = src.slice(i, i + 700)
-    expect(bloco, 'sem aria-pressed, quem usa leitor de tela não sabe se está marcada').toMatch(/aria-pressed=\{f\.principal\}/)
-  })
-
-  it('⭐⭐ e a falha REVERTE a estrela — nunca afirma um estado que o servidor não guardou', () => {
-    const src = tela()
-    const i = src.indexOf('if (!r.ok)')
-    expect(i, 'o gesto otimista não trata a falha').toBeGreaterThan(-1)
-    const bloco = src.slice(i, i + 300)
-    expect(bloco, 'a estrela não volta sozinha — é a família do "salvo que mentia"').toMatch(/pinta\(f\.principal\)/)
-    expect(bloco, 'a falha tem que DIZER').toMatch(/setAviso\(/)
-  })
-
-  it('⛔ e nenhum `carregar()` no gesto da estrela (refetch de 44 fichas pra 1 booleano)', () => {
-    const src = tela()
-    const i = src.indexOf('const alternarPrincipal')
-    const bloco = src.slice(i, src.indexOf('if (fichas === undefined)'))
-    expect(bloco).not.toMatch(/carregar\(\)/)
-  })
 })
 
 describe('⭐ OS GESTOS QUE JÁ EXISTIAM continuam — e nos mesmos destinos', () => {
-  it('⭐ PRODUZIR cria a ordem pela mesma rota e navega pra ela', () => {
+  it('⭐ e "nova receita" + excluir seguem na tela (lei v2: excluir mora na ficha aberta, R24)', () => {
     const src = tela()
-    expect(src).toContain('> produzir')
-    expect(src).toMatch(/\/api\/empresas\/\$\{id\}\/estoque\/producao\/ordens/)
-    expect(src).toMatch(/window\.location\.href = `\/empresas\/\$\{id\}\/estoque\/producao\/\$\{j\.ordemId\}`/)
-  })
-
-  it('⭐ DUPLICAR continua levando pra nova receita com `duplicarDe`', () => {
-    const src = tela()
-    expect(src).toContain('> duplicar')
-    expect(src).toMatch(/receitas\/nova\?duplicarDe=\$\{f\.id\}/)
-  })
-
-  it('⭐ e "Nova receita" + excluir seguem onde estavam', () => {
-    const src = tela()
-    expect(src).toContain('Nova receita')
-    expect(src).toMatch(/<ExcluirReceita/)
+    expect(src).toContain('/estoque/producao/receitas/nova')
+    expect(src).toContain('data-testid="excluir-receita"')
+    // ⛔ o excluir pergunta ao SERVIDOR (OPTIONS = a prévia) e manda o que prometeu (`?prometido=`)
+    expect(src).toMatch(/method: 'OPTIONS'/)
+    expect(src).toMatch(/\?prometido=\$\{previa\.caso\}/)
   })
 })
 
-describe('⭐⭐ OS BLOCOS — rótulo vem da RÉGUA, nunca cravado na tela (12/10)', () => {
-  /**
-   * ⛔⛔ O dono pediu os blocos EXCLUSIVOS, e com isso *"Todas as receitas"* virou mentira — o
-   * bloco de baixo passou a se chamar **"outras receitas"**. ⚠️ Rótulo cravado na tela faria a
-   * régua renomear e a tela continuar prometendo o que não entrega: é o rótulo honesto de
-   * 13/09 valendo pro lado do render.
-   */
-  it('⛔ a tela não crava NENHUM dos dois rótulos — ela desenha `b.titulo`', () => {
-    const src = tela()
-    expect(src, 'rótulo cravado: a régua renomeia e a tela mente').not.toContain('Todas as receitas')
-    expect(src).not.toContain('outras receitas')
-    expect(src, 'o título tem que vir da régua').toMatch(/\{b\.titulo\}/)
-  })
+// ⚠️ (13/11) o describe que vivia aqui guardava a roupa da lista velha — a lei v2 (docs/producao-receitas-referencia.html)
+// substituiu; o guard da tela nova mora em __tests__/regras-ui/producao-quatro-telas-lei.test.ts
 
-  it('⭐ e o convite do bloco vazio também vem da régua (nunca um branco mudo)', () => {
-    expect(tela()).toMatch(/\{b\.convite\}/)
-  })
-})
-
-describe('⭐ ROUPA v4 — logo do dono único, sublinha num fôlego, LEI DE LAYOUT', () => {
-  it('⭐ o logo vem do componente ÚNICO (zero mapa novo, zero desenho novo)', () => {
-    const src = tela()
-    expect(src).toMatch(/<LogoDaReceita nome=\{f\.nomeProduzido\} tamanho=\{38\} \/>/)
-    expect(semImports(src), 'a tela traduziu nome→cor por conta própria').not.toMatch(/caraDaReceita/)
-  })
-
-  it('⭐ o custo "a definir" é ÂMBAR na sublinha — nunca cinza, nunca ausente', () => {
-    const src = tela()
-    /**
-     * ⚠️ Âncora no USO (`f.custoADefinir` no JSX), nunca no 1º `custoADefinir` do arquivo —
-     * ele é a DECLARAÇÃO da interface, 150 linhas acima. Minha 1ª versão fatiou dali e deu
-     * **falso vermelho numa tela certa**: é a janela de distância que já enganou 7 guards aqui.
-     */
-    const i = src.indexOf('{f.custoADefinir')
-    expect(i, 'o ternário do custo saiu do JSX').toBeGreaterThan(-1)
-    const bloco = src.slice(i, i + 400)
-    expect(bloco).toContain('custo a definir')
-    expect(bloco, 'cinza se lê como "não importa" — e é justo aqui que falta um gesto do dono')
-      .toMatch(/var\(--fam-ambar-mid\)/)
-  })
-
-  it('⭐⭐ LEI DE LAYOUT: teto 1440, 28px de respiro (14 no celular) e GRADE de cartões', () => {
-    const src = tela()
-    expect(src).toContain('max-w-[1440px]')
-    expect(src).toContain('px-[28px]')
-    expect(src).toContain('max-[700px]:px-[14px]')
-    expect(src, 'coluna única é a "coluna estreita centrada" que o dono recusou').toMatch(/grid-cols-1[^"]*min-\[1100px\]:grid-cols-2/)
-  })
-
-  it('⛔⛔ ZERO hex de cor cravado na tela — nem o azul legado sobrou', () => {
-    /**
-     * ⚠️⚠️ **ESTE GUARD FICOU VERMELHO COM O CÓDIGO CERTO (15/10)** — ele afirmava
-     * `['#0F4A8C', '#185FA5']`, *"os 2 do azul legado são os botões que já existiam"*, e o
-     * UPGRADE DE TINTA do módulo de produção **pagou essa dívida**: o primário passou pro par
-     * `--prod-acao-bg`/`--prod-acao-ink`, que é o único do módulo.
-     *
-     * ⭐ **REAPONTADO, e MAIS FORTE:** a pergunta nunca foi *"são exatamente estes dois hex?"*
-     * — era *"cor nova entra por token, pra inverter no tema escuro"*. Com `[]` no lugar da
-     * lista, o azul legado **não pode voltar** nem como exceção herdada.
-     *
-     * ⚠️ `tela()` lê **sem comentário** de propósito: o cabeçalho do arquivo cita o `#185FA5`
-     * pra documentar a migração, e *o arquivo que documenta o defeito removido não pode ser o
-     * que reprova a remoção dele*.
-     */
-    const hex = [...tela().matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0])
-    expect([...new Set(hex)].sort(), 'cor nova tem que entrar por token, pra inverter no tema escuro')
-      .toEqual([])
-  })
-})
+// ⚠️ (13/11) o describe que vivia aqui guardava a roupa da lista velha — a lei v2 (docs/producao-receitas-referencia.html)
+// substituiu; o guard da tela nova mora em __tests__/regras-ui/producao-quatro-telas-lei.test.ts

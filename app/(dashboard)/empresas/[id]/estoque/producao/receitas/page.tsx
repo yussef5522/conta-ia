@@ -1,389 +1,234 @@
 'use client'
 
-// ESTOQUE — RECEITAS DE PRODUÇÃO (27/08). A CASA DA COZINHA: só INTERMEDIÁRIOS.
-//
-// Padrão dos líderes: sub-recipe/prep vive SEPARADA do menu item. São perguntas de pessoas
-// diferentes — o dono quer margem do xis, a cozinha quer o rendimento do beef. A lista mista
-// de fichas atendia mal os dois; foi tirada da sidebar.
-//
-// Produto FINAL não aparece aqui: ele se edita dentro do próprio produto, no cardápio.
-//
-// ⭐⭐ BUSCA + PRINCIPAIS + ROUPA v4 (12/10/2026, ordem do dono): 44 receitas e ele caçando
-// uma por uma na rolagem. A ESTRELA fixa as que importam em cima — marca DELE, não categoria
-// automática (carnes/queijos/legumes foi DESCARTADA no chat: quem decide o que importa é ele).
-//
-// ⛔⛔ **A DECISÃO DO QUE DESENHAR NÃO MORA AQUI** — ela é `montarListaDeReceitas`, lib PURA.
-// Sem jsdom no projeto, regra dentro de componente é regra que ninguém prova (a cicatriz do
-// prefill do cardápio). A tela ECOA: filtra nada, ordena nada, conta nada.
+// ⭐⭐ RECEITAS — lei docs/producao-receitas-referencia.html (v2 APROVADA, R17–R19 + R24, 13/11/2026).
+// R17: o catálogo que se vigia — ingredientes, custo/un, validade, última produção; o que falta se
+//      declara na linha; filtros são CONTADORES VIVOS (a sujeira vira fila de trabalho).
+// R18: a linha abre a ficha ALI MESMO — o que 1 unidade usa, custo, ⚠ no ingrediente sem preço (não
+//      trava a soma: "≥"), rodapé "desconta do estoque ao concluir o lote".
+// R19: custo por UN ou por KG conforme a receita rende. R24: excluir na ficha, sempre — o SERVIDOR
+//      decide (sem lote apaga de vez; com lotes some de tudo) e a confirmação diz os números.
+//      Desativar continua só pra sazonal (aparece no filtro Desativadas; excluída não aparece).
+// ⚠️ Saíram com a lei v2 (decisão do dono): estrela de principal, "produzir" e "duplicar" na linha.
 
-/**
- * ⭐⭐ **O UPGRADE DE TINTA (15/10)** — esta tela pintava com **9 hex cravados** (`#185FA5`, o
- * azul legado) e **49 classes de paleta** do Tailwind (`text-slate-900`, `bg-amber-50`…).
- *
- * ⛔ **Nenhum dos dois inverte no tema escuro**: *color cuja única definição é um literal nunca
- * acompanha o tema*, e `slate-900` é escuro nos DOIS mapas — a tela ficava com tinta preta
- * sobre chão preto. A troca é por **PAPEL** (`--prod-primary` o texto forte, `--prod-muted` a
- * dica, `--prod-line` a borda, `--prod-acao-bg/ink` a ação, as famílias os selos), nunca por
- * tom; ⛔ e a **ESTRUTURA não mudou**: mesmas tags, mesmos estados, mesmo comportamento.
- *
- * ⚠️ `text-[color:var(--x)]` e `border-[color:var(--x)]` exigem o **hint de tipo** no Tailwind
- * pra valor arbitrário que é cor; e ⛔ **nunca `bg-[var(--x)]/10`** — opacidade sobre valor
- * arbitrário **não gera cor no Tailwind 3 e sai TRANSPARENTE** (a armadilha medida em 06/10).
- * No lugar do azul a 10% entra o par `--fam-indigo-bg/ink`, que é o degrau soft da família.
- *
- * ⚠️ O botão primário segue a convenção do módulo (`--prod-acao-bg` + `--prod-acao-ink`, **sem
- * hover**): duas convenções pro mesmo botão divergiriam no primeiro ajuste de tom, e hover não
- * existe no celular, que é onde a cozinha opera.
- */
-import { useEffect, useState, useCallback, useMemo, use } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-import { ChefHat, Loader2, Plus, Factory, ChevronRight, ArrowLeft, Copy, Scale, Search, X, Star } from 'lucide-react'
-import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
-import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
-import { ExcluirReceita } from '@/components/estoque/excluir-receita'
-import { LogoDaReceita } from '@/components/estoque/logo-da-receita'
-import { montarListaDeReceitas, type ChipDaLista } from '@/lib/stock/producao/lista-de-receitas'
-import { trechosDaBusca } from '@/lib/busca-texto'
-import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
+import { formatBRL } from '@/lib/format/money'
+import { use, useCallback, useEffect, useMemo, useState } from 'react'
+import { CSS_COMUM, ChipsDaProducao, FalhouDeLer, Info, lerJson } from '@/components/estoque/producao-telas'
+import { fmtQ, fmtVal, rotCusto } from '@/lib/stock/producao/leis-r'
+import { casaBusca } from '@/lib/busca-texto'
+import { FILTROS_DO_CATALOGO, passaNoFiltro, type Catalogo, type FiltroDoCatalogo, type ReceitaDoCatalogo } from '@/lib/stock/producao/catalogo-regua'
 
-interface Ficha {
-  id: string; nomeProduzido: string; unidadeProduzido: string; tipoProduto: string
-  versaoAtual: number; ativo: boolean; custoLote: number | null; custoADefinir: boolean
-  componentes: { itemId: string; nome: string }[]; validadeDias: number | null; loteBase: number
-  unidadeLoteBase: string
-  /** ⭐ a estrela do dono — vem do servidor, nunca derivada na tela */
-  principal: boolean
+const CSS = `
+.rc-busca{display:flex;align-items:center;gap:8px;border:1px solid var(--esc-linha);background:var(--esc-card);border-radius:10px;height:36px;padding:0 12px;min-width:230px}
+.rc-busca input{border:0;outline:0;font-size:13px;font-weight:600;color:var(--esc-tinta);font-family:inherit;width:100%;background:transparent}
+.rc-busca .lupa{color:var(--esc-tinta3);font-size:13px}
+.rc-filtros{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+.rc-filtros button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);border-radius:999px;height:32px;padding:0 13px;font-size:12px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.rc-filtros button.on{background:var(--esc-tinta);border-color:var(--esc-tinta);color:var(--esc-on)}
+.rc-filtros .n{background:var(--esc-trilho);color:var(--esc-tinta2);border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:800}
+.rc-filtros button.on .n{background:var(--esc-n-on);color:var(--esc-n-on-t)}
+.rc-filtros .amb{color:var(--esc-ambar-t)}
+.rc-ghead,.rc-grow{display:grid;grid-template-columns:minmax(0,1.5fr) 96px minmax(0,1fr) 104px 120px 52px;gap:12px}
+.rc-ghead{font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);text-transform:uppercase;padding:8px 0 6px;border-bottom:1px solid var(--esc-linha2)}
+.rc-ghead .dir{text-align:right}
+.rc-grow{align-items:center;padding:12px 0;border-bottom:1px solid var(--esc-linha2);cursor:pointer;width:100%;background:none;border-left:0;border-right:0;border-top:0;text-align:left;font:inherit;color:inherit}
+.rc-grow .rn{font-size:13.5px;font-weight:700}
+.rc-grow .ing{font-size:12.5px;font-weight:700;color:var(--esc-tinta2);text-align:right}
+.rc-grow .custo{font-size:13px;font-weight:800;text-align:right}
+.rc-grow .custo small{font-size:10.5px;font-weight:800;color:var(--esc-tinta3)}
+.rc-grow .custo .alerta{display:block;font-size:10px;font-weight:800;color:var(--esc-ambar-t);margin-top:2px}
+.rc-grow .val,.rc-grow .up{font-size:12.5px;font-weight:700;color:var(--esc-tinta2);text-align:right}
+.rc-amb-t{color:var(--esc-ambar-t);font-weight:800}
+.rc-grow .vercel{text-align:right}
+.rc-rot2{display:none}
+.rc-ficha{border-left:3px solid var(--esc-indigo);background:var(--esc-ficha);border-radius:0 10px 10px 0;margin:2px 0 10px;padding:12px 14px}
+.rc-ficha .fhead,.rc-ficha .frow{display:grid;grid-template-columns:minmax(0,1fr) 92px 86px;gap:10px}
+.rc-ficha .fhead{font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid var(--esc-linha2)}
+.rc-ficha .fhead .dir{text-align:right}
+.rc-ficha .frow{align-items:center;padding:7px 0;border-bottom:1px solid var(--esc-trilho);font-size:12.5px}
+.rc-ficha .fi{font-weight:700}
+.rc-ficha .fq{font-weight:700;color:var(--esc-tinta2);text-align:right}
+.rc-ficha .fc{font-weight:800;text-align:right}
+.rc-ficha .ftot{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--esc-linha2);margin-top:2px;padding-top:9px;font-size:12.5px;font-weight:800}
+.rc-ficha .ftot .rot{font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);text-transform:uppercase}
+.rc-ficha .fnota{font-size:11px;font-weight:700;color:var(--esc-tinta3);margin-top:8px}
+.rc-ficha .fbts{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
+.rc-ficha .fbts .rx-btn.perigo{margin-left:auto}
+.rc-confirma{border-left:3px solid var(--esc-perigo);background:var(--esc-perigo-bg);border-radius:0 10px 10px 0;margin:10px 0 0;padding:12px 14px}
+.rc-confirma .ct{font-size:13.5px;font-weight:800;margin-bottom:5px}
+.rc-confirma .cx{font-size:12.5px;font-weight:600;color:var(--esc-tinta2);line-height:1.55}
+.rc-confirma .cbts{display:flex;gap:8px;margin-top:11px}
+.rc-rever{display:inline-block;margin-top:9px;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:800;color:var(--esc-ambar-t);background:var(--esc-ambar50);text-decoration:none}
+.rc-msg{font-size:12.5px;font-weight:700;color:var(--esc-verde-t);background:var(--esc-verde50);border-radius:10px;padding:9px 12px;margin-bottom:14px}
+@media (max-width:760px){
+  .rc-ghead{display:none}
+  .rc-rot2{display:inline;font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--esc-tinta3);text-transform:uppercase}
+  .rc-grow{grid-template-columns:minmax(0,1fr) 104px;grid-template-areas:"rn custo" "meta meta";row-gap:6px}
+  .rc-grow .rn{grid-area:rn}
+  .rc-grow .custo{grid-area:custo}
+  .rc-grow .metawrap{grid-area:meta;display:flex;gap:12px;flex-wrap:wrap}
+  .rc-grow .ing,.rc-grow .val,.rc-grow .up{text-align:left}
+  .rc-grow .vercel{display:none}
+  .rc-busca{min-width:0;width:100%}
+}
+@media (min-width:761px){ .rc-grow .metawrap{display:contents} }
+`
+
+const ROTULO: Record<FiltroDoCatalogo, { rot: string; amb?: boolean }> = {
+  TODAS: { rot: 'Todas' },
+  SEM_VALIDADE: { rot: '⚠ Sem validade', amb: true },
+  CUSTO_INCOMPLETO: { rot: '⚠ Custo incompleto', amb: true },
+  NUNCA_PRODUZIDAS: { rot: 'Nunca produzidas' },
+  DESATIVADAS: { rot: 'Desativadas' },
 }
 
-const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
+/** a rota (API) que diz quais receitas esperam o rendimento — leitura, nunca link pra tela-fila aposentada */
+const rotaDaConversao = (empresaId: string) => `/api/empresas/${empresaId}/estoque/fichas/conversao`
 
-/**
- * ⭐ O NOME com o trecho que casou em destaque — e o destaque vem da porta da casa
- * (`trechosDaBusca`), que resolve acento e caixa. ⚠️ Ele é COSMÉTICO: quem decide se a linha
- * aparece é a lib; palavra que o destaque não localizar só deixa de ser pintada.
- */
-function NomeComDestaque({ nome, busca }: { nome: string; busca: string }) {
-  if (busca.trim() === '') return <>{nome}</>
+const qtdDaDose = (q: number) => (q >= 1 ? fmtQ(Math.round(q * 10) / 10) : String(Math.round(q * 1000) / 1000).replace('.', ','))
+
+interface Previa { caso: 'EXCLUI' | 'DESATIVA'; lotes: number; frase: string }
+
+function Ficha({ r, empresaId, aoMudar, esperam }: { r: ReceitaDoCatalogo; empresaId: string; aoMudar: (msg: string) => void; esperam: Record<string, string> }) {
+  const [previa, setPrevia] = useState<Previa | null>(null)
+  const [ocupado, setOcupado] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const base = `/api/empresas/${empresaId}/estoque/fichas/${r.fichaId}`
+  const cp = { custo: r.custo ?? 0, completo: r.completo }
+
+  async function gesto(fn: () => Promise<Response>, ok: (j: { efeito?: string }) => string) {
+    setOcupado(true); setErro(null)
+    try {
+      const resp = await fn()
+      const j = await resp.json().catch(() => ({}))
+      if (!resp.ok) { setErro(j.erro ?? 'Não consegui gravar — nada mudou.'); return }
+      aoMudar(ok(j))
+    } catch { setErro('Não consegui falar com o servidor — nada mudou.') } finally { setOcupado(false) }
+  }
+
   return (
-    <>
-      {trechosDaBusca(nome, busca).map((t, i) =>
-        t.casa
-          ? <mark key={i} className="rounded px-0.5" style={{ background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>{t.texto}</mark>
-          : <span key={i}>{t.texto}</span>,
+    <div className="rc-ficha" data-testid="ficha-aberta">
+      <div className="fhead"><span>{r.porUnidade ? `1 ${r.un} usa` : `1 receita-base (${r.base}) usa`}</span><span className="dir">Quantidade</span><span className="dir">Custo</span></div>
+      {r.ingredientes.length === 0 && <div className="frow"><span className="fi rc-amb-t">⚠ receita sem ingrediente</span><span /><span /></div>}
+      {r.ingredientes.map((i, k) => (
+        <div key={k} className="frow">
+          <span className="fi">{i.nome}{i.custo == null && <> <span className="rc-amb-t">⚠ sem preço</span></>}</span>
+          <span className="fq num">{qtdDaDose(i.qtd)} {i.unidade}</span>
+          <span className="fc num">{i.custo != null ? formatBRL(i.custo) : '—'}</span>
+        </div>
+      ))}
+      <div className="ftot"><span className="rot">custo por {r.porUnidade ? r.un : 'receita-base'}</span>
+        <span className="num">{r.custo == null ? 'sem preço nos ingredientes' : rotCusto(cp, r.porUnidade ? r.un : 'receita').replace(/\/\S+$/, '')}</span></div>
+      <div className="fnota">
+        validade {fmtVal(r.validadeDias) ?? '—'} · desconta do estoque ao concluir o lote
+        {!r.porUnidade && ' · rendimento ainda não medido — por isso a ficha mostra a receita-base, não 1 unidade'}
+      </div>
+      {/* ⭐ a MAÇANETA da conversão (12/09 → 13/11): a pendência DESTA receita, com o gesto que a resolve */}
+      {esperam[r.fichaId] && (<a className="rc-rever" href={`/empresas/${empresaId}/estoque/producao/receitas/${r.fichaId}?foco=rendimento&voltar=${encodeURIComponent(`/empresas/${empresaId}/estoque/producao/receitas`)}`} style={{ border: '1px solid var(--esc-ambar)' }}>⚠ {esperam[r.fichaId]} · rever o rendimento →</a>)}
+      {erro && <div className="fnota rc-amb-t" role="alert">{erro}</div>}
+      <div className="fbts">
+        <a className="rx-btn pri" href={`/empresas/${empresaId}/estoque/producao/receitas/${r.fichaId}`} style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>editar receita</a>
+        {r.ativa
+          ? <button type="button" className="rx-btn" disabled={ocupado} onClick={() => gesto(() => fetch(base, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ativo: false }) }), () => `"${r.nome}" desativada — volta no filtro Desativadas.`)}>desativar</button>
+          : <button type="button" className="rx-btn" disabled={ocupado} onClick={() => gesto(() => fetch(base, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ativo: true }) }), () => `"${r.nome}" reativada.`)}>reativar</button>}
+        <button type="button" className="rx-btn perigo" disabled={ocupado} data-testid="excluir-receita"
+          onClick={async () => {
+            setErro(null)
+            try { const resp = await fetch(base, { method: 'OPTIONS' }); const j = await resp.json(); if (!resp.ok) throw new Error(j.erro); setPrevia(j) } catch (e) { setErro(e instanceof Error && e.message ? e.message : 'Não consegui ler a história desta receita.') }
+          }}>excluir receita</button>
+      </div>
+      {previa && (
+        <div className="rc-confirma" data-testid="confirma-excluir-receita">
+          <div className="ct">Excluir {r.nome}?</div>
+          <div className="cx num">{previa.frase}</div>
+          <div className="cbts">
+            <button type="button" className="rx-btn mata" disabled={ocupado}
+              onClick={() => gesto(() => fetch(`${base}?prometido=${previa.caso}`, { method: 'DELETE' }), (j) => j.efeito ?? `"${r.nome}" excluída.`)}>excluir</button>
+            <button type="button" className="rx-btn" onClick={() => setPrevia(null)}>cancelar</button>
+          </div>
+        </div>
       )}
-    </>
+    </div>
   )
 }
 
-export default function ReceitasProducaoPage({ params }: { params: Promise<{ id: string }> }) {
+export default function ReceitasPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const [fichas, setFichas] = useState<Ficha[] | null | undefined>(undefined)
-  const [busy, setBusy] = useState(false)
-  /** ⭐ o efeito do que aconteceu — a linha nunca sai da lista em silêncio */
-  const [aviso, setAviso] = useState<string | null>(null)
+  const [cat, setCat] = useState<Catalogo | null>(null)
+  const [falhou, setFalhou] = useState(false)
+  const [filtro, setFiltro] = useState<FiltroDoCatalogo>('TODAS')
   const [busca, setBusca] = useState('')
-  const [chip, setChip] = useState<ChipDaLista>('TODAS')
-  /**
-   * ⭐⭐ AS RECEITAS QUE ESPERAM O RENDIMENTO DO DONO (11/10, item 4).
-   *
-   * ⛔⛔ **A TELA-FILA MORREU E A LISTA VIROU A FILA.** O botão *"N com o lote na unidade
-   * errada"* levava a uma tela separada que listava as 37; com a auto-conversão resolvendo as
-   * neutras sozinha, o que sobra é pendência de DECISÃO — e decisão de receita se resolve NA
-   * FICHA, que é a linha que já está aqui. ⭐ A pendência passa a ser um chip NA LINHA, com o
-   * link abrindo a ficha com o campo aceso: *a porta é a linha*.
-   *
-   * ⚠️ E isto **não contraria** a régua de 12/09 (*fila zerada esconde o trabalho, nunca a
-   * ferramenta*): a FERRAMENTA de rever o rendimento continua existindo — ela mudou de casa
-   * pro editor da ficha, onde o campo mora e onde o preview «separa hoje × separa depois»
-   * mostra o efeito antes de salvar. O que morreu foi a segunda vitrine.
-   *
-   * ⚠️ Fail-soft: se não carregar, a lista abre sem os chips (nunca sem a lista).
-   */
+  const [aberta, setAberta] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  /** ⭐ quais receitas esperam o rendimento do dono — fail-soft: sem isso a lista abre igual (nunca sem a lista) */
   const [esperam, setEsperam] = useState<Record<string, string>>({})
 
-  const carregar = useCallback(() => {
-    fetch(`/api/empresas/${id}/estoque/fichas`).then((r) => r.json())
-      .then((j) => setFichas((j.fichas ?? []).filter(ehReceitaDeProducao)))
-      .catch(() => setFichas(null))
+  const ler = useCallback(async () => {
+    try { setCat(await lerJson<Catalogo>(`/api/empresas/${id}/estoque/producao/catalogo-receitas`)); setFalhou(false) } catch { setFalhou(true) }
   }, [id])
-
-  useEffect(() => { carregar() }, [carregar])
-
+  useEffect(() => { ler() }, [ler])
   useEffect(() => {
-    fetch(`/api/empresas/${id}/estoque/fichas/conversao`).then((r) => r.json())
-      .then((j) => {
-        const lista: { fichaId: string; porQue: string }[] = Array.isArray(j?.esperamRendimento) ? j.esperamRendimento : []
-        setEsperam(Object.fromEntries(lista.map((f) => [f.fichaId, f.porQue])))
-      })
+    lerJson<{ esperamRendimento?: { fichaId: string; porQue: string }[] }>(rotaDaConversao(id))
+      .then((j) => setEsperam(Object.fromEntries((j.esperamRendimento ?? []).map((e) => [e.fichaId, e.porQue]))))
       .catch(() => setEsperam({}))
   }, [id])
 
-  /**
-   * ⚠️ REGRA 9 — os hooks ficam TODOS antes de qualquer early-return. Colar o `useMemo` ao
-   * lado de onde ele é consumido (depois do `if (!fichas) return`) foi o que derrubou a tela
-   * de vendas em 25/08: o nº de hooks muda entre os renders e o React quebra no cliente.
-   */
-  const lista = useMemo(
-    () => montarListaDeReceitas({ receitas: fichas ?? [], busca, chip }),
-    [fichas, busca, chip],
-  )
-
-  const produzir = async (fichaId: string) => {
-    setBusy(true)
-    try {
-      const hoje = diaEmSaoPaulo()
-      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fichaId, escalaReceitas: 1, dataProducao: hoje }),
-      })
-      const j = await r.json().catch(() => null)
-      if (r.ok && j?.ordemId) window.location.href = `/empresas/${id}/estoque/producao/${j.ordemId}`
-    } finally { setBusy(false) }
-  }
-
-  /**
-   * ⭐⭐ A ESTRELA — OTIMISTA, e a reversão é a parte que importa.
-   *
-   * O dono pediu *"vira principal NA HORA, sem recarregar, sem modal"*. ⛔ E se a gravação
-   * falhar, a estrela **volta sozinha** com um aviso curto: afirmar na tela um estado que o
-   * servidor não guardou é a família do *"salvo que mentia"* — pior que o clique não responder,
-   * porque o dono vai embora achando que marcou.
-   *
-   * ⚠️ Nenhum `carregar()` aqui: recarregar as 44 fichas pra mudar um booleano é o refetch de
-   * 1,4 s que esta casa já aposentou duas vezes (10/09).
-   */
-  const alternarPrincipal = async (f: Ficha) => {
-    const alvo = !f.principal
-    const pinta = (v: boolean) => setFichas((atual) => (atual ?? []).map((x) => (x.id === f.id ? { ...x, principal: v } : x)))
-    pinta(alvo)
-    const r = await fetchComTimeout<{ principal: boolean }>(
-      `/api/empresas/${id}/estoque/fichas/${f.id}/principal`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ principal: alvo }) },
-    )
-    if (!r.ok) {
-      pinta(f.principal) // ⛔ volta sozinha
-      setAviso(r.erro ?? 'Não consegui salvar a estrela — tente de novo.')
-    }
-  }
-
-  if (fichas === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--prod-muted)' }} /></div>
-  if (fichas === null) return <div className="p-6 text-sm" style={{ color: 'var(--prod-muted)' }}>Não consegui carregar as receitas.</div>
-
-  const temRecorte = busca.trim() !== '' || chip !== 'TODAS'
-
-  /** ⭐ o cartão v4 — logo colorido + nome forte + sublinha num fôlego só */
-  const cartao = (f: Ficha) => (
-    <Card key={f.id} className="overflow-hidden">
-      <CardContent className="flex flex-wrap items-center gap-3 p-3">
-        {/**
-          * ⭐⭐ A ESTRELA. `<button>` de verdade (não um `<div>` clicável): teclado e leitor de
-          * tela de graça — a régua de 16/09. `aria-pressed` diz o estado, não só a cor.
-          */}
-        <button
-          type="button"
-          onClick={() => alternarPrincipal(f)}
-          aria-pressed={f.principal}
-          title={f.principal ? 'tirar das principais' : 'fixar nas principais'}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-[var(--prod-surface-1)]"
-        >
-          <Star
-            className="h-[18px] w-[18px]"
-            style={{
-              color: f.principal ? 'var(--fam-ambar-mid)' : 'var(--prod-muted)',
-              fill: f.principal ? 'var(--fam-ambar-mid)' : 'transparent',
-            }}
-          />
-        </button>
-
-        <LogoDaReceita nome={f.nomeProduzido} tamanho={38} />
-
-        <a href={`/empresas/${id}/estoque/producao/receitas/${f.id}`} className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] font-semibold" style={{ color: 'var(--prod-primary)' }}>
-            <NomeComDestaque nome={f.nomeProduzido} busca={busca} />
-          </p>
-          {/**
-            * ⭐ A SUBLINHA NUM FÔLEGO SÓ: `v3 · lote 1 UN · R$ 0,97`.
-            * ⚠️ O custo *"a definir"* fica **ÂMBAR aqui**, nunca cinza e nunca ausente: cinza
-            * se lê como "não importa" e a ausência como "zero" — e é justamente a receita sem
-            * custo fechado que precisa de um gesto do dono.
-            */}
-          <p className="truncate text-[11px]" style={{ color: 'var(--prod-muted)' }}>
-            v{f.versaoAtual} · lote {f.loteBase} {f.unidadeLoteBase} ·{' '}
-            {f.custoADefinir
-              ? <span className="font-medium" style={{ color: 'var(--fam-ambar-mid)' }}>custo a definir</span>
-              : <span className="tabular-nums" style={{ color: 'var(--prod-primary)' }}>{brl(f.custoLote)}</span>}
-            {` · ${f.componentes.length} componente(s)`}
-            {f.validadeDias != null && ` · validade ${f.validadeDias}d`}
-          </p>
-        </a>
-
-        {/* ⭐ A FILA VIROU A LINHA: o chip leva à ficha com o campo do rendimento aceso */}
-        {esperam[f.id] && (
-          <a href={`/empresas/${id}/estoque/fichas/${f.id}?foco=rendimento&voltar=${encodeURIComponent(`/empresas/${id}/estoque/producao/receitas`)}`}
-            className="inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11.5px] font-medium"
-            style={{ borderColor: 'var(--fam-ambar-mid)', background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}
-            title={esperam[f.id]}>
-            <Scale className="h-3 w-3" /> rendimento a declarar
-          </a>
-        )}
-
-        <button onClick={() => produzir(f.id)} disabled={busy}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs hover:bg-[var(--prod-surface-1)] disabled:opacity-50"
-          style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}>
-          <Factory className="h-3.5 w-3.5" /> produzir
-        </button>
-        {/* ⭐ DUPLICAR — o gesto das FAMÍLIAS de sabor (14 variações de FILE, 8 de FRANGO).
-            ⛔ a cópia vem com os componentes e SEM o vínculo com o PDV: herdar o
-            mapeamento faria a ficha nova roubar as baixas da original, em silêncio. */}
-        <a href={`/empresas/${id}/estoque/producao/receitas/nova?duplicarDe=${f.id}`}
-          title="criar uma nova receita com o conteúdo desta"
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs hover:bg-[var(--prod-surface-1)]"
-          style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}>
-          <Copy className="h-3.5 w-3.5" /> duplicar
-        </a>
-        {/* ⭐ EXCLUIR à vista no card (16/09) — o servidor decide se apaga ou desativa */}
-        <ExcluirReceita empresaId={id} fichaId={f.id} compacto
-          aoConcluir={(r) => { setAviso(r.efeito); carregar() }} />
-        <a href={`/empresas/${id}/estoque/producao/receitas/${f.id}`} style={{ color: 'var(--prod-muted)' }}><ChevronRight className="h-4 w-4" /></a>
-      </CardContent>
-    </Card>
-  )
-
-  const CHIPS: { chave: ChipDaLista; rotulo: string; n: number }[] = [
-    { chave: 'TODAS', rotulo: 'todas', n: lista.contadores.todas },
-    { chave: 'PRINCIPAIS', rotulo: '⭐ principais', n: lista.contadores.principais },
-    { chave: 'CUSTO_A_DEFINIR', rotulo: '⚠ custo a definir', n: lista.contadores.custoADefinir },
-  ]
+  // ⭐ a MESMA função que o servidor usou pra contar é a que filtra (contador que mente é pior que nenhum)
+  const lista = useMemo(() => (cat?.receitas ?? []).filter((r) => passaNoFiltro(r, filtro) && (!busca.trim() || casaBusca(r.nome, busca))), [cat, filtro, busca])
 
   return (
-    /**
-      * ⚠️ LEI DE LAYOUT (os números do pedido, escritos literais — a lição de 10/09: *o número
-      * que está no arquivo, escrito igual*): teto de 1440, 28px de respiro lateral, 14 no
-      * celular. ⛔ Nunca coluna estreita centrada no meio da tela.
-      */
-    <div className="mx-auto max-w-[1440px] space-y-3 px-[28px] max-[700px]:px-[14px]">
-      <a href={`/empresas/${id}/estoque/producao`} className="inline-flex items-center gap-1 text-xs hover:underline" style={{ color: 'var(--prod-muted)' }}><ArrowLeft className="h-3.5 w-3.5" /> Produção</a>
-
-      <div className="flex flex-wrap items-center gap-2.5">
-        <ChefHat className="h-5 w-5 shrink-0" style={{ color: 'var(--prod-accent)' }} />
-        <h1 className="text-base font-semibold" style={{ color: 'var(--prod-primary)' }}>Receitas de produção</h1>
-        <p className="hidden flex-1 truncate text-xs lg:block" style={{ color: 'var(--prod-muted)' }}>O que a cozinha produz em lote (gessado, beef, porções) — rendimento medido a cada produção</p>
-        {/**
-          * ⛔⛔ O BOTÃO DA TELA-FILA MORREU (11/10, item 4) — ver o comentário do estado
-          * `esperam`. A pendência agora é um chip NA LINHA de cada receita, e o gesto abre a
-          * ficha com o campo aceso. ⭐ Quando há pendência, a linha abaixo DIZ quantas são:
-          * número sem porta era o que a fila fazia; porta sem número não diz o tamanho.
-          */}
-        {Object.keys(esperam).length > 0 && (
-          <span className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium"
-            style={{ borderColor: 'var(--fam-ambar-mid)', background: 'var(--fam-ambar-bg)', color: 'var(--fam-ambar-ink)' }}>
-            <Scale className="h-3.5 w-3.5" />
-            {Object.keys(esperam).length} esperando o rendimento
-          </span>
+    <div className="rx -m-4 p-4 lg:-m-6 lg:p-6" data-tela="producao-receitas">
+      <style>{CSS_COMUM + CSS}</style>
+      <main className="rx-wrap">
+        <header className="rx-top">
+          <h1>Produção</h1>
+          <label className="rc-busca"><span className="lupa" aria-hidden>⌕</span>
+            <input aria-label="buscar receita" placeholder="buscar receita" value={busca} onChange={(e) => setBusca(e.target.value)} /></label>
+        </header>
+        <ChipsDaProducao empresaId={id} aba="receitas" />
+        {falhou && <FalhouDeLer oQue="as receitas" onTentar={ler} />}
+        {msg && <div className="rc-msg" role="status">{msg}</div>}
+        {cat && (
+          <div className="rc-filtros" data-testid="filtros-contadores">
+            {FILTROS_DO_CATALOGO.map((f) => (
+              <button key={f} type="button" className={filtro === f ? 'on' : undefined} onClick={() => { setFiltro(f); setAberta(null) }}>
+                <span className={ROTULO[f].amb && filtro !== f ? 'amb' : undefined}>{ROTULO[f].rot}</span><span className="n num">{cat.contadores[f]}</span>
+              </button>
+            ))}
+          </div>
         )}
-        <a href={`/empresas/${id}/estoque/producao/receitas/nova`}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold"
-          style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
-          <Plus className="h-3.5 w-3.5" /> Nova receita
-        </a>
-      </div>
-
-      {/**
-        * ⭐ A BUSCA — AO VIVO, sobre o que a tela JÁ carregou (zero chamada por tecla) e pela
-        * `casaBusca` dentro da lib. Sem botão: botão de buscar numa lista de 44 é um clique
-        * a mais pra uma resposta que já dava pra ter.
-        */}
-      <div className="relative max-w-[420px]">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: 'var(--prod-muted)' }} />
-        <input
-          type="text"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="buscar receita…"
-          aria-label="buscar receita pelo nome"
-          className="h-10 w-full rounded-xl border pl-9 pr-9 text-[13.5px] focus:border-[color:var(--prod-accent)] focus:outline-none"
-          style={{ borderColor: 'var(--prod-line-strong)', background: 'var(--prod-surface)', color: 'var(--prod-primary)' }}
-        />
-        {busca !== '' && (
-          <button type="button" onClick={() => setBusca('')} aria-label="limpar a busca"
-            className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md hover:bg-[var(--prod-surface-1)]"
-            style={{ color: 'var(--prod-muted)' }}>
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-
-      {/* ⭐ OS CHIPS — contando o recorte da busca (clicar devolve EXATAMENTE o número) */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {CHIPS.map((c) => (
-          <button key={c.chave} type="button" onClick={() => setChip(c.chave)} aria-pressed={chip === c.chave}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium"
-            style={
-              chip === c.chave
-                ? { borderColor: 'var(--fam-indigo-mid)', background: 'var(--fam-indigo-bg)', color: 'var(--fam-indigo-ink)' }
-                : { borderColor: 'var(--prod-line-strong)', color: 'var(--prod-muted)' }
-            }>
-            {c.rotulo} <span className="tabular-nums opacity-70">· {c.n}</span>
-          </button>
-        ))}
-        {temRecorte && (
-          <button type="button" onClick={() => { setBusca(''); setChip('TODAS') }}
-            className="ml-1 text-[11.5px] underline" style={{ color: 'var(--prod-muted)' }}>ver tudo</button>
-        )}
-      </div>
-
-      {/*
-        ⭐ O EFEITO, à vista e some sozinho — *"a linha nunca sai em silêncio"* (15/09).
-        ⚠️ Ele DIZ qual dos dois casos aconteceu, porque o servidor pode ter decidido
-        diferente do que o confirm prometeu (a cozinha produziu no meio).
-      */}
-      {aviso && (
-        <div className="flex items-start gap-2 rounded-xl border px-3 py-2 text-[13px]"
-          style={{ borderColor: 'var(--fam-verde-mid)', background: 'var(--fam-verde-bg)', color: 'var(--fam-verde-ink)' }}>
-          <span>{aviso}</span>
-          <button type="button" onClick={() => setAviso(null)} className="ml-auto shrink-0 text-[11px] underline">ok</button>
-        </div>
-      )}
-
-      {fichas.length === 0 ? (
-        <Card><CardContent className="flex flex-col items-center gap-2 p-10 text-center">
-          <ChefHat className="h-10 w-10" style={{ color: 'var(--prod-line-strong)' }} />
-          <p className="text-sm font-medium" style={{ color: 'var(--prod-primary)' }}>Nenhuma receita de produção ainda.</p>
-          <p className="max-w-md text-xs" style={{ color: 'var(--prod-muted)' }}>
-            Receita de produção é o que se faz em LOTE e vira estoque (gessado, beef, porção de carne).
-            O produto que você VENDE se monta no <a href={`/empresas/${id}/estoque/cardapio`} className="underline" style={{ color: 'var(--prod-accent)' }}>Cardápio</a>.
-          </p>
-        </CardContent></Card>
-      ) : lista.vazio ? (
-        <Card><CardContent className="flex flex-col items-center gap-2 p-8 text-center">
-          <Search className="h-8 w-8" style={{ color: 'var(--prod-line-strong)' }} />
-          <p className="text-sm" style={{ color: 'var(--prod-primary)' }}>{lista.vazio}</p>
-          <button type="button" onClick={() => { setBusca(''); setChip('TODAS') }}
-            className="text-xs underline" style={{ color: 'var(--prod-accent)' }}>limpar</button>
-        </CardContent></Card>
-      ) : (
-        <div className="space-y-4">
-          {lista.blocos.map((b) => (
-            <section key={b.chave} className="space-y-2">
-              {b.titulo && (
-                <h2 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--prod-muted)' }}>
-                  {b.chave === 'PRINCIPAIS' && <Star className="h-3 w-3" style={{ color: 'var(--fam-ambar-mid)', fill: 'var(--fam-ambar-mid)' }} />}
-                  {b.titulo}
-                  <span className="font-normal normal-case tabular-nums" style={{ color: 'var(--prod-muted)' }}>· {b.receitas.length}</span>
-                </h2>
-              )}
-              {b.convite ? (
-                <p className="rounded-xl border border-dashed px-3 py-2.5 text-[12.5px]" style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-muted)' }}>{b.convite}</p>
-              ) : (
-                /** ⭐ GRADE de cartões, nunca coluna estreita: 1 no celular, 2 a partir de 1100px */
-                <div className="grid grid-cols-1 gap-2 min-[1100px]:grid-cols-2">
-                  {b.receitas.map(cartao)}
+        {!cat && !falhou && <div className="rx-vazio">lendo as receitas…</div>}
+        {cat && (
+          <div className="rx-card">
+            <div className="rx-chead">Catálogo · {cat.contadores.TODAS} receitas
+              <Info>A linha abre a ficha: o que 1 unidade usa e desconta do estoque ao concluir o lote. Ingrediente sem preço não trava a soma dos outros — o custo vira &quot;≥&quot; com aviso. Excluir receita nunca produzida apaga de vez; com lotes na história, ela some do catálogo e das ordens, e os lotes antigos continuam certos.</Info>
+              <span className="sp" /><a href={`/empresas/${id}/estoque/producao/receitas/nova`}>nova receita →</a>
+            </div>
+            <div className="rc-ghead"><span>Receita</span><span className="dir">Ingredientes</span><span className="dir">Custo</span><span className="dir">Validade</span><span className="dir">Última produção</span><span /></div>
+            {lista.length === 0 && <div className="rx-vazio">{busca.trim() ? `Nenhuma receita com “${busca.trim()}” neste filtro.` : 'Nenhuma receita neste filtro.'}</div>}
+            {lista.map((r) => {
+              const val = fmtVal(r.validadeDias)
+              return (
+                <div key={r.fichaId}>
+                  <button type="button" className="rc-grow" data-testid="linha-receita" aria-expanded={aberta === r.fichaId} onClick={() => setAberta(aberta === r.fichaId ? null : r.fichaId)}>
+                    <div className="rn">{r.nome}</div>
+                    <div className="metawrap">
+                      <div className="ing num">{r.ingredientes.length}<span className="rc-rot2"> ing</span></div>
+                      <div className="custo num">
+                        {r.custo == null ? <span className="rc-amb-t">sem preço</span> : <>{r.completo ? '' : '≥ '}{formatBRL(r.custo)} <small>/{r.porUnidade ? r.un : 'receita'}</small></>}
+                        {!r.completo && r.faltam > 0 && <span className="alerta">⚠ {r.faltam} sem preço</span>}
+                      </div>
+                      <div className="val num">{val ?? <span className="rc-amb-t">⚠ sem validade</span>}</div>
+                      <div className="up num">{r.ultimaProducao ?? <span className="rc-amb-t">nunca produzida</span>}</div>
+                    </div>
+                    <div className="vercel"><span className="rx-ver">{aberta === r.fichaId ? 'fechar' : 'abrir →'}</span></div>
+                  </button>
+                  {aberta === r.fichaId && <Ficha r={r} empresaId={id} esperam={esperam} aoMudar={(m) => { setMsg(m); setAberta(null); ler() }} />}
                 </div>
-              )}
-            </section>
-          ))}
-        </div>
-      )}
+              )
+            })}
+          </div>
+        )}
+      </main>
     </div>
   )
 }

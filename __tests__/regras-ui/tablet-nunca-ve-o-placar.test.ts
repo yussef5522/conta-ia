@@ -58,7 +58,7 @@ describe('⛔⛔ a ROTA do tablet não recebe dado de placar', () => {
   it('⭐ e nenhuma rota do tablet toca o módulo de desempenho', () => {
     for (const r of rotas) {
       expect(semComentarios(ler(r)), `${r} importa o módulo de desempenho`)
-        .not.toMatch(/producao\/(desempenho|relatorios|dia-ao-vivo|lotes)/)
+        .not.toMatch(/producao\/(desempenho|relatorios|dia-ao-vivo|ao-vivo|tempos-das-etapas|lotes)/)
     }
   })
 })
@@ -83,16 +83,18 @@ describe('⭐ e o placar VIVE — na tela de gestão, atrás de stock.manage', (
   // ⚠️ um guard que só provasse a AUSÊNCIA aprovaria o dia em que o placar sumisse de todo
   // lugar — e aí não seria fronteira de papel, seria perda. (a lição da conferência de
   // saldo que mudou de casa, 10/09)
-  const hoje = ler('app/(dashboard)/empresas/[id]/estoque/producao/hoje/page.tsx')
-  const rotaHoje = ler('app/api/empresas/[id]/estoque/producao/dia-ao-vivo/route.ts')
-  const rotaRel = ler('app/api/empresas/[id]/estoque/producao/relatorios/route.ts')
+  // ⭐ (13/11, lei R1) o placar morou no HOJE e nos Relatórios; agora mora no DESEMPENHO (aba Pessoas)
+  // e o tempo de cada pessoa ao vivo no AO VIVO — as duas rotas herdam a trava de gestão.
+  const desempenho = ler('app/(dashboard)/empresas/[id]/estoque/producao/desempenho/page.tsx')
+  const rotaAoVivo = ler('app/api/empresas/[id]/estoque/producao/ao-vivo/route.ts')
+  const rotaDesempenho = ler('app/api/empresas/[id]/estoque/producao/desempenho/route.ts')
 
-  it('o HOJE desenha o placar', () => {
-    expect(semComentarios(hoje)).toContain('PlacarDaEquipe')
+  it('o DESEMPENHO desenha o placar (aba Pessoas)', () => {
+    expect(semComentarios(desempenho)).toContain('data-testid="aba-pessoas"')
   })
 
   it('as duas rotas de gestão exigem stock.manage', () => {
-    for (const [nome, src] of [['dia-ao-vivo', rotaHoje], ['relatorios', rotaRel]] as const) {
+    for (const [nome, src] of [['ao-vivo', rotaAoVivo], ['desempenho', rotaDesempenho]] as const) {
       expect(semComentarios(src), `${nome} afrouxou a trava`).toContain("'stock.manage'")
     }
   })

@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EQUIPE (produção) — referência v2 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════
+EQUIPE — a tela que fica (decisão do dono 13/11): criar contas de
+quem produz, trocar PIN quando precisa, desativar quem saiu.
+Tema: escritório claro (--esc-*), família do Painel v9 e das telas
+novas. Família R continua (R17–R19 nas RECEITAS).
+Herdadas: S15, S16, S18, S19.
+
+R20 — EQUIPE É CONTA E PIN, NADA MAIS. Criar conta, papel
+      (cozinha / escritório / aparelho), trocar PIN, excluir.
+      Nada de relatório aqui — relatório mora no DESEMPENHO.
+      O papel definido AQUI é o que alimenta a R13: conta de
+      escritório fica fora dos rankings da cozinha.
+
+R21 — PIN NUNCA APARECE. A tela mostra só "PIN definido ✓" e o
+      botão "trocar PIN". O PIN tem 4 dígitos, digitado oculto,
+      e é a assinatura da pessoa na Janela da Cozinha (G1).
+
+R22 — CARTÃO FIXO PARA CRIAR (herança M7.g). "Nova conta" é um
+      cartão fixo no topo, sem botão "+" repetido em lugar nenhum.
+
+R23 — EXCLUIR EXISTE E É HONESTO (reescrita 13/11, pedido do
+      dono: "todos os sistemas do mundo têm excluir"). O botão
+      EXCLUIR está em toda conta, sempre. O que muda é por dentro:
+      · conta SEM história (nenhum lote, nenhuma tarefa — criada
+        por engano): apaga DE VEZ, some do banco;
+      · conta COM história: some de TUDO — teclado de PIN, listas
+        de designação, esta tela. Nenhuma linha cinza fica. O nome
+        sobrevive apenas DENTRO dos relatórios dos períodos em que
+        a pessoa trabalhou, para os números antigos não mentirem.
+      A confirmação diz a verdade com números (S19): quantos lotes
+      e tarefas ficam na história. "Desativar" não existe na
+      Equipe — ou a pessoa trabalha, ou foi excluída.
+
+A navegação .nav é da AMOSTRA. Nomes da amostra são os usuários
+reais internos (funcionários aparecem; cliente nunca).
+═══════════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --esc-bg:#F3F5FA; --esc-card:#FFFFFF; --esc-linha:#C9D0E3;
+  --esc-tinta:#0A0F1E; --esc-tinta2:#46516B; --esc-tinta3:#8B94AD;
+  --esc-indigo:#4F46E5; --esc-indigo50:#EEF0FE; --esc-indigo-t:#3730A3;
+  --esc-verde:#0E9F6E; --esc-verde50:#E4F7EF; --esc-verde-t:#065F46;
+  --esc-ambar50:#FCF0DC; --esc-ambar-t:#7C4A03; --esc-ambar:#B45309;
+  --esc-roxo50:#F3EFFE; --esc-roxo-t:#5B21B6;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--esc-bg);color:var(--esc-tinta);font-family:var(--font)}
+body{padding:0 0 46px}
+.num{font-variant-numeric:tabular-nums}
+.nav{position:sticky;top:0;z-index:5;display:flex;gap:7px;flex-wrap:wrap;
+  background:#0A0F1E;padding:9px 14px}
+.nav button{border:1px solid #334155;background:#1E293B;color:#CBD5E1;border-radius:999px;
+  padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.nav button.on{background:#F1F5F9;color:#0A0F1E;border-color:#F1F5F9}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 18px 0}
+.top h1{margin:0;font-size:21px;font-weight:800;letter-spacing:-.01em}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
+.chips button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);
+  border-radius:999px;height:34px;padding:0 15px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.chips button.on{background:var(--esc-indigo);border-color:var(--esc-indigo);color:#fff}
+.card{background:var(--esc-card);border:1px solid var(--esc-linha);border-radius:14px;
+  padding:14px 16px;margin-bottom:16px}
+.chead{display:flex;align-items:center;gap:8px;font-size:9.5px;font-weight:800;
+  letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase;margin-bottom:4px}
+.chead .n{background:var(--esc-indigo50);color:var(--esc-indigo-t);border-radius:999px;
+  padding:1px 8px;font-size:10.5px;letter-spacing:0}
+.chead .sp{flex:1}
+.iwr{position:relative;display:inline-flex}
+.i{width:17px;height:17px;border-radius:50%;border:1px solid var(--esc-linha);background:var(--esc-card);
+  color:var(--esc-tinta3);font-size:10.5px;font-weight:800;cursor:pointer;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;padding:0;font-family:var(--font)}
+.pop{display:none;position:absolute;top:22px;left:-8px;z-index:9;width:260px;
+  background:#0A0F1E;color:#E2E8F0;border-radius:10px;padding:10px 12px;
+  font-size:11.5px;font-weight:600;line-height:1.5;letter-spacing:0;text-transform:none}
+.iwr.aberto .pop{display:block}
+
+/* cartão fixo de criação (R22) */
+.zcriar{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1.3fr) 150px 150px;
+  gap:10px;align-items:end}
+.zcriar label{display:block;font-size:9.5px;font-weight:800;letter-spacing:.07em;
+  color:var(--esc-tinta3);text-transform:uppercase;margin-bottom:5px}
+.zcriar input{width:100%;border:1px solid var(--esc-linha);border-radius:9px;height:36px;
+  background:var(--esc-card);color:var(--esc-tinta);font-size:13px;font-weight:700;
+  font-family:var(--font);padding:0 11px;outline:none}
+.papeis{display:inline-flex;background:#E4E8F3;border-radius:10px;padding:3px;width:100%}
+.papeis button{flex:1;border:0;background:transparent;color:var(--esc-tinta2);border-radius:7px;
+  height:30px;font-size:11.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.papeis button.on{background:var(--esc-card);color:var(--esc-tinta);box-shadow:0 1px 3px rgba(10,15,30,.12)}
+.btcriar{border:0;background:var(--esc-indigo);color:#fff;border-radius:10px;height:36px;
+  font-size:13px;font-weight:800;cursor:pointer;font-family:var(--font);padding:0 16px}
+
+/* lista de contas */
+.ehead{display:grid;grid-template-columns:minmax(0,1.4fr) 120px 128px 128px 170px;gap:12px;
+  font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);
+  text-transform:uppercase;padding:8px 0 6px;border-bottom:1px solid #E3E7F2}
+.erow{display:grid;grid-template-columns:minmax(0,1.4fr) 120px 128px 128px 170px;gap:12px;
+  align-items:center;padding:11px 0;border-bottom:1px solid #E3E7F2}
+.erow:last-child{border-bottom:0}
+.erow .quem{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700}
+.avt{width:30px;height:30px;border-radius:50%;background:var(--esc-indigo50);color:var(--esc-indigo-t);
+  display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:800;flex:none}
+.papel{display:inline-block;border-radius:6px;padding:2px 9px;font-size:10.5px;font-weight:800;
+  width:fit-content;justify-self:start}
+.papel.cozinha{background:var(--esc-indigo50);color:var(--esc-indigo-t)}
+.papel.escritorio{background:#E8EBF5;color:var(--esc-tinta2)}
+.papel.aparelho{background:var(--esc-roxo50);color:var(--esc-roxo-t)}
+.erow .pin{font-size:12px;font-weight:800;color:var(--esc-verde-t)}
+.erow .pin.semp{color:var(--esc-ambar-t)}
+.erow .ult{font-size:12px;font-weight:700;color:var(--esc-tinta2);text-align:right}
+.erow .acoes{display:flex;gap:7px;justify-content:flex-end}
+.erow .acoes button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta);
+  border-radius:8px;height:30px;padding:0 11px;font-size:11.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.erow .acoes button.perigo{color:#B42318;border-color:#EBCDCB}
+.ehead .dir{text-align:right}
+
+/* confirmação do excluir (R23) — a verdade antes do clique */
+.confirma{border-left:3px solid #B42318;background:#FDF7F6;border-radius:0 10px 10px 0;
+  margin:2px 0 10px;padding:12px 14px}
+.confirma .ct{font-size:13.5px;font-weight:800;margin-bottom:5px}
+.confirma .cx{font-size:12.5px;font-weight:600;color:var(--esc-tinta2);line-height:1.55}
+.confirma .cx b{color:var(--esc-tinta)}
+.confirma .cbts{display:flex;gap:8px;margin-top:11px}
+.confirma .cbts button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta);
+  border-radius:9px;height:32px;padding:0 14px;font-size:12px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.confirma .cbts .mata{background:#B42318;border-color:#B42318;color:#fff}
+
+/* celular */
+@media (max-width:760px){
+  .zcriar{grid-template-columns:minmax(0,1fr)}
+  .ehead{display:none}
+  .erow{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"quem papel" "meta meta" "acoes acoes";row-gap:8px}
+  .erow .quem{grid-area:quem}
+  .erow .cpapel{grid-area:papel;text-align:right}
+  .erow .metawrap{grid-area:meta;display:flex;gap:14px;align-items:baseline}
+  .erow .ult{text-align:left}
+  .erow .acoes{grid-area:acoes;justify-content:flex-start}
+}
+@media (min-width:761px){
+  .erow .metawrap{display:contents}
+  .erow .cpapel{display:contents}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button>Estoque</button><button>Vendas</button><button class="on">Produção</button>
+  <button>Financeiro</button><button>Cardápio</button>
+</nav>
+
+<main class="wrap">
+  <header class="top"><h1>Produção</h1></header>
+
+  <div class="chips">
+    <button>Painel</button><button>Ao vivo</button><button>Desempenho</button>
+    <button>Receitas</button><button class="on">Equipe</button>
+  </div>
+
+  <div class="card">
+    <div class="chead">Nova conta
+      <span class="iwr"><button class="i" onclick="this.parentNode.classList.toggle('aberto')">i</button>
+        <span class="pop">O PIN tem 4 dígitos e é a assinatura da pessoa na Janela da
+        Cozinha. Papel "escritório" fica fora dos rankings da cozinha;
+        "aparelho" é a conta do tablet, não de uma pessoa.</span></span>
+    </div>
+    <div class="zcriar">
+      <div><label>Nome</label><input placeholder="nome de quem produz"></div>
+      <div><label>Papel</label>
+        <div class="papeis"><button class="on">Cozinha</button><button>Escritório</button><button>Aparelho</button></div>
+      </div>
+      <div><label>PIN · 4 dígitos</label><input type="password" maxlength="4" placeholder="••••"></div>
+      <div><button class="btcriar">Criar conta</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="chead">Contas <span class="n num" id="ncontas"></span></div>
+    <div class="ehead"><span>Pessoa</span><span>Papel</span><span>PIN</span><span class="dir">Último lote</span><span class="dir"></span></div>
+    <div id="lcontas"></div>
+  </div>
+</main>
+
+<script>
+/* ═══ ESPECIFICAÇÃO EXECUTÁVEL — EQUIPE v1 ═══ */
+
+/* R21 — PIN de 4 dígitos, nunca exibido */
+function validaPin(p){ return /^\d{4}$/.test(p); }
+
+/* R20 — papel de escritório/aparelho fica fora dos rankings (alimenta a R13) */
+function foraDoRanking(papel){ return papel !== 'cozinha'; }
+
+const CONTAS = [
+  {quem:'Michele',       papel:'cozinha',    pin:true,  ult:'13/11'},
+  {quem:'Edmar',         papel:'cozinha',    pin:true,  ult:'12/11'},
+  {quem:'Eliane',        papel:'cozinha',    pin:true,  ult:'12/11'},
+  {quem:'Nadine',        papel:'cozinha',    pin:true,  ult:'13/11'},
+  {quem:'Cristian',      papel:'cozinha',    pin:true,  ult:'13/11'},
+  {quem:'Rodrigo',       papel:'cozinha',    pin:true,  ult:'12/11'},
+  {quem:'Débora',        papel:'cozinha',    pin:true,  ult:'12/11'},
+  {quem:'Tauan',         papel:'cozinha',    pin:true,  ult:'11/11'},
+  {quem:'Jessica frente',papel:'escritorio', pin:true,  ult:'10/11'},
+  {quem:'gerente',       papel:'escritorio', pin:true,  ult:'12/11'},
+  {quem:'TABLET COZINHA',papel:'aparelho',   pin:null,  ult:'—'},
+  {quem:'Larissa',       papel:'cozinha',    pin:true,  ult:'02/09',
+   confirmar:{lotes:212, tarefas:96}},       /* confirmação do excluir aberta, de amostra */
+];
+
+/* R23 — o que o excluir faz por dentro depende da história */
+function destinoExclusao(nLotes, nTarefas){
+  return (nLotes + nTarefas) === 0 ? 'apaga' : 'some-das-telas';
+}
+function textoExcluir(h){
+  return `${h.lotes} lotes e ${h.tarefas} tarefas ficam na história — os relatórios `+
+         `dos meses em que trabalhou continuam com o nome. Some do teclado de PIN, `+
+         `das listas e desta tela. Nada do que já foi produzido muda.`;
+}
+
+/* ── pinos (rodam sempre; em node, só eles) ─────────────────── */
+const PINOS = [
+  ['PIN 1234 vale',                validaPin('1234') === true],
+  ['PIN com letra não vale',       validaPin('12a4') === false],
+  ['PIN curto não vale',           validaPin('123') === false],
+  ['escritório fora do ranking',   foraDoRanking('escritorio') === true],
+  ['aparelho fora do ranking',     foraDoRanking('aparelho') === true],
+  ['cozinha entra no ranking',     foraDoRanking('cozinha') === false],
+  ['sem história apaga de vez',    destinoExclusao(0,0) === 'apaga'],
+  ['com história some das telas',  destinoExclusao(212,96) === 'some-das-telas'],
+  ['confirmação fala os números',  textoExcluir({lotes:212,tarefas:96}).includes('212') && textoExcluir({lotes:212,tarefas:96}).includes('96')],
+  ['PIN nunca vai como texto',     CONTAS.every(c=>typeof c.pin !== 'string')],
+];
+for (const [nome,ok] of PINOS) if (!ok) throw new Error('PINO FALHOU: '+nome);
+
+/* ── render ─────────────────────────────────────────────────── */
+function render(){
+  const $ = id => document.getElementById(id);
+  const ini = s => s.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+  const rotPapel = {cozinha:'cozinha', escritorio:'escritório', aparelho:'aparelho'};
+
+  $('ncontas').textContent = CONTAS.length;
+  $('lcontas').innerHTML = CONTAS.map(c=>{
+    const linha = `<div class="erow">
+    <div class="quem"><span class="avt">${ini(c.quem)}</span>${c.quem}</div>
+    <div class="cpapel"><span class="papel ${c.papel}">${rotPapel[c.papel]}</span></div>
+    <div class="metawrap">
+      <div class="pin ${c.pin?'':'semp'}">${c.pin==null?'—':(c.pin?'definido ✓':'⚠ sem PIN')}</div>
+      <div class="ult num">${c.ult}</div>
+    </div>
+    <div class="acoes">${c.papel==='aparelho'
+      ? '<button class="perigo">excluir</button>'
+      : '<button>trocar PIN</button><button class="perigo">excluir</button>'}</div>
+  </div>`;
+    if (!c.confirmar) return linha;
+    return linha + `<div class="confirma">
+      <div class="ct">Excluir ${c.quem}?</div>
+      <div class="cx num">${textoExcluir(c.confirmar)}</div>
+      <div class="cbts"><button class="mata">excluir</button><button>cancelar</button></div>
+    </div>`;
+  }).join('');
+}
+
+if (typeof document !== 'undefined') render();
+else console.log('PINOS OK — ' + PINOS.length + ' verdes');
+</script>
+</body>
+</html>

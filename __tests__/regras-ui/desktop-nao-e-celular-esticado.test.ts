@@ -35,7 +35,6 @@ const COM_COCKPIT = [
    * ⭐ ENTROU em 04/10 (item 3 do dono): relatório de produção por dia. Tabela no desktop,
    * cards no celular, **os MESMOS dados** — o que muda é o layout, nunca o conteúdo.
    */
-  'app/(dashboard)/empresas/[id]/estoque/producao/por-dia/page.tsx',
   /**
    * ⭐ ENTROU em 06/10: Custos fixos. UMA grade que REFLUI (coluna no celular, 4 colunas no
    * desktop), com os rótulos do celular em `lg:hidden` e o cabeçalho da tabela só a partir

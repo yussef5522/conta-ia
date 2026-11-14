@@ -360,6 +360,9 @@ export async function atualizarFicha(companyId: string, fichaId: string, input: 
     if (input.setorId !== undefined) headData.setorId = input.setorId
     if (input.valorVenda !== undefined) headData.valorVenda = input.valorVenda
     if (input.ativo !== undefined) headData.ativo = input.ativo
+    // ⭐ R24 (13/11): reativar é o dono trazendo de volta — a marca de "excluída" sai junto, senão a
+    // receita ficaria ativa (entra em ordem) e invisível no catálogo ao mesmo tempo
+    if (input.ativo === true) await tx.stockFichaExcluida.deleteMany({ where: { companyId, fichaId } })
     if (input.nomeProduzido !== undefined) await tx.stockItem.update({ where: { id: ficha.itemProduzidoId }, data: { nome: input.nomeProduzido.trim() } })
 
     if (!mudouCorpo) {

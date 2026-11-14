@@ -333,7 +333,7 @@ export function MesaDeOperacoes({ empresaId }: { empresaId: string }) {
       <Mod
         span={4}
         titulo="COZINHA AGORA"
-        link={{ rotulo: 'mesa da produção', href: `${E}/estoque/producao/hoje` }}
+        link={{ rotulo: 'mesa da produção', href: `${E}/estoque/producao/ao-vivo` }}
       >
         <div className="px-[16px] pb-[16px] pt-[4px]">
           <div className="text-[30px] font-extrabold tabular-nums tracking-[-0.02em]">

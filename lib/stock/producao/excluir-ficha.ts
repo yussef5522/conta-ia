@@ -99,7 +99,7 @@ export async function preverExclusaoDaFicha(
 
   const partes: string[] = []
   partes.push(caso === 'DESATIVA'
-    ? `"${nome}" tem ${lotes} lote${lotes > 1 ? 's' : ''} na história — ela será DESATIVADA e o histórico preservado.`
+    ? `"${nome}" tem ${lotes} lote${lotes > 1 ? 's' : ''} na história — ela some do catálogo, da busca e da criação de ordem; os ${lotes} lote${lotes > 1 ? 's' : ''} ficam na história.`
     : `"${nome}" nunca foi produzida — ela será EXCLUÍDA de vez.`)
 
   // ⚠️ o efeito colateral aparece ANTES, não depois: desativar tira ela de outras receitas
@@ -147,13 +147,13 @@ export async function excluirFicha(
   const previa = await preverExclusaoDaFicha(companyId, fichaId, db)
 
   if (previa.caso === 'DESATIVA') {
-    await db.stockFicha.update({ where: { id: fichaId }, data: { ativo: false } })
+    await marcarExcluida(db, companyId, fichaId, previa.lotes, userId)
     const mudou = casoPrometido === 'EXCLUI'
     return {
       caso: 'DESATIVA', nome: previa.nome, itemApagado: false,
       efeito: mudou
         ? `"${previa.nome}" ganhou ${previa.lotes} lote(s) enquanto você decidia — foi DESATIVADA em vez de excluída, e a história ficou`
-        : `"${previa.nome}" saiu do planejar e do produzir · os ${previa.lotes} lote(s) antigos seguem no histórico`,
+        : `"${previa.nome}" saiu do catálogo, da busca e do produzir · os ${previa.lotes} lote(s) antigos seguem no histórico`,
     }
   }
 
@@ -161,7 +161,7 @@ export async function excluirFicha(
     // ⛔ RE-AVALIA DENTRO DA TRANSAÇÃO: se um lote nasceu no meio, vira desativação
     const agora = await tx.stockProductionOrder.count({ where: { companyId, fichaId } })
     if (agora > 0) {
-      await tx.stockFicha.update({ where: { id: fichaId }, data: { ativo: false } })
+      await marcarExcluida(tx, companyId, fichaId, agora, userId)
       return {
         caso: 'DESATIVA' as const, nome: previa.nome, itemApagado: false,
         efeito: `"${previa.nome}" ganhou ${agora} lote(s) enquanto você decidia — foi DESATIVADA em vez de excluída, e a história ficou`,
@@ -203,5 +203,21 @@ export async function excluirFicha(
       caso: 'EXCLUI' as const, nome: previa.nome, itemApagado: temMovimento === 0,
       efeito: `"${previa.nome}" foi excluída de vez${temMovimento === 0 ? ' (o item dela saiu junto)' : ' — o item ficou, porque tem movimento no ledger'}`,
     }
+  })
+}
+
+/**
+ * ⭐⭐ R24 (13/11/2026) — EXCLUIR COM HISTÓRIA = SOME DE TUDO. `ativo=false` tira do planejar/produzir
+ * (todos os leitores já filtram `ativo: true`); a linha em `stock_ficha_excluida` é o que a separa da
+ * DESATIVADA sazonal — desativada aparece no filtro "Desativadas", excluída não aparece em lugar nenhum.
+ */
+async function marcarExcluida(
+  db: Pick<PrismaClient, 'stockFicha' | 'stockFichaExcluida'>, companyId: string, fichaId: string, lotes: number, userId?: string,
+): Promise<void> {
+  await db.stockFicha.update({ where: { id: fichaId }, data: { ativo: false } })
+  await db.stockFichaExcluida.upsert({
+    where: { fichaId },
+    create: { companyId, fichaId, lotesNaHistoria: lotes, excluidaPorId: userId ?? null },
+    update: { lotesNaHistoria: lotes },
   })
 }

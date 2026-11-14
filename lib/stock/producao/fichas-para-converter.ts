@@ -11,7 +11,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { comoConsome } from '../explodir-receita'
-import { rendimentoMedidoDaFicha } from './conclusao'
+import { rendimentoMedidoDeFichas } from './conclusao'
 import { loteEhComparavel } from './lote-comparavel'
 
 /** ⚠️ aceita client TRANSACIONAL (04/10): esta função é SÓ LEITURA (conferido — zero
@@ -68,27 +68,49 @@ export async function fichasParaConverter(companyId: string, db: Db = defaultPri
   })
   const prod = new Map(itens.map((i) => [i.id, i]))
 
+  /**
+   * ⚡ (13/11, o N+1 do raio-X) ERA 4 CONSULTAS POR FICHA (versão, componentes, nomes, rendimento) — viram
+   * 4 consultas FIXAS em lote. A resposta é a MESMA: mesma versão (a `versaoAtual`), mesma ordem de
+   * componentes (`posicao`), mesmo rendimento (`rendimentoMedidoDeFichas` é a porta em lote do mesmo cálculo).
+   */
+  const versoes = await db.stockFichaVersao.findMany({
+    where: { companyId, fichaId: { in: deProducao.map((f) => f.id) } },
+    select: { id: true, fichaId: true, versao: true, loteBase: true, unidadeLoteBase: true },
+  })
+  const versaoAtualDe = new Map(deProducao.map((f) => [f.id, f.versaoAtual]))
+  const versaoDe = new Map(versoes.filter((v) => v.versao === versaoAtualDe.get(v.fichaId)).map((v) => [v.fichaId, v]))
+
+  const incoerentes = deProducao.filter((f) => {
+    const it = prod.get(f.itemProduzidoId), v = versaoDe.get(f.id)
+    return it && v && !loteEhComparavel(v.unidadeLoteBase, it.unidadeControle)
+  })
+  const coerentes = deProducao.filter((f) => {
+    const it = prod.get(f.itemProduzidoId), v = versaoDe.get(f.id)
+    return it && v && loteEhComparavel(v.unidadeLoteBase, it.unidadeControle)
+  }).length
+
+  const versaoIds = incoerentes.map((f) => versaoDe.get(f.id)!.id)
+  const compsTodos = versaoIds.length
+    ? await db.stockFichaComponente.findMany({
+      where: { companyId, versaoId: { in: versaoIds } }, orderBy: { posicao: 'asc' },
+      select: { versaoId: true, itemId: true, qtdPlanejada: true, unidade: true },
+    })
+    : []
+  const [nomesComp, medidos] = await Promise.all([
+    compsTodos.length
+      ? db.stockItem.findMany({ where: { companyId, id: { in: [...new Set(compsTodos.map((c) => c.itemId))] } }, select: { id: true, nome: true } })
+      : Promise.resolve([] as { id: string; nome: string }[]),
+    rendimentoMedidoDeFichas(companyId, incoerentes.map((f) => f.id), db),
+  ])
+  const nomeDe = new Map(nomesComp.map((i) => [i.id, i.nome]))
+  const compsDe = new Map<string, typeof compsTodos>()
+  for (const c of compsTodos) compsDe.set(c.versaoId, [...(compsDe.get(c.versaoId) ?? []), c])
+
   const pendentes: FichaParaConverter[] = []
-  let coerentes = 0
-  for (const f of deProducao) {
-    const it = prod.get(f.itemProduzidoId)
-    const v = await db.stockFichaVersao.findFirst({
-      where: { companyId, fichaId: f.id, versao: f.versaoAtual },
-      select: { id: true, loteBase: true, unidadeLoteBase: true },
-    })
-    if (!it || !v) continue
-    if (loteEhComparavel(v.unidadeLoteBase, it.unidadeControle)) { coerentes++; continue }
-
-    const comps = await db.stockFichaComponente.findMany({
-      where: { companyId, versaoId: v.id }, orderBy: { posicao: 'asc' },
-      select: { itemId: true, qtdPlanejada: true, unidade: true },
-    })
-    const nomesComp = await db.stockItem.findMany({
-      where: { companyId, id: { in: comps.map((c) => c.itemId) } }, select: { id: true, nome: true },
-    })
-    const nomeDe = new Map(nomesComp.map((i) => [i.id, i.nome]))
-    const medido = await rendimentoMedidoDaFicha(companyId, f.id, db)
-
+  for (const f of incoerentes) {
+    const it = prod.get(f.itemProduzidoId)!, v = versaoDe.get(f.id)!
+    const comps = compsDe.get(v.id) ?? []
+    const medido = medidos.get(f.id) ?? { media: null, lotes: 0 }
     pendentes.push({
       fichaId: f.id,
       versaoAtual: f.versaoAtual,
@@ -103,7 +125,6 @@ export async function fichasParaConverter(companyId: string, db: Db = defaultPri
       lotes: medido.lotes,
     })
   }
-  // ⭐ quem mais produz primeiro: é quem mais paga o rótulo torto todos os dias
   pendentes.sort((a, b) => b.lotes - a.lotes || a.nomeProduto.localeCompare(b.nomeProduto))
   return { total: deProducao.length, coerentes, pendentes }
 }

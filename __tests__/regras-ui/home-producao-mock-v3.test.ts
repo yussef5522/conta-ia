@@ -84,11 +84,11 @@ describe('⭐⭐ o topo: título, linha editorial e UM primário', () => {
    * e ele está na principal.
    */
   /** ⚠️⚠️ REAPONTADO pela lei v9 M7 (13/11, docs/producao-referencia.html) — a CARA mudou por ordem do dono; a régua de fundo segue. */
-  it('⭐⭐ os chips da lei v9 (5 telas + Equipe/CSV tracejados), nenhum aceso', () => {
+  it('⭐⭐ os chips da lei R1 (13/11: Painel · Ao vivo · Desempenho · Receitas · Equipe) + CSV tracejado, nenhum aceso', async () => {
     const tela = semComentario(ler(TELA))
-    const chips = [...tela.matchAll(/<a className="pp-chip" href=[^>]+>([^<]+)<\/a>/g)].map((m) => m[1])
-    expect(chips).toEqual(['Hoje ao vivo', 'Por dia', 'Receitas', 'Por pessoa', 'Relatórios'])
-    expect(tela).toMatch(/<a className="pp-chip mut" href="\/equipe\?filtro=cozinha">Equipe<\/a>/)
+    const { CHIPS_DA_PRODUCAO } = await import('@/components/estoque/producao-telas')
+    expect(CHIPS_DA_PRODUCAO.map((c) => c.rotulo)).toEqual(['Painel', 'Ao vivo', 'Desempenho', 'Receitas', 'Equipe'])
+    expect(tela, 'o Painel desenha os chips da porta única (nunca uma lista cravada)').toMatch(/CHIPS_DA_PRODUCAO\.map\(\(c\) => \(\s*<a key=\{c\.aba\} className="pp-chip"/)
     const csv = tela.slice(tela.lastIndexOf('<button', tela.indexOf('>CSV</button>')), tela.indexOf('>CSV</button>'))
     expect(csv, 'o CSV é ferramenta: chip tracejado').toMatch(/className="pp-chip mut"/)
     expect(tela, 'nenhum chip aceso: quem diz onde estou é o título').not.toMatch(/pp-chip on|pp-chip\$\{/)
@@ -186,12 +186,9 @@ describe('⭐ as listas: avatar, par tipográfico e pílula', () => {
   it('⭐ a régua da casa (faixaDoSelo) continua viva onde o % tem coluna ao lado', () => {
     const tela = semComentario(ler(TELA))
     expect(tela, 'a home não importa mais a régua — ela não desenha percentual').not.toContain('faixaDoSelo')
-    const porDia = semComentario(ler('app/(dashboard)/empresas/[id]/estoque/producao/por-dia/page.tsx'))
-    expect(porDia, 'na "Por dia" o percentual fica ao lado do pedido').toContain('faixaDoSelo(')
-    expect(
-      /0\.9|0\.85|1\.1|1\.15|>= 90|< 70/.test(porDia),
-      'número de faixa digitado na tela é a 2ª régua',
-    ).toBe(false)
+    // ⭐ (13/11) a "Por dia" morreu (lei R1); a régua segue viva no texto da linha e no aviso de padrão
+    expect(semComentario(ler('lib/stock/producao/eficiencia-da-ordem.ts'))).toContain('export function faixaDoSelo')
+    expect(semComentario(ler('lib/avisos/produtores/producao.ts'))).toContain('faixaDoSelo')
   })
 
   /**

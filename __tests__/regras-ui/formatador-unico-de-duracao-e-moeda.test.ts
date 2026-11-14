@@ -84,9 +84,8 @@ describe('⛔⛔ duração: um formatador, zero cópias', () => {
 
   it('⭐ as 5 telas que tinham cópia agora CHAMAM o formatador', () => {
     const consumidores = [
-      'app/(dashboard)/empresas/[id]/estoque/producao/por-dia/page.tsx',
-      'app/(dashboard)/empresas/[id]/estoque/producao/hoje/page.tsx',
-      'app/(dashboard)/empresas/[id]/estoque/producao/relatorios/page.tsx',
+      // (13/11, lei R1) Por dia, Hoje e Relatórios morreram; AO VIVO e DESEMPENHO formatam por `leis-r`
+      'lib/stock/producao/leis-r.ts',
       'components/estoque/etapas-da-ordem.tsx',
       'lib/stock/producao/desempenho.ts',
     ]

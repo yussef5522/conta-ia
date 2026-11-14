@@ -100,8 +100,6 @@ const DIVIDA_DE_HEX = new Set<string>([
   'app/(dashboard)/empresas/[id]/estoque/perdas/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/posicao/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/producao/conclusoes/[conclusaoId]/etiqueta/page.tsx',
-  'app/(dashboard)/empresas/[id]/estoque/producao/pessoas/page.tsx',
-  'app/(dashboard)/empresas/[id]/estoque/producao/relatorios/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/radar/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/real-vs-teorico/page.tsx',
   'app/(dashboard)/empresas/[id]/estoque/recebimentos/page.tsx',
@@ -157,7 +155,6 @@ const DIVIDA_DE_HEX = new Set<string>([
   'components/conciliacao/stats-do-mock.tsx',
   'components/contas-pagar/PayableTable.tsx',
   'components/equipe/equipe-client.tsx',
-  'components/estoque/acoes-do-gerente-hoje.tsx',
   'components/estoque/cadastrar-pessoa-modal.tsx',
   'components/estoque/conferencia-view.tsx',
   // ⛔ `contagem/cartao-contar.tsx` e `contagem/revisao-contagem.tsx` SAÍRAM da dívida em
@@ -167,9 +164,7 @@ const DIVIDA_DE_HEX = new Set<string>([
   // azul claro). Foi o guard desta lista que nomeou os dois.
   'components/estoque/ficha-editor.tsx',
   'components/estoque/itens-manuais-editor.tsx',
-  'components/estoque/placar-da-equipe.tsx',
   'components/estoque/plano-venda-modal.tsx',
-  'components/estoque/redesignar-inline.tsx',
   'components/estoque/saida-modal.tsx',
   'components/landing/features.tsx',
   'components/landing/footer.tsx',
@@ -251,8 +246,8 @@ describe('⭐⭐⭐ a catraca do hex cravado', () => {
   it('⭐ a dívida de 14/10 tem o tamanho que foi medido', () => {
     expect(
       DIVIDA_DE_HEX.size,
-      'medida em 113 (14/10) → 112 (sininho) → 109 (produção, 15/10) → 107 (componentes da contagem) → 106 (painel de produção, lei v9, 13/11)',
-    ).toBe(106)
+      'medida em 113 (14/10) → 112 (sininho) → 109 (produção, 15/10) → 107 (componentes da contagem) → 106 (painel de produção, lei v9, 13/11) → 101 (13/11, lei R1: Por pessoa, Relatórios, placar, ações do gerente e redesignar morreram com as telas velhas)',
+    ).toBe(101)
     expect(TELAS.length, 'o universo varrido').toBeGreaterThan(400)
   })
 })

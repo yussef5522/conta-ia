@@ -260,8 +260,10 @@ export async function autoConverterNeutras(
 export async function rendimentosPendentes(
   companyId: string,
   db: Db = defaultPrisma,
+  /** ⚡ (13/11) a fila já lida — a rota da conversão lia a MESMA fila duas vezes (o "×2" do raio-X) */
+  filaJaLida?: Awaited<ReturnType<typeof fichasParaConverter>>,
 ): Promise<(FichaParaConverter & { porQueNao: string })[]> {
-  const fila = await fichasParaConverter(companyId, db)
+  const fila = filaJaLida ?? await fichasParaConverter(companyId, db)
   const out: (FichaParaConverter & { porQueNao: string })[] = []
   for (const f of fila.pendentes) {
     const a = avaliarAutoConversao({

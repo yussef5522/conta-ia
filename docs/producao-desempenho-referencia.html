@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DESEMPENHO (produção) — referência v2 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════
+DESEMPENHO — a segunda tela nova da produção. A história: quem fez
+o quê, em quanto tempo, quem rende — nas duas lentes que importam.
+Substitui Por dia + Por pessoa + Relatórios (que morrem).
+Tema: escritório claro (--esc-*), mesma família do Painel v9 e da
+AO VIVO v3. Família de leis R continua (R1–R8 vivem no arquivo da
+AO VIVO). Herdadas: S15, S16, S17, S18, S19, S20, S22.
+
+R9  — DESEMPENHO É A HISTÓRIA EM DUAS LENTES. Uma tela, duas abas:
+      PESSOAS e RECEITAS. Período: Hoje · 7 dias · 30 dias · ou
+      QUALQUER DIA pelo seletor de calendário (emenda do dono
+      13/11). O título de cada aba repete o período escolhido
+      ("· 7 dias", "· quinta 12/11"). Sem faixa de KPIs — o Painel
+      já tem hoje/semana/mês. Sem pódio de enfeite: a lista
+      ordenada É o ranking.
+
+R10 — GENTE SE COMPARA NO QUE É COMPARÁVEL. Nunca somar UN de
+      produtos diferentes, nunca somar UN com KG ("produziu 3.775
+      UN" está morto). Pessoa se mede por: lotes concluídos,
+      tarefas concluídas, horas medidas e NO RITMO (% das etapas
+      concluídas em até 1,25× a mediana da própria etapa).
+      Medição de menos de 30s fica fora das horas e do ritmo e é
+      contada à parte ("N sem tempo") — tempo de mentira não vira
+      velocidade de mentira.
+
+R11 — BARRA EM ESCALA ÚNICA. Toda barra de comparação usa o maior
+      valor da lista como 100%; duas barras da mesma coluna nunca
+      têm réguas diferentes (cicatriz: rodrigo 1.238 UN com barra
+      menor que edmar 1.003 na tela velha).
+
+R12 — RENDIMENTO COM FAIXA. Rendimento (feito ÷ pedido) aparece
+      contra a faixa saudável 70–130%: dentro, neutro; fora, âmbar
+      com ⚠. A média do período não esconde lote fora da faixa —
+      a linha mostra "N fora" quando houver.
+
+R13 — ESCRITÓRIO FORA DO RANKING (irmã da R8). Conta de gerente /
+      escritório aparece numa linha à parte "fora da comparação",
+      nunca ranqueada com a equipe da cozinha.
+
+R14 — CADA RECEITA NA SUA UNIDADE. Pedido→feito sempre na unidade
+      da própria receita (UN ou KG). Nada se converte, nada se
+      soma entre receitas (S20 aplicada à produção).
+
+R15 — CUSTO SE COMPARA COM A FICHA. Custo real por unidade do
+      período ao lado do custo de ficha; diferença acima de 10%
+      ganha âmbar. Lote sem custo (gambiarra antiga) não entra na
+      média e é contado à parte.
+
+R16 — TUDO SE PROVA. Cada linha de pessoa e de receita tem
+      "ver →" que abre os lotes por trás do número (S19).
+
+A navegação .nav é da AMOSTRA. Números da amostra vêm do raio-X
+de 13/11 (7 dias reais: edmar 28 lotes, MAIONESE rendimento 69%,
+rodrigo com conclusões de segundos etc.).
+═══════════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --esc-bg:#F3F5FA; --esc-card:#FFFFFF; --esc-linha:#C9D0E3;
+  --esc-tinta:#0A0F1E; --esc-tinta2:#46516B; --esc-tinta3:#8B94AD;
+  --esc-indigo:#4F46E5; --esc-indigo50:#EEF0FE; --esc-indigo-t:#3730A3;
+  --esc-verde:#0E9F6E; --esc-verde50:#E4F7EF; --esc-verde-t:#065F46;
+  --esc-ambar50:#FCF0DC; --esc-ambar-t:#7C4A03; --esc-ambar:#B45309;
+  --esc-roxo:#7C3AED; --esc-roxo50:#F3EFFE; --esc-roxo-t:#5B21B6;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--esc-bg);color:var(--esc-tinta);font-family:var(--font)}
+body{padding:0 0 46px}
+.num{font-variant-numeric:tabular-nums}
+
+/* navegação da AMOSTRA */
+.nav{position:sticky;top:0;z-index:5;display:flex;gap:7px;flex-wrap:wrap;
+  background:#0A0F1E;padding:9px 14px}
+.nav button{border:1px solid #334155;background:#1E293B;color:#CBD5E1;border-radius:999px;
+  padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.nav button.on{background:#F1F5F9;color:#0A0F1E;border-color:#F1F5F9}
+
+.wrap{max-width:1180px;margin:0 auto;padding:22px 18px 0}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.top h1{margin:0;font-size:21px;font-weight:800;letter-spacing:-.01em}
+.per{display:flex;gap:6px}
+.per button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);
+  border-radius:999px;height:30px;padding:0 13px;font-size:12px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.per button.on{background:var(--esc-tinta);border-color:var(--esc-tinta);color:#fff}
+.per .cal{display:inline-flex;align-items:center;gap:6px}
+.per .cal svg{flex:none}
+
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
+.chips button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);
+  border-radius:999px;height:34px;padding:0 15px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.chips button.on{background:var(--esc-indigo);border-color:var(--esc-indigo);color:#fff}
+
+/* abas */
+.abas{display:inline-flex;background:#E4E8F3;border-radius:11px;padding:3px;margin-bottom:14px}
+.abas button{border:0;background:transparent;color:var(--esc-tinta2);border-radius:8px;
+  height:32px;padding:0 18px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.abas button.on{background:var(--esc-card);color:var(--esc-tinta);box-shadow:0 1px 3px rgba(10,15,30,.12)}
+
+.card{background:var(--esc-card);border:1px solid var(--esc-linha);border-radius:14px;
+  padding:14px 16px;margin-bottom:16px}
+.chead{display:flex;align-items:center;gap:8px;font-size:9.5px;font-weight:800;
+  letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase;margin-bottom:4px}
+.chead .sp{flex:1}
+
+/* ⓘ */
+.iwr{position:relative;display:inline-flex}
+.i{width:17px;height:17px;border-radius:50%;border:1px solid var(--esc-linha);background:var(--esc-card);
+  color:var(--esc-tinta3);font-size:10.5px;font-weight:800;cursor:pointer;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;padding:0;font-family:var(--font)}
+.pop{display:none;position:absolute;top:22px;left:-8px;z-index:9;width:260px;
+  background:#0A0F1E;color:#E2E8F0;border-radius:10px;padding:10px 12px;
+  font-size:11.5px;font-weight:600;line-height:1.5;letter-spacing:0;text-transform:none}
+.iwr.aberto .pop{display:block}
+
+.avt{width:30px;height:30px;border-radius:50%;background:var(--esc-indigo50);color:var(--esc-indigo-t);
+  display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:800}
+.bar{height:5px;border-radius:99px;background:#EDF0F8;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--esc-indigo)}
+.ver{color:var(--esc-indigo);font-size:11.5px;font-weight:800;text-decoration:none;white-space:nowrap}
+
+/* PESSOAS */
+.phead{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) 66px minmax(0,1fr) 92px 46px;
+  gap:12px;font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);
+  text-transform:uppercase;padding:8px 0 6px;border-bottom:1px solid #E3E7F2}
+.prow{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) 66px minmax(0,1fr) 92px 46px;
+  gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid #E3E7F2}
+.prow:last-child{border-bottom:0}
+.prow .quem{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700}
+.prow .cv{font-size:14px;font-weight:800}
+.prow .cv small{font-size:10.5px;font-weight:800;color:var(--esc-tinta3)}
+.prow .tar{font-size:13px;font-weight:700;color:var(--esc-tinta2);text-align:right}
+.prow .rit{text-align:right}
+.prow .rit .v{font-size:14px;font-weight:800}
+.prow .rit .st{display:block;font-size:10px;font-weight:800;color:var(--esc-ambar-t);margin-top:2px}
+.prow .vercel{text-align:right}
+.phead .dir,.rhead .dir{text-align:right}
+.fora{font-size:11.5px;font-weight:700;color:var(--esc-tinta3);padding:10px 0 2px}
+.fora b{color:var(--esc-tinta2)}
+.tar-m{display:none}
+.rot2{display:none}
+
+/* RECEITAS */
+.rhead{display:grid;grid-template-columns:minmax(0,1.35fr) 52px minmax(0,1fr) minmax(0,1.15fr) 88px minmax(0,1.05fr) 46px;
+  gap:12px;font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);
+  text-transform:uppercase;padding:8px 0 6px;border-bottom:1px solid #E3E7F2}
+.rrow{display:grid;grid-template-columns:minmax(0,1.35fr) 52px minmax(0,1fr) minmax(0,1.15fr) 88px minmax(0,1.05fr) 46px;
+  gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid #E3E7F2}
+.rrow:last-child{border-bottom:0}
+.rrow .rn{font-size:13.5px;font-weight:700}
+.rrow .lot{font-size:13.5px;font-weight:800;text-align:right}
+.rrow .pf{font-size:12.5px;font-weight:700;color:var(--esc-tinta2);text-align:right}
+.rrow .pf b{color:var(--esc-tinta);font-weight:800}
+.rrow .pf small{font-size:10.5px;font-weight:800;color:var(--esc-tinta3)}
+.rrow .tmed{font-size:13.5px;font-weight:800;text-align:right}
+.rrow .custo{font-size:12.5px;font-weight:800;text-align:right}
+.rrow .custo small{display:block;font-size:10.5px;font-weight:700;color:var(--esc-tinta3);margin-top:1px}
+.rrow .custo.ambar{color:var(--esc-ambar)}
+
+/* gauge de rendimento (R12) */
+.rend .v{font-size:13px;font-weight:800}
+.rend .v .fora-n{font-size:10px;font-weight:800;color:var(--esc-ambar-t);margin-left:5px}
+.rend.ambar .v{color:var(--esc-ambar)}
+.gau{position:relative;height:6px;border-radius:99px;background:#EDF0F8;margin-top:5px;overflow:hidden}
+.gau .faixa{position:absolute;top:0;bottom:0;left:50%;width:42.9%;background:#DCEFE6}
+.gau .fill{position:absolute;top:0;bottom:0;left:0;background:var(--esc-indigo);border-radius:99px}
+.rend.ambar .gau .fill{background:var(--esc-ambar)}
+
+/* celular */
+@media (max-width:760px){
+  .phead,.rhead{display:none}
+  .prow{grid-template-columns:minmax(0,1fr) 92px;grid-template-areas:"quem rit" "lotes lotes" "horas horas";row-gap:7px}
+  .prow .quem{grid-area:quem}
+  .prow .rit{grid-area:rit}
+  .prow .c-lotes{grid-area:lotes}
+  .prow .c-horas{grid-area:horas}
+  .prow .tar,.prow .vercel{display:none}
+  .tar-m{display:inline;font-size:11.5px;font-weight:700;color:var(--esc-tinta3)}
+  .rot2{display:inline;font-size:9.5px;font-weight:800;letter-spacing:.07em;
+    color:var(--esc-tinta3);text-transform:uppercase}
+  .rrow .tmed{grid-column:1 / -1}
+  .prow .cv .rot{font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);
+    text-transform:uppercase;margin-right:6px}
+  .rrow{grid-template-columns:minmax(0,1fr) 96px;grid-template-areas:"rn custo" "pf pf" "rend rend";row-gap:7px}
+  .rrow .rn{grid-area:rn}
+  .rrow .custo{grid-area:custo}
+  .rrow .pfwrap{grid-area:pf;display:flex;gap:14px;align-items:baseline}
+  .rrow .pf,.rrow .lot,.rrow .tmed{text-align:left}
+  .rrow .rend{grid-area:rend}
+  .rrow .vercel{display:none}
+}
+@media (min-width:761px){
+  .prow .cv .rot{display:none}
+  .rrow .pfwrap{display:contents}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button>Estoque</button><button>Vendas</button><button class="on">Produção</button>
+  <button>Financeiro</button><button>Cardápio</button>
+</nav>
+
+<main class="wrap">
+  <header class="top">
+    <h1>Produção</h1>
+    <!-- no real: <input type="date"> nativo, que no navegador do dono aparece dd/mm/aaaa -->
+    <div class="per"><button>Hoje</button><button class="on">7 dias</button><button>30 dias</button>
+      <button class="cal"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>escolher dia</button>
+    </div>
+  </header>
+
+  <div class="chips">
+    <button>Painel</button><button>Ao vivo</button><button class="on">Desempenho</button>
+    <button>Receitas</button><button>Equipe</button>
+  </div>
+
+  <div class="abas">
+    <button id="aba-pessoas" class="on" onclick="aba('pessoas')">Pessoas</button>
+    <button id="aba-receitas" onclick="aba('receitas')">Receitas</button>
+  </div>
+
+  <section id="pane-pessoas" class="card">
+    <div class="chead">Quem fez o quê · <span id="rotp"></span>
+      <span class="iwr"><button class="i" onclick="this.parentNode.classList.toggle('aberto')">i</button>
+        <span class="pop">NO RITMO = % das etapas concluídas em até 1,25× a mediana da
+        própria etapa. Conclusões de menos de 30 segundos não contam
+        no ritmo nem nas horas — aparecem como "sem tempo".
+        Unidades de produtos diferentes nunca se somam.</span></span>
+    </div>
+    <div class="phead"><span>Pessoa</span><span>Lotes</span><span class="dir">Tarefas</span><span>Horas medidas</span><span class="dir">No ritmo</span><span></span></div>
+    <div id="lpessoas"></div>
+    <div class="fora" id="lfora"></div>
+  </section>
+
+  <section id="pane-receitas" class="card" style="display:none">
+    <div class="chead">Receita por receita · <span id="rotr"></span>
+      <span class="iwr"><button class="i" onclick="this.parentNode.classList.toggle('aberto')">i</button>
+        <span class="pop">Rendimento = feito ÷ pedido, contra a faixa saudável 70–130%.
+        Custo real por unidade ao lado do custo de ficha; diferença
+        acima de 10% fica âmbar. Cada receita na própria unidade —
+        nada se converte nem se soma entre receitas.</span></span>
+    </div>
+    <div class="rhead"><span>Receita</span><span class="dir">Lotes</span><span class="dir">Pedido → feito</span><span>Rendimento</span><span class="dir">Tempo mediano</span><span class="dir">Custo/un · ficha</span><span></span></div>
+    <div id="lreceitas"></div>
+  </section>
+</main>
+
+<script>
+/* ═══ ESPECIFICAÇÃO EXECUTÁVEL — DESEMPENHO v1 ═══ */
+
+/* R11 — barra em escala única: maior valor da lista = 100% */
+function barPct(v, max){ return max > 0 ? Math.round(v/max*100) : 0; }
+
+/* R10 — no ritmo: % das etapas até 1,25× a mediana; <30s fora */
+function ritmo(execs){
+  const validas = execs.filter(e => e.seg >= 30 && e.med != null);
+  if (!validas.length) return null;
+  const ok = validas.filter(e => e.seg <= 1.25*e.med);
+  return Math.round(ok.length/validas.length*100);
+}
+
+/* R12 — rendimento contra a faixa 70–130% */
+function rendCor(p){ return (p < 70 || p > 130) ? 'ambar' : 'neutro'; }
+
+/* R15 — custo real × ficha: acima de 10% de diferença, âmbar */
+function custoFlag(real, ficha){
+  if (ficha == null || ficha === 0) return 'neutro';
+  return Math.abs(real - ficha)/ficha > 0.10 ? 'ambar' : 'neutro';
+}
+
+/* R9 — o título da aba repete o período escolhido */
+function rotuloPeriodo(p){
+  if (p.tipo === 'hoje') return 'hoje';
+  if (p.tipo === '7d')  return '7 dias';
+  if (p.tipo === '30d') return '30 dias';
+  return p.rot;               /* dia escolhido no calendário, ex. "quinta 12/11" */
+}
+const PERIODO = {tipo:'7d'};
+
+function fmtH(min){
+  const h = Math.floor(min/60), m = Math.round(min%60);
+  return h + 'h' + String(m).padStart(2,'0');
+}
+function fmtDur(seg){
+  if (seg < 60) return Math.round(seg) + 's';
+  const m = Math.round(seg/60);
+  if (m < 60) return m + 'min';
+  return Math.floor(m/60) + 'h' + String(m%60).padStart(2,'0');
+}
+const brl2 = n => n.toFixed(2).replace('.', ',');
+/* quantidade pt-BR: milhar com ponto, decimal com vírgula (1 casa) */
+function fmtQ(n){
+  const neg = n < 0 ? '−' : ''; n = Math.abs(n);
+  const int = Math.trunc(n), dec = Math.round((n - int)*10);
+  const mi = String(int).replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  return neg + (dec ? mi + ',' + dec : mi);
+}
+
+/* ── amostra (7 dias, números do raio-X de 13/11) ───────────── */
+const PESSOAS = [
+  {quem:'Edmar',   lotes:28, tarefas:3, min:1330, ritmo:86, semTempo:1},
+  {quem:'Eliane',  lotes:24, tarefas:2, min:1185, ritmo:88, semTempo:0},
+  {quem:'Nadine',  lotes:19, tarefas:4, min:830,  ritmo:94, semTempo:0},
+  {quem:'Rodrigo', lotes:17, tarefas:1, min:355,  ritmo:52, semTempo:5},
+  {quem:'Cristian',lotes:12, tarefas:9, min:640,  ritmo:78, semTempo:0},
+  {quem:'Michele', lotes:11, tarefas:2, min:585,  ritmo:81, semTempo:1},
+  {quem:'Débora',  lotes:8,  tarefas:5, min:410,  ritmo:74, semTempo:0},
+  {quem:'Tauan',   lotes:7,  tarefas:6, min:300,  ritmo:70, semTempo:2},
+];
+const FORA = [{quem:'gerente', lotes:2, motivo:'conta de escritório'}];
+
+const RECEITAS = [
+  {r:'BEEF ACEBOLADO',        lotes:12, ped:1150, feito:1118, un:'UN', rend:97,  fora:0, tmedSeg:78*60, custo:3.48, ficha:3.30},
+  {r:'MINI FRITAS',           lotes:9,  ped:270,  feito:262,  un:'UN', rend:97,  fora:0, tmedSeg:50*60, custo:1.12, ficha:1.05},
+  {r:'MASSA DE PIZZA GRANDE', lotes:8,  ped:160,  feito:166,  un:'UN', rend:104, fora:0, tmedSeg:55*60, custo:1.88, ficha:1.95},
+  {r:'BACON EM CUBOS',        lotes:7,  ped:21,   feito:20.2, un:'KG', rend:96,  fora:0, tmedSeg:13*60, custo:38.40, ficha:36.90},
+  {r:'MAIONESE DA CASA',      lotes:6,  ped:21,   feito:14.5, un:'KG', rend:69,  fora:2, tmedSeg:42*60, custo:9.10, ficha:7.20},
+  {r:'CEBOLA CARAMELIZADA',   lotes:4,  ped:9,    feito:7.4,  un:'KG', rend:82,  fora:1, tmedSeg:35*60, custo:12.30, ficha:11.80},
+];
+
+/* ── pinos (rodam sempre; em node, só eles) ─────────────────── */
+const PINOS = [
+  ['escala única: 17 de 28 = 61%',    barPct(17,28) === 61],
+  ['escala única: o maior é 100%',    barPct(28,28) === 100],
+  ['ritmo: 1 de 2 válidas = 50%',     ritmo([{seg:60,med:60},{seg:100,med:60},{seg:10,med:60}]) === 50],
+  ['ritmo sem válidas é null',        ritmo([{seg:10,med:60}]) === null],
+  ['rendimento 69% é âmbar',          rendCor(69) === 'ambar'],
+  ['rendimento 97% é neutro',         rendCor(97) === 'neutro'],
+  ['rendimento 135% é âmbar',         rendCor(135) === 'ambar'],
+  ['custo 9,10 × ficha 7,20 é âmbar', custoFlag(9.10,7.20) === 'ambar'],
+  ['custo 3,48 × ficha 3,30 neutro',  custoFlag(3.48,3.30) === 'neutro'],
+  ['fmtH 1330min = 22h10',            fmtH(1330) === '22h10'],
+  ['tempo mediano 78min vira 1h18',   fmtDur(78*60) === '1h18'],
+  ['quantidade 1150 vira 1.150',      fmtQ(1150) === '1.150'],
+  ['quantidade 20,2 com vírgula',     fmtQ(20.2) === '20,2'],
+  ['período hoje no título',          rotuloPeriodo({tipo:'hoje'}) === 'hoje'],
+  ['período 7 dias no título',        rotuloPeriodo({tipo:'7d'}) === '7 dias'],
+  ['dia do calendário vira o título', rotuloPeriodo({tipo:'dia',rot:'quinta 12/11'}) === 'quinta 12/11'],
+  ['pessoas ordenadas por lotes',     PESSOAS.every((p,k)=>k===0 || PESSOAS[k-1].lotes >= p.lotes)],
+];
+for (const [nome,ok] of PINOS) if (!ok) throw new Error('PINO FALHOU: '+nome);
+
+/* ── render ─────────────────────────────────────────────────── */
+function aba(q){
+  for (const x of ['pessoas','receitas']){
+    document.getElementById('aba-'+x).classList.toggle('on', x===q);
+    document.getElementById('pane-'+x).style.display = x===q ? '' : 'none';
+  }
+}
+
+function render(){
+  const $ = id => document.getElementById(id);
+  const ini = s => s.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+
+  $('rotp').textContent = rotuloPeriodo(PERIODO);
+  $('rotr').textContent = rotuloPeriodo(PERIODO);
+
+  const maxLotes = Math.max(...PESSOAS.map(p=>p.lotes));
+  const maxMin   = Math.max(...PESSOAS.map(p=>p.min));
+  $('lpessoas').innerHTML = PESSOAS.map(p=>`<div class="prow">
+    <div class="quem"><span class="avt">${ini(p.quem)}</span><span>${p.quem}<span class="tar-m num"> · ${p.tarefas} tarefa${p.tarefas===1?'':'s'}</span></span></div>
+    <div class="cv num c-lotes"><span class="rot">Lotes</span>${p.lotes}
+      <div class="bar"><i style="width:${barPct(p.lotes,maxLotes)}%"></i></div></div>
+    <div class="tar num">${p.tarefas}</div>
+    <div class="cv num c-horas"><span class="rot">Horas</span>${fmtH(p.min)}
+      <div class="bar"><i style="width:${barPct(p.min,maxMin)}%"></i></div></div>
+    <div class="rit num"><span class="v">${p.ritmo}%</span>${p.semTempo?`<span class="st">${p.semTempo} sem tempo</span>`:''}</div>
+    <div class="vercel"><a class="ver" href="#">ver →</a></div>
+  </div>`).join('');
+  $('lfora').innerHTML = FORA.map(f=>
+    `fora da comparação: <b>${f.quem}</b> · ${f.lotes} lotes · ${f.motivo}`).join(' · ');
+
+  $('lreceitas').innerHTML = RECEITAS.map(r=>{
+    const c = rendCor(r.rend), cf = custoFlag(r.custo, r.ficha);
+    const fill = Math.min(100, r.rend/140*100);
+    return `<div class="rrow">
+      <div class="rn">${r.r}</div>
+      <div class="pfwrap">
+        <div class="lot num"><span class="rot2">lotes </span>${r.lotes}</div>
+        <div class="pf num">${fmtQ(r.ped)} → <b>${fmtQ(r.feito)}</b> <small>${r.un}</small></div>
+      </div>
+      <div class="rend ${c}"><span class="v num">${r.rend}%${r.fora?`<span class="fora-n">⚠ ${r.fora} fora</span>`:''}</span>
+        <div class="gau"><span class="faixa"></span><span class="fill" style="width:${fill}%"></span></div></div>
+      <div class="tmed num"><span class="rot2">tempo </span>${fmtDur(r.tmedSeg)}</div>
+      <div class="custo num ${cf==='ambar'?'ambar':''}">R$ ${brl2(r.custo)}<small>ficha R$ ${brl2(r.ficha)}</small></div>
+      <div class="vercel"><a class="ver" href="#">ver →</a></div>
+    </div>`;
+  }).join('');
+}
+
+if (typeof document !== 'undefined') render();
+else console.log('PINOS OK — ' + PINOS.length + ' verdes');
+</script>
+</body>
+</html>

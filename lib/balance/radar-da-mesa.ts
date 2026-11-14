@@ -128,7 +128,7 @@ export function montarRadar(f: FatosDoRadar): LinhaDoRadar[] {
           ? 'o estoque já baixou com o número declarado'
           : null,
       gravidade: f.aguardandoConferencia > 0 ? 'CORAL' : 'VERDE',
-      href: `${base}/estoque/producao/hoje`,
+      href: `${base}/estoque/producao/ao-vivo`,
     },
 
     /**

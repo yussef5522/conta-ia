@@ -300,67 +300,10 @@ describe('a mesa de operações bate com a referência versionada', () => {
     }
   })
 
-  it('⭐⭐ cada bloco da mesa ② está DESENHADO na tela, pelo rótulo da referência', () => {
-    /**
-     * ⛔⛔ **ESTE É O ESPELHO QUE FALTAVA.** O teste de cima afirma a ORDEM e o SPAN que a
-     * REFERÊNCIA declara pra mesa ② — e um guard que só lê a referência **aprovaria uma mesa
-     * ② VAZIA**: a porta sem maçaneta, 12ª volta nesta casa. A pergunta que morde é a outra
-     * metade: *"a TELA desenha esses blocos?"*.
-     *
-     * ⚠️ O 1º bloco é conferido por **`A COZINHA HOJE` + o selo `aoVivo`**, não pela frase
-     * inteira da referência (`A COZINHA HOJE AO VIVO`): no arquivo do dono o `AO VIVO` é um
-     * **selo pulsante dentro do cabeçalho**, e o chassi o desenha pelo `aoVivo` — exigir a
-     * string contígua obrigaria a tela a escrever o selo à mão, que é o oposto do chassi
-     * compartilhado.
-     *
-     * ⚠️ E a fita é conferida pelo **rótulo acessível** (`a fita da cozinha`): o bloco dela não
-     * tem cabeçalho na referência — ele é a tira que rola —, então o que dá pra afirmar é o
-     * `aria-label`, que é justamente o que faz ela existir pra quem usa leitor de tela.
-     */
-    for (const titulo of [
-      'A COZINHA HOJE',
-      'RADAR DA COZINHA',
-      'QUEM FEZ O DIA',
-      'ULTIMAS CONCLUSOES',
-      'A SEMANA DA COZINHA',
-    ]) {
-      expect(semAcento(MESA_2), `o bloco "${titulo}" não está na mesa ②`).toContain(
-        semAcento(titulo),
-      )
-    }
-    /**
-     * ⚠️⚠️ **E AQUI O GUARD VEIO VERDE NA 1ª VERSÃO — *"menção, não uso"* de novo.** Eu afirmava
-     * `MESA_2` conter `aoVivo`, e `MESA_2` **inclui o CHASSI**, que DECLARA a prop
-     * (`aoVivo?: boolean`) e a desenha. Arrancar o selo do cabeçalho da mesa ② deixava os 19
-     * verdes, porque a palavra sobrevivia no arquivo do vizinho. ⭐ O que morde é olhar o
-     * **CABEÇALHO DAQUELE bloco**: o selo tem que chegar no `Mod` cujo título é
-     * `A COZINHA HOJE`, e não em qualquer lugar do conjunto.
-     */
-    const corpo = ler(R('components/estoque/mesa-da-cozinha.tsx'))
-    const cabecalho = blocoEntre(corpo, 'titulo="A COZINHA HOJE"', '>')
-    expect(cabecalho, 'o selo AO VIVO não chega no cabeçalho do 1º bloco').toContain('aoVivo')
-    expect(MESA_2, 'a fita da cozinha não tem rótulo acessível').toContain('a fita da cozinha')
-  })
-
-  it('⭐⭐ a mesa ② é RENDERIZADA na tela do HOJE — e no TOPO, antes da lista do dia', () => {
-    /**
-     * ⛔ Componente que existe no arquivo e ninguém monta é o defeito de 10/09 (*"o motor subiu
-     * e a tela não mudou"*). Aqui as duas metades são afirmadas: a tela **monta** a mesa, e ela
-     * vem **ANTES** do bloco `Agora` — se descesse pro fim, o dono rolaria a lista inteira pra
-     * achar o resumo do dia, e o pedido era o contrário (*"a mesa ② é o novo TOPO"*).
-     */
-    const tela = ler(R('app/(dashboard)/empresas/[id]/estoque/producao/hoje/page.tsx'))
-    expect(usosDe(tela, 'MesaDaCozinhaUI'), 'a tela do HOJE não monta a mesa ②').toBeGreaterThan(0)
-    const iMesa = tela.indexOf('<MesaDaCozinhaUI')
-    const iAgora = tela.indexOf('Agora</h2>')
-    expect(iMesa, 'a mesa ② não é renderizada').toBeGreaterThan(-1)
-    expect(iAgora, 'o bloco AGORA desapareceu — a lista do dia tem que ficar').toBeGreaterThan(-1)
-    expect(iMesa, 'a mesa ② tem que vir ANTES da lista do dia').toBeLessThan(iAgora)
-  })
-
-  // ─────────────────────────────────────────────────────────────────────
-  // 3. MEDIDAS e CORTES — o número que está no arquivo, escrito igual
-  // ─────────────────────────────────────────────────────────────────────
+  // ⚠️ (13/11, lei R1) o caso que vivia aqui provava a mesa ② DENTRO do HOJE — a tela morreu e a mesa
+  // morreu junto; o link "mesa da produção" da mesa ① leva ao AO VIVO (guard em quatro-telas).
+  // ⚠️ (13/11, lei R1) o caso que vivia aqui provava a mesa ② DENTRO do HOJE — a tela morreu e a mesa
+  // morreu junto; o link "mesa da produção" da mesa ① leva ao AO VIVO (guard em quatro-telas).
   it('⭐ as medidas da referência estão na tela — px LITERAL, nunca traduzido de cabeça', () => {
     /**
      * ⚠️ `gap-3` É 12px e `text-4xl` É 36px — certos, mas obrigam tradução mental, e **foi

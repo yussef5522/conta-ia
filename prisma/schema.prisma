@@ -3848,13 +3848,13 @@ model StockNfeAdiada {
 /// casos diferentes — ali é desconto diluído na nota de compra, aqui é nota separada de
 /// brinde — e de todo modo *categoria/receita/preço é decisão do DONO*.
 model StockNfeCortesia {
-  id        String   @id @default(cuid())
-  companyId String
-  nfeId     String
-  chave     String
+  id           String   @id @default(cuid())
+  companyId    String
+  nfeId        String
+  chave        String
   /// livre (ex: "bonificação de volume do trimestre")
-  motivo    String?
-  marcadaEm DateTime @default(now())
+  motivo       String?
+  marcadaEm    DateTime @default(now())
   /// ⚠️ quem decidiu — decisão sem autor é decisão sem dono
   marcadaPorId String?
 
@@ -5180,24 +5180,24 @@ model StockReceitaPrincipal {
 /// estoque não referencia tabela fechada. Item sem config aparece na lista e fica FORA da
 /// mesa de pedido, com o aviso *"configura os dias de chegada"*.
 model StockCompraConfig {
-  id        String @id @default(cuid())
-  companyId String
-  itemId    String // stock_item
+  id               String   @id @default(cuid())
+  companyId        String
+  itemId           String // stock_item
   /// CSV SEG-first dos dias em que a mercadoria CHEGA (`"0,2,4"` = SEG/QUA/SEX).
   /// ⭐ `''` = nenhum dia configurado — e o CHECK valida a FORMA (`^$|^[0-6](,[0-6])*$`),
   /// nunca o vocabulário (a cicatriz de 21/09: lista fechada no banco virou parede em 1 dia).
   /// ⛔ CSV e não `Int[]`: array do Postgres não existe no SQLite do dev, e código que só
   /// compila num dos dois bancos é a divergência dev×prod de 28/08.
-  diasChegada String @default("")
+  diasChegada      String   @default("")
   /// quantos dias ANTES da chegada o pedido tem que sair (prazo do fornecedor)
-  antecedenciaDias Int @default(1)
+  antecedenciaDias Int      @default(1)
   fornecedor       String?
   /// a folga em PONTOS PERCENTUAIS (10 = +10%); a lib converte pro fator 1,10
-  folgaPct Int @default(10)
+  folgaPct         Int      @default(10)
   /// ⚠️ rastro: config de COMPRA tem autor e data — é por isso que ela não é coluna em
   /// `stock_item` (além de ALTER ser proibido em migration `stock_`).
-  definidoPorId String?
-  definidoEm    DateTime @default(now())
+  definidoPorId    String?
+  definidoEm       DateTime @default(now())
 
   @@unique([companyId, itemId]) // salvar 2× é UPDATE, nunca uma 2ª config que divirja
   @@index([companyId])
@@ -5608,38 +5608,38 @@ model CustoFixoChips {
 //    `sumidoEm` + evento (SuitPedidoEvento), nunca DELETE.
 // ═══════════════════════════════════════════════════════════════════════════════════════
 model SuitPedido {
-  id                String    @id @default(cuid())
-  companyId         String
-  apiId             Int
+  id              String                @id @default(cuid())
+  companyId       String
+  apiId           Int
   /// dia operacional pela régua: created_at (relógio da API = UTC) na janela D 06:00 → D+1 06:00
-  dia               String
-  status            String
-  orderType         String?
-  source            String?
-  displayNumber     String?
-  integrationCode   String?
-  criadoApiEm       DateTime
-  entregueApiEm     DateTime?
-  finalizadoApiEm   DateTime?
-  agendadoPara      DateTime?
-  agendado          Boolean   @default(false)
-  produtosCent      Int
-  entregaCent       Int
-  servicoCent       Int
-  descontoCent      Int
-  adicionalCent     Int
-  totalCent         Int
-  pago              Boolean
+  dia             String
+  status          String
+  orderType       String?
+  source          String?
+  displayNumber   String?
+  integrationCode String?
+  criadoApiEm     DateTime
+  entregueApiEm   DateTime?
+  finalizadoApiEm DateTime?
+  agendadoPara    DateTime?
+  agendado        Boolean               @default(false)
+  produtosCent    Int
+  entregaCent     Int
+  servicoCent     Int
+  descontoCent    Int
+  adicionalCent   Int
+  totalCent       Int
+  pago            Boolean
   /// o que a RÉGUA conta deste pedido (itens vivos, status ≠ abandoned) — muda ⇒ "alterado"
-  impressao         String
+  impressao       String
   /// hash de TUDO que a allowlist grava (pedido + itens + opções + pagamentos): igual ⇒ não reescreve
-  conteudo          String
-  vistoPrimeiroEm   DateTime  @default(now())
-  vistoUltimoEm     DateTime  @default(now())
+  conteudo        String
+  vistoPrimeiroEm DateTime              @default(now())
+  vistoUltimoEm   DateTime              @default(now())
   /// a API passou a responder 404 pra este id (apagado no PDV). Nunca removido daqui.
-  sumidoEm          DateTime?
-  itens             SuitPedidoItem[]
-  pagamentos        SuitPedidoPagamento[]
+  sumidoEm        DateTime?
+  itens           SuitPedidoItem[]
+  pagamentos      SuitPedidoPagamento[]
 
   @@unique([companyId, apiId])
   @@index([companyId, dia])
@@ -5647,25 +5647,25 @@ model SuitPedido {
 }
 
 model SuitPedidoItem {
-  id            String     @id @default(cuid())
-  companyId     String
-  pedidoId      String
-  pedido        SuitPedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  apiItemId     Int
+  id           String          @id @default(cuid())
+  companyId    String
+  pedidoId     String
+  pedido       SuitPedido      @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  apiItemId    Int
   /// nome do PRODUTO como a API manda (cru) — não é dado pessoal
-  nome          String
-  categoria     String?
-  quantidade    Float
-  unitarioCent  Int
-  precoCent     Int
-  baseCent      Int?
-  status        String?
-  pedidoEm      DateTime?
-  canceladoEm   DateTime?
-  pesoKg        Float?
-  porPeso       Boolean    @default(false)
-  promocional   Boolean    @default(false)
-  opcoes        SuitItemOpcao[]
+  nome         String
+  categoria    String?
+  quantidade   Float
+  unitarioCent Int
+  precoCent    Int
+  baseCent     Int?
+  status       String?
+  pedidoEm     DateTime?
+  canceladoEm  DateTime?
+  pesoKg       Float?
+  porPeso      Boolean         @default(false)
+  promocional  Boolean         @default(false)
+  opcoes       SuitItemOpcao[]
 
   @@unique([pedidoId, apiItemId])
   @@index([companyId, pedidoId])
@@ -5708,7 +5708,7 @@ model SuitPedidoPagamento {
 /// os lançamentos financeiros do PDV (financial/payments/list) — COM taxa (fee) e líquido (net).
 /// ⛔ `description` (texto livre) e `bank_account.name` NÃO são gravados.
 model SuitPagamento {
-  id             String    @id @default(cuid())
+  id             String   @id @default(cuid())
   companyId      String
   apiId          Int
   entryId        Int?
@@ -5732,7 +5732,7 @@ model SuitPagamento {
   turnoCaixaId   Int?
   criadoApiEm    DateTime
   recebidoEm     String?
-  vistoUltimoEm  DateTime  @default(now())
+  vistoUltimoEm  DateTime @default(now())
 
   @@unique([companyId, apiId])
   @@index([companyId, dia])
@@ -5742,24 +5742,24 @@ model SuitPagamento {
 /// pedido que SUMIU (404) ou cuja contribuição na régua MUDOU depois de gravado.
 /// Depois da materialização vira aviso pro dono: manter ou atualizar o dia.
 model SuitPedidoEvento {
-  id                 String    @id @default(cuid())
-  companyId          String
-  pedidoId           String
-  apiId              Int
-  dia                String
+  id                     String    @id @default(cuid())
+  companyId              String
+  pedidoId               String
+  apiId                  Int
+  dia                    String
   /// APAGADO | ALTERADO
-  tipo               String
-  detectadoEm        DateTime  @default(now())
-  impressaoAntes     String
-  impressaoDepois    String?
-  deltaCent          Int
-  deltaUn            Float
+  tipo                   String
+  detectadoEm            DateTime  @default(now())
+  impressaoAntes         String
+  impressaoDepois        String?
+  deltaCent              Int
+  deltaUn                Float
   /// o dia já tinha sido entregue à esteira quando o evento aconteceu
   depoisDaMaterializacao Boolean
   /// MANTER | ATUALIZAR — decisão do dono; null = pendente
-  decisao            String?
-  decididoEm         DateTime?
-  decididoPorId      String?
+  decisao                String?
+  decididoEm             DateTime?
+  decididoPorId          String?
 
   @@index([companyId, dia])
   @@index([companyId, decisao])
@@ -5768,7 +5768,7 @@ model SuitPedidoEvento {
 
 /// o dia de vendas ENTREGUE à esteira pela API (a guarda anti-duplicata do XLS lê esta tabela).
 model SuitDiaMaterializado {
-  id              String    @id @default(cuid())
+  id              String   @id @default(cuid())
   companyId       String
   dia             String
   /// MATERIALIZADO | AGUARDANDO_DONO (a esteira fez uma pergunta: sanidade / item barrado)
@@ -5779,8 +5779,8 @@ model SuitDiaMaterializado {
   unidades        Float
   totalCent       Int
   motivo          String?
-  materializadoEm DateTime  @default(now())
-  atualizadoEm    DateTime  @default(now())
+  materializadoEm DateTime @default(now())
+  atualizadoEm    DateTime @default(now())
 
   @@unique([companyId, dia])
   @@map("suit_dia_materializado")
@@ -5809,4 +5809,33 @@ model StockTarefa {
 
   @@index([companyId, dia])
   @@map("stock_tarefa")
+}
+
+// ⭐ PAPEL DA CONTA DA EQUIPE (R20/R13, 13/11). Sem linha = COZINHA. ESCRITORIO e APARELHO
+// ficam FORA de toda comparação/ranking da cozinha (porta única: lib/stock/producao/papel-da-conta.ts).
+model StockColaboradorPapel {
+  id            String   @id @default(cuid())
+  companyId     String
+  colaboradorId String   @unique
+  /// COZINHA | ESCRITORIO | APARELHO (CHECK chk_stock_colaborador_papel)
+  papel         String
+  definidoPorId String?
+  definidoEm    DateTime @default(now())
+
+  @@index([companyId])
+  @@map("stock_colaborador_papel")
+}
+
+// ⭐ RECEITA EXCLUÍDA COM HISTÓRIA (R24, 13/11). Linha aqui + `stock_ficha.ativo=false` = some de
+// tudo; "desativada" (sazonal) é ativo=false SEM linha. Sem lote nenhum a receita é apagada de vez.
+model StockFichaExcluida {
+  id              String   @id @default(cuid())
+  companyId       String
+  fichaId         String   @unique
+  lotesNaHistoria Int
+  excluidaPorId   String?
+  excluidaEm      DateTime @default(now())
+
+  @@index([companyId])
+  @@map("stock_ficha_excluida")
 }
