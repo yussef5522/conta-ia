@@ -34,7 +34,7 @@ const CASOS: Caso[] = [
   { nome: '⭐ R25 a MESMA rotina 2× no MESMO dia (a idempotência no banco)', sqls: [ROT(), BASE_TAREFA,
     `INSERT INTO stock_tarefa (id, "companyId", nome, dia) VALUES ('zzprova_t2', $1, 'ZZPROVA', now())`,
     `INSERT INTO stock_tarefa_rotina (id, "companyId", "tarefaId", "rotinaId", dia) VALUES ('zzprova_v', $1, 'zzprova_t', 'zzprova_r', '2026-11-13 15:00')`,
-    `INSERT INTO stock_tarefa_rotina (id, "companyId", "tarefaId", "rotinaId", dia) VALUES ('zzprova_v2', $1, 'zzprova_t2', 'zzprova_r', '2026-11-13 15:00')`], esperado: 'stock_tarefa_rotina_rotinaId_dia_key' },
+    `INSERT INTO stock_tarefa_rotina (id, "companyId", "tarefaId", "rotinaId", dia) VALUES ('zzprova_v2', $1, 'zzprova_t2', 'zzprova_r', '2026-11-13 15:00')`], esperado: '23505:("rotinaId", dia)' },
   { nome: '⭐ R26 tique SEM quem (feitoEm sem feitoPorId)', sqls: [BASE_TAREFA, `INSERT INTO stock_tarefa_item (id, "companyId", "tarefaId", posicao, texto, "feitoEm") VALUES ('zzprova_ti', $1, 'zzprova_t', 0, 'X', now())`], esperado: 'chk_stock_tarefa_item_tique' },
   { nome: 'quem sem instante (feitoPorId sem feitoEm)', sqls: [BASE_TAREFA, `INSERT INTO stock_tarefa_item (id, "companyId", "tarefaId", posicao, texto, "feitoPorId") VALUES ('zzprova_ti', $1, 'zzprova_t', 0, 'X', 'c')`], esperado: 'chk_stock_tarefa_item_tique' },
   { nome: '⛔ R29 apagar rotina COM história (FK RESTRICT)', sqls: [ROT(), BASE_TAREFA,
@@ -70,7 +70,8 @@ async function main() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       if (msg !== 'ROLLBACK_PROPOSITAL') {
-        veio = alvos.find((n) => msg.includes(n))
+        // ⚠️ o Prisma não traz o NOME do índice único na mensagem do 23505 — só o código e as colunas
+        veio = alvos.find((n) => (n.startsWith('23505:') ? msg.includes('23505') && msg.includes(n.slice(6)) : msg.includes(n)))
           ?? `outro: ${msg.replace(/\s+/g, ' ').replace(/postgres(ql)?:\/\/\S+/gi, '[uri]').slice(0, 110)}`
       }
     }
