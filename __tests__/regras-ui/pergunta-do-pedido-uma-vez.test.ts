@@ -49,7 +49,9 @@ describe('⭐⭐⭐ PASSO 1 — a criação é ENXUTA: receita + data + setor', 
    * ⭐ O que morde é ESTRUTURAL: quais CONTROLES o formulário tem.
    */
   it('⛔⛔ o formulário de criação tem 3 controles, e nenhum é de quantidade', () => {
-    const corpo = blocoEntre(limpo(CRIACAO), 'function NovaOrdem', '\nfunction ')
+    // ⚠️ (13/11) o recorte é SÓ no page.tsx: `limpo(CRIACAO)` cola as listas do painel no fim, e a NovaOrdem
+    // (última função do arquivo) engolia o bloco de tarefas concluídas — o `mostrar` dele não é do formulário
+    const corpo = blocoEntre(semComentarios(readFileSync(CRIACAO, 'utf8')), 'function NovaOrdem', '\nfunction ')
     expect(corpo, 'o formulário existe').not.toBe('')
 
     // ⭐ os únicos estados do formulário: receita + data + setor (mais os de UI)

@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { ListaAbertas, ListaConcluidas, type Conclusao } from '@/components/estoque/listas-do-painel'
+import { ListaAbertas, ListaConcluidas, ListaTarefasConcluidas, type Conclusao } from '@/components/estoque/listas-do-painel'
 import { tarefasDoPainel, linhaDaTarefaAberta, linhaDaTarefaConcluida } from '../linha-da-tarefa'
 import type { TarefaDoEscritorio } from '../tarefa'
 
@@ -22,12 +22,15 @@ const lote: Conclusao = {
   criadoEm: '2026-11-12T15:40:00.000Z', pct: 95, faixa: 'OK', motivo: null, selo: 'FICHA', fiscalImpossivel: false,
   conferencia: { estado: 'CONFERIDA', conferidoPorNome: 'cristian', corrigiuDe: null, motivoDaCorrecao: null },
 }
-const concluidas = (ts: TarefaDoEscritorio[]) => renderToStaticMarkup(
+/** ⭐ (emenda do dono 13/11) os DOIS blocos, como o Painel monta: lotes em cima, tarefas logo abaixo */
+const blocoLotes = () => renderToStaticMarkup(
   <ListaConcluidas id="emp" periodo="hoje" mostrar={25} onMais={() => {}} itens={[lote]}
-    tarefas={tarefasDoPainel(ts, AGORA).concluidas}
     nomePorOrdem={new Map([['o1', 'PORÇÃO MAIONESE 30g']])} unidadePorOrdem={new Map([['o1', 'UN']])}
     pedidoFeito={{ o1: { pedido: 80, origem: 'DECLARADO' } }} />,
 )
+const blocoTarefas = (ts: TarefaDoEscritorio[], periodo = 'hoje') =>
+  renderToStaticMarkup(<ListaTarefasConcluidas periodo={periodo} tarefas={tarefasDoPainel(ts, AGORA).concluidas} />)
+const concluidas = (ts: TarefaDoEscritorio[]) => blocoLotes() + blocoTarefas(ts)
 const linha = (html: string, testid: string) => {
   const i = html.indexOf(`data-testid="${testid}"`)
   return html.slice(html.lastIndexOf('<', i), html.indexOf('</div>', i))
@@ -53,8 +56,26 @@ describe('Concluídas · a tarefa tem linha própria: selo + quem · hora + DURA
     expect(l).toContain('95%')
     expect(l).toContain('✓✓ conferido · cristian')
   })
-  it('o cabeçalho conta lote e tarefa separados (o KPI conta só lote)', () => {
-    expect(html).toContain('Concluídas · hoje (1 · 1 tarefa)')
+  it('⭐⭐ (emenda 13/11) DOIS blocos com contador próprio: "Lotes concluídos" e "Tarefas concluídas"', () => {
+    expect(html).toContain('Lotes concluídos · hoje (1 lote)')
+    expect(html).toContain('Tarefas concluídas · hoje (1 tarefa)')
+    expect(html.indexOf('data-testid="concluidas"'), 'tarefas vêm LOGO ABAIXO dos lotes').toBeLessThan(html.indexOf('data-testid="tarefas-concluidas"'))
+  })
+  it('⛔⛔ o bloco de LOTES não carrega tarefa nenhuma — nem linha, nem selo', () => {
+    const lotes = blocoLotes()
+    expect(lotes).not.toContain('tarefa-concluida')
+    expect(lotes).not.toContain('ABRIR MILHO')
+    expect(lotes).not.toContain('>TAREFA<')
+  })
+  it('⛔ o bloco de TAREFAS não tem R$, fez/pedido, % nem conferência — e traz a instrução', () => {
+    const tb = blocoTarefas([base])
+    expect(tb).not.toMatch(/R\$|\/un|%|CUSTO|FEZ|confer|pedid/i)
+    expect(tb).toContain('3 LATAS')
+  })
+  it('sem tarefa no período o bloco NÃO aparece; o período escolhido vai pro título', () => {
+    expect(blocoTarefas([])).toBe('')
+    expect(blocoTarefas([base], 'últimos 7 dias')).toContain('Tarefas concluídas · últimos 7 dias (1 tarefa)')
+    expect(blocoTarefas([base, { ...base, tarefaId: 't2' }], 'semana')).toContain('Tarefas concluídas · últimos 7 dias (2 tarefas)')
   })
   it('sem duração medida diz "·", nunca 0min', () => {
     expect(linhaDaTarefaConcluida({ ...base, minutos: null }).duracao).toBe('·')

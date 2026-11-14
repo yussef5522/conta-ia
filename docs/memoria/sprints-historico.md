@@ -6450,3 +6450,11 @@ md5 3357b26f · f04b8927 · a2fab294 · 0c255e2b). Os PINOS de cada `<script>` r
 - **Tokens:** `--esc-*` em `app/globals.css` (claro = lei por valor; escuro espelha `--prod-*`), zero hex nas telas.
 - Replantios: 10/10 morderam (régua dupla, UN+KG, <30s mediana e ritmo, escritório no ranking, excluir com história,
   PIN em resposta, rota sem redirect, token fora da lei, R5 replantada). Guard de UI: `producao-quatro-telas-lei`.
+
+## ⭐ EMENDA E1 NO PAINEL — CONCLUÍDAS SEPARADAS (produção × tarefas) (13/11/2026)
+"Concluídas" virou DOIS blocos: `ListaConcluidas` (só lotes — o tipo das props não tem campo de tarefa) e
+`ListaTarefasConcluidas` logo abaixo (nome · instrução · quem · hora · duração; só aparece com tarefa no período,
+segue o filtro). Emenda datada na lei `docs/producao-referencia.html`. LAVAR ALFACE = RECEITA INTERMEDIARIO ativa
+(18 ordens/18 lotes, 24/10→13/11, 1 ingrediente) — não é tarefa; migrar é decisão do dono. O guard da criação
+enxuta (`pergunta-do-pedido-uma-vez`) recortava a NovaOrdem até o fim do arquivo COLADO às listas e passou a ler só
+o page.tsx. Replantios: tarefa no bloco de lotes, tarefa com R$, blocos misturados, estado de quantidade na NovaOrdem — 4/4.

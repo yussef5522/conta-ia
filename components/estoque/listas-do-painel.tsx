@@ -4,6 +4,7 @@
 // Moram aqui (e não no page.tsx) pra serem RENDERIZADAS num teste de verdade (REGRA 3) — o
 // Next não aceita export nomeado em page. ⚠️ As classes `pp-*` vêm do CSS da página do painel.
 
+import { useState } from 'react'
 import { formatBRL } from '@/lib/format/money'
 import { formatarDuracao } from '@/lib/format/duracao'
 import { SeloDaConferencia } from '@/components/estoque/selo-da-conferencia'
@@ -101,49 +102,37 @@ export function ListaAbertas({ id, ordens, ctx, deOntem, soDeOntem, onFiltrarOnt
  * do dono pegou "R$ 0,00/un" numa tarefa; a linha dela não tem campo pra isso).
  * ⭐ O sinal do fiscal (declarado que não cabe no material) segue colado no nome do lote.
  */
-export function ListaConcluidas({ id, itens, tarefas, periodo, nomePorOrdem, unidadePorOrdem, pedidoFeito, mostrar, onMais }: {
-  id: string; itens: Conclusao[]; tarefas: (LinhaDaTarefa & { em: string })[]; periodo: string
+export function ListaConcluidas({ id, itens, periodo, nomePorOrdem, unidadePorOrdem, pedidoFeito, mostrar, onMais }: {
+  id: string; itens: Conclusao[]; periodo: string
   nomePorOrdem: Map<string, string>; unidadePorOrdem: Map<string, string>
   pedidoFeito: Record<string, PedidoFeito>
   mostrar: number; onMais: () => void
 }) {
-  const rotulo = periodo === 'hoje' ? 'hoje' : periodo === 'semana' ? 'últimos 7 dias' : periodo === 'mes' ? 'últimos 30 dias' : periodo
-  /** ⭐ lote e tarefa numa lista só, pela hora (a mais nova em cima) */
-  const todas = [
-    ...itens.map((c) => ({ k: 'lote' as const, em: c.criadoEm, c })),
-    ...tarefas.map((t) => ({ k: 'tarefa' as const, em: t.em, t })),
-  ].sort((a, b) => (a.em < b.em ? 1 : a.em > b.em ? -1 : 0))
+  const rotulo = rotuloDoPeriodo(periodo)
+  /**
+   * ⭐⭐ EMENDA DO DONO (13/11): "Concluídas" vira DOIS blocos — LOTES aqui (custo, fez/pedido, %,
+   * conferência) e TAREFAS no bloco próprio logo abaixo (`ListaTarefasConcluidas`). ⛔ Este bloco
+   * não recebe tarefa: o tipo das props não tem onde pôr uma (REGRA 5 — impossível, não lembrado).
+   */
+  const todas = [...itens].sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : a.criadoEm > b.criadoEm ? -1 : 0))
   // ⚠️ PAGINAÇÃO: o "carregar mais" DIZ quantos faltam
   const visiveis = todas.slice(0, mostrar)
   const faltam = todas.length - visiveis.length
   return (
     <section className="pp-painel" data-testid="concluidas">
-      <h3>Concluídas · {rotulo} ({itens.length}{tarefas.length ? ` · ${tarefas.length} tarefa${tarefas.length > 1 ? 's' : ''}` : ''})</h3>
+      <h3>Lotes concluídos · {rotulo} ({itens.length} lote{itens.length === 1 ? '' : 's'})</h3>
       {todas.length === 0 ? (
-        <span className="pp-vazio">Nada concluído {rotulo}.</span>
+        <span className="pp-vazio">Nenhum lote concluído {rotulo}.</span>
       ) : (
         <>
           <div className="pp-head d4"><span>LOTE</span><span className="r">CUSTO</span><span className="r">FEZ / PED.</span><span className="r">CONFERÊNCIA</span></div>
-          {visiveis.map((v) => {
-            if (v.k === 'tarefa') {
-              const t = v.t
-              return (
-                <div key={`t-${t.tarefaId}`} className="pp-row d4 tar" data-testid="tarefa-concluida">
-                  <span className="pp-nm"><span className="selo-t">{t.selo}</span>{t.nome}<span className="pp-sub2">{t.apoio}</span></span>
-                  {/* ⛔ tarefa não tem custo nem conferência: célula vazia SEM rótulo (some no celular) */}
-                  <span className="pp-num vazio">·</span>
-                  <span className="pp-num" data-r="duração">{t.duracao}</span>
-                  <span className="pp-num vazio">·</span>
-                </div>
-              )
-            }
-            const c = v.c
+          {visiveis.map((c) => {
             const pf = pedidoFeito[c.ordemId]
             const un = unidadePorOrdem.get(c.ordemId) ?? ''
             const pedidoTxt = fmtPedido(pf?.pedido, un)
             const pil = pilulaDoPedido(c.qtdGerada, pf?.pedido, un)
             return (
-              <a key={c.id} href={`/empresas/${id}/estoque/producao/${c.ordemId}`} className="pp-row d4">
+              <a key={c.id} href={`/empresas/${id}/estoque/producao/${c.ordemId}`} className="pp-row d4" data-testid="lote-concluido">
                 <span className="pp-nm">
                   {c.fiscalImpossivel && <span className="pp-fiscal" role="img" aria-label="o declarado não cabe no material separado — abra a ordem pra ver a conta" title="o declarado não cabe no material separado — abra a ordem pra ver a conta" />}
                   {nomePorOrdem.get(c.ordemId) ?? '—'}
@@ -171,3 +160,35 @@ export function ListaConcluidas({ id, itens, tarefas, periodo, nomePorOrdem, uni
     </section>
   )
 }
+
+const rotuloDoPeriodo = (periodo: string) =>
+  periodo === 'hoje' ? 'hoje' : periodo === 'semana' ? 'últimos 7 dias' : periodo === 'mes' ? 'últimos 30 dias' : periodo
+
+/**
+ * ⭐⭐ TAREFAS CONCLUÍDAS — o bloco PRÓPRIO (emenda do dono 13/11, lei M7.h): nome · instrução · quem fez ·
+ * hora · duração. ⛔ SEM custo, sem fez/pedido, sem %, sem conferência — a `LinhaDaTarefa` não tem esses
+ * campos. Só aparece quando há tarefa no período (o pai decide pelo comprimento; aqui `null` também).
+ */
+export function ListaTarefasConcluidas({ tarefas, periodo }: { tarefas: (LinhaDaTarefa & { em: string })[]; periodo: string }) {
+  const [mostrar, setMostrar] = useState(PAGINA_DE_TAREFAS)
+  if (tarefas.length === 0) return null
+  const todas = [...tarefas].sort((a, b) => (a.em < b.em ? 1 : a.em > b.em ? -1 : 0))
+  const visiveis = todas.slice(0, mostrar)
+  const faltam = todas.length - visiveis.length
+  return (
+    <section className="pp-painel" data-testid="tarefas-concluidas">
+      <h3>Tarefas concluídas · {rotuloDoPeriodo(periodo)} ({tarefas.length} tarefa{tarefas.length === 1 ? '' : 's'})</h3>
+      <div className="pp-head d2"><span>TAREFA</span><span className="r">DURAÇÃO</span></div>
+      {visiveis.map((t) => (
+        <div key={`t-${t.tarefaId}`} className="pp-row d2 tar" data-testid="tarefa-concluida">
+          <span className="pp-nm"><span className="selo-t">{t.selo}</span>{t.nome}{t.instrucao && <span className="pp-inst"> · {t.instrucao}</span>}<span className="pp-sub2">{t.apoio}</span></span>
+          <span className="pp-num" data-r="duração">{t.duracao}</span>
+        </div>
+      ))}
+      {faltam > 0 && (
+        <button type="button" onClick={() => setMostrar((m) => m + PAGINA_DE_TAREFAS)} className="pp-mais">carregar mais ({faltam} restante{faltam > 1 ? 's' : ''})</button>
+      )}
+    </section>
+  )
+}
+const PAGINA_DE_TAREFAS = 20

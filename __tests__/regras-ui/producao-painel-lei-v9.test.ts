@@ -37,8 +37,24 @@ describe('M7 · a ORDEM da tela é a ordem da amostra da lei', () => {
   it('título → chips → KPIs → filtros → zona de criar → Conferência → Em aberto → Concluídas', () => {
     const lei = ['pp-topo', 'pp-chips', 'pp-kpis', 'pp-filtros', 'pp-zcriar', 'Conferência do dia', 'Em aberto', 'Concluídas'].map((m) => AMOSTRA.indexOf(m))
     expect(lei.every((x, i) => x >= 0 && (i === 0 || x > lei[i - 1])), 'a amostra da lei tem essa ordem').toBe(true)
-    const tela = ['className="pp-topo"', 'className="pp-chips"', 'className="pp-kpis"', 'className="pp-filtros"', 'className="pp-zcriar"', '<ConferenciaDoDia', '<ListaAbertas', '<ListaConcluidas'].map((m) => JSX.indexOf(m))
+    const tela = ['className="pp-topo"', 'className="pp-chips"', 'className="pp-kpis"', 'className="pp-filtros"', 'className="pp-zcriar"', '<ConferenciaDoDia', '<ListaAbertas', '<ListaConcluidas', '<ListaTarefasConcluidas'].map((m) => JSX.indexOf(m))
     expect(tela.every((x, i) => x >= 0 && (i === 0 || x > tela[i - 1])), `ordem na tela: ${tela.join(',')}`).toBe(true)
+  })
+
+  /**
+   * ⭐⭐ EMENDA E1 (13/11, dono) — CONCLUÍDAS SEPARADAS. O guard ABRE a lei e cobra a emenda escrita; na
+   * tela, os DOIS blocos montados (lotes, e tarefas logo abaixo), o de lotes SEM prop de tarefa, e o
+   * de tarefas alimentado pela MESMA lista filtrada (`tp.concluidas` + busca) que acompanha o período.
+   */
+  it('E1 · Concluídas separadas: "Lotes concluídos" e, logo abaixo, "Tarefas concluídas"', () => {
+    expect(LEI).toContain('E1· CONCLUÍDAS SEPARADAS (produção × tarefas)')
+    const lotes = JSX.slice(JSX.indexOf('<ListaConcluidas'), JSX.indexOf('/>', JSX.indexOf('<ListaConcluidas')))
+    expect(lotes, 'o bloco de LOTES voltou a receber tarefa').not.toMatch(/tarefas=/)
+    const tarefas = JSX.slice(JSX.indexOf('<ListaTarefasConcluidas'), JSX.indexOf('/>', JSX.indexOf('<ListaTarefasConcluidas')))
+    expect(tarefas, 'o bloco de tarefas segue o MESMO período dos lotes').toContain(': periodo}')
+    expect(tarefas, 'o bloco de tarefas lê a lista do período (com a busca)').toContain('tarefas={tp.concluidas.filter((t) => casa(t.nome))}')
+    expect(LISTAS).toContain('Lotes concluídos · {rotulo}')
+    expect(LISTAS).toContain('Tarefas concluídas · {rotuloDoPeriodo(periodo)}')
   })
 })
 

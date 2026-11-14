@@ -24,7 +24,7 @@ import { usePermissoes } from '@/lib/hooks/use-permissoes'
 import { NovaTarefa } from '@/components/estoque/tarefas-do-dia'
 import { rotuloDasConcluidas } from '@/lib/stock/producao/rotulos-do-painel'
 import { tarefasDoPainel, type LinhaDaTarefa } from '@/lib/stock/producao/linha-da-tarefa'
-import { ListaAbertas, ListaConcluidas, type Aberta, type Contexto, type PedidoFeito, type Conclusao } from '@/components/estoque/listas-do-painel'
+import { ListaAbertas, ListaConcluidas, ListaTarefasConcluidas, type Aberta, type Contexto, type PedidoFeito, type Conclusao } from '@/components/estoque/listas-do-painel'
 import type { TarefaDoEscritorio } from '@/lib/stock/producao/tarefa'
 /**
  * ⭐⭐ O PEDIDO NA TELA e a pílula "% do pedido" têm DONO ÚNICO (05/10) — a tela não arredonda
@@ -218,7 +218,6 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
       <ListaConcluidas id={id} periodo={custom ? `${fmtDia(custom.de)} – ${fmtDia(custom.ate)}` : periodo}
         mostrar={mostrar} onMais={() => setMostrar((m) => m + PAGINA)}
         itens={concluidas.filter((c) => casa((receitaConcl[c.ordemId]?.nome ?? ordens.find((x) => x.id === c.ordemId)?.nomeProduzido) ?? ''))}
-        tarefas={tp.concluidas.filter((t) => casa(t.nome))}
         /* ⭐ as duas fontes MESCLADAS: a lista geral (truncada) + a receita resolvida por
            ID do período. A segunda manda, porque ela nunca depende do teto. */
         nomePorOrdem={new Map([
@@ -230,6 +229,10 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
           ...Object.entries(receitaConcl).map(([id, r]) => [id, r.unidade] as [string, string]),
         ])}
         pedidoFeito={pedidoFeito} />
+
+      {/* 8. TAREFAS CONCLUÍDAS — bloco PRÓPRIO logo abaixo dos lotes (emenda do dono 13/11); só com tarefa no período */}
+      <ListaTarefasConcluidas periodo={custom ? `${fmtDia(custom.de)} – ${fmtDia(custom.ate)}` : periodo}
+        tarefas={tp.concluidas.filter((t) => casa(t.nome))} />
     </div>
   )
 }
@@ -353,6 +356,8 @@ const CSS = `
   color:var(--t3);text-transform:uppercase;padding:0 0 6px;border-bottom:2px solid var(--linha)}
 .pp-head.c4{grid-template-columns:1fr 92px 112px 84px}
 .pp-head.d4{grid-template-columns:1fr 86px 130px 150px}
+.pp-head.d2,.pp-row.d2{grid-template-columns:1fr 110px}
+.pp-inst{font-weight:700;color:var(--t2)}
 .pp-head .r{text-align:right}
 .pp-row{display:grid;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--linha-fina);color:inherit;text-decoration:none}
 .pp-row:last-child{border-bottom:0}
