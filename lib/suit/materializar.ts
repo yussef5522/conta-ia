@@ -14,12 +14,13 @@
 //    dia que JÁ TEM import (XLS/manual) não é sobrescrito · já materializado = não refaz.
 
 import type { PrismaClient } from '@prisma/client'
-import { processarLinhasDaApi, gravarDiaDaApiSemBaixa, type LinhaVenda } from '../stock/vendas/baixa-venda'
+import { processarLinhasDaApi, type LinhaVenda } from '../stock/vendas/baixa-venda'
 import { SanidadeNaoConfirmadaError } from '../stock/vendas/medir-sanidade'
 import { BaixaComItemBarradoError } from '../stock/vendas/itens-pendentes-da-baixa'
 import { STATUS_FORA_DA_REGUA, somarDias, HORA_VIRADA_DIA } from './regua-sombra'
 
 import { CORTE_API } from './cortes'
+import { avisarDiaParado } from './dia-parado'
 export { CORTE_API }
 /** o fechamento espera 10 min depois da virada (06:00 UTC = 03:00 BRT) */
 export const MARGEM_FECHAMENTO_MIN = 10
@@ -102,14 +103,19 @@ export function exigirFusoDaCasa(): void {
 
 export type ResultadoMaterializacao =
   | { status: 'MATERIALIZADO'; importId: string; linhas: number; unidades: number; totalCent: number; pedidos: number }
-  | { status: 'AGUARDANDO_DONO'; importId: string; motivo: string; linhas: number; unidades: number; totalCent: number; pedidos: number }
+  /** ⭐ (16/11) dia RETIDO: `importId` = null (nada gravado) — ou, numa reentrega, o import ANTERIOR intacto */
+  | { status: 'AGUARDANDO_DONO'; importId: string | null; motivo: string; linhas: number; unidades: number; totalCent: number; pedidos: number }
   | { status: 'JA_FEITO' }
 
 /**
  * Entrega o dia D à esteira. Quem chama já sincronizou D por COMPLETO (detalhe de todos).
  * `reentregar` = o dono mandou ATUALIZAR o dia por causa de um evento (apagado/alterado).
  */
-export async function materializarDia(db: PrismaClient, companyId: string, dia: string, agora: Date, opts: { reentregar?: boolean; substituirXls?: boolean; fechadoNaMao?: boolean } = {}): Promise<ResultadoMaterializacao> {
+export async function materializarDia(db: PrismaClient, companyId: string, dia: string, agora: Date, opts: {
+  reentregar?: boolean; substituirXls?: boolean; fechadoNaMao?: boolean
+  /** ⛔ SÓ a resposta do dono (`responderDiaParado`, rota com sessão) passa true — a máquina nunca responde por ele */
+  confirmouSanidade?: boolean
+} = {}): Promise<ResultadoMaterializacao> {
   exigirFusoDaCasa()
   if (dia < CORTE_API) throw new DiaForaDoCorteError(dia)
   // V11 · o dono fechou o caixa: o dia ABERTO entra na hora (quem chama garante que é o dia corrente)
@@ -125,15 +131,19 @@ export async function materializarDia(db: PrismaClient, companyId: string, dia: 
   }
   const r = linhasDaRegua(await lerPedidosDoDia(db, companyId, dia))
   const base = { linhas: r.linhas.length, unidades: r.unidades, totalCent: r.totalCent, pedidos: r.pedidos }
-  let importId: string
+  let importId: string | null
   let status: 'MATERIALIZADO' | 'AGUARDANDO_DONO' = 'MATERIALIZADO'
   let motivo: string | null = null
   try {
-    importId = (await processarLinhasDaApi(companyId, dia, r.linhas, db)).importId
+    importId = (await processarLinhasDaApi(companyId, dia, r.linhas, db, !!opts.confirmouSanidade)).importId
   } catch (e) {
     if (!(e instanceof SanidadeNaoConfirmadaError) && !(e instanceof BaixaComItemBarradoError)) throw e
-    // ⭐ a esteira PERGUNTOU — a resposta é do dono. As linhas ficam gravadas, a baixa espera.
-    importId = await gravarDiaDaApiSemBaixa(companyId, dia, r.linhas, db)
+    // ⛔⛔ (16/11) O DIA FICA INTEIRO RETIDO — nada de "vendas sim, baixas não". A sanidade pergunta
+    // ANTES de abrir a transação e o item barrado derruba a transação inteira: nada foi escrito.
+    // Numa REENTREGA, o import anterior (com as baixas dele) fica intacto: o estado é o de antes,
+    // inteiro. Até 15/11 aqui se gravava o import SEM baixa (`gravarDiaDaApiSemBaixa`) — o meio-estado
+    // que deixou R$ 5.701 sem baixar e o dono contando em cima.
+    importId = ja?.importId ?? null
     status = 'AGUARDANDO_DONO'
     motivo = e.message
   }
@@ -143,5 +153,10 @@ export async function materializarDia(db: PrismaClient, companyId: string, dia: 
     create: { companyId, dia, ...dados, materializadoEm: agora },
     update: dados,
   })
-  return status === 'MATERIALIZADO' ? { status, importId, ...base } : { status, importId, motivo: motivo!, ...base }
+  if (status === 'AGUARDANDO_DONO') {
+    // ⭐ a pergunta GRITA: aviso vermelho no sininho (idempotente por dia) — nunca mais só uma faixa
+    await avisarDiaParado(db, companyId, dia, motivo!)
+    return { status, importId, motivo: motivo!, ...base }
+  }
+  return { status, importId: importId!, ...base }
 }

@@ -31,9 +31,11 @@ beforeEach(async () => {
   await prisma.stockMovement.create({ data: { companyId, itemId: fantaId, tipo: 'ENTRADA_NF', quantidade: 200, custoUnitario: 6.81, custoTotal: 1362, origem: 'SEFAZ' } })
   await upsertVendaMap(companyId, 'FANTA UVA 2L', { tipo: 'REVENDA', itemId: fantaId }, 'u', prisma)
 
-  // ⭐ o histórico REAL da geladeira: ~4 por dia, 6 dias seguidos
+  // ⭐ o histórico REAL da geladeira: ~4 por dia, 6 dias seguidos — ANTES do dia julgado (10/09)
+  // ⚠️ (16/11) a régua do normal é a janela de 14 dias ESTRITAMENTE ANTES do dia julgado; o
+  // histórico relativo a AGORA só passava porque a janela antiga não tinha teto.
   for (let d = 1; d <= 6; d++) {
-    const data = new Date(Date.now() - d * 86_400_000)
+    const data = new Date(Date.UTC(2026, 8, 10, 15) - d * 86_400_000)
     const imp = await prisma.stockVendaImport.create({ data: { companyId, data, totalLinhas: 1, totalUnidades: 4, status: 'CONFIRMADO' } })
     await prisma.stockVendaLinha.create({ data: { companyId, importId: imp.id, data, nomeSuitable: 'FANTA UVA 2L', quantidade: 4, valorTotal: 60 } })
   }

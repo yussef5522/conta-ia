@@ -135,7 +135,7 @@ export interface PedidoDTO {
 }
 export interface AoVivoDTO {
   dia: string; agora: string; atualizado: string | null
-  fechado: { hora: string; por: 'dono' | 'automatico' } | null
+  fechado: { hora: string; por: 'dono' | 'automatico'; parado: boolean } | null
   vendidoCent: number; pedidos: number; naCozinha: number; prontos: number; ticketCent: number | null
   regua: { semanas: number; tipicoCent: number | null; tipicoDiaCent: number | null; ritmoPct: number | null; alerta: boolean }
   curva: { hora: string; hojeCent: number | null; reguaCent: number | null; atual: boolean }[]
@@ -163,8 +163,9 @@ export async function montarAoVivo(db: PrismaClient, companyId: string, agora: D
   const vendidoCent = contam.reduce((t, p) => t + valor(p), 0)
   const comVenda = contam.filter((p) => p.status !== 'cancelled')
 
-  const mat = await db.suitDiaMaterializado.findUnique({ where: { companyId_dia: { companyId, dia } }, select: { materializadoEm: true } })
-  const fechado = mat ? { hora: horaBrasil(mat.materializadoEm), por: quemFechou(dia, mat.materializadoEm) } : null
+  const mat = await db.suitDiaMaterializado.findUnique({ where: { companyId_dia: { companyId, dia } }, select: { materializadoEm: true, status: true } })
+  // ⭐ (16/11) `parado`: o dia fechou mas caiu na trava — a tela NÃO diz "contagem liberada"
+  const fechado = mat ? { hora: horaBrasil(mat.materializadoEm), por: quemFechou(dia, mat.materializadoEm), parado: mat.status === 'AGUARDANDO_DONO' } : null
 
   // V2 · régua: os mesmos dias-da-semana (D−7, D−14, D−21, D−28) QUE EXISTEM no espelho
   const anteriores: { dia: string; pedidos: PedidoDaRegua[] }[] = []
@@ -260,7 +261,10 @@ export async function portaoDaContagem(db: PrismaClient, companyId: string, agor
   for (const d of [somarDias(hoje, -1), hoje]) {
     const vendeu = await db.suitPedido.count({ where: { companyId, dia: d, sumidoEm: null, status: { not: 'abandoned' } } })
     if (!vendeu) continue
-    const fechado = await db.suitDiaMaterializado.findUnique({ where: { companyId_dia: { companyId, dia: d } }, select: { id: true } })
+    const fechado = await db.suitDiaMaterializado.findUnique({ where: { companyId_dia: { companyId, dia: d } }, select: { id: true, status: true } })
+    // ⛔⛔ (16/11) dia PARADO na trava tranca a contagem: contar em cima de venda que ainda não baixou
+    // é contar duas vezes quando o dono responder (o 15/11 foi contado assim, com o dia pela metade)
+    if (fechado?.status === 'AGUARDANDO_DONO') return { liberada: false, dia: d }
     const temXls = await db.stockVendaImport.findUnique({ where: { companyId_data: { companyId, data: new Date(`${d}T12:00:00`) } }, select: { id: true } })
     if (!fechado && !temXls) return { liberada: false, dia: d }
   }

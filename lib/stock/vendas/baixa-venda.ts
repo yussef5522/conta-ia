@@ -195,7 +195,7 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
     db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true, itemId: true } }),
     montarCtx(companyId, db),
     estadoParaBaixa(db, companyId),
-    medirSanidade(companyId, linhas.map((l) => ({ produto: l.produto, quantidade: l.quantidade })), db),
+    medirSanidade(companyId, linhas.map((l) => ({ produto: l.produto, quantidade: l.quantidade })), db, data),
   ])
   const custoDeLeitura = (itemId: string) => estado.porItem.get(itemId)?.custoMedio ?? null
   /**
@@ -313,35 +313,24 @@ function registrarSomaDaApi(companyId: string, data: string, linhas: LinhaVenda[
  * ⭐ O DIA QUE ENTRA PELA SUITAPI (10/11/2026) — a MESMA esteira do XLS, sem o HTML.
  * Mesmo `gravarVenda` (plano → sanidade → baixa → linhas), com o que o dono escolheria por
  * padrão: `incluir = null` (todos os mapeados) e NENHUMA pergunta respondida por ele —
- * ⛔ `confirmouSanidade = false` e `itensPendentes = []` são FIXOS: a máquina nunca responde
+ * ⛔ `itensPendentes = []` é FIXO e `confirmouSanidade` é false por padrão: a máquina nunca responde
  * pelo dono. Se a esteira perguntar, a exceção sobe e quem chama deixa o dia esperando ele.
+ * (16/11) O único `true` vem da resposta DELE na tela (`responderDiaParado`).
  */
-export async function processarLinhasDaApi(companyId: string, data: string, linhas: LinhaVenda[], db: PrismaClient = defaultPrisma): Promise<ReciboVenda> {
-  const recibo = await gravarVenda(companyId, data, linhas, null, undefined, db, false, [])
+export async function processarLinhasDaApi(companyId: string, data: string, linhas: LinhaVenda[], db: PrismaClient = defaultPrisma, confirmouSanidade = false): Promise<ReciboVenda> {
+  // ⛔ `confirmouSanidade` só chega true pela RESPOSTA do dono (lib/suit/dia-parado.ts) — o laço sempre passa false
+  const recibo = await gravarVenda(companyId, data, linhas, null, undefined, db, confirmouSanidade, [])
   await registrarSomaDaApi(companyId, data, linhas, db)
   return recibo
 }
 
 /**
- * O dia da API em que a esteira PERGUNTOU (sanidade / item barrado): grava o import e as linhas
- * SEM baixa — o mesmo estado que o lançamento manual deixa quando a sanidade pergunta — e a
- * resposta é do dono, na tela de sempre (reprocessar o dia, com o diálogo de sempre).
+ * ⛔⛔ (16/11) NÃO EXISTE MAIS "gravar o dia da API SEM baixa". Até 15/11 o dia em que a esteira
+ * perguntava (sanidade / item barrado) era gravado PELA METADE — import e linhas sim, baixa não — e
+ * o 15/11 ficou assim: 114 produtos, R$ 5.701 de custo sem baixar, contagem feita em cima. Agora o
+ * dia fica INTEIRO retido (`materializarDia` → `AGUARDANDO_DONO` sem import) até o dono responder
+ * (`lib/suit/dia-parado.ts`). A porta foi removida pra que o meio-estado seja impossível, não raro.
  */
-export async function gravarDiaDaApiSemBaixa(companyId: string, data: string, linhas: LinhaVenda[], db: PrismaClient = defaultPrisma): Promise<string> {
-  const dataDate = new Date(`${data}T12:00:00`)
-  const totalUnidades = linhas.reduce((s, l) => s + l.quantidade, 0)
-  const importId = await db.$transaction(async (tx) => {
-    const imp = await tx.stockVendaImport.upsert({
-      where: { companyId_data: { companyId, data: dataDate } },
-      create: { companyId, data: dataDate, totalLinhas: linhas.length, totalUnidades, status: 'CONFIRMADO', criadoPorId: null },
-      update: { totalLinhas: linhas.length, totalUnidades },
-    })
-    await gravarLinhasDoImport(tx, companyId, imp.id, dataDate, linhas)
-    return imp.id
-  })
-  await registrarSomaDaApi(companyId, data, linhas, db)
-  return importId
-}
 
 /** ⛔ O XLS NÃO PASSA POR CIMA DO DIA DA API sem o dono dizer (10/11/2026). */
 export class DiaDaApiError extends Error {

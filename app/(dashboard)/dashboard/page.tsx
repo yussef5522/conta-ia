@@ -32,6 +32,7 @@ import type { Metadata } from 'next'
 import { JuizSelo } from './_components/JuizSelo'
 import { MesaDeOperacoes } from './_components/MesaDeOperacoes'
 import { NoCompaniesEmpty, NoAccountsEmpty } from './_components/EmptyDashboard'
+import { FaixaDiaParado } from '@/components/estoque/faixa-dia-parado'
 
 export const metadata: Metadata = { title: 'Dashboard' }
 
@@ -109,6 +110,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
   return (
     <div className="-mx-4 lg:-mx-6">
+      {/* ⭐ (16/11) dia de vendas parado na trava: a pergunta grita aqui, no Painel, com o botão */}
+      <div className="px-[26px] pt-[12px] max-[1023px]:px-[14px] empty:hidden"><FaixaDiaParado empresaId={empresaAtual.id} /></div>
       {/*
        * ───────────── O TOPO ─────────────
        * ⭐ Os chips ① / ② são a navegação entre as duas mesas. ⚠️ O ② é um `Link` de verdade,

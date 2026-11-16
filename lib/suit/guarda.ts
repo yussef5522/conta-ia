@@ -64,7 +64,9 @@ export async function guardarDia(db: PrismaClient, base: ClienteSuitLeitura, com
   const eventosUn = pend.reduce((s, e) => s + e.deltaUn, 0)
   const restoCent = api.cent - esteiraCent - eventosCent
   const restoUn = Math.round((api.un - esteiraUn - eventosUn) * 1000) / 1000
-  const a = { veredito: (!mat ? 'SEM_DIA' : restoCent === 0 && restoUn === 0 ? 'BATE' : 'DIVERGE') as ResultadoGuarda['a']['veredito'], apiCent: api.cent, apiUn: api.un, esteiraCent, esteiraUn, eventosCent, restoCent, restoUn }
+  // ⭐ (16/11) dia RETIDO na trava (sem import): não há esteira pra conferir — o aviso dele é o do dia parado
+  const retido = mat?.status === 'AGUARDANDO_DONO' && !mat.importId
+  const a = { veredito: (!mat || retido ? 'SEM_DIA' : restoCent === 0 && restoUn === 0 ? 'BATE' : 'DIVERGE') as ResultadoGuarda['a']['veredito'], apiCent: api.cent, apiUn: api.un, esteiraCent, esteiraUn, eventosCent, restoCent, restoUn }
 
   // (comp) complementos: a régua dos sabores sobre a API de AGORA × o gravado na esteira
   const crusDoDia = [...vistos.values()].filter((d): d is PedidoCru => !!d && d.created_at >= from && d.created_at <= to)

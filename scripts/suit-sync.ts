@@ -74,6 +74,7 @@ async function main() {
           gravarAtomico(STATE_GUARDA, mesclarState(ler(STATE_GUARDA), linha))
           console.log(`[suit-sync ${agoraTxt()}] GUARDA ${linha}`)
         }
+        if (c.baixa) console.log(`[suit-sync ${agoraTxt()}] BAIXA ${c.baixa.dia} ${c.baixa.status} · ${c.baixa.furos.length} itens furados · R$ ${c.baixa.totalRs.toFixed(2)} · ${c.baixa.semVinculo.length} nomes sem vínculo`)
         const v = c.vivo
         if (v.novos || v.atualizados || v.sumidos) console.log(`[suit-sync ${agoraTxt()}] vivo: ${v.listados} listados · +${v.novos} novos · ${v.atualizados} mudaram · ${v.sumidos} sumiram · ${cliente.requisicoes() - r0} req`)
         gravarAtomico(BATIMENTO, new Date().toISOString() + '\n')

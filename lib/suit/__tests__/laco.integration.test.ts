@@ -218,12 +218,25 @@ describe('⭐ a GUARDA do dono (a/b/c) e a decisão', () => {
   it('⛔ ATUALIZAR quando a esteira PERGUNTA (sanidade): o dia fica ESPERANDO o dono — a máquina nunca responde por ele', async () => {
     const s = suitFake()
     await espelharDia(s.c)
-    await materializarDia(prisma, companyId, D, FECHA) // sem histórico: o próprio dia vira a régua do "normal"
+    const antes = await materializarDia(prisma, companyId, D, FECHA) // sem histórico: entra direto
+    expect(antes.status).toBe('MATERIALIZADO')
+    const baixasAntes = await prisma.stockMovement.count({ where: { companyId, tipo: 'BAIXA_VENDA' } })
+    // ⚠️ (16/11) o "normal" é a janela ESTRITAMENTE ANTES de D (antes, o próprio dia entrava na régua):
+    // 6 dias anteriores com XIS COMPLETO = 2 fazem os 49 do dia (24×) pedirem confirmação
+    for (let i = 1; i <= 6; i++) {
+      const data = new Date(`${somarDias(D, -i)}T12:00:00`)
+      const imp = await prisma.stockVendaImport.create({ data: { companyId, data, totalLinhas: 1, totalUnidades: 600, status: 'CONFIRMADO' } })
+      await prisma.stockVendaLinha.create({ data: { companyId, importId: imp.id, data, nomeSuitable: 'XIS COMPLETO', quantidade: 2, valorTotal: 50 } })
+    }
     s.apagados.add(PEDIDOS.find((p) => p.status === 'delivered')!.id)
     await espelharDia(s.c, em('09:00'))
     const r = await decidirDia(prisma, companyId, D, 'ATUALIZAR', 'u1', em('11:00'))
     expect(r.reentrega?.status).toBe('AGUARDANDO_DONO')
-    expect((await prisma.suitDiaMaterializado.findUnique({ where: { companyId_dia: { companyId, dia: D } } }))?.status).toBe('AGUARDANDO_DONO')
+    const row = await prisma.suitDiaMaterializado.findUnique({ where: { companyId_dia: { companyId, dia: D } } })
+    expect(row?.status).toBe('AGUARDANDO_DONO')
+    // ⛔ (16/11) e o dia NÃO fica pela metade: o estado anterior (import + baixas) segue INTEIRO
+    expect(row?.importId).toBe(antes.status === 'MATERIALIZADO' ? antes.importId : null)
+    expect(await prisma.stockMovement.count({ where: { companyId, tipo: 'BAIXA_VENDA' } })).toBe(baixasAntes)
   }, 180_000)
 
   it('MANTER: o dia fica como entrou e o evento sai da fila', async () => {

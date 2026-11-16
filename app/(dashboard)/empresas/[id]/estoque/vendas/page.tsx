@@ -22,6 +22,7 @@ import { fraseDoErro } from '@/lib/http/frase-do-erro'
 import { PerguntaDoDia, type VeredictoDoDia } from '@/components/estoque/pergunta-do-dia'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 import { FaixaDaSuit, PerguntaDiaDaSuit, FaixaDosSabores } from '@/components/estoque/faixa-da-suit'
+import { FaixaDiaParado } from '@/components/estoque/faixa-dia-parado'
 import { CORTE_COMPLEMENTOS, diaCurto } from '@/lib/suit/cortes'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
@@ -349,6 +350,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         </StatCardGrid>
       )}
 
+      <FaixaDiaParado empresaId={id} />
       <FaixaDaSuit id={id} />
 
       {/* abas */}

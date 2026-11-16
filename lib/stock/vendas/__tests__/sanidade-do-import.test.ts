@@ -5,7 +5,7 @@
 // fatura já faz."* ⛔ **Pergunta, não recusa cega** — dia de evento existe.
 
 import { describe, it, expect } from 'vitest'
-import { avaliarSanidade, FATOR_SUSPEITO } from '../sanidade-do-import'
+import { avaliarSanidade, FATOR_SUSPEITO, MIN_DIAS_PRA_NORMAL } from '../sanidade-do-import'
 
 /** o histórico REAL da Caçula: 745 / 576 / 536 / 387 ocorrências por dia */
 const MEDIA_DO_DIA = 561
@@ -64,5 +64,37 @@ describe('⭐ o dia NORMAL passa direto — alarme falso mata o alarme', () => {
   it('⭐ mas 10× acima com volume acende', () => {
     const r = avaliarSanidade([{ produto: 'XIS - COMPLETO', quantidade: 1100 }], HIST, MEDIA_DO_DIA)
     expect(r.suspeitas[0].vezes).toBeCloseTo(10.5, 1)
+  })
+})
+
+describe('⭐⭐ (16/11) o "normal é 1" de domingo — gêmeos de grafia SOMAM, e normal precisa de dias', () => {
+  // ⭐ o histórico MEDIDO em prod que a trava viu em 16/11 04:17 (02/11→14/11)
+  const HIST_DOMINGO = [
+    { produto: 'XIS COMPLETO', mediaDiaria: 36, dias: 13 },
+    { produto: 'XIS - COMPLETO', mediaDiaria: 182.5, dias: 2 },
+    { produto: 'Xis Completo', mediaDiaria: 1, dias: 2 },
+  ]
+  it('88 XIS COMPLETO num domingo de promoção NÃO para o dia (o normal somado é ~55/dia)', () => {
+    const r = avaliarSanidade([{ produto: 'XIS COMPLETO', quantidade: 88 }], HIST_DOMINGO, 700)
+    expect(r.suspeitas).toEqual([])
+    expect(r.precisaConfirmar).toBe(false)
+  })
+  it('o dia também soma os gêmeos: 60 + 28 grafados diferente são 88 do mesmo produto', () => {
+    const hist = [{ produto: 'FANTA UVA 2L', mediaDiaria: 4, dias: 14 }]
+    const r = avaliarSanidade([{ produto: 'FANTA UVA 2L', quantidade: 15 }, { produto: 'Fanta Uva 2L', quantidade: 30 }], hist, 700)
+    expect(r.suspeitas).toHaveLength(1)
+    expect(r.suspeitas[0].frase).toBe('FANTA UVA 2L: 45 num dia — o normal é 4. Confirma?')
+  })
+  it(`menos de ${MIN_DIAS_PRA_NORMAL} dias de histórico não é "normal" — não pergunta`, () => {
+    const r = avaliarSanidade([{ produto: 'XIS COMPLETO', quantidade: 300 }], [{ produto: 'Xis Completo', mediaDiaria: 1, dias: MIN_DIAS_PRA_NORMAL - 1 }], 700)
+    expect(r.suspeitas).toEqual([])
+  })
+  it('⛔ o gêmeo pequeno NÃO esmaga o principal mesmo com dias suficientes (a última grafia nunca vence)', () => {
+    const hist = [{ produto: 'XIS COMPLETO', mediaDiaria: 36, dias: 13 }, { produto: 'Xis Completo', mediaDiaria: 1, dias: MIN_DIAS_PRA_NORMAL }]
+    expect(avaliarSanidade([{ produto: 'XIS COMPLETO', quantidade: 88 }], hist, 700).suspeitas).toEqual([])
+  })
+  it('com dias suficientes, o salto de verdade ainda acende', () => {
+    const r = avaliarSanidade([{ produto: 'Xis Completo', quantidade: 600 }], HIST_DOMINGO, 700)
+    expect(r.suspeitas[0]?.produto).toBe('Xis Completo')
   })
 })

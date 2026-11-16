@@ -6476,3 +6476,24 @@ escreve "Pinos no <script>" no próprio comentário). Migration CREATE-only `202
 - **Decisões medidas:** GET das Rotinas = `stock.view` (a casa manda "ler é ler"; escrita = `stock.manage`); Ao vivo
   ganhou as rotinas atrasadas fora da mão de alguém (âmbar) dentro do bloco "Na mão agora"; "dias da semana" é tipo
   `dias` (a lei só desenhou o `<select>`). Replantios: 10/10.
+
+## ⭐⭐ CURA DO DIA PARADO + TRAVA QUE GRITA + GUARDA DIÁRIA DA BAIXA (16/11/2026)
+Laudo de 16/11: 15/11 caiu na trava ("XIS COMPLETO: 88 num dia — o normal é 1") e foi gravado PELA METADE
+(import + linhas, ZERO baixa de produto: 114 produtos, 759 un, R$ 5.701 = 89% do buraco de 14 dias).
+- **O "1", medido:** a sanidade indexava o histórico por `trim().toUpperCase()` e o Map ficava com a ÚLTIMA
+  grafia — `Xis Completo` (2 linhas, 1 un) esmagou `XIS COMPLETO` (13 dias, média 36); `XIS - COMPLETO`
+  (365 un) nem entrava. E a janela não tinha teto (o próprio dia, num reprocesso, entrava na régua).
+  **Regra nova:** chave `canonicoDaGrafia` (gêmeos SOMAM, no histórico e no dia), dias DISTINTOS, janela de
+  14 dias ESTRITAMENTE ANTES do dia julgado, import ESTORNADO fora, `MIN_DIAS_PRA_NORMAL = 5`.
+- **Meio-estado impossível:** `gravarDiaDaApiSemBaixa` REMOVIDA. Dia na trava → `AGUARDANDO_DONO` com
+  `importId` null (reentrega: o import anterior intacto); laço/fechar/decisão não andam os sabores dele;
+  portão da contagem TRANCA; Ao vivo diz "dia parado · contagem trancada".
+- **Grita:** aviso vermelho `SUIT_DIA_PARADO` + `FaixaDiaParado` (dashboard, Painel da produção, central e
+  ao vivo) com "confirmar" (`POST …/vendas/suit/dia-parado` → `responderDiaParado`, materializa o dia
+  inteiro com o confirma do dono) e "revisar" (Lucro por setor do dia).
+- **Guarda da baixa** (`lib/stock/vendas/guarda-da-baixa.ts`): roda no laço junto da guarda da Suit (1×/dia);
+  vendido (planos de produto+complemento com mapa/ficha de agora) × razão (BAIXA_VENDA − estornos) →
+  aviso `BAIXA_FURADA` com a lista e R$; `VENDA_SEM_VINCULO` com os nomes. Só lê e avisa.
+- **Fase 1** (`scripts/destravar-dia-parado.ts`, lib `destravar-dia-parado.ts`): item com AJUSTE_* desde
+  D 06:00 = coberto (não baixa); o resto baixa datado em D no recibo do dia; dia → `RESOLVIDO_PELA_CONTAGEM`.
+Replantios 9/9.

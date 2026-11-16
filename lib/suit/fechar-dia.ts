@@ -18,7 +18,7 @@ export class FechandoAgoraError extends Error {
   constructor() { super('O dia já está sendo fechado — espere um instante.'); this.name = 'FechandoAgoraError' }
 }
 
-export interface Carimbo { dia: string; hora: string; por: 'dono' | 'automatico'; jaEstava: boolean; produtos?: ResultadoMaterializacao; sabores?: ResultadoComplementos | { status: 'XLS' } }
+export interface Carimbo { dia: string; hora: string; por: 'dono' | 'automatico'; jaEstava: boolean; produtos?: ResultadoMaterializacao; sabores?: ResultadoComplementos | { status: 'XLS' } | { status: 'RETIDO' } }
 
 export async function fecharDiaNaMao(db: PrismaClient, cliente: ClienteSuitLeitura, companyId: string, agora: Date, trava: string): Promise<Carimbo> {
   const dia = diaOperacional(relogioDaApi(agora))
@@ -37,7 +37,9 @@ export async function fecharDiaNaMao(db: PrismaClient, cliente: ClienteSuitLeitu
     const produtos = await materializarDia(db, companyId, dia, agora, { fechadoNaMao: true })
     let sabores: Carimbo['sabores']
     const g = await complementosGravados(db, companyId, dia)
-    if (dia >= CORTE_COMPLEMENTOS && !g.linhas.length && !g.temArquivo) sabores = await materializarComplementosDia(db, companyId, dia, agora, { fechadoNaMao: true })
+    // ⛔ (16/11) dia parado na trava: os sabores ficam retidos com os produtos até a resposta
+    if (produtos.status === 'AGUARDANDO_DONO') sabores = { status: 'RETIDO' }
+    else if (dia >= CORTE_COMPLEMENTOS && !g.linhas.length && !g.temArquivo) sabores = await materializarComplementosDia(db, companyId, dia, agora, { fechadoNaMao: true })
     else sabores = { status: 'XLS' }
     return carimbo(false, { produtos, sabores })
   } finally {

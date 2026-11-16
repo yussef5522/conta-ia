@@ -13,6 +13,7 @@
 // ⭐ A tela usa a ÁREA ÚTIL do app (sem teto de largura herdado do mock) e a grade vira 2ª linha
 // com rótulo no celular (S18). O CSS é o da lei, com os hex trocados pelos tokens `--prod-*`.
 
+import { FaixaDiaParado } from '@/components/estoque/faixa-dia-parado'
 import { CHIPS_DA_PRODUCAO } from '@/components/estoque/producao-telas'
 import { useEffect, useState, use } from 'react'
 import { Loader2 } from 'lucide-react'
@@ -126,6 +127,8 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
 
       {/* ⭐ 1. TOPO — só o título. ⛔ Nada escrito solto embaixo; nenhum botão de criar aqui. */}
       <div className="pp-topo"><h1 className="pp-h1">Produção</h1></div>
+      {/* ⭐ (16/11) dia de vendas parado na trava: o estoque da cozinha depende da resposta */}
+      <FaixaDiaParado empresaId={id} />
 
       {/* ⭐ 2. CHIPS — os 5 da lei R1 (13/11): Painel · Ao vivo · Desempenho · Receitas · Equipe. Nenhum aceso
           aqui (quem diz onde estou é o título, lei v9); o CSV é ferramenta: tracejado. */}

@@ -15,7 +15,7 @@ export interface EstadoSuitDTO {
 
 const brl = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDia = (d: string) => d.split('-').reverse().slice(0, 2).join('/')
-const ROTULO: Record<string, string> = { MATERIALIZADO: 'entrou', AGUARDANDO_DONO: 'esperando você', XLS_POR_CIMA: 'trocado pelo arquivo' }
+const ROTULO: Record<string, string> = { MATERIALIZADO: 'entrou', AGUARDANDO_DONO: 'parado esperando você', XLS_POR_CIMA: 'trocado pelo arquivo', RESOLVIDO_PELA_CONTAGEM: 'resolvido pela contagem' }
 
 export function FaixaDaSuit({ id }: { id: string }) {
   const [e, setE] = useState<EstadoSuitDTO | null>(null)

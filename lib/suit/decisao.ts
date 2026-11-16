@@ -17,7 +17,8 @@ export async function decidirDia(db: PrismaClient, companyId: string, dia: strin
   if (pend.length === 0) return { eventos: 0, reentrega: null }
   const reentrega = decisao === 'ATUALIZAR' ? await materializarDia(db, companyId, dia, agora, { reentregar: true }) : null
   // os SABORES do dia acompanham (só se o dia deles veio da Suit — dia de XLS nunca reprocessa)
-  if (decisao === 'ATUALIZAR' && dia >= CORTE_COMPLEMENTOS) await materializarComplementosDia(db, companyId, dia, agora, { reentregar: true, fechadoNaMao: true })
+  // ⛔ (16/11) se a reentrega caiu na trava, o dia fica retido inteiro — os sabores não andam sozinhos
+  if (decisao === 'ATUALIZAR' && dia >= CORTE_COMPLEMENTOS && reentrega?.status !== 'AGUARDANDO_DONO') await materializarComplementosDia(db, companyId, dia, agora, { reentregar: true, fechadoNaMao: true })
   await db.suitPedidoEvento.updateMany({ where: { id: { in: pend.map((p) => p.id) } }, data: { decisao, decididoEm: agora, decididoPorId: userId } })
   await avisarEventos(db, companyId)
   return { eventos: pend.length, reentrega }

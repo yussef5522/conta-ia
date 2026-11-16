@@ -4,6 +4,8 @@
 //      COMPLETO do dia + lançamentos → materializarDia (a esteira de sempre)
 //   3. GUARDA: a partir das 07:00 BRT, uma vez por dia, pra D-1 (dentro do MESMO processo — a
 //      guarda e o sync escrevem o mesmo espelho; juntos no mesmo laço, nunca disputam)
+import { STATUS_PARADO } from './dia-parado'
+import { guardarBaixaDoDia, type ConferenciaDaBaixa } from '../stock/vendas/guarda-da-baixa'
 import type { PrismaClient } from '@prisma/client'
 import type { ClienteSuitLeitura } from './cliente-leitura'
 import { sincronizarJanela, sincronizarLancamentos, relogioDaApi, janelaOperacional, type RelatorioSync } from './sync'
@@ -24,6 +26,8 @@ export interface Ciclo {
   /** os COMPLEMENTOS do dia (sabores/bordas/adicionais) — mesma hora, mesma esteira de sempre */
   complementos: Array<{ dia: string; resultado: ResultadoComplementos | { status: 'ERRO'; erro: string } }>
   guarda: ResultadoGuarda | null
+  /** ⭐ (16/11) a guarda da BAIXA do mesmo dia da guarda: vendido × baixado, item a item, + sem vínculo */
+  baixa: ConferenciaDaBaixa | null
 }
 
 export function diaDeHoje(agora: Date): string {
@@ -73,6 +77,9 @@ export async function cicloDoLaco(
   const inicioC = [CORTE_COMPLEMENTOS, somarDias(hoje, -DIAS_DE_RECUPERACAO)].sort().at(-1)!
   for (let dia = inicioC; dia < hoje; dia = somarDias(dia, 1)) {
     if (agora.getTime() < fechamentoDe(dia).getTime()) continue
+    // ⛔ (16/11) dia PARADO na trava fica INTEIRO retido — os sabores esperam a resposta do dono junto
+    const pm = await db.suitDiaMaterializado.findUnique({ where: { companyId_dia: { companyId, dia } }, select: { status: true } })
+    if (pm?.status === STATUS_PARADO) continue
     const g = await complementosGravados(db, companyId, dia)
     if (g.daApi) continue
     if (g.linhas.length > 0 || g.temArquivo) { complementos.push({ dia, resultado: { status: 'ERRO', erro: nomeDoErro(new ComplementosJaTemXlsError(dia)) } }); continue }
@@ -102,5 +109,11 @@ export async function cicloDoLaco(
   } else if (!guarda) {
     await avisarEventos(db, companyId)
   }
-  return { vivo, fechados, complementos, guarda }
+  // ⭐⭐ (16/11) A GUARDA DA BAIXA — roda UMA vez por dia, junto da guarda da Suit (o state de lá é a
+  // marca de "já feita"), depois da materialização de produtos E complementos. Só lê e avisa.
+  let baixa: ConferenciaDaBaixa | null = null
+  if (guarda) {
+    try { baixa = await guardarBaixaDoDia(companyId, guarda.dia, db) } catch (e) { baixa = null; console.error(`[laço] guarda da baixa ${guarda.dia} falhou: ${nomeDoErro(e)}`) }
+  }
+  return { vivo, fechados, complementos, guarda, baixa }
 }

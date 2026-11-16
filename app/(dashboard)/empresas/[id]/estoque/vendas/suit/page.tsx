@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState, use } from 'react'
 import Link from 'next/link'
 import type { AoVivoDTO, PedidoDTO } from '@/lib/suit/ao-vivo'
+import { FaixaDiaParado } from '@/components/estoque/faixa-dia-parado'
 
 type Evento = { id: string; dia: string; tipo: string; pedido: string; hora: string | null; totalCent: number; deltaCent: number }
 type EstadoSuit = { eventos: Evento[] }
@@ -96,7 +97,10 @@ export default function VendasAoVivoPage({ params }: { params: Promise<{ id: str
         </h1>
         <span>
           {d && (d.fechado
-            ? <span className="fechado" data-testid="carimbo-dia">✓ dia fechado às {d.fechado.hora} · {d.fechado.por === 'dono' ? 'por você' : 'automático 03:10'} · contagem liberada</span>
+            ? d.fechado.parado
+              /* ⛔ (16/11) o dia caiu na trava: nada entrou no estoque e a contagem está trancada */
+              ? <span className="fechado parado" data-testid="carimbo-dia">⚠ dia parado esperando sua resposta · contagem trancada</span>
+              : <span className="fechado" data-testid="carimbo-dia">✓ dia fechado às {d.fechado.hora} · {d.fechado.por === 'dono' ? 'por você' : 'automático 03:10'} · contagem liberada</span>
             : <button type="button" className="fechar" data-testid="fechar-o-dia" disabled={fechando} onClick={() => void fecharDia()}>{fechando ? 'Fechando…' : 'Fechar o dia'}</button>)}
           <button type="button" className="i" aria-label="explicação" onClick={() => setPopFechar((v) => !v)}>i</button>
         </span>
@@ -104,6 +108,7 @@ export default function VendasAoVivoPage({ params }: { params: Promise<{ id: str
       {popFechar && <span className="pop">fechou o caixa na Suit, fecha aqui: o sistema puxa o dia inteiro agora (produtos e sabores), dá as baixas no estoque e libera a contagem · sem clicar, fecha sozinho às 03:10 · a guarda re-confere às 03:10 e avisa se algum pedido mudar, sumir ou chegar depois</span>}
       <Link href={`/empresas/${id}/estoque/vendas`} className="central">central de vendas ›</Link>
       {erro && <div className="alerta">{erro}</div>}
+      <FaixaDiaParado empresaId={id} />
 
       {diasComEvento.map((dia) => {
         const evs = eventos.filter((e) => e.dia === dia)
@@ -266,6 +271,7 @@ const CSS = `
 .vv .fechar{font-size:12.5px;font-weight:800;background:var(--acao);color:var(--prod-acao-ink);border:0;border-radius:var(--r-pilula);padding:9px 18px;cursor:pointer;box-shadow:var(--sombra)}
 .vv .fechar:hover{background:var(--acao-quente)} .vv .fechar:disabled{opacity:.6;cursor:wait}
 .vv .fechado{font-size:11.5px;font-weight:800;color:var(--verde-tinta);background:var(--verde-50);border-radius:var(--r-pilula);padding:6px 13px;display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.vv .fechado.parado{color:var(--coral-tinta);background:var(--coral-50)}
 .vv .vivo{font-size:11px;font-weight:800;color:var(--verde-tinta);background:var(--verde-50);border-radius:var(--r-pilula);padding:4px 11px;display:inline-flex;align-items:center;gap:6px}
 .vv .vivo .dot{width:7px;height:7px;border-radius:50%;background:var(--verde);animation:vvpulsa 2s infinite}
 @keyframes vvpulsa{50%{opacity:.35}}
