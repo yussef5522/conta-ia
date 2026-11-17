@@ -148,16 +148,19 @@ export function BuscaItem({
     setAberto(false)
   }
 
-  const criarItem = async () => {
+  /** ⭐ (16/11) a porta do nome: "já existe X — usar o existente ou criar mesmo assim?" */
+  const [jaExiste, setJaExiste] = useState<{ pergunta: string; item: ItemBusca } | null>(null)
+  const criarItem = async (criarMesmoAssim = false) => {
     if (!termo || criando) return
     setCriando(true)
     try {
       const r = await fetch(`/api/empresas/${companyId}/estoque/itens`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: termo, unidadeControle: novaUnidade }),
+        body: JSON.stringify({ nome: termo, unidadeControle: novaUnidade, perguntar: true, criarMesmoAssim }),
       })
       const j = await r.json().catch(() => null)
-      if (r.ok && j?.item) { onEscolher(j.item); setQ(''); if (!emSerie) setAberto(false) }
+      if (r.status === 409 && j?.code === 'JA_EXISTE') { setJaExiste({ pergunta: j.erro, item: j.existente }); return }
+      if (r.ok && j?.item) { setJaExiste(null); onEscolher(j.item); setQ(''); if (!emSerie) setAberto(false) }
     } finally { setCriando(false) }
   }
 
@@ -247,10 +250,21 @@ export function BuscaItem({
                 className="rounded-md border border-slate-300 px-1.5 py-1 text-xs">
                 <option>UN</option><option>KG</option><option>LT</option><option>CX</option>
               </select>
-              <button type="button" onClick={criarItem} disabled={criando}
+              <button type="button" onClick={() => criarItem()} disabled={criando}
                 className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
                 <Plus className="h-3.5 w-3.5" /> criar
               </button>
+            </div>
+          )}
+          {jaExiste && (
+            <div className="border-t border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="ja-existe">
+              <p className="font-medium">{jaExiste.pergunta}</p>
+              <div className="mt-1.5 flex gap-2">
+                <button type="button" onClick={() => { onEscolher(jaExiste.item); setJaExiste(null); setQ(''); if (!emSerie) setAberto(false) }}
+                  className="rounded-md bg-amber-600 px-2.5 py-1 font-semibold text-white hover:bg-amber-700">usar o existente</button>
+                <button type="button" onClick={() => criarItem(true)} disabled={criando}
+                  className="rounded-md border border-amber-400 bg-white px-2.5 py-1 font-semibold text-amber-800 hover:bg-amber-100">criar mesmo assim</button>
+              </div>
             </div>
           )}
         </div>,

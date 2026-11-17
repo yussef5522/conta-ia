@@ -15,7 +15,7 @@ import { recomputeSaldoCache } from './saldo'
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
 import { garantirFornecedorDoEstoque } from './fornecedores-unificados'
-import { normalizarBusca } from '@/lib/busca-texto'
+import { reguaDoNome } from '@/lib/nomes/regua-do-nome'
 import { seContaFisicamente } from './tipos-ficha'
 
 export class EntradaManualError extends Error {}
@@ -93,7 +93,8 @@ async function recusarNomeQueJaExiste(
   })
   const naPrateleira = doEstoque.filter((i) => seContaFisicamente(i.categoria))
   for (const nome of novos) {
-    const achado = naPrateleira.find((i) => normalizarBusca(i.nome) === normalizarBusca(nome))
+    // ⭐ (16/11) a RÉGUA OFICIAL (pontuação também): "COCA-COLA 2L" e "COCA COLA 2L" são o mesmo
+    const achado = naPrateleira.find((i) => reguaDoNome(i.nome) === reguaDoNome(nome))
     if (achado) {
       throw new EntradaManualError(
         `“${achado.nome}” já existe no estoque — use o seletor pra escolher esse item em vez de ` +
@@ -104,7 +105,7 @@ async function recusarNomeQueJaExiste(
   // ⚠️ e dois "produto novo" com o MESMO nome na mesma nota também não passam
   const vistos = new Set<string>()
   for (const nome of novos) {
-    const k = normalizarBusca(nome)
+    const k = reguaDoNome(nome)
     if (vistos.has(k)) throw new EntradaManualError(`“${nome}” aparece duas vezes como produto novo nesta nota — deixe uma linha só.`)
     vistos.add(k)
   }

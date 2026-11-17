@@ -6497,3 +6497,21 @@ Laudo de 16/11: 15/11 caiu na trava ("XIS COMPLETO: 88 num dia — o normal é 1
 - **Fase 1** (`scripts/destravar-dia-parado.ts`, lib `destravar-dia-parado.ts`): item com AJUSTE_* desde
   D 06:00 = coberto (não baixa); o resto baixa datado em D no recibo do dia; dia → `RESOLVIDO_PELA_CONTAGEM`.
 Replantios 9/9.
+
+## ⭐⭐ GÊMEOS — A RÉGUA ÚNICA, A UNIFICAÇÃO MECÂNICA, A PORTA E A FILA (16/11/2026)
+- **Régua oficial** `lib/nomes/regua-do-nome.ts` (`reguaDoNome`): caixa + acento + pontuação→espaço + espaços.
+  `canonicoDaGrafia` delega; busca (`casaBusca`), entrada manual, ficha, receita-que-existe, renomear, NF e
+  POST /itens passam por ela. `normalizarBusca` FICA (chave gravada do nome de fornecedor). Guard
+  `regua-do-nome-unica` (usos + nenhum `normalize('NFD')` novo fora das 8 legadas nomeadas).
+- **Medido em prod: 13 grupos** com o mesmo nome sob a régua, e a maioria NÃO é gêmeo: 5 são garrafa
+  REVENDA × receita PRODUTO_FINAL de passagem (desenho da casa — fundir faria a ficha consumir o próprio
+  produto); BACON/CALABRESA são MP em KG × SABOR em UN; PIZZA FAMILIA/GRANDE e XIS COMPLETO são DUAS
+  receitas (o `mesclarItens` recusa PF/SABOR — cicatriz da coca). **Mecânicos: ACUCAR e TOMATE** (MP KG).
+- **Porta** `lib/stock/itens/porta-do-nome.ts`: comparável = mesma categoria OU as duas físicas; apelido =
+  `stock_item_nome_anterior`. Automático (NF, revenda do PDV) usa o existente e grava apelido; humano
+  (Novo item, busca-item) recebe 409 "já existe X — usar o existente ou criar mesmo assim?".
+- **Fusão** (`mesclarItens`) agora migra `stock_supplier_produto_nome` (o nome aprendido da nota caía no
+  absorvido) e os apelidos, e prova o SALDO além do valor.
+- **Fila** `fila-de-gemeos.ts` + `stock_item_par_decidido` (migration CREATE-only): parecido = palavras
+  contidas (2+) ou ≤2 letras sem mudar dígito; aviso `GEMEOS_SUSPEITOS` → tela `/estoque/itens/gemeos`.
+Replantios 5/5.

@@ -19,7 +19,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { normalizarBusca } from '@/lib/busca-texto'
+import { reguaDoNome } from '@/lib/nomes/regua-do-nome'
 import { sugerirNomeLimpo, pareceNomeDeNota, type SugestaoDeNome } from './nome-limpo'
 import { seContaFisicamente } from '../tipos-ficha'
 
@@ -137,7 +137,7 @@ export async function renomearEmLote(
   const todosOsNomes = (await db.stockItem.findMany({
     where: { companyId: input.companyId, ativo: true }, select: { id: true, nome: true, categoria: true },
   })).filter((i) => seContaFisicamente(i.categoria))
-  const ocupados = new Map(todosOsNomes.map((i) => [normalizarBusca(i.nome), i.id]))
+  const ocupados = new Map(todosOsNomes.map((i) => [reguaDoNome(i.nome), i.id]))
 
   const aplicados: ResultadoRenomeio['aplicados'] = []
   const pulados: ResultadoRenomeio['pulados'] = []
@@ -148,7 +148,7 @@ export async function renomearEmLote(
       if (!de) { pulados.push({ itemId: p.itemId, motivo: 'item não é desta empresa' }); continue }
       const para = p.nomeNovo.trim()
       if (para === de) { pulados.push({ itemId: p.itemId, motivo: 'nome igual ao atual' }); continue }
-      const dono = ocupados.get(normalizarBusca(para))
+      const dono = ocupados.get(reguaDoNome(para))
       if (dono && dono !== p.itemId) {
         pulados.push({ itemId: p.itemId, motivo: `“${para}” já é o nome de outro item` })
         continue
@@ -160,8 +160,8 @@ export async function renomearEmLote(
         create: { companyId: input.companyId, itemId: p.itemId, nomeAnterior: de, renomeadoPorId: input.userId ?? null },
         update: {},
       })
-      ocupados.set(normalizarBusca(para), p.itemId)
-      ocupados.delete(normalizarBusca(de))
+      ocupados.set(reguaDoNome(para), p.itemId)
+      ocupados.delete(reguaDoNome(de))
       aplicados.push({ itemId: p.itemId, de, para })
     }
   })

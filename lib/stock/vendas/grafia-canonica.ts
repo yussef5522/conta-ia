@@ -23,6 +23,7 @@
 // mesma pergunta divergem no primeiro caso de borda.
 
 import { normalizarNome } from './grupo-complemento'
+import { reguaDoNome } from '@/lib/nomes/regua-do-nome'
 
 /**
  * ⭐⭐ O CANÔNICO DA GRAFIA — a chave do automático, pra COMPLEMENTOS e PRODUTOS (08/11/2026).
@@ -42,10 +43,9 @@ import { normalizarNome } from './grupo-complemento'
  * ⛔ `normalizarNome` NÃO mudou: ele serve ao cardápio de sabores e à busca. Quem pergunta
  * "estas duas grafias são o mesmo item?" usa ESTA função, e é uma só.
  */
+/** ⭐ (16/11) a régua OFICIAL mora em `lib/nomes/regua-do-nome.ts` — este nome segue por compatibilidade */
 export function canonicoDaGrafia(n: string): string {
-  const base = normalizarNome(n)
-  const k = base.replace(/[^A-Z0-9]+/g, ' ').trim()
-  return k || base
+  return reguaDoNome(n)
 }
 
 export interface GrafiaPendente {

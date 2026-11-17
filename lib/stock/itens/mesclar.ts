@@ -195,6 +195,22 @@ export async function mesclarItens(
       else { await tx.stockSupplierProduct.update({ where: { id: mp.id }, data: { itemId: sobreviventeId } }); mapasMigrados++ }
     }
 
+    // ⭐⭐ (16/11) o MAPA POR NOME da nota (xProd normalizado → item) também migra — sem isto a próxima
+    // nota do fornecedor, casada pelo nome aprendido, entrava no item ABSORVIDO (inativo, "(mesclado)")
+    await tx.stockSupplierProdutoNome.updateMany({ where: { companyId, itemId: absorvidoId }, data: { itemId: sobreviventeId } })
+    // ⭐ (16/11) os APELIDOS do absorvido viram do sobrevivente, e o nome do absorvido vira apelido — a
+    // grafia velha casa sozinha pra sempre (porta do nome: lib/stock/itens/porta-do-nome.ts)
+    const apelidos = await tx.stockItemNomeAnterior.findMany({ where: { companyId, itemId: absorvidoId } })
+    for (const ap of [...apelidos.map((x) => x.nomeAnterior), previa.absorvido.nome]) {
+      const g = ap.trim()
+      if (!g || g === previa.sobrevivente.nome.trim()) continue
+      await tx.stockItemNomeAnterior.upsert({
+        where: { companyId_itemId_nomeAnterior: { companyId, itemId: sobreviventeId, nomeAnterior: g } },
+        create: { companyId, itemId: sobreviventeId, nomeAnterior: g, renomeadoPorId: input.userId ?? null },
+        update: {},
+      })
+    }
+
     const vendas = await tx.stockVendaProdutoMap.updateMany({
       where: { companyId, itemId: absorvidoId }, data: { itemId: sobreviventeId },
     })
@@ -232,6 +248,13 @@ export async function mesclarItens(
   const depoisS = await saldoItem(db, companyId, sobreviventeId)
   const depoisA = await saldoItem(db, companyId, absorvidoId)
 
+  // ⭐ (16/11) e o SALDO: o somado antes é o do sobrevivente depois (o absorvido fica zerado)
+  // ⚠️ a soma BRUTA (3 casas, KG) — o `antes.saldo` é arredondado a 2 e daria falso vermelho em 91,804
+  const r3 = (n: number) => Math.round(n * 1000) / 1000
+  const saldoAntes = r3(previa.sobrevivente.saldo + previa.absorvido.saldo)
+  if (r3(depoisS.saldo) !== saldoAntes || r3(depoisA.saldo) !== 0) {
+    throw new MesclarError(`INVARIANTE VIOLADA: saldo somado antes ${saldoAntes}, sobrevivente depois ${depoisS.saldo}, absorvido ${depoisA.saldo}.`)
+  }
   // ⭐ A PROVA EM RUNTIME, não a promessa: o valor total tem que ser o mesmo ao centavo.
   if (Math.abs(round2(depoisS.valor + depoisA.valor) - antes.valor) > 0.01) {
     throw new MesclarError(

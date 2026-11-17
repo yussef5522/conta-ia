@@ -25,7 +25,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { normalizarBusca } from '@/lib/busca-texto'
+import { reguaDoNome } from '@/lib/nomes/regua-do-nome'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -48,7 +48,7 @@ export interface FichaInativaHomonima {
 export async function fichaInativaComNome(
   companyId: string, nome: string, db: Db = defaultPrisma,
 ): Promise<FichaInativaHomonima | null> {
-  const alvo = normalizarBusca(nome)
+  const alvo = reguaDoNome(nome)
   if (!alvo) return null
   const fichas = await db.stockFicha.findMany({ where: { companyId, ativo: false }, select: { id: true, itemProduzidoId: true } })
   if (!fichas.length) return null
@@ -59,7 +59,7 @@ export async function fichaInativaComNome(
   const porItem = new Map(itens.map((i) => [i.id, i.nome]))
   for (const f of fichas) {
     const n = porItem.get(f.itemProduzidoId)
-    if (n && normalizarBusca(n) === alvo) {
+    if (n && reguaDoNome(n) === alvo) {
       const lotes = await db.stockProductionOrder.count({ where: { companyId, fichaId: f.id } })
       return { fichaId: f.id, itemProduzidoId: f.itemProduzidoId, nome: n, lotes, ativo: false }
     }

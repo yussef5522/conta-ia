@@ -19,6 +19,8 @@
 // Postgres (`unaccent`) nem de coluna normalizada — que o isolamento do estoque proibiria
 // (migrations de stock_ são CREATE-only).
 
+import { reguaDoNome } from '@/lib/nomes/regua-do-nome'
+
 /** minúsculas + sem acento + espaços colapsados. "Pão  Fatiado" → "pao fatiado" */
 export function normalizarBusca(s: string): string {
   return (s ?? '')
@@ -38,9 +40,12 @@ export function normalizarBusca(s: string): string {
  * nota, não dele.
  */
 export function casaBusca(texto: string, termo: string): boolean {
-  const t = normalizarBusca(termo)
-  if (t === '') return true // busca vazia mostra tudo
-  const alvo = normalizarBusca(texto)
+  if (normalizarBusca(termo) === '') return true // busca vazia mostra tudo
+  // ⭐ (16/11) a régua OFICIAL do nome dos dois lados: pontuação vira espaço — "coca cola" acha
+  // "COCA-COLA 2L", "pizza grande 35" acha "Pizza Grande (35cm)". (`normalizarBusca` segue existindo:
+  // ela é chave GRAVADA dos nomes de fornecedor, e mudá-la desligaria os mapas aprendidos.)
+  const t = reguaDoNome(termo)
+  const alvo = reguaDoNome(texto)
   return t.split(' ').every((palavra) => alvo.includes(palavra))
 }
 

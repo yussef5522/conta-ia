@@ -12,7 +12,7 @@ import { ehTipoDeFicha, seContaFisicamente, type TipoFicha } from '@/lib/stock/t
 import { detectaCicloFicha, type GrafoFichas } from './ciclo'
 import { calcularCustoTeorico, calcularMargem, type ComponenteCusto } from './custo-teorico'
 import { custoMedioPorItem } from '../saldo'
-import { normalizarBusca } from '@/lib/busca-texto'
+import { reguaDoNome } from '@/lib/nomes/regua-do-nome'
 import { rendimentoMedidoDeFichas } from './conclusao'
 import { avaliarCoerenciaDoLote, avaliarCoerenciaDoRotulo, fichaDeclaraRendimento } from './coerencia-do-lote'
 import { principaisDaEmpresa } from './receita-principal'
@@ -295,12 +295,13 @@ export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defa
 export async function itemDeEstoqueComMesmoNome(
   companyId: string, nome: string, db: Db = defaultPrisma,
 ): Promise<{ id: string; nome: string; unidadeControle: string; saldo: number; temNota: boolean } | null> {
-  const alvo = normalizarBusca(nome)
+  // ⭐ (16/11) a RÉGUA OFICIAL do nome (lib/nomes/regua-do-nome.ts)
+  const alvo = reguaDoNome(nome)
   const itens = await db.stockItem.findMany({
     where: { companyId, ativo: true },
     select: { id: true, nome: true, categoria: true, unidadeControle: true },
   })
-  const achado = itens.find((i) => seContaFisicamente(i.categoria) && normalizarBusca(i.nome) === alvo)
+  const achado = itens.find((i) => seContaFisicamente(i.categoria) && reguaDoNome(i.nome) === alvo)
   if (!achado) return null
   const [agg, nf] = await Promise.all([
     db.stockMovement.aggregate({ where: { companyId, itemId: achado.id, tipo: { not: 'PRODUCAO_CONSUMO' } }, _sum: { quantidade: true } }),
@@ -317,7 +318,7 @@ export async function itemDeEstoqueComMesmoNome(
 export async function fichaAtivaComNome(
   companyId: string, nome: string, db: Db = defaultPrisma,
 ): Promise<{ fichaId: string; nome: string } | null> {
-  const alvo = normalizarBusca(nome)
+  const alvo = reguaDoNome(nome)
   if (!alvo) return null
   const fichas = await db.stockFicha.findMany({
     where: { companyId, ativo: true },
@@ -331,7 +332,7 @@ export async function fichaAtivaComNome(
   const porItem = new Map(itens.map((i) => [i.id, i.nome]))
   for (const f of fichas) {
     const n = porItem.get(f.itemProduzidoId)
-    if (n && normalizarBusca(n) === alvo) return { fichaId: f.id, nome: n }
+    if (n && reguaDoNome(n) === alvo) return { fichaId: f.id, nome: n }
   }
   return null
 }

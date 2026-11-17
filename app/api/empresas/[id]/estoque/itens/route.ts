@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
+import { itemComMesmoNome, registrarApelido, perguntaJaExiste } from '@/lib/stock/itens/porta-do-nome'
 import { custoMedioPorItem } from '@/lib/stock/saldo'
 import { filtrarPorBusca } from '@/lib/busca-texto'
 import { involucrosPassaDireto } from '@/lib/stock/passa-direto-de-revenda'
@@ -139,6 +140,10 @@ const criarSchema = z.object({
   categoria: z.enum(['MATERIA_PRIMA', 'REVENDA', 'EMBALAGEM', 'LIMPEZA', 'USO_INTERNO']).default('MATERIA_PRIMA'),
   estoqueMin: z.number().nonnegative().nullable().optional(),
   estoqueMax: z.number().positive().nullable().optional(),
+  /** ⭐ (16/11) caminho HUMANO: se já existe igual sob a régua, PERGUNTA (409) em vez de usar sozinho */
+  perguntar: z.boolean().optional(),
+  /** ⭐ a resposta "criar mesmo assim" do dono à pergunta acima */
+  criarMesmoAssim: z.boolean().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -150,9 +155,18 @@ export async function POST(request: NextRequest, { params }: Params) {
   const nome = parsed.data.nome.trim()
   const { estoqueMin, estoqueMax } = parsed.data
   if (estoqueMin != null && estoqueMax != null && estoqueMin >= estoqueMax) return NextResponse.json({ erro: 'O mínimo tem que ser menor que o máximo.' }, { status: 400 })
-  // se já existe um item com o mesmo nome, devolve ele (não duplica)
-  const existente = await prisma.stockItem.findFirst({ where: { companyId, nome }, select: { id: true, nome: true, unidadeControle: true, custoMedio: true, categoria: true } })
-  if (existente) return NextResponse.json({ item: existente, jaExistia: true })
+  // ⭐⭐ (16/11) A PORTA DO NOME: já existe igual sob a RÉGUA OFICIAL (nome ou apelido, mesma prateleira)?
+  // Caminho humano (`perguntar`) → 409 com a pergunta; caminho automático → usa o existente e a grafia
+  // nova vira apelido. Antes era `findFirst({ nome })` exato: "tomate" passava ao lado de "TOMATE".
+  if (!parsed.data.criarMesmoAssim) {
+    const gemeo = await itemComMesmoNome(prisma, companyId, nome, parsed.data.categoria)
+    if (gemeo) {
+      const item = await prisma.stockItem.findUniqueOrThrow({ where: { id: gemeo.id }, select: { id: true, nome: true, unidadeControle: true, custoMedio: true, categoria: true } })
+      if (parsed.data.perguntar) return NextResponse.json({ erro: perguntaJaExiste(gemeo), code: 'JA_EXISTE', existente: item }, { status: 409 })
+      await registrarApelido(prisma, companyId, gemeo.id, nome, a.user!.sub)
+      return NextResponse.json({ item, jaExistia: true })
+    }
+  }
   // nasce SEM custo (custoMedio null → "a definir") e SEM movimento — o custo vem da 1ª nota
   const item = await prisma.stockItem.create({
     data: { companyId, nome, unidadeControle: parsed.data.unidadeControle, categoria: parsed.data.categoria, estoqueMin: estoqueMin ?? null, estoqueMax: estoqueMax ?? null, criadoVia: 'MANUAL', criadoPorId: a.user!.sub },

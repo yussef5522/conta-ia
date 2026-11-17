@@ -5915,3 +5915,22 @@ model StockFichaExcluida {
   @@index([companyId])
   @@map("stock_ficha_excluida")
 }
+
+// ⭐⭐ A DECISÃO DO DONO SOBRE UM PAR DE ITENS PARECIDOS (16/11/2026) — a fila de casamento assistido.
+// "são diferentes" grava aqui e o par NUNCA mais é sugerido; "juntar" funde (mesclarItens, com prova de
+// saldo) e grava JUNTADOS. ⛔ A máquina nunca funde por semelhança: só a linha com autor faz isso.
+// Par ORDENADO (itemAId < itemBId, CHECK no banco): o mesmo par não vira duas linhas.
+model StockItemParDecidido {
+  id            String   @id @default(cuid())
+  companyId     String
+  itemAId       String
+  itemBId       String
+  /// DIFERENTES | JUNTADOS (CHECK chk_stock_item_par_decisao)
+  decisao       String
+  decididoPorId String
+  decididoEm    DateTime @default(now())
+
+  @@unique([companyId, itemAId, itemBId])
+  @@index([companyId])
+  @@map("stock_item_par_decidido")
+}

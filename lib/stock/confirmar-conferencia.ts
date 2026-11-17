@@ -8,6 +8,8 @@
 // Depois (fora da transação): recomputa saldo + envia Confirmação 210200 à SEFAZ.
 // Isolado: só escreve stock_*. Idempotente: nota já confirmada não duplica.
 
+import { reguaDoNome } from '@/lib/nomes/regua-do-nome'
+import { itemComMesmoNome, registrarApelido } from './itens/porta-do-nome'
 import type { PrismaClient } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { normalizarBusca } from '@/lib/busca-texto'
@@ -254,7 +256,9 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
     // Agora um nome só vira UM item, mesmo repetido na nota (as duas linhas viram dois
     // MOVIMENTOS no mesmo item, que é o certo: o saldo soma).
     const criadosNestaNota = new Map<string, string>() // nome normalizado → itemId
-    const chaveNome = (n: string) => n.trim().toLowerCase().replace(/\s+/g, ' ')
+    // ⭐ (16/11) a RÉGUA OFICIAL do nome — antes `trim().toLowerCase()`, que deixava "COCA-COLA 2L" e
+    // "COCA COLA 2L" virarem dois itens na mesma nota
+    const chaveNome = (n: string) => reguaDoNome(n)
     // ⛔ `paraEstoque`, nunca `input.itens`: ver a separação das listas acima
     for (const it of paraEstoque) {
       let itemId = it.mapeado.itemId
@@ -263,11 +267,14 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
         const jaCriado = criadosNestaNota.get(k)
         // ⚠️ e confere também no CADASTRO: item com o mesmo nome que já existe no catálogo
         // é reusado em vez de duplicado (o dono pode ter criado antes, por outro caminho).
+        // ⭐⭐ (16/11) A PORTA DO NOME — caminho AUTOMÁTICO: igual sob a régua (nome ou apelido, mesma
+        // prateleira) USA o existente, e a grafia da nota vira apelido pra próxima casar sozinha
         const jaNoCatalogo = jaCriado
           ? null
-          : await tx.stockItem.findFirst({ where: { companyId, nome: it.mapeado.nome.trim() }, select: { id: true } })
+          : await itemComMesmoNome(tx, companyId, it.mapeado.nome, it.mapeado.categoria ?? 'USO_INTERNO')
         if (jaCriado || jaNoCatalogo) {
           itemId = jaCriado ?? jaNoCatalogo!.id
+          if (jaNoCatalogo) await registrarApelido(tx, companyId, jaNoCatalogo.id, it.mapeado.nome, userId ?? null)
         } else {
           const novo = await tx.stockItem.create({ data: { companyId, nome: it.mapeado.nome, unidadeControle: it.mapeado.unidadeControle, categoria: it.mapeado.categoria ?? 'USO_INTERNO', criadoVia: 'CONFERENCIA', criadoPorId: userId } })
           itemId = novo.id

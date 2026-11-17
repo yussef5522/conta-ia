@@ -31,6 +31,9 @@ beforeEach(async () => {
   const f = await criarFicha({
     companyId, nomeProduzido: 'COCA COLA 2L', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL',
     loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: garrafaId, qtdPlanejada: 1, unidade: 'UN' }],
+    // ⚠️ (16/11) a ficha de passagem nasce com o MESMO nome da garrafa (sob a régua oficial) — o caminho
+    // real (`ficha-de-revenda.ts`) passa esta mesma permissão; sem ela a porta do nome recusaria
+    permitirItemNovoComNomeDeEstoque: true,
   }, prisma)
   fichaCocaId = f.fichaId
   // o mapa de PRODUTOS (o cardápio) — é ele que já baixava

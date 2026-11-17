@@ -19,6 +19,7 @@ import { produzirAvisosDeImportDeVenda } from './import-de-venda'
 import { produzirAvisosDeConferencia } from './conferencia'
 import { produzirAvisosDeRetalho } from './retalho'
 import { produzirAvisosDeRendimento } from './rendimento'
+import { produzirAvisosDeGemeos } from './gemeos'
 import { montarSemanaVerde } from '../semana-verde'
 import { registrarAviso, avisosAbertos } from '../central'
 
@@ -180,6 +181,8 @@ export async function rodarProdutoresDeAviso(agora: Date = new Date()): Promise<
       r.reabertos += rd.reabertos
       r.resolvidos += rd.resolvidos
       for (const x of rd.recusados) r.recusados.push({ empresa: e.name, ...x })
+      // ⭐ (16/11) a fila de casamento assistido: pares de itens parecidos esperando "juntar" ou "são diferentes"
+      await produzirAvisosDeGemeos(e.id)
       if (await verdeDaSemana(e.id, agora)) r.verdesSemanais++
     } catch (err) {
       // ⛔ uma empresa com problema não derruba a rodada das outras nem o juiz

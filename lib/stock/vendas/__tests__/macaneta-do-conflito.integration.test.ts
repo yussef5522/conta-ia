@@ -52,6 +52,18 @@ async function fichaDe(nome: string, insumo: string, qtd = 1) {
     loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: insumo, qtdPlanejada: qtd, unidade: 'UN' }],
   }, prisma)).fichaId
 }
+/**
+ * ⚠️ (16/11) O ESTADO LEGADO de prod: duas fichas cujos nomes são IGUAIS sob a régua oficial
+ * ("XIS COMPLETO" × "XIS - COMPLETO"). A porta do nome não deixa isso nascer mais por `criarFicha` —
+ * então o fixture cria com um nome provisório e grava a grafia legada direto no item (o que a casa
+ * tinha antes de 16/11). O teste segue provando a maçaneta do conflito sobre o estado que EXISTE.
+ */
+async function fichaLegada(nome: string, insumo: string, qtd = 1) {
+  const fichaId = await fichaDe(`${nome} PROVISORIO ${Math.random().toString(36).slice(2, 8)}`, insumo, qtd)
+  const f = await prisma.stockFicha.findUniqueOrThrow({ where: { id: fichaId }, select: { itemProduzidoId: true } })
+  await prisma.stockItem.update({ where: { id: f.itemProduzidoId }, data: { nome } })
+  return fichaId
+}
 
 const req = (url: string, init?: ConstructorParameters<typeof NextRequest>[1]) => new NextRequest(`http://teste.local${url}`, init)
 const ctx = () => ({ params: Promise.resolve({ id: companyId }) })
@@ -76,10 +88,10 @@ beforeAll(async () => {
     ],
   })
   f.xisA = await fichaDe('XIS COMPLETO', insumo, 1)
-  f.xisB = await fichaDe('XIS - COMPLETO', insumo, 2)
+  f.xisB = await fichaLegada('XIS - COMPLETO', insumo, 2)
   f.lasanha = await fichaDe('LASANHA DE CARNE', insumo)
   f.pizzaA = await fichaDe('PIZZA GRANDE 35CM', insumo)
-  f.pizzaB = await fichaDe('Pizza Grande (35cm)', insumo)
+  f.pizzaB = await fichaLegada('Pizza Grande (35cm)', insumo)
   await prisma.stockVendaProdutoMap.createMany({
     data: [
       { companyId, nomeSuitable: 'XIS COMPLETO', alvoTipo: 'FICHA', fichaId: f.xisA },

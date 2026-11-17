@@ -288,15 +288,19 @@ function NovoItem({ id, onCriado, onFechar }: { id: string; onCriado: () => void
   const [max, setMax] = useState('')
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  /** ⭐ (16/11) a porta do nome perguntou: já existe igual sob a régua */
+  const [jaExiste, setJaExiste] = useState<{ pergunta: string; nome: string } | null>(null)
 
-  const criar = async () => {
+  const criar = async (criarMesmoAssim = false) => {
     setErro(null)
     if (!nome.trim()) return setErro('Dê um nome ao item.')
     setBusy(true)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/itens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: nome.trim(), unidadeControle: unidade, categoria, estoqueMin: parseNum(min), estoqueMax: parseNum(max) }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/itens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: nome.trim(), unidadeControle: unidade, categoria, estoqueMin: parseNum(min), estoqueMax: parseNum(max), perguntar: true, criarMesmoAssim }) })
       const j = await r.json().catch(() => null)
+      if (r.status === 409 && j?.code === 'JA_EXISTE') { setJaExiste({ pergunta: j.erro, nome: j.existente.nome }); return }
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui criar.'); return }
+      setJaExiste(null)
       onCriado()
     } catch { setErro('Falha de conexão.') } finally { setBusy(false) }
   }
@@ -315,7 +319,16 @@ function NovoItem({ id, onCriado, onFechar }: { id: string; onCriado: () => void
       </div>
       <p className="text-[11px] text-slate-400">Nasce com saldo 0 e custo "a definir" — o custo vem quando a 1ª nota entrar (ou na contagem). Produto que você FAZ é criado como ficha, não aqui.</p>
       {erro && <p className="text-sm text-rose-600">{erro}</p>}
-      <button onClick={criar} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Criar item</button>
+      {jaExiste && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="ja-existe">
+          <p className="font-medium">{jaExiste.pergunta}</p>
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={() => { setJaExiste(null); onFechar() }} className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">usar o existente</button>
+            <button type="button" onClick={() => criar(true)} disabled={busy} className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100">criar mesmo assim</button>
+          </div>
+        </div>
+      )}
+      <button onClick={() => criar()} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Criar item</button>
     </CardContent></Card>
   )
 }
