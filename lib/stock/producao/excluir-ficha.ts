@@ -179,6 +179,14 @@ export async function excluirFicha(
     await tx.stockVendaProdutoMap.deleteMany({ where: { companyId, fichaId } })
     await tx.stockVendaComplementoMap.deleteMany({ where: { companyId, fichaId } })
     await tx.stockVendaGrafiaAgrupada.deleteMany({ where: { companyId, fichaId } })
+    /**
+     * ⚠️ (17/11) as tabelas de DECLARAÇÃO da receita (dose a declarar, base do tamanho, retalho) moram pela identidade `fichaId` — sem apagar junto, sobrava linha órfã que ninguém lê
+     * (achado nas pizzas gêmeas: `stock_dose_a_declarar` da ficha excluída). ⛔ A estrela
+     * (`stock_receita_principal`) NÃO: só a porta única escreve nela (guard `receitas-busca-e-principais`).
+     */
+    await tx.stockDoseADeclarar.deleteMany({ where: { companyId, fichaId } })
+    await tx.stockBaseDoTamanho.deleteMany({ where: { companyId, fichaId } })
+    await tx.stockFichaRetalho.deleteMany({ where: { companyId, fichaId } })
     await tx.stockFicha.delete({ where: { id: fichaId } })
 
     /**
