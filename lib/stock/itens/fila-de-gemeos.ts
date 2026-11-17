@@ -7,8 +7,9 @@
 // ⭐ O "PARECIDO" (régua determinística, sobre a chave de `reguaDoNome`, mesma unidade e prateleira):
 //   · as palavras de um estão TODAS no outro e o menor tem 2+ palavras ("MAIONESE CASEIRA" ⊂
 //     "MAIONESE CASEIRA COM ALHO") — 1 palavra só ("QUEIJO") casaria metade do catálogo;
-//   · ou a chave difere em até 2 letras (chaves de 6+), sem diferir em DÍGITO — "COCACOLA 2L" ×
-//     "COCA COLA 2L" é parecido; "FANTA LARANJA 2L" × "FANTA LARANJA 1L" NÃO é (tamanho é outro produto).
+//   · ou só o ESPAÇO difere ("COCACOLA 2L" × "COCA COLA 2L");
+//   · ou UMA palavra longa (4+ letras) tem erro de digitação (≤2 letras), sem mudar dígito — "MUSSARELA" ×
+//     "MUSSARELLA". ⛔ Palavra curta trocada é outro produto (SEM/COM, P/M/G/GG); 1L × 2L também.
 // Receita de venda (PRODUTO_FINAL/SABOR) fica fora: ela não se funde por item (`mesclarItens` recusa).
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
@@ -40,7 +41,19 @@ export function saoParecidos(ka: string, kb: string): boolean {
   const ta = ka.split(' '), tb = kb.split(' ')
   const [menor, maior] = ta.length <= tb.length ? [ta, tb] : [tb, ta]
   if (menor.length >= 2 && menor.every((t) => maior.includes(t))) return true
-  if (Math.min(ka.length, kb.length) >= 6 && digitos(ka) === digitos(kb) && distancia(ka, kb) <= 2) return true
+  // ⭐ só ESPAÇO de diferença: "COCACOLA 2L" × "COCA COLA 2L"
+  if (ka.replace(/ /g, '') === kb.replace(/ /g, '')) return true
+  // ⭐ ERRO DE DIGITAÇÃO numa palavra LONGA: mesmo nº de palavras, UMA difere, as duas com 4+ letras, até 2
+  // letras de diferença e sem mudar dígito. ⛔ (16/11, medido em prod: 19 pares, a maioria falsa) troca de
+  // palavra CURTA é OUTRO produto — "AGUA SEM GAS" × "AGUA COM GAS", camiseta "TAM G" × "TAM GG",
+  // "caixa frango P" × "M" — e alarme falso repetido é como um alarme morre.
+  if (ta.length === tb.length) {
+    const dif = ta.map((t, i) => [t, tb[i]] as const).filter(([x, y]) => x !== y)
+    if (dif.length === 1) {
+      const [x, y] = dif[0]
+      if (x.length >= 4 && y.length >= 4 && digitos(x) === digitos(y) && distancia(x, y) <= 2) return true
+    }
+  }
   return false
 }
 

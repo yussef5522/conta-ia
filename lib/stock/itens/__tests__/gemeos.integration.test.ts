@@ -100,6 +100,11 @@ describe('4 · a fila de casamento assistido — parecido vira pergunta, nunca f
     expect(saoParecidos('FANTA LARANJA 2L', 'FANTA UVA 2L')).toBe(false)
     expect(saoParecidos('FANTA LARANJA 2L', 'FANTA LARANJA 1L')).toBe(false)
     expect(saoParecidos('QUEIJO', 'QUEIJO MUSSARELA')).toBe(false)
+    expect(saoParecidos('QUEIJO MUSSARELA', 'QUEIJO MUSSARELLA')).toBe(true)
+    // ⛔ os falsos medidos em prod (16/11): palavra CURTA trocada é outro produto
+    expect(saoParecidos('AGUA SEM GAS 500ML', 'AGUA COM GAS 500ML')).toBe(false)
+    expect(saoParecidos('CAMISETAS POLIVISCOSE PRETAS MANGA CURTA TAM G', 'CAMISETAS POLIVISCOSE PRETAS MANGA CURTA TAM GG')).toBe(false)
+    expect(saoParecidos('CAIXA FRANGO P', 'CAIXA FRANGO M')).toBe(false)
   })
 
   it('MAIONESE CASEIRA × COM ALHO: vira sugestão no sininho e NADA se funde sozinho; "são diferentes" cala o par pra sempre', async () => {
