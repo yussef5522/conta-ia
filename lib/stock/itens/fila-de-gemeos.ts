@@ -34,12 +34,17 @@ function distancia(a: string, b: string): number {
   return d[a.length][b.length]
 }
 const digitos = (s: string) => s.replace(/\D/g, '')
+/** palavras que DECLARAM outra versão do produto — nunca o mesmo item */
+const VARIANTES = new Set(['ZERO', 'LIGHT', 'DIET'])
 
 /** ⭐ A RÉGUA DO PARECIDO, pura: duas chaves (já pela régua oficial) — nunca iguais */
 export function saoParecidos(ka: string, kb: string): boolean {
   if (!ka || !kb || ka === kb) return false
   const ta = ka.split(' '), tb = kb.split(' ')
   const [menor, maior] = ta.length <= tb.length ? [ta, tb] : [tb, ta]
+  // ⛔ palavra de VARIANTE declarada separa produtos: "COCA COLA 2L" × "COCA COLA ZERO 2L" (medido em prod)
+  const variante = (xs: string[]) => xs.filter((t) => VARIANTES.has(t)).sort().join(' ')
+  if (variante(ta) !== variante(tb)) return false
   if (menor.length >= 2 && menor.every((t) => maior.includes(t))) return true
   // ⭐ só ESPAÇO de diferença: "COCACOLA 2L" × "COCA COLA 2L"
   if (ka.replace(/ /g, '') === kb.replace(/ /g, '')) return true
@@ -51,7 +56,10 @@ export function saoParecidos(ka: string, kb: string): boolean {
     const dif = ta.map((t, i) => [t, tb[i]] as const).filter(([x, y]) => x !== y)
     if (dif.length === 1) {
       const [x, y] = dif[0]
-      if (x.length >= 4 && y.length >= 4 && digitos(x) === digitos(y) && distancia(x, y) <= 2) return true
+      // ⚠️ tolerância pelo TAMANHO da palavra: 1 letra até 6 ("LIXA" × "LATA", "FRITO" × "PRATO" são outra coisa),
+      // 2 letras só de 7 em diante ("MUSSARELA" × "MUSSARELLA")
+      const tol = Math.min(x.length, y.length) >= 7 ? 2 : 1
+      if (x.length >= 4 && y.length >= 4 && digitos(x) === digitos(y) && distancia(x, y) <= tol) return true
     }
   }
   return false

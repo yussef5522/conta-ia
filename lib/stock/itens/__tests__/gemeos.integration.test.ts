@@ -105,6 +105,11 @@ describe('4 · a fila de casamento assistido — parecido vira pergunta, nunca f
     expect(saoParecidos('AGUA SEM GAS 500ML', 'AGUA COM GAS 500ML')).toBe(false)
     expect(saoParecidos('CAMISETAS POLIVISCOSE PRETAS MANGA CURTA TAM G', 'CAMISETAS POLIVISCOSE PRETAS MANGA CURTA TAM GG')).toBe(false)
     expect(saoParecidos('CAIXA FRANGO P', 'CAIXA FRANGO M')).toBe(false)
+    expect(saoParecidos('COCA COLA 2L', 'COCA COLA ZERO 2L')).toBe(false)
+    expect(saoParecidos('FRUKI GUARANA 600ML', 'FRUKI GUARANA LIGHT ZERO 600ML')).toBe(false)
+    expect(saoParecidos('LIXA', 'LATA')).toBe(false)
+    expect(saoParecidos('PORCAO FRANGO FRITO 200 GRAMA', 'PORCAO FRANGO PRATO 200 GRAMA')).toBe(false)
+    expect(saoParecidos('COXAO MOLE', 'COXAO MOLE BIFE')).toBe(true)
   })
 
   it('MAIONESE CASEIRA × COM ALHO: vira sugestão no sininho e NADA se funde sozinho; "são diferentes" cala o par pra sempre', async () => {
