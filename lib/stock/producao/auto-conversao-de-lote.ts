@@ -293,43 +293,80 @@ export async function fichaEsperaRendimento(
   fichaId: string,
   db: Db = defaultPrisma,
 ): Promise<{ espera: boolean; porQue: string | null }> {
-  const f = await db.stockFicha.findFirst({
-    where: { id: fichaId, companyId },
-    select: { id: true, tipoProduto: true, itemProduzidoId: true, versaoAtual: true, ativo: true },
-  })
-  // ⚠️ ficha inativa/invólucro de cardápio não espera nada — é o MESMO escopo do M5
-  if (!f || !f.ativo || comoConsome(f.tipoProduto) !== 'ESTOCADO') return { espera: false, porQue: null }
+  return (await fichasEsperamRendimento(companyId, [fichaId], db)).get(fichaId) ?? NAO_ESPERA
+}
 
-  const [it, v] = await Promise.all([
-    db.stockItem.findFirst({ where: { companyId, id: f.itemProduzidoId }, select: { nome: true, unidadeControle: true } }),
-    db.stockFichaVersao.findFirst({
-      where: { companyId, fichaId, versao: f.versaoAtual },
-      select: { id: true, loteBase: true, unidadeLoteBase: true },
+const NAO_ESPERA = { espera: false, porQue: null } as const
+
+/**
+ * ⭐⭐ A MESMA PERGUNTA, EM LOTE (20/11) — a lista do Painel da produção pergunta isto pra TODAS as
+ * ordens dela. ⛔ Antes era uma chamada por ordem (209 × 3-4 consultas): o socorro de 19/11 mediu
+ * ~850 ms dos ~1 s da tela, pico de 7,4 s. Agora são no máximo 4 consultas pra N fichas.
+ *
+ * ⚠️ PORTA ÚNICA: a versão de 1 ficha (`fichaEsperaRendimento`) delega pra cá — a régua
+ * (`loteEhComparavel` + `avaliarAutoConversao`) mora num lugar só.
+ */
+export async function fichasEsperamRendimento(
+  companyId: string,
+  fichaIds: string[],
+  db: Db = defaultPrisma,
+): Promise<Map<string, { espera: boolean; porQue: string | null }>> {
+  const out = new Map<string, { espera: boolean; porQue: string | null }>()
+  const ids = [...new Set(fichaIds)]
+  for (const id of ids) out.set(id, NAO_ESPERA)
+  if (!ids.length) return out
+  const fichas = (await db.stockFicha.findMany({
+    where: { companyId, id: { in: ids } },
+    select: { id: true, tipoProduto: true, itemProduzidoId: true, versaoAtual: true, ativo: true },
+  // ⚠️ ficha inativa/invólucro de cardápio não espera nada — é o MESMO escopo do M5
+  })).filter((f) => f.ativo && comoConsome(f.tipoProduto) === 'ESTOCADO')
+  if (!fichas.length) return out
+
+  const [itens, versoes] = await Promise.all([
+    db.stockItem.findMany({
+      where: { companyId, id: { in: [...new Set(fichas.map((f) => f.itemProduzidoId))] } },
+      select: { id: true, nome: true, unidadeControle: true },
+    }),
+    db.stockFichaVersao.findMany({
+      where: { companyId, OR: fichas.map((f) => ({ fichaId: f.id, versao: f.versaoAtual })) },
+      select: { id: true, fichaId: true, versao: true, loteBase: true, unidadeLoteBase: true },
     }),
   ])
-  // ⚠️ sem o produto ou sem a versão não dá pra comparar nada — e "não sei" nunca vira "falta"
-  if (!it || !v) return { espera: false, porQue: null }
-  if (loteEhComparavel(v.unidadeLoteBase, it.unidadeControle)) return { espera: false, porQue: null }
+  const itemDe = new Map(itens.map((i) => [i.id, i]))
+  const versaoDe = new Map(versoes.map((v) => [`${v.fichaId}#${v.versao}`, v]))
+  const aAvaliar: { fichaId: string; it: { nome: string; unidadeControle: string }; v: (typeof versoes)[number] }[] = []
+  for (const f of fichas) {
+    const it = itemDe.get(f.itemProduzidoId)
+    const v = versaoDe.get(`${f.id}#${f.versaoAtual}`)
+    // ⚠️ sem o produto ou sem a versão não dá pra comparar nada — e "não sei" nunca vira "falta"
+    if (!it || !v) continue
+    if (loteEhComparavel(v.unidadeLoteBase, it.unidadeControle)) continue
+    aAvaliar.push({ fichaId: f.id, it, v })
+  }
+  if (!aAvaliar.length) return out
 
   const comps = await db.stockFichaComponente.findMany({
-    where: { companyId, versaoId: v.id }, orderBy: { posicao: 'asc' },
-    select: { itemId: true, qtdPlanejada: true, unidade: true },
+    where: { companyId, versaoId: { in: aAvaliar.map((x) => x.v.id) } }, orderBy: { posicao: 'asc' },
+    select: { versaoId: true, itemId: true, qtdPlanejada: true, unidade: true },
   })
-  const a = avaliarAutoConversao({
-    fichaId,
-    nomeProduto: it.nome,
-    loteBase: v.loteBase,
-    unidadeLoteBase: v.unidadeLoteBase,
-    unidadeProduto: it.unidadeControle,
-    // ⚠️ o nome do componente não entra na decisão — só a dose; buscar os nomes aqui seria uma
-    // consulta a mais numa tela de todo dia por um dado que ninguém lê
-    componentes: comps.map((c) => ({ itemId: c.itemId, nome: '', unidade: c.unidade, qtdPlanejada: c.qtdPlanejada })),
-  })
-  /**
-   * ⛔⛔ NEUTRA NÃO ESPERA O DONO — é trabalho do SISTEMA (a auto converte sozinha na próxima
-   * rodada). A ordem perguntaria um número que ele não precisa dizer, e o gesto seria cobrado
-   * duas vezes: aqui e no sininho que nunca vai nascer.
-   */
-  if (a.neutra) return { espera: false, porQue: null }
-  return { espera: true, porQue: a.porQueNao }
+  for (const { fichaId, it, v } of aAvaliar) {
+    const a = avaliarAutoConversao({
+      fichaId,
+      nomeProduto: it.nome,
+      loteBase: v.loteBase,
+      unidadeLoteBase: v.unidadeLoteBase,
+      unidadeProduto: it.unidadeControle,
+      // ⚠️ o nome do componente não entra na decisão — só a dose; buscar os nomes aqui seria uma
+      // consulta a mais numa tela de todo dia por um dado que ninguém lê
+      componentes: comps.filter((c) => c.versaoId === v.id)
+        .map((c) => ({ itemId: c.itemId, nome: '', unidade: c.unidade, qtdPlanejada: c.qtdPlanejada })),
+    })
+    /**
+     * ⛔⛔ NEUTRA NÃO ESPERA O DONO — é trabalho do SISTEMA (a auto converte sozinha na próxima
+     * rodada). A ordem perguntaria um número que ele não precisa dizer, e o gesto seria cobrado
+     * duas vezes: aqui e no sininho que nunca vai nascer.
+     */
+    if (!a.neutra) out.set(fichaId, { espera: true, porQue: a.porQueNao })
+  }
+  return out
 }

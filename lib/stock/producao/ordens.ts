@@ -13,7 +13,7 @@ import { saldoItem, custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 import { materializarEtapasDaOrdem } from './etapas'
 import { configDeRetalho } from './retalho'
 import { encerrarEtapasAbertas } from './encerrar-etapas-abertas'
-import { fichaEsperaRendimento } from './auto-conversao-de-lote'
+import { fichasEsperamRendimento } from './auto-conversao-de-lote'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -434,29 +434,58 @@ export interface OrdemView {
 export async function getOrdem(companyId: string, ordemId: string, db: Db = defaultPrisma): Promise<OrdemView | null> {
   const o = await db.stockProductionOrder.findFirst({ where: { id: ordemId, companyId } })
   if (!o) return null
-  const [prod, setor, versao, pend] = await Promise.all([
-    db.stockItem.findFirst({ where: { companyId, id: o.itemProduzidoId }, select: { nome: true, unidadeControle: true } }),
-    o.setorId ? db.stockSetor.findFirst({ where: { companyId, id: o.setorId }, select: { nome: true } }) : Promise.resolve(null),
+  return (await ordensView(companyId, [o], db))[0]
+}
+
+type OrdemRow = Awaited<ReturnType<PrismaClient['stockProductionOrder']['findFirstOrThrow']>>
+
+/**
+ * ⭐⭐ A VISTA DE N ORDENS EM LOTE (20/11) — PORTA ÚNICA da `OrdemView`: `getOrdem` (1 ordem) e
+ * `listOrdens` (a lista do Painel) passam AQUI.
+ *
+ * ⛔⛔ O CASO (socorro de 19/11): `listOrdens` chamava `getOrdem` UMA VEZ POR ORDEM — 209 ordens ×
+ * (1 + 3 + até 4) consultas. Medido em prod: ~850 ms dos ~1 s da tela da cozinha, pico de 7,4 s.
+ * Agora são ≤ 7 consultas pra N ordens (≤ 9 com as 2 da lista), qualquer N. ⚠️ Sem cache: ordem recém-criada aparece no
+ * próximo clique (cache aqui esconderia a ordem da cozinha — proibido no socorro).
+ */
+async function ordensView(companyId: string, os: OrdemRow[], db: Db): Promise<OrdemView[]> {
+  if (!os.length) return []
+  const uniq = <T,>(xs: T[]) => [...new Set(xs)]
+  const setorIds = uniq(os.map((o) => o.setorId).filter((s): s is string => !!s))
+  const [prods, setores, versoes, pend] = await Promise.all([
+    db.stockItem.findMany({ where: { companyId, id: { in: uniq(os.map((o) => o.itemProduzidoId)) } }, select: { id: true, nome: true, unidadeControle: true } }),
+    setorIds.length ? db.stockSetor.findMany({ where: { companyId, id: { in: setorIds } }, select: { id: true, nome: true } }) : Promise.resolve([]),
     // a versão TRAVADA na ordem — o teórico tem que ser o da época, não o da ficha de hoje
-    db.stockFichaVersao.findFirst({ where: { companyId, fichaId: o.fichaId, versao: o.versaoFicha }, select: { loteBase: true, unidadeLoteBase: true } }),
+    db.stockFichaVersao.findMany({
+      where: { companyId, OR: uniq(os.map((o) => `${o.fichaId}#${o.versaoFicha}`)).map((k) => { const [fichaId, v] = k.split('#'); return { fichaId, versao: Number(v) } }) },
+      select: { fichaId: true, versao: true, loteBase: true, unidadeLoteBase: true },
+    }),
     /**
      * ⚠️ A pergunta é sobre a ficha de HOJE (`versaoAtual`), não a versão travada: o que a
      * página precisa saber é se **o dono ainda deve um número** — e isso ele resolve na ficha
-     * atual. Resolve POR ID (ver `fichaEsperaRendimento`), nunca varrendo a fila.
+     * atual. Resolve POR ID (ver `fichasEsperamRendimento`), nunca varrendo a fila.
      */
-    fichaEsperaRendimento(companyId, o.fichaId, db),
+    fichasEsperamRendimento(companyId, os.map((o) => o.fichaId), db),
   ])
-  return {
-    id: o.id, fichaId: o.fichaId, versaoFicha: o.versaoFicha, itemProduzidoId: o.itemProduzidoId,
-    nomeProduzido: prod?.nome ?? '(item removido)', unidadeProduzido: prod?.unidadeControle ?? '—',
-    setorId: o.setorId, setorNome: setor?.nome ?? null, dataProducao: o.dataProducao.toISOString(),
-    escalaReceitas: o.escalaReceitas, loteBase: versao?.loteBase ?? 1,
-    /** ⚠️ sem a versão, cai na unidade do PRODUTO — e aí o aviso se cala em vez de acusar
-     *  divergência inventada contra uma string vazia (*"não sei" nunca vira "está errado"*) */
-    unidadeLoteBase: versao?.unidadeLoteBase ?? prod?.unidadeControle ?? '—',
-    estado: o.estado, origem: o.origem, observacao: o.observacao,
-    rendimentoPendente: pend.espera && pend.porQue ? { porQue: pend.porQue } : null,
-  }
+  const prodDe = new Map(prods.map((p) => [p.id, p]))
+  const setorDe = new Map(setores.map((s) => [s.id, s.nome]))
+  const versaoDe = new Map(versoes.map((v) => [`${v.fichaId}#${v.versao}`, v]))
+  return os.map((o) => {
+    const prod = prodDe.get(o.itemProduzidoId)
+    const versao = versaoDe.get(`${o.fichaId}#${o.versaoFicha}`)
+    const p = pend.get(o.fichaId)
+    return {
+      id: o.id, fichaId: o.fichaId, versaoFicha: o.versaoFicha, itemProduzidoId: o.itemProduzidoId,
+      nomeProduzido: prod?.nome ?? '(item removido)', unidadeProduzido: prod?.unidadeControle ?? '—',
+      setorId: o.setorId, setorNome: (o.setorId && setorDe.get(o.setorId)) || null, dataProducao: o.dataProducao.toISOString(),
+      escalaReceitas: o.escalaReceitas, loteBase: versao?.loteBase ?? 1,
+      /** ⚠️ sem a versão, cai na unidade do PRODUTO — e aí o aviso se cala em vez de acusar
+       *  divergência inventada contra uma string vazia (*"não sei" nunca vira "está errado"*) */
+      unidadeLoteBase: versao?.unidadeLoteBase ?? prod?.unidadeControle ?? '—',
+      estado: o.estado, origem: o.origem, observacao: o.observacao,
+      rendimentoPendente: p?.espera && p.porQue ? { porQue: p.porQue } : null,
+    }
+  })
 }
 
 /**
@@ -549,11 +578,6 @@ export async function listOrdens(companyId: string, db: Db = defaultPrisma): Pro
       orderBy: [{ dataProducao: 'desc' }, { criadoEm: 'desc' }], take: 200,
     }),
   ])
-  const os = [...naFila, ...encerradas]
-  const out: OrdemView[] = []
-  for (const o of os) {
-    const v = await getOrdem(companyId, o.id, db)
-    if (v) out.push(v)
-  }
-  return out
+  // ⛔ EM LOTE, nunca `getOrdem` por ordem — o N+1 de 209 ordens do socorro de 19/11
+  return ordensView(companyId, [...naFila, ...encerradas], db)
 }
