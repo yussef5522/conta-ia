@@ -191,12 +191,20 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
    * e o que o ledger escreve. *Preview e confirm discordando* é a doença mais cara deste
    * módulo. ⚠️ O `custoMedio` exibido segue arredondado: é LEITURA, e é o número da Posição.
    */
-  const [mapa, ctx, estado, sanidade] = await Promise.all([
+  const [mapa, ctx, estado, sanidade, ignoradosDb] = await Promise.all([
     db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true, itemId: true } }),
     montarCtx(companyId, db),
     estadoParaBaixa(db, companyId),
     medirSanidade(companyId, linhas.map((l) => ({ produto: l.produto, quantidade: l.quantidade })), db, data),
+    db.stockVendaIgnorado.findMany({ where: { companyId }, select: { nomeSuitable: true } }),
   ])
+  /**
+   * ⭐⭐ 19/11 — O IGNORADO DO PRODUTO MORA EM `stock_venda_ignorado` (é lá que `upsertVendaMap` grava o
+   * IGNORAR: apaga o mapa e marca o nome). ⛔ O plano só lia o mapa — o nome ignorado voltava como
+   * PENDENTE, e a guarda diária seguia acusando "sem vínculo" o que o dono já tinha decidido. Agora a
+   * decisão vale aqui também: ignorado não baixa, não é pendente, aparece nomeado em `ignorados`.
+   */
+  const ignoradoPeloDono = new Set(ignoradosDb.map((i) => i.nomeSuitable))
   const custoDeLeitura = (itemId: string) => estado.porItem.get(itemId)?.custoMedio ?? null
   /**
    * ⭐⭐ 08/11 — A GRAFIA CANÔNICA CHEGA AOS PRODUTOS. O lookup era `mapaPorNome.get(l.produto)`,
@@ -220,6 +228,7 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
   const fichasUsadas = new Set<string>()
 
   for (const l of linhas) {
+    if (ignoradoPeloDono.has(l.produto)) { ignorados.push({ nome: l.produto, quantidade: l.quantidade }); continue }
     const r = resolver(l.produto)
     const m = mapaQueDecide(r)
     if (!m) {

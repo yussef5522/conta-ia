@@ -25,6 +25,7 @@ import { sugerirGruposDeGrafia } from '@/lib/stock/vendas/sugerir-grupos'
 import { sugestoesDeTamanho } from '@/lib/stock/vendas/grafia-canonica'
 import { normalizarNome } from '@/lib/stock/vendas/grupo-complemento'
 import { ordenarPrateleira } from '@/lib/stock/vendas/ordem-da-prateleira'
+import { BancadaDeVinculos } from '@/components/estoque/bancada-de-vinculos'
 import { UtensilsCrossed, Loader2, Download, Search, AlertTriangle, ChevronRight, ChevronDown, Sparkles, CircleDollarSign, PackageCheck, HelpCircle } from 'lucide-react'
 
 // ⚠️ DÍVIDA REGISTRADA (01/09) reaparecendo: este tipo é escrito À MÃO sobre o payload, e
@@ -94,7 +95,14 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
   // ⭐ a aba vem da URL (`?aba=complementos`): sem isto, voltar do editor cairia na aba de
   // produtos e o dono teria que clicar de novo — 50 vezes numa tarde de fichas.
   const abaDaUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('aba') : null
-  const [aba, setAba] = useState<'produtos' | 'complementos'>(abaDaUrl === 'complementos' ? 'complementos' : 'produtos')
+  const [aba, setAba] = useState<'produtos' | 'complementos' | 'bancada'>(abaDaUrl === 'complementos' ? 'complementos' : abaDaUrl === 'bancada' ? 'bancada' : 'produtos')
+  // ⭐ R32 (lei docs/bancada-referencia.html): o contador da Bancada vem da MESMA leitura da fila
+  const [nFila, setNFila] = useState<number | null>(null)
+  useEffect(() => {
+    fetch(`/api/empresas/${id}/estoque/cardapio/bancada`).then((r) => r.json())
+      .then((b: { linhas?: { estado: string }[] }) => setNFila((b.linhas ?? []).filter((l) => l.estado === 'PENDENTE').length))
+      .catch(() => setNFila(null))
+  }, [id])
   const [prateleira, setPrateleira] = useState<Comp[] | null>(null)
 
   const [periodoComp, setPeriodoComp] = useState<{ de: string; ate: string; dias: number } | null>(null)
@@ -181,6 +189,7 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
               parecer que a outra aba está filtrada por data, e ela não está. */}
           {aba === 'produtos'
             ? <>O que você vende: receita, custo e margem por produto{hub.periodo.desde && ` · vendas de ${fmtDia(hub.periodo.desde)} a ${fmtDia(hub.periodo.ate)}`}</>
+            : aba === 'bancada' ? <>A fila do que vendeu sem baixar estoque: ligue cada nome a uma ficha</>
             : <>Os sabores e adicionais do PDV: cada um precisa de um destino pra baixar estoque</>}
         </p>
         <div className="ml-auto flex items-center gap-1.5">
@@ -199,13 +208,15 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
           ele escolhe dentro do produto. Relatórios diferentes do PDV, mapeamentos
           separados (25 nomes aparecem nos dois — com um mapa só, baixariam 2×). */}
       <div className="flex items-center gap-1.5">
-        {(['produtos', 'complementos'] as const).map((t) => (
+        {(['produtos', 'complementos', 'bancada'] as const).map((t) => (
           <button key={t} onClick={() => setAba(t)}
             className={`h-8 rounded-lg px-3 text-xs ${aba === t ? 'bg-[#185FA5] font-medium text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
-            {t === 'produtos' ? 'Produtos' : 'Complementos (sabores)'}
+            {t === 'produtos' ? 'Produtos' : t === 'complementos' ? 'Complementos (sabores)' : <>Bancada{nFila != null && <span data-testid="bancada-contador" className="ml-1.5 rounded-full bg-amber-100 px-1.5 text-[10.5px] font-bold text-amber-800">{nFila}</span>}</>}
           </button>
         ))}
       </div>
+
+      {aba === 'bancada' && <BancadaDeVinculos id={id} onContagem={setNFila} />}
 
       {aba === 'complementos' && (
         <PrateleiraComplementos id={id} linhas={prateleira} periodo={periodoComp} onMapear={mapear} onMoverGrupo={moverGrupo} onRecarregar={carregarPrateleira} />

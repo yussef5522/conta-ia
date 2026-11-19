@@ -18,6 +18,7 @@ import { montarPlanoReprocesso } from './baixa-venda'
 import { montarPlanoComplementos } from './baixa-complemento'
 import { importIdDe } from './identidade-import-complemento'
 import { custoMedioPorItem } from '../saldo'
+import { avisarNegativos } from '../negativos-no-sininho'
 
 export const ORIGEM_BAIXA_FURADA = 'BAIXA_FURADA'
 export const ORIGEM_SEM_VINCULO = 'VENDA_SEM_VINCULO'
@@ -95,12 +96,19 @@ export async function conferirBaixaDoDia(companyId: string, dia: string, db: Pri
   }
 }
 
+/** ⭐ a aba Bancada do Cardápio — o destino do aviso de venda sem vínculo */
+export const hrefDaBancada = (companyId: string) => `/empresas/${companyId}/estoque/cardapio?aba=bancada`
+
 const diaBr = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 /** ⭐ a GUARDA: confere e avisa (ou cala o aviso do dia, se voltou a bater). Idempotente por dia. */
 export async function guardarBaixaDoDia(companyId: string, dia: string, db: PrismaClient = defaultPrisma): Promise<ConferenciaDaBaixa> {
+  // ⭐ (19/11) a seção dos ITENS NEGATIVOS: roda todo dia, ANTES de qualquer retorno (dia parado ou sem dia
+  // também têm negativo pra mostrar). ⚠️ Falha dela não derruba a conferência da baixa — e o erro é
+  // nomeado sem a mensagem (a do Prisma pode carregar a URI do banco).
+  try { await avisarNegativos(companyId, db) } catch (e) { console.error(`[guarda] negativos falhou: ${e instanceof Error ? e.name : 'erro'}`) }
   const c = await conferirBaixaDoDia(companyId, dia, db)
   if (c.status === 'DIA_PARADO' || c.status === 'SEM_DIA') return c
   const href = `/empresas/${companyId}/estoque/vendas`
@@ -121,8 +129,9 @@ export async function guardarBaixaDoDia(companyId: string, dia: string, db: Pris
       companyId, setor: 'estoque', severidade: 'ambar', origem: ORIGEM_SEM_VINCULO, alvo: dia,
       titulo: `Vincule ${c.semVinculo.length} ${c.semVinculo.length === 1 ? 'nome de venda' : 'nomes de venda'} de ${diaBr(dia)} ao estoque`,
       corpo: `Esses nomes venderam ${num(un)} un e não baixaram nada do estoque: ${c.semVinculo.slice(0, 15).map((s) => `${s.nome}${s.tipo === 'COMPLEMENTO' ? ' (complemento)' : ''} ${num(s.qtd)}`).join(' · ')}${c.semVinculo.length > 15 ? ` · e mais ${c.semVinculo.length - 15}` : ''}.`,
-      oQueFazer: 'Abra as vendas e vincule cada nome a uma ficha ou item — ou marque como ignorado se não controla estoque.',
-      acaoRotulo: 'Vincular agora', acaoHref: href,
+      oQueFazer: 'Abra a Bancada de vínculos e ligue cada nome a uma ficha — ou ignore o que não controla estoque.',
+      // ⭐ (19/11) direto pra fila única (lei R32), não pras vendas do dia
+      acaoRotulo: 'Abrir a Bancada', acaoHref: hrefDaBancada(companyId),
     }, db)
   } else await resolverAviso(companyId, ORIGEM_SEM_VINCULO, dia, db)
   return c

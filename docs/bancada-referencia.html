@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BANCADA DE VÍNCULOS (estoque) — referência v1 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════
+BANCADA DE VÍNCULOS — FASE 1 do estoque nível 1: estancar o
+vazamento de R$ 20,8 mil/30d (venda sem baixa). NASCE EVOLUINDO a
+aba "Complementos (sabores)" do Cardápio, que já tem apontar
+ficha / criar ficha / ignorar / sugestão — nunca do zero (regra da
+casa). Tema escritório claro (--esc-*), família das telas novas.
+Família R continua (R25–R31 nas Rotinas). Herdadas: S15, S16, S18,
+S19, S20.
+
+R32 — UMA FILA SÓ. Produtos sem vínculo e complementos sem ficha
+      entram na MESMA bancada (hoje moram em abas separadas), como
+      nova aba do Cardápio: Produtos · Complementos (sabores) ·
+      BANCADA (com contador). As abas atuais continuam sendo o
+      catálogo; a Bancada é a fila de pendências.
+
+R33 — O VAZAMENTO NA CARA. Topo com o total vivo: R$ vendidos sem
+      baixar nos 30 dias, ~custo/dia estimado e a fila (N nomes).
+      Cada ligação feita desconta NA HORA — o dono vê o número
+      cair. "ver a conta →" prova de onde o número vem (S19).
+      O custo/dia é estimado (razão custo/faturamento das vendas
+      que baixam) e se declara como estimativa (S22 em espírito).
+
+R34 — ORDENADO PELO DINHEIRO. Padrão: maior R$ vendido em 30 dias
+      primeiro; complemento incluso no preço (R$ 0) ordena pelas
+      ocorrências entre os sem-R$. Colunas: nome (chip produto /
+      complemento), vendido 30d, R$ 30d, ação. Filtros com
+      contador: Tudo · Produtos · Complementos · Ignorados ·
+      Resolvidos (some da fila, não da história).
+
+R35 — AÇÕES NA LINHA (herdadas da aba atual, mesmas gravações):
+      "apontar ficha…" (busca nas fichas), "criar ficha →" (abre
+      criação pré-preenchida com o nome), "ignorar" (IGNORAR no
+      vínculo — taxa de entrega, embalagem: não baixa mesmo),
+      "desfazer". A sugestão "mapear na ficha X" aparece quando a
+      régua acha ficha de nome igual/apelido — clicável, NUNCA
+      automática. "é sabor / não é sabor" continua só organizando
+      seção, nunca mudando baixa (como hoje).
+
+Números da amostra: laudo de 18/11 (R$ 20,8 mil · ~R$ 226/dia ·
+102 produtos + 103 complementos; top 10 real).
+═══════════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --esc-bg:#F3F5FA; --esc-card:#FFFFFF; --esc-linha:#C9D0E3;
+  --esc-tinta:#0A0F1E; --esc-tinta2:#46516B; --esc-tinta3:#8B94AD;
+  --esc-indigo:#4F46E5; --esc-indigo50:#EEF0FE; --esc-indigo-t:#3730A3;
+  --esc-verde:#0E9F6E; --esc-verde50:#E4F7EF; --esc-verde-t:#065F46;
+  --esc-ambar50:#FCF0DC; --esc-ambar-t:#7C4A03; --esc-ambar:#B45309;
+  --esc-roxo50:#F3EFFE; --esc-roxo-t:#5B21B6;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--esc-bg);color:var(--esc-tinta);font-family:var(--font)}
+body{padding:0 0 46px}
+.num{font-variant-numeric:tabular-nums}
+.nav{position:sticky;top:0;z-index:5;display:flex;gap:7px;flex-wrap:wrap;
+  background:#0A0F1E;padding:9px 14px}
+.nav button{border:1px solid #334155;background:#1E293B;color:#CBD5E1;border-radius:999px;
+  padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.nav button.on{background:#F1F5F9;color:#0A0F1E;border-color:#F1F5F9}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 18px 0}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.top h1{margin:0;font-size:21px;font-weight:800;letter-spacing:-.01em}
+.busca{display:flex;align-items:center;gap:8px;border:1px solid var(--esc-linha);
+  background:var(--esc-card);border-radius:10px;height:36px;padding:0 12px;min-width:230px}
+.busca input{border:0;outline:0;font-size:13px;font-weight:600;color:var(--esc-tinta);
+  font-family:var(--font);width:100%;background:transparent}
+.busca .lupa{color:var(--esc-tinta3);font-size:13px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 16px}
+.chips button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);
+  border-radius:999px;height:34px;padding:0 15px;font-size:12.5px;font-weight:800;cursor:pointer;
+  font-family:var(--font);display:inline-flex;align-items:center;gap:7px}
+.chips button.on{background:var(--esc-indigo);border-color:var(--esc-indigo);color:#fff}
+.chips .n{background:var(--esc-ambar50);color:var(--esc-ambar-t);border-radius:999px;
+  padding:1px 8px;font-size:10.5px;font-weight:800}
+.chips button.on .n{background:rgba(255,255,255,.22);color:#fff}
+
+/* placar do vazamento (R33) */
+.placar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.pk{background:var(--esc-card);border:1px solid var(--esc-linha);border-radius:14px;padding:13px 16px}
+.pk .rot{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase}
+.pk .v{font-size:21px;font-weight:800;letter-spacing:-.01em;margin-top:3px}
+.pk .v.amb{color:var(--esc-ambar)}
+.pk .sub{font-size:11px;font-weight:700;color:var(--esc-tinta3);margin-top:2px}
+.pk .sub a{color:var(--esc-indigo);font-weight:800;text-decoration:none}
+
+.card{background:var(--esc-card);border:1px solid var(--esc-linha);border-radius:14px;
+  padding:14px 16px;margin-bottom:16px}
+.chead{display:flex;align-items:center;gap:8px;font-size:9.5px;font-weight:800;
+  letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase;margin-bottom:4px}
+.chead .sp{flex:1}
+.iwr{position:relative;display:inline-flex}
+.i{width:17px;height:17px;border-radius:50%;border:1px solid var(--esc-linha);background:var(--esc-card);
+  color:var(--esc-tinta3);font-size:10.5px;font-weight:800;cursor:pointer;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;padding:0;font-family:var(--font)}
+.pop{display:none;position:absolute;top:22px;left:-8px;z-index:9;width:270px;
+  background:#0A0F1E;color:#E2E8F0;border-radius:10px;padding:10px 12px;
+  font-size:11.5px;font-weight:600;line-height:1.5;letter-spacing:0;text-transform:none}
+.iwr.aberto .pop{display:block}
+
+/* filtros internos */
+.filtros{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
+.filtros button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);
+  border-radius:999px;height:30px;padding:0 12px;font-size:11.5px;font-weight:800;cursor:pointer;
+  font-family:var(--font);display:inline-flex;align-items:center;gap:6px}
+.filtros button.on{background:var(--esc-tinta);border-color:var(--esc-tinta);color:#fff}
+.filtros .fn{background:#E8EBF5;color:var(--esc-tinta2);border-radius:999px;padding:1px 7px;
+  font-size:10px;font-weight:800}
+.filtros button.on .fn{background:#2A3350;color:#D7DCF0}
+
+/* fila */
+.bhead{display:grid;grid-template-columns:minmax(0,1.6fr) 104px 96px minmax(0,1.5fr);gap:12px;
+  font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);
+  text-transform:uppercase;padding:8px 0 6px;border-bottom:1px solid #E3E7F2}
+.bhead .dir{text-align:right}
+.brow{display:grid;grid-template-columns:minmax(0,1.6fr) 104px 96px minmax(0,1.5fr);gap:12px;
+  align-items:center;padding:11px 0;border-bottom:1px solid #E3E7F2}
+.brow:last-child{border-bottom:0}
+.brow .nm{font-size:13.5px;font-weight:700}
+.tipo{display:inline-block;border-radius:6px;padding:1px 8px;font-size:10px;font-weight:800;
+  margin-left:7px;vertical-align:1px}
+.tipo.p{background:var(--esc-indigo50);color:var(--esc-indigo-t)}
+.tipo.c{background:var(--esc-roxo50);color:var(--esc-roxo-t)}
+.brow .nm .sug{display:block;font-size:11px;font-weight:700;color:var(--esc-tinta3);margin-top:3px}
+.brow .nm .sug a{color:var(--esc-indigo);font-weight:800;text-decoration:none}
+.brow .qt{font-size:13px;font-weight:700;color:var(--esc-tinta2);text-align:right}
+.brow .qt small{font-size:10.5px;font-weight:800;color:var(--esc-tinta3)}
+.brow .rs{font-size:13.5px;font-weight:800;text-align:right}
+.brow .rs .inc{font-size:11px;font-weight:700;color:var(--esc-tinta3)}
+.brow .acoes{display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap}
+.brow .acoes button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta);
+  border-radius:8px;height:30px;padding:0 11px;font-size:11.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.brow .acoes .pri{background:var(--esc-indigo);border-color:var(--esc-indigo);color:#fff}
+
+/* celular */
+@media (max-width:760px){
+  .placar{grid-template-columns:minmax(0,1fr)}
+  .bhead{display:none}
+  .brow{grid-template-columns:minmax(0,1fr) 104px;grid-template-areas:"nm rs" "meta meta" "acoes acoes";row-gap:7px}
+  .brow .nm{grid-area:nm}
+  .brow .rs{grid-area:rs}
+  .brow .metawrap{grid-area:meta}
+  .brow .qt{text-align:left}
+  .brow .acoes{grid-area:acoes;justify-content:flex-start}
+  .busca{min-width:0;width:100%}
+}
+@media (min-width:761px){
+  .brow .metawrap{display:contents}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button class="on">Estoque</button><button>Vendas</button><button>Produção</button>
+  <button>Financeiro</button><button>Cardápio</button>
+</nav>
+
+<main class="wrap">
+  <header class="top">
+    <h1>Cardápio</h1>
+    <div class="busca"><span class="lupa">⌕</span><input placeholder="buscar nome"></div>
+  </header>
+
+  <div class="chips">
+    <button>Produtos</button><button>Complementos (sabores)</button>
+    <button class="on">Bancada <span class="n num" id="nfila"></span></button>
+  </div>
+
+  <div class="placar">
+    <div class="pk"><div class="rot">Vendido sem baixar · 30 dias</div>
+      <div class="v amb num" id="pfat"></div>
+      <div class="sub num"><a href="#">ver a conta →</a></div></div>
+    <div class="pk"><div class="rot">Custo vazando · estimado</div>
+      <div class="v amb num" id="pdia"></div>
+      <div class="sub">pela razão custo/faturamento do que baixa</div></div>
+    <div class="pk"><div class="rot">Na fila</div>
+      <div class="v num" id="pfila"></div>
+      <div class="sub num" id="psplit"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="chead">Fila · maior vazamento primeiro
+      <span class="iwr"><button class="i" onclick="this.parentNode.classList.toggle('aberto')">i</button>
+        <span class="pop">Cada nome ligado a uma ficha passa a baixar estoque na hora e sai
+        da fila — o placar desconta na frente do dono. "Ignorar" é pra o
+        que não baixa mesmo (taxa de entrega, embalagem). A sugestão
+        aparece quando existe ficha com nome igual ou apelido — clicável,
+        nunca automática.</span></span>
+    </div>
+    <div class="filtros" id="lfiltros"></div>
+    <div class="bhead"><span>Nome</span><span class="dir">Vendido 30d</span><span class="dir">R$ 30d</span><span class="dir"></span></div>
+    <div id="lfila"></div>
+  </div>
+</main>
+
+<script>
+/* ═══ ESPECIFICAÇÃO EXECUTÁVEL — BANCADA v1 ═══ */
+
+const brl0 = n => 'R$ ' + Math.round(n).toLocaleString('pt-BR');
+
+/* R33 — custo/dia estimado pela razão custo/faturamento do que baixa */
+function custoDia(fat30, razao){ return fat30 * razao / 30; }
+
+/* R34 — maior R$ primeiro; R$ 0 (incluso) ordena por ocorrências depois */
+function ordena(fila){
+  return [...fila].sort((a,b) => (b.rs - a.rs) || (b.qt - a.qt));
+}
+
+const FILA = [
+  {nm:'MILKSHAKE OVONINHO',            tipo:'p', qt:73,  rs:1673},
+  {nm:'AÇAÍ 400ML',                    tipo:'p', qt:54,  rs:1403},
+  {nm:'AÇAÍ 250ML',                    tipo:'p', qt:64,  rs:1343},
+  {nm:'XIS TRI',                       tipo:'p', qt:26,  rs:1184, sug:'XIS COMPLETO'},
+  {nm:'MILKSHAKE CHOCOLATE',           tipo:'p', qt:56,  rs:1043},
+  {nm:'BATATA FRITA EM CIMA DA PIZZA', tipo:'c', qt:98,  rs:970},
+  {nm:'casquinha mista',               tipo:'p', qt:137, rs:959},
+  {nm:'MAIONESE CASEIRA',              tipo:'p', qt:447, rs:890, sug:'porção de maionese'},
+  {nm:'BORDA CATUPIRY',                tipo:'c', qt:45,  rs:817},
+  {nm:'PORTUGUESA',                    tipo:'c', qt:150, rs:787},
+  {nm:'CHOCOLATE PRETO',               tipo:'c', qt:832, rs:0},
+];
+
+const TOTAIS = {fat30:20800, razao:0.314, prod:102, comp:103, ign:16, ok:97};
+
+const FILTROS = [
+  {rot:'Tudo',         n:TOTAIS.prod+TOTAIS.comp, on:true},
+  {rot:'Produtos',     n:TOTAIS.prod},
+  {rot:'Complementos', n:TOTAIS.comp},
+  {rot:'Ignorados',    n:TOTAIS.ign},
+  {rot:'Resolvidos',   n:TOTAIS.ok},
+];
+
+/* ── pinos (rodam sempre; em node, só eles) ─────────────────── */
+const _o = ordena(FILA);
+const PINOS = [
+  ['maior R$ vem primeiro',          _o[0].nm === 'MILKSHAKE OVONINHO'],
+  ['R$ 0 incluso vai pro fim',       _o[_o.length-1].nm === 'CHOCOLATE PRETO'],
+  ['empate de R$ decide por qtd',    ordena([{nm:'a',qt:5,rs:0},{nm:'b',qt:9,rs:0}])[0].nm === 'b'],
+  ['custo/dia ≈ 218',                Math.round(custoDia(20800, 0.314)) === 218],
+  ['fila soma 205',                  TOTAIS.prod + TOTAIS.comp === 205],
+  ['sugestão só quando existe',      FILA.filter(x=>x.sug).length === 2],
+  ['formato pt-BR do placar',        brl0(20800) === 'R$ 20.800'],
+];
+for (const [nome,ok] of PINOS) if (!ok) throw new Error('PINO FALHOU: '+nome);
+
+/* ── render ─────────────────────────────────────────────────── */
+function render(){
+  const $ = id => document.getElementById(id);
+
+  $('nfila').textContent = TOTAIS.prod + TOTAIS.comp;
+  $('pfat').textContent = brl0(TOTAIS.fat30);
+  $('pdia').textContent = '~' + brl0(custoDia(TOTAIS.fat30, TOTAIS.razao)) + '/dia';
+  $('pfila').textContent = TOTAIS.prod + TOTAIS.comp + ' nomes';
+  $('psplit').textContent = TOTAIS.prod + ' produtos · ' + TOTAIS.comp + ' complementos';
+
+  $('lfiltros').innerHTML = FILTROS.map(f=>
+    `<button class="${f.on?'on':''}">${f.rot}<span class="fn num">${f.n}</span></button>`).join('');
+
+  $('lfila').innerHTML = ordena(FILA).map(r=>`<div class="brow">
+    <div class="nm">${r.nm}<span class="tipo ${r.tipo}">${r.tipo==='p'?'produto':'complemento'}</span>
+      ${r.sug?`<span class="sug">parece com <a href="#">mapear na ficha “${r.sug}” →</a></span>`:''}</div>
+    <div class="metawrap">
+      <div class="qt num">${r.qt.toLocaleString('pt-BR')} <small>${r.tipo==='c'?'ocorr.':'un'}</small></div>
+      <div class="rs num">${r.rs>0 ? brl0(r.rs) : '<span class="inc">incluso no preço</span>'}</div>
+    </div>
+    <div class="acoes">
+      <button class="pri">apontar ficha…</button>
+      <button>criar ficha →</button>
+      <button>ignorar</button>
+    </div>
+  </div>`).join('');
+}
+
+if (typeof document !== 'undefined') render();
+else console.log('PINOS OK — ' + PINOS.length + ' verdes');
+</script>
+</body>
+</html>
