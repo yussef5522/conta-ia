@@ -32,7 +32,15 @@ export async function fecharDiaNaMao(db: PrismaClient, cliente: ClienteSuitLeitu
     // dentro da trava, confere de novo (o laço pode ter fechado entre a 1ª leitura e a trava)
     if (await db.suitDiaMaterializado.findUnique({ where: { companyId_dia: { companyId, dia } }, select: { id: true } })) return carimbo(true)
     const { from } = janelaOperacional(dia)
-    await sincronizarJanela(db, cliente, companyId, from, relogioDaApi(agora), agora, true)
+    /**
+     * ⭐⭐ (19/11, decisão do dono — opção A) o botão busca o detalhe SÓ do pedido novo ou de CARA
+     * mudada (status, total, produtos, pago) — a MESMA régua (`mesmaCara`) do laço de 2 min.
+     * ⛔ O CASO: com `completo` ele re-buscava TODOS os pedidos do dia, um a um, no espaçamento de
+     * 0,55 s da Suit — medido em prod: 243 pedidos = 139,6 s, 265 = 149,8 s.
+     * ⚠️ O juiz final continua sendo a guarda das 03:10 (`guarda.ts`, `completo`): ela refaz
+     * tudo e o que mudou sem mudar a cara vira aviso nominal.
+     */
+    await sincronizarJanela(db, cliente, companyId, from, relogioDaApi(agora), agora, false)
     await sincronizarLancamentos(db, cliente, companyId, dia, agora)
     const produtos = await materializarDia(db, companyId, dia, agora, { fechadoNaMao: true })
     let sabores: Carimbo['sabores']

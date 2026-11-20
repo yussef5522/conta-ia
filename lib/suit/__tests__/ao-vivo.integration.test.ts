@@ -239,3 +239,60 @@ describe('E3 · salão (mesa/comanda) não tem cronômetro de alarme', () => {
     expect(tele).toMatchObject({ minutos: 30, aberta: null })
   })
 })
+
+describe('⭐⭐ FECHAR O DIA EM ~5 s (19/11, opção A): detalhe SÓ do pedido novo ou de cara mudada', () => {
+  /**
+   * ⛔ O CASO: o botão re-buscava o detalhe de TODOS os pedidos do dia no espaçamento de 0,55 s da
+   * Suit — 265 pedidos = 149,8 s medidos em prod. ⭐ A régua agora é a do laço de 2 min (`mesmaCara`):
+   * status, total, produtos e pago. O relógio da Suit é SIMULADO (0,55 s por detalhe) e somado.
+   */
+  const ESPACO_S = 0.55
+  const contador = (pedidos: PedidoCru[]) => {
+    const pedidosDetalhados: number[] = []
+    const c: ClienteSuitLeitura = {
+      async listar(from, to) { return pedidos.filter((p) => p.created_at >= from && p.created_at <= to).map((p) => ({ id: p.id, status: p.status, created_at: p.created_at, products_total: p.products_total, total: p.total, paid: p.paid })) },
+      async detalhe(id) { pedidosDetalhados.push(id); return pedidos.find((p) => p.id === id) ?? null },
+      async lancamentos() { return [] },
+      async pedidosDoDia() { return [] },
+      requisicoes: () => pedidosDetalhados.length,
+    }
+    return { c, pedidosDetalhados }
+  }
+  const trava = () => join(mkdtempSync(join(tmpdir(), 'suit-trava-')), 'suit.lock')
+
+  it.skipIf(D < CORTE_API)('dia cheio: 265 já espelhados + 4 de cara mudada + 2 novos → 6 detalhes (~3,3 s de Suit), e o que mudou ENTRA', async () => {
+    const N = 265
+    const ps = Array.from({ length: N }, (_, i) => cru(i + 1, antes(600 - i * 2), 'delivered'))
+    const espelhado = antes(5)
+    for (const p of ps) await gravarPedido(prisma, companyId, p, espelhado) // o laço de 2 min já viu todos
+    // depois do último ciclo: um mudou de STATUS, um SÓ de TOTAL (taxa), um de PAGAMENTO, um SÓ de PRODUTOS
+    // (o desconto compensa — total igual), e nasceram 2. ⚠️ Cada campo da régua num pedido só dele.
+    ps[10] = { ...ps[10], status: 'cancelled' }
+    ps[20] = { ...ps[20], delivery_fee: '5.00', total: '35.00' }
+    ps[30] = { ...ps[30], paid: false }
+    ps[40] = { ...ps[40], products_total: '45.00', discount: '15.00', items: [{ ...ps[40].items[0], unit_price: '45.00', price: '45.00', base_price: '45.00' }] }
+    ps.push(cru(N + 1, antes(3), 'ready'), cru(N + 2, antes(2), 'ready'))
+
+    const { c, pedidosDetalhados } = contador(ps)
+    const t0 = performance.now()
+    const r = await fecharDiaNaMao(prisma, c, companyId, AGORA, trava())
+    const bancoS = (performance.now() - t0) / 1000
+    const suitS = pedidosDetalhados.length * ESPACO_S
+    console.log(`FECHAR|pedidos=${ps.length}|detalhes=${pedidosDetalhados.length}|suit≈${suitS.toFixed(2)}s|banco(teste)=${bancoS.toFixed(2)}s|antes seria ${(ps.length * ESPACO_S).toFixed(0)}s de Suit`)
+
+    expect(r).toMatchObject({ dia: D, por: 'dono', jaEstava: false })
+    expect([...pedidosDetalhados].sort((a, b) => a - b)).toEqual([11, 21, 31, 41, N + 1, N + 2])
+    expect(suitS).toBeLessThanOrEqual(5)
+    // ⭐ o que mudou foi gravado de verdade — status, total e pagamento
+    const g = new Map((await prisma.suitPedido.findMany({ where: { companyId, apiId: { in: [11, 21, 31, 41, N + 1] } }, select: { apiId: true, status: true, totalCent: true, produtosCent: true, pago: true } })).map((x) => [x.apiId, x]))
+    expect(g.get(11)!.status).toBe('cancelled')
+    expect(g.get(21)!.totalCent).toBe(3500)
+    expect(g.get(41)!.produtosCent).toBe(4500)
+    expect(g.get(31)!.pago).toBe(false)
+    expect(g.get(N + 1)).toBeTruthy()
+    // ⭐ continua idempotente: o 2º clique é só o carimbo, sem nenhum detalhe a mais
+    const de2 = contador(ps)
+    expect(await fecharDiaNaMao(prisma, de2.c, companyId, new Date(AGORA.getTime() + 60_000), trava())).toMatchObject({ jaEstava: true })
+    expect(de2.pedidosDetalhados).toHaveLength(0)
+  }, 240_000)
+})

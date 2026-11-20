@@ -121,6 +121,14 @@ if (( DRY )); then
   exit 0
 fi
 
+# ⛔⛔ 5ª PROVA, FASE ANTES (19/11): o commit que vai ser buildado é o ESPERADO? — o esperado é
+# `DEPLOY_ESPERADO=<hash>` (quem chama sabe o que empurrou) ou, sem ele, o origin/main depois de
+# um fetch. Em 19/11 o deploy deu 4/4 com o commit VELHO (faltou pull). Ver gate-commit.sh.
+log "Commit esperado"
+ESPERADO_SHA=$(bash scripts/gate-commit.sh antes "$APP_DIR" "${DEPLOY_ESPERADO:-}") \
+  || fail "o commit daqui não é o esperado — nada foi buildado, prod segue intacto"
+ok "HEAD = esperado ${ESPERADO_SHA:0:8}"
+
 SHA=$(git rev-parse --short HEAD)
 STAMP=$(date +%Y%m%d-%H%M%S)
 ALVO="$APP_DIR/${PREFIXO}${STAMP}-${SHA}"
@@ -190,6 +198,8 @@ fi
 # traz o artefato pronto pro lado do app (mesmo filesystem → rename, instantâneo)
 [[ -d "$BUILD_WS/.next" ]] || fail "build não produziu .next — prod intacto. Log: $LOG"
 mv "$BUILD_WS/.next" "$ALVO"
+# ⭐ o build carrega de QUAL commit ele é — a 5ª prova lê isto do build SERVIDO
+printf '%s\n' "$ESPERADO_SHA" > "$ALVO/COMMIT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VERIFICAÇÃO DO ARTEFATO — antes de encostar no processo vivo
@@ -227,31 +237,31 @@ sleep 12
 # nginx ainda servia a resposta do processo anterior. Uptime crescendo é o que
 # distingue "no ar" de "reiniciando sem parar".
 # ─────────────────────────────────────────────────────────────────────────────
-log "Gate de saúde (depois) — o trio + o banco"
+log "Gate de saúde (depois) — o trio + o banco + o commit"
 
-[[ "$(cat .next/BUILD_ID)" == "$NOVO_ID" ]] || fail "1/4 BUILD_ID servido ≠ o que buildei"
-ok "1/4 BUILD_ID: $NOVO_ID"
+[[ "$(cat .next/BUILD_ID)" == "$NOVO_ID" ]] || fail "1/5 BUILD_ID servido ≠ o que buildei"
+ok "1/5 BUILD_ID: $NOVO_ID"
 
 U1=$(pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).find(x=>x.name===process.argv[1]);console.log(a?a.pm2_env.pm_uptime:0)})' "$PM2_APP")
 STATUS=$(pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).find(x=>x.name===process.argv[1]);console.log(a?a.pm2_env.status:"?")})' "$PM2_APP")
-[[ "$STATUS" == "online" ]] || fail "2/4 pm2 em '$STATUS'"
+[[ "$STATUS" == "online" ]] || fail "2/5 pm2 em '$STATUS'"
 sleep 10
 U2=$(pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).find(x=>x.name===process.argv[1]);console.log(a?a.pm2_env.pm_uptime:0)})' "$PM2_APP")
-[[ "$U1" == "$U2" ]] || fail "2/4 o processo REINICIOU no meio do gate (loop de restart)"
-ok "2/4 pm2 online, mesmo processo por 10s"
+[[ "$U1" == "$U2" ]] || fail "2/5 o processo REINICIOU no meio do gate (loop de restart)"
+ok "2/5 pm2 online, mesmo processo por 10s"
 
 # smoke: home + TODOS os CSS que o HTML pede, e o hash tem que ser do build NOVO
-HTML=$(curl -sf "http://localhost:${PORT}/" ) || fail "3/4 home não respondeu"
+HTML=$(curl -sf "http://localhost:${PORT}/" ) || fail "3/5 home não respondeu"
 CSS_LINKS=$(grep -o '/_next/static/[^"]*\.css' <<<"$HTML" | sort -u)
-[[ -n "$CSS_LINKS" ]] || fail "3/4 o HTML não referencia CSS nenhum"
+[[ -n "$CSS_LINKS" ]] || fail "3/5 o HTML não referencia CSS nenhum"
 for c in $CSS_LINKS; do
   CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT}${c}")
-  [[ "$CODE" == "200" ]] || fail "3/4 CSS $c respondeu $CODE — página sem estilo (o incidente de 26/08)"
-  [[ -f "$ALVO/static/${c#/_next/static/}" ]] || fail "3/4 CSS $c não é do build novo"
+  [[ "$CODE" == "200" ]] || fail "3/5 CSS $c respondeu $CODE — página sem estilo (o incidente de 26/08)"
+  [[ -f "$ALVO/static/${c#/_next/static/}" ]] || fail "3/5 CSS $c não é do build novo"
 done
-ok "3/4 home 200 · $(wc -w <<<"$CSS_LINKS") CSS servindo do build novo"
+ok "3/5 home 200 · $(wc -w <<<"$CSS_LINKS") CSS servindo do build novo"
 
-# ⭐⭐ 4/4 — O APP FALA COM O BANCO? (28/08)
+# ⭐⭐ 4/5 — O APP FALA COM O BANCO? (28/08)
 #
 # ⚠️ POR QUE ISTO EXISTE: em 28/08 o login ficou 500 por 8 horas com o trio TODO VERDE.
 # BUILD_ID ok, pm2 online sem loop, CSS servindo — e o banco inalcançável. O gate
@@ -263,8 +273,14 @@ ok "3/4 home 200 · $(wc -w <<<"$CSS_LINKS") CSS servindo do build novo"
 LOGIN_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://localhost:${PORT}/api/auth/login" \
   -H 'Content-Type: application/json' \
   -d '{"email":"__probe-deploy__@invalido.local","password":"x"}')
-[[ "$LOGIN_CODE" == "401" ]] || fail "4/4 o login respondeu $LOGIN_CODE (esperado 401) — o app NÃO está falando com o banco. Rollback: \`bash scripts/rollback.sh\`"
-ok "4/4 banco respondendo (login devolve 401, não 500)"
+[[ "$LOGIN_CODE" == "401" ]] || fail "4/5 o login respondeu $LOGIN_CODE (esperado 401) — o app NÃO está falando com o banco. Rollback: \`bash scripts/rollback.sh\`"
+ok "4/5 banco respondendo (login devolve 401, não 500)"
+
+# ⭐⭐ 5/5 — O COMMIT NO AR É O ESPERADO? (19/11) — o build SERVIDO (`.next/COMMIT` + o nome do
+# diretório do symlink) e o HEAD batem com o esperado. 4/4 com commit velho foi o ponto cego.
+bash scripts/gate-commit.sh depois "$APP_DIR" "$ESPERADO_SHA" >/dev/null \
+  || fail "5/5 o commit no ar não é o esperado ${ESPERADO_SHA:0:8}. Rollback: \`bash scripts/rollback.sh\`"
+ok "5/5 commit no ar = esperado ${ESPERADO_SHA:0:8}"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LIMPEZA — mantém os últimos $MANTER (rollback precisa deles)
