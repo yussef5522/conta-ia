@@ -116,7 +116,7 @@ describe('4 · a fila de casamento assistido — parecido vira pergunta, nunca f
     const a = await item('MAIONESE CASEIRA', 'MATERIA_PRIMA', 'KG', [2])
     const b = await item('MAIONESE CASEIRA COM ALHO', 'MATERIA_PRIMA', 'KG', [1])
     expect(await avisarFilaDeGemeos(companyId, prisma)).toBe(1)
-    expect(await prisma.aviso.findFirst({ where: { companyId, origem: ORIGEM_GEMEOS, resolvidoEm: null } })).toMatchObject({ acaoHref: `/empresas/${companyId}/estoque/itens/gemeos` })
+    expect(await prisma.aviso.findFirst({ where: { companyId, origem: ORIGEM_GEMEOS, resolvidoEm: null } })).toMatchObject({ acaoHref: `/empresas/${companyId}/estoque/itens/gemeos#pergunta-gemeos` }) // ⭐ pousa NA pergunta (lei de 19/11)
     // ⛔ a máquina não funde: os dois seguem vivos, cada um com o seu saldo
     expect(await prisma.stockItem.count({ where: { companyId, ativo: true } })).toBe(2)
     expect((await saldoItem(prisma, companyId, a.id)).saldo).toBe(2)

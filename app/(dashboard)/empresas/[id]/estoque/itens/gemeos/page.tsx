@@ -2,9 +2,11 @@
 // ⭐⭐ A FILA DE CASAMENTO ASSISTIDO (16/11/2026) — par a par, o dono responde: "juntar" (é o mesmo item:
 // funde com a prova de saldo) ou "são diferentes" (nunca mais pergunta daquele par). A máquina não funde
 // nada sozinha por semelhança. Estado vazio honesto; celular empilha.
+import { PerguntaNoTopo } from '@/components/perguntas/pergunta-no-topo'
 import { use, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Loader2 } from 'lucide-react'
+import { ANCORAS } from '@/components/perguntas/ancoras'
 
 interface Lado { id: string; nome: string; categoria: string; unidadeControle: string; saldo: number }
 interface Par { a: Lado; b: Lado }
@@ -47,6 +49,9 @@ export default function FilaDeGemeosPage({ params }: { params: Promise<{ id: str
       {msg?.chave === 'topo' && <div role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">{msg.texto}</div>}
       {!pares && !falhou && <p className="text-sm text-slate-500">lendo a fila…</p>}
       {pares && pares.length === 0 && <p className="rounded-lg border border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-600" data-testid="fila-vazia">Nenhum par parecido esperando resposta.</p>}
+      {/* ⭐ LEI DA PERGUNTA NO TOPO (19/11): os pares são perguntas do sistema — cartão com contador, âncora do sininho */}
+      <PerguntaNoTopo id={ANCORAS.GEMEOS} titulo="Estes itens são o mesmo produto?" quantas={pares?.length ?? 0} singular="par" plural="pares">
+      <div className="space-y-3">
       {pares?.map((p) => {
         const chave = `${p.a.id}|${p.b.id}`
         return (
@@ -71,6 +76,8 @@ export default function FilaDeGemeosPage({ params }: { params: Promise<{ id: str
           </div>
         )
       })}
+      </div>
+      </PerguntaNoTopo>
     </div>
   )
 }

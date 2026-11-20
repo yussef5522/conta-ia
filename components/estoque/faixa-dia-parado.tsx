@@ -5,6 +5,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, Loader2 } from 'lucide-react'
+import { usePousoDaPergunta } from '@/components/perguntas/pergunta-no-topo'
+import { ANCORAS } from '@/components/perguntas/ancoras'
 
 interface DiaParadoDTO { dia: string; motivo: string; unidades: number; totalCent: number; pedidos: number }
 const diaBr = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`
@@ -18,9 +20,11 @@ export function FaixaDiaParado({ empresaId }: { empresaId: string }) {
       .then((r) => (r.ok ? r.json() : null)).then((j) => setDias(j?.dias ?? [])).catch(() => {})
   }, [empresaId])
   useEffect(() => { ler() }, [ler])
+  // ⭐ o sininho pousa AQUI (`#pergunta-dia-parado`) — a faixa já mora no topo; só ganhou a âncora (19/11)
+  usePousoDaPergunta(ANCORAS.DIA_PARADO, dias.length > 0)
   if (!dias.length) return null
   return (
-    <div className="space-y-2" data-testid="faixa-dia-parado">
+    <div id={ANCORAS.DIA_PARADO} className="scroll-mt-24 space-y-2" data-testid="faixa-dia-parado" data-pergunta-do-sistema={ANCORAS.DIA_PARADO}>
       {dias.map((d) => (
         <div key={d.dia} role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-800">
           <AlertTriangle className="h-4 w-4 shrink-0" />

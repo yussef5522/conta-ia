@@ -5,6 +5,7 @@
 // saldo e SEM custo ("a definir"); saldo só por nota/produção/contagem. Intermediário/produto
 // final só via ficha (aqui só as 5 categorias-base). Dedup por nome. Busca + filtro + editar.
 
+import { PerguntaNoTopo } from '@/components/perguntas/pergunta-no-topo'
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Package, Loader2, Plus, Search, Ban, RotateCcw, Download, MoreHorizontal, FileText, Boxes, Layers, HelpCircle, CircleSlash , CornerDownRight, Trash2} from 'lucide-react'
@@ -18,6 +19,7 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { corDaCategoria } from '@/lib/stock/categoria-cores'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
+import { ANCORAS } from '@/components/perguntas/ancoras'
 
 interface Situacao {
   itemId: string; nome: string; movimentos: number; saldo: number; valor: number
@@ -308,6 +310,17 @@ function NovoItem({ id, onCriado, onFechar }: { id: string; onCriado: () => void
   return (
     <Card><CardContent className="space-y-3 p-4">
       <div className="flex items-center justify-between"><p className="text-sm font-semibold text-slate-900">Novo item</p><button onClick={onFechar} className="text-xs text-slate-400 hover:text-slate-600">fechar</button></div>
+      {/* ⭐⭐ LEI DA PERGUNTA NO TOPO (19/11): o "já existe" ficava no pé do cartão — agora abre o cartão */}
+      {jaExiste && (
+        <div data-testid="ja-existe">
+          <PerguntaNoTopo id={ANCORAS.JA_EXISTE} titulo={jaExiste.pergunta} quantas={1} singular="item" plural="itens">
+            <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => { setJaExiste(null); onFechar() }} className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">usar o existente</button>
+            <button type="button" onClick={() => criar(true)} disabled={busy} className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100">criar mesmo assim</button>
+            </div>
+          </PerguntaNoTopo>
+        </div>
+      )}
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex-1 min-w-[180px] text-xs text-slate-500">Nome<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex: Molho de tomate" className="mt-1 block w-full rounded-lg border border-slate-300 py-2 px-3 text-sm" /></label>
         <label className="text-xs text-slate-500">Unidade<select value={unidade} onChange={(e) => setUnidade(e.target.value as 'KG' | 'UN' | 'LT')} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm"><option>UN</option><option>KG</option><option>LT</option></select></label>
@@ -319,15 +332,6 @@ function NovoItem({ id, onCriado, onFechar }: { id: string; onCriado: () => void
       </div>
       <p className="text-[11px] text-slate-400">Nasce com saldo 0 e custo "a definir" — o custo vem quando a 1ª nota entrar (ou na contagem). Produto que você FAZ é criado como ficha, não aqui.</p>
       {erro && <p className="text-sm text-rose-600">{erro}</p>}
-      {jaExiste && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="ja-existe">
-          <p className="font-medium">{jaExiste.pergunta}</p>
-          <div className="mt-2 flex gap-2">
-            <button type="button" onClick={() => { setJaExiste(null); onFechar() }} className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">usar o existente</button>
-            <button type="button" onClick={() => criar(true)} disabled={busy} className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100">criar mesmo assim</button>
-          </div>
-        </div>
-      )}
       <button onClick={() => criar()} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Criar item</button>
     </CardContent></Card>
   )

@@ -95,6 +95,11 @@ git-tracked). ⛔ Reposição se desfaz com **`cp` de backup, nunca `git checkou
 ⛔ **Sonda nunca dorme no workspace de build** — nasce fora do repo (ou sai na mesma linha de
 comando); uma sonda no raiz já derrubou um build.
 
+**LEI DA PERGUNTA NO TOPO (19/11)** — toda pergunta pendente que espera decisão do dono é um cartão
+destacado no TOPO da tela/modal dona dela (`components/perguntas/pergunta-no-topo.tsx`, contador acima de
+1), nunca no meio ou no fim da lista; o aviso do sininho pousa nela (`#âncora` de `perguntas/ancoras.ts`).
+*Pergunta escondida é pergunta que não existe* (o FRUKI LATA no rodapé do modal da baixa).
+
 **REGRA 1** teste que falha antes e passa depois · **REGRA 2** feature só está pronta se o
 dono VÊ na tela (o clique é dele) · **REGRA 3** teste EXECUTA o comportamento, nunca grep de
 string (*grep não distingue "refatorei" de "quebrei"*) · **REGRA 6** o caso NEGATIVO

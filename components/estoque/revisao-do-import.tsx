@@ -11,6 +11,7 @@
 // ⚠️ REGRA 12: a mesma tela nos dois viewports — no celular cada linha vira um bloco (o
 // destino embaixo do nome), no monitor vira tabela. **Mesmos dados, uma fonte.**
 
+import { PerguntaNoTopo } from '@/components/perguntas/pergunta-no-topo'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, Check, AlertTriangle, Search, EyeOff, Undo2 } from 'lucide-react'
 import { SeletorDeDestino, type EscolhaDeDestino } from './seletor-de-destino'
@@ -19,6 +20,7 @@ import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import type { AcaoSemArgumento } from '@/lib/ui/acao-sem-argumento'
 import { PlanoVendaModal, type PlanoVM } from './plano-venda-modal'
 import { AcaoDoConflito, ComparadorDeConflito } from './comparador-de-conflito'
+import { ANCORAS } from '@/components/perguntas/ancoras'
 
 export interface LinhaRevisaoDTO {
   nome: string
@@ -283,8 +285,22 @@ export function RevisaoDoImport({
     .filter((l) => filtro === 'TODOS' || l.estado === filtro)
     .filter((l) => !busca.trim() || l.nome.toLowerCase().includes(busca.trim().toLowerCase()))
 
+  // ⭐ LEI DA PERGUNTA NO TOPO (19/11): o conflito de grafia sai do meio da lista — de TODAS as linhas, nunca só das filtradas
+  const conflitos = rev.linhas.filter((l) => l.estado === 'SEM_VINCULO' && l.conflito)
+
   return (
     <div className="space-y-3">
+      <PerguntaNoTopo id={ANCORAS.CONFLITO} titulo="Mesmo produto com fichas diferentes — escolha a certa"
+        quantas={conflitos.length} singular="produto" plural="produtos">
+        <ul className="space-y-1 text-xs">
+          {conflitos.map((l) => (
+            <li key={l.nome} data-testid="conflito-no-topo" className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold">{l.nome}</span>
+              <AcaoDoConflito candidatas={l.conflito!} onEscolher={() => setConflitoAberto(l.nome)} />
+            </li>
+          ))}
+        </ul>
+      </PerguntaNoTopo>
       {/* ⭐ os 3 contadores — a MESMA lista que a tela desenha, nunca outra contagem */}
       <div className="flex flex-wrap items-center gap-1.5">
         {([
@@ -362,10 +378,8 @@ export function RevisaoDoImport({
                 )}
                 {l.estado === 'IGNORADO' && <span className="text-slate-500">→ fora do estoque (por você, em {l.ignoradoEm?.split('-').reverse().join('/')})</span>}
                 {/* ⛔ 08/11 — as grafias irmãs apontam pra fichas DIFERENTES: o sistema não escolhe */}
-                {l.estado === 'SEM_VINCULO' && l.conflito && (
-                  /* ⭐ a maçaneta: o mesmo "escolher →" da central, abrindo o comparador */
-                  <AcaoDoConflito candidatas={l.conflito} onEscolher={() => setConflitoAberto(l.nome)} />
-                )}
+                {/* ⭐ a pergunta mora no TOPO (lei de 19/11); aqui fica só a marca */}
+                {l.estado === 'SEM_VINCULO' && l.conflito && <span className="font-semibold text-rose-700">→ conflito — decida no alto ↑</span>}
                 {l.estado === 'SEM_VINCULO' && !l.sugestao && !l.conflito && <span className="text-amber-700">→ escolher destino</span>}
                 {/* ⭐⭐ A SUGESTÃO É MARCADA COMO SUGESTÃO — o clique é do dono */}
                 {l.estado === 'SEM_VINCULO' && l.sugestao && (

@@ -4,8 +4,10 @@
 // lançamento manual). Responde "o que acontece se eu confirmar?": tabela do que baixa +
 // custo total + pendentes numa linha neutra colapsada. Nunca laranja pra estado normal.
 
+import { PerguntaNoTopo } from '@/components/perguntas/pergunta-no-topo'
 import { useState } from 'react'
 import { X, Loader2, Check, Info, AlertTriangle } from 'lucide-react'
+import { ANCORAS } from '@/components/perguntas/ancoras'
 
 export interface SanidadeVM {
   precisaConfirmar: boolean
@@ -39,6 +41,26 @@ export function PlanoVendaModal({ plano, data, titulo, subtitulo, processando, e
       <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-1 flex items-center justify-between"><h3 className="text-base font-semibold text-slate-900">{titulo} de {fmtDia(data)}</h3><button onClick={onClose}><X className="h-5 w-5 text-slate-400" /></button></div>
         {subtitulo && <p className="mb-3 text-xs text-slate-500">{subtitulo}</p>}
+
+        {/* ⭐⭐ LEI DA PERGUNTA NO TOPO (19/11) — a pergunta da sanidade morava no RODAPÉ, depois da
+            lista inteira do que sai do estoque; o dono procurou o "FRUKI LATA: 81 num dia" até achar. */}
+        {perguntar && plano.sanidade && (
+          <div className="mb-3">
+            <PerguntaNoTopo id={ANCORAS.SANIDADE} titulo="Número muito acima do normal — confere antes de baixar"
+              quantas={Math.max(1, plano.sanidade.suspeitas.length)} singular="número" plural="números">
+              <ul className="space-y-1">
+                {plano.sanidade.suspeitas.slice(0, 5).map((x) => <li key={x.produto} className="text-xs text-amber-900">{x.frase}</li>)}
+              </ul>
+              {plano.sanidade.suspeitas.length === 0 && (
+                <p className="mt-1.5 text-xs text-amber-900">O arquivo traz {plano.sanidade.totalDoArquivo.toLocaleString('pt-BR')} unidades num dia — o normal é {plano.sanidade.totalMedioDoDia.toLocaleString('pt-BR')} ({plano.sanidade.vezesNoTotal}× o normal). Confere se é o arquivo certo.</p>
+              )}
+              <label className="mt-2.5 flex items-start gap-2 text-xs text-amber-900">
+                <input type="checkbox" checked={cienteDaSanidade} onChange={(e) => setCiente(e.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-600" />
+                <span>Conferi e é isso mesmo — pode baixar</span>
+              </label>
+            </PerguntaNoTopo>
+          </div>
+        )}
 
         {/* ⭐⭐⭐ O RESUMO POR NOME (14/09/2026) — ordem do dono: *"o resumo do import
             lista TUDO: baixou N × pendente M × ignorado K, POR NOME"*.
@@ -95,22 +117,6 @@ export function PlanoVendaModal({ plano, data, titulo, subtitulo, processando, e
             <summary className="cursor-pointer">{plano.fora.length} deixado(s) de fora (desmarcado)</summary>
             <div className="mt-1 space-y-0.5">{plano.fora.map((f) => <div key={f.nome}>{f.nome} <span className="tabular-nums text-slate-400">{f.quantidade}×</span></div>)}</div>
           </details>
-        )}
-
-        {perguntar && plano.sanidade && (
-          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-            <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-900"><AlertTriangle className="h-3.5 w-3.5" /> Número muito acima do normal — confere antes de baixar</p>
-            <ul className="mt-1.5 space-y-1">
-              {plano.sanidade.suspeitas.slice(0, 5).map((x) => <li key={x.produto} className="text-xs text-amber-900">{x.frase}</li>)}
-            </ul>
-            {plano.sanidade.suspeitas.length === 0 && (
-              <p className="mt-1.5 text-xs text-amber-900">O arquivo traz {plano.sanidade.totalDoArquivo.toLocaleString('pt-BR')} unidades num dia — o normal é {plano.sanidade.totalMedioDoDia.toLocaleString('pt-BR')} ({plano.sanidade.vezesNoTotal}× o normal). Confere se é o arquivo certo.</p>
-            )}
-            <label className="mt-2.5 flex items-start gap-2 text-xs text-amber-900">
-              <input type="checkbox" checked={cienteDaSanidade} onChange={(e) => setCiente(e.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-600" />
-              <span>Conferi e é isso mesmo — pode baixar</span>
-            </label>
-          </div>
         )}
 
         {erro && <p className="mt-3 flex items-center gap-1 text-sm text-rose-600"><AlertTriangle className="h-3.5 w-3.5" /> {erro}</p>}

@@ -20,6 +20,7 @@
 // ali fechar ao escolher é o fluxo (escolheu o ingrediente → vai pra quantidade). Tirar o
 // dinheiro ou segurar o painel pra todos seria consertar uma tela quebrando seis.
 
+import { PerguntaNoTopo } from '@/components/perguntas/pergunta-no-topo'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, Plus, Check } from 'lucide-react'
@@ -27,6 +28,7 @@ import { useDismissivel } from '@/lib/hooks/use-dismissivel'
 import { posicaoFlutuante } from '@/lib/ui/posicao-flutuante'
 import { urlDaBuscaDeItens } from '@/lib/stock/buscar-itens'
 import type { UniversoDoSeletor } from '@/lib/stock/universo-do-seletor'
+import { ANCORAS } from '@/components/perguntas/ancoras'
 
 export interface ItemBusca {
   id: string
@@ -200,6 +202,20 @@ export function BuscaItem({
             maxHeight: pos.maxAltura,
           }}
         >
+          {/* ⭐⭐ LEI DA PERGUNTA NO TOPO (19/11): o "já existe" morava no FUNDO do painel, depois da lista e
+              do criar — num painel `fixed` com altura máxima e `overflow-hidden`, podia ficar fora da vista. */}
+          {jaExiste && (
+            <div className="p-2" data-testid="ja-existe">
+              <PerguntaNoTopo id={ANCORAS.JA_EXISTE} titulo={jaExiste.pergunta} quantas={1} singular="item" plural="itens">
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <button type="button" onClick={() => { onEscolher(jaExiste.item); setJaExiste(null); setQ(''); if (!emSerie) setAberto(false) }}
+                    className="rounded-md bg-amber-600 px-2.5 py-1 font-semibold text-white hover:bg-amber-700">usar o existente</button>
+                  <button type="button" onClick={() => criarItem(true)} disabled={criando}
+                    className="rounded-md border border-amber-400 bg-white px-2.5 py-1 font-semibold text-amber-800 hover:bg-amber-100">criar mesmo assim</button>
+                </div>
+              </PerguntaNoTopo>
+            </div>
+          )}
           {/* ⭐ a LISTA rola; o criar/vazio fica fixo embaixo — senão o gesto de criar sai da
               vista justo quando a busca não achou nada. */}
           <div className="overflow-y-auto" style={{ maxHeight: Math.min(pos.maxAltura - 8, ALTURA_DA_LINHA * RESULTADOS_VISIVEIS) }}>
@@ -254,17 +270,6 @@ export function BuscaItem({
                 className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
                 <Plus className="h-3.5 w-3.5" /> criar
               </button>
-            </div>
-          )}
-          {jaExiste && (
-            <div className="border-t border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="ja-existe">
-              <p className="font-medium">{jaExiste.pergunta}</p>
-              <div className="mt-1.5 flex gap-2">
-                <button type="button" onClick={() => { onEscolher(jaExiste.item); setJaExiste(null); setQ(''); if (!emSerie) setAberto(false) }}
-                  className="rounded-md bg-amber-600 px-2.5 py-1 font-semibold text-white hover:bg-amber-700">usar o existente</button>
-                <button type="button" onClick={() => criarItem(true)} disabled={criando}
-                  className="rounded-md border border-amber-400 bg-white px-2.5 py-1 font-semibold text-amber-800 hover:bg-amber-100">criar mesmo assim</button>
-              </div>
             </div>
           )}
         </div>,

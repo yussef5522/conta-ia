@@ -19,6 +19,7 @@ import { mesmaPrateleira } from './porta-do-nome'
 import { mesclarItens } from './mesclar'
 import { saldoItem } from '../saldo'
 import { escolherCanonico } from './unificar-gemeos'
+import { ANCORAS } from '@/components/perguntas/ancoras'
 
 export const ORIGEM_GEMEOS = 'GEMEOS_SUSPEITOS'
 const RECEITA = new Set(['PRODUTO_FINAL', 'SABOR'])
@@ -132,7 +133,7 @@ export async function avisarFilaDeGemeos(companyId: string, db: PrismaClient = d
     titulo: `Revise ${pares.length} ${pares.length === 1 ? 'par de itens parecidos' : 'pares de itens parecidos'} no estoque`,
     corpo: `Nomes quase iguais podem ser o mesmo produto cadastrado duas vezes — e aí o histórico se divide. Ex.: ${pares.slice(0, 4).map((p) => `“${p.a.nome}” × “${p.b.nome}”`).join(' · ')}${pares.length > 4 ? ` · e mais ${pares.length - 4}` : ''}.`,
     oQueFazer: 'Abra a fila e responda par a par: juntar (é o mesmo item) ou são diferentes (nunca mais pergunto).',
-    acaoRotulo: 'Abrir a fila', acaoHref: `/empresas/${companyId}/estoque/itens/gemeos`,
+    acaoRotulo: 'Abrir a fila', acaoHref: `/empresas/${companyId}/estoque/itens/gemeos#${ANCORAS.GEMEOS}`, // ⭐ pousa NA pergunta (lei de 19/11)
   }, db)
   return pares.length
 }

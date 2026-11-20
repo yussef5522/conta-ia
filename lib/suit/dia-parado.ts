@@ -19,6 +19,8 @@ import { materializarComplementosDia, complementosGravados } from './complemento
 import { CORTE_COMPLEMENTOS } from './cortes'
 import { horaBrasil } from './ao-vivo'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
+import { ANCORAS } from '@/components/perguntas/ancoras'
+
 
 export const ORIGEM_DIA_PARADO = 'SUIT_DIA_PARADO'
 export const STATUS_PARADO = 'AGUARDANDO_DONO'
@@ -43,7 +45,7 @@ export async function avisarDiaParado(db: PrismaClient, companyId: string, dia: 
     titulo: `Confirme ou revise as vendas de ${diaBr(dia)} — o dia está parado`,
     corpo: `A conferência das vendas perguntou: "${motivo}". Enquanto você não responder, nada desse dia entra no estoque — nem as vendas, nem as baixas — e a contagem fica trancada.`,
     oQueFazer: 'Confirme se o número é de verdade (promoção, evento) ou revise as vendas do dia antes de confirmar.',
-    acaoRotulo: 'Responder agora', acaoHref: `/empresas/${companyId}/estoque/vendas`,
+    acaoRotulo: 'Responder agora', acaoHref: `/empresas/${companyId}/estoque/vendas#${ANCORAS.DIA_PARADO}`, // ⭐ pousa NA pergunta (lei de 19/11)
   }, db)
 }
 

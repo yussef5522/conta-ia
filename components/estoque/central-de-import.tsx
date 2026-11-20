@@ -11,6 +11,7 @@
  * existia) e o Σ do arquivo que ele passa a guardar — os dois moram nos componentes de upload,
  * não nesta leitura.
  */
+import { PerguntaNoTopo } from '@/components/perguntas/pergunta-no-topo'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { casaBusca } from '@/lib/busca-texto'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
@@ -18,6 +19,7 @@ import { baixarCsv } from '@/lib/format/csv-cliente'
 import type { CentralDeImport, DiaDaCentral } from '@/lib/stock/vendas/central-de-import'
 import type { DetalheDoDia } from '@/lib/stock/vendas/detalhe-do-dia'
 import { AcaoDoConflito, ComparadorDeConflito } from './comparador-de-conflito'
+import { ANCORAS } from '@/components/perguntas/ancoras'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const num = (n: number) => n.toLocaleString('pt-BR')
@@ -533,6 +535,21 @@ export function CentralDeImportView({
                     />
                   </label>
                 </div>
+                {/* ⭐⭐ LEI DA PERGUNTA NO TOPO (19/11): o conflito de grafia é pergunta do sistema — mora no TOPO
+                    do detalhe, com contador; antes era uma linha no meio da lista (e o LIMITE podia escondê-la). */}
+                <div className="px-[16px] pb-[10px]">
+                  <PerguntaNoTopo id={ANCORAS.CONFLITO} titulo="Mesmo produto com fichas diferentes — escolha a certa"
+                    quantas={detalhe.produtos.filter((p) => p.destino === 'CONFLITO').length} singular="produto" plural="produtos">
+                    <ul className="space-y-1 text-xs">
+                      {detalhe.produtos.filter((p) => p.destino === 'CONFLITO').map((p) => (
+                        <li key={p.nome} data-testid="conflito-no-topo" className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-semibold">{p.nome} <span className="font-normal tabular-nums">· {num(p.unidades)} un</span></span>
+                          <AcaoDoConflito candidatas={p.candidatas} onEscolher={() => setConflito(p.nome)} />
+                        </li>
+                      ))}
+                    </ul>
+                  </PerguntaNoTopo>
+                </div>
                 <div className="flex flex-wrap gap-[6px] px-[16px] pb-[10px]">
                   <Chip on={abaDet === 'prod'} onClick={() => setAbaDet('prod')}>
                     Produtos · {num(detalhe.totais.linhas)} linhas
@@ -585,8 +602,8 @@ export function CentralDeImportView({
                         {p.destino === 'CONFLITO' ? (
                           /* ⛔ 08/11 — o mesmo produto com fichas DIFERENTES nas grafias: o sistema não escolhe.
                              ⭐ O "escolher →" abre o COMPARADOR (antes abria a central geral: porta sem nada atrás). */
-                          <span className="text-right">
-                            <AcaoDoConflito candidatas={p.candidatas} onEscolher={() => setConflito(p.nome)} />
+                          <span className="text-right text-[12px] font-semibold" style={{ color: 'var(--fam-coral-ink)' }}>
+                            conflito — decida no alto ↑
                           </span>
                         ) : p.destino === 'SEM_DESTINO' ? (
                           <span className="text-right text-[12px] font-semibold" style={{ color: 'var(--fam-ambar-ink)' }}>
