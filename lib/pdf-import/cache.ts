@@ -19,15 +19,16 @@ export async function getCachedExtraction(
   })
   if (!cached) return null
   // Verifica expiração lazy
+  // ⭐ (23/11) os efeitos colaterais são AGUARDADOS — antes eram fire-and-forget e o teste
+  // esperava 50/100 ms "torcendo" pra eles terminarem: passava sozinho e caía na suíte cheia
+  // (o flaky fichado desde 18/11). Continuam best-effort: falha aqui não muda a resposta.
   if (cached.expiresAt < new Date()) {
-    // Soft-clean (best-effort; ignora erro)
-    prisma.personalPdfExtractCache
+    await prisma.personalPdfExtractCache
       .delete({ where: { id: cached.id } })
       .catch(() => {})
     return null
   }
-  // Incrementa hitCount
-  prisma.personalPdfExtractCache
+  await prisma.personalPdfExtractCache
     .update({ where: { id: cached.id }, data: { hitCount: { increment: 1 } } })
     .catch(() => {})
   try {

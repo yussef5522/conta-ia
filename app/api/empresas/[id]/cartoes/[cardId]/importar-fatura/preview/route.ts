@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { checkCreditCardPjFlag } from '@/lib/credit-card-pj/feature-flag'
-import { extractInvoiceSmart } from '@/lib/credit-card-pj/extract-invoice-smart'
+import { extractInvoiceSmart, BANCOS_SUPORTADOS } from '@/lib/credit-card-pj/extract-invoice-smart'
 import { CreditCardPjExtractError } from '@/lib/credit-card-pj/types'
 import { checkInvoiceTotals } from '@/lib/credit-card-pj/totals-check'
 import { suggestCategoriesForInvoiceLines } from '@/lib/credit-card-pj/suggest-category'
@@ -106,10 +106,15 @@ export async function POST(request: NextRequest, { params }: Params) {
           ? 400
           : code === 'CLAUDE_TIMEOUT'
             ? 504
-            : code === 'VALIDATION_FAILED' || code === 'CLAUDE_TRUNCATED'
+            : code === 'VALIDATION_FAILED' || code === 'CLAUDE_TRUNCATED' || code === 'LAYOUT_DIFERENTE' || code === 'BANCO_NAO_SUPORTADO'
               ? 422
               : 500
-      return NextResponse.json({ erro: err.message, code, checks: (err.details ?? null) }, { status })
+      // ⭐ (23/11) a recusa leva o MOTIVO (título da tela) e a lista do que o leitor suporta
+      return NextResponse.json({
+        erro: err.message, code, checks: (err.details ?? null),
+        motivo: code === 'BANCO_NAO_SUPORTADO' ? 'BANCO_NAO_SUPORTADO' : code === 'LAYOUT_DIFERENTE' ? 'LAYOUT_DIFERENTE' : code === 'VALIDATION_FAILED' ? 'CONTA_NAO_FECHOU' : null,
+        bancosSuportados: BANCOS_SUPORTADOS,
+      }, { status })
     }
     console.error('[credit-card-pj/preview] erro inesperado:', err)
     return NextResponse.json({ erro: 'Erro ao processar fatura' }, { status: 500 })

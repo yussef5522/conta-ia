@@ -1,6 +1,13 @@
 // Sprint PF Fatia 3.5 — Cache SHA256 (integração SQLite dev).
 
+// ⭐ (23/11) O FLAKY CURADO (fichado desde 18/11 — passava sozinho, caía na suíte):
+//  1. os efeitos do `getCachedExtraction` eram fire-and-forget e o teste dormia 50/100 ms
+//     torcendo — sob a suíte cheia o SQLite demora mais. Agora o lib AGUARDA, e o teste não dorme.
+//  2. os hashes eram FIXOS ('a'×64…) num campo ÚNICO global: uma rodada que morria antes do
+//     `afterAll` deixava a linha com outro dono, e a próxima herdava. Agora cada rodada tem os
+//     seus (derivados do PREFIX) e o beforeAll limpa por eles.
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import { createHash } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
 import {
@@ -11,10 +18,13 @@ import {
 } from '@/lib/pdf-import/cache'
 
 const PREFIX = `pdf-cache-${Date.now()}-${process.pid}`
+const H = (k: string) => createHash('sha256').update(`${PREFIX}:${k}`).digest('hex')
+const HASHES = ['a', 'b', 'c', 'd'].map(H)
 let userA: { id: string }
 let userB: { id: string }
 
 beforeAll(async () => {
+  await prisma.personalPdfExtractCache.deleteMany({ where: { pdfSha256: { in: HASHES } } })
   const pwd = await bcrypt.hash('TestPwd123!', 10)
   userA = await prisma.user.create({
     data: { name: 'A', email: `${PREFIX}-a@dev.local`, password: pwd },
@@ -26,7 +36,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.personalPdfExtractCache
-    .deleteMany({ where: { ownerUserId: { in: [userA.id, userB.id] } } })
+    .deleteMany({ where: { OR: [{ ownerUserId: { in: [userA.id, userB.id] } }, { pdfSha256: { in: HASHES } }] } })
     .catch(() => {})
   await prisma.user.deleteMany({ where: { email: { contains: PREFIX } } }).catch(() => {})
 })
@@ -52,7 +62,7 @@ function fakeResult() {
 }
 
 describe('Cache CRUD', () => {
-  const hash = 'a'.repeat(64)
+  const hash = H('a')
 
   test('save → get retorna mesmo resultado', async () => {
     await saveCachedExtraction({
@@ -67,7 +77,7 @@ describe('Cache CRUD', () => {
   })
 
   test('get cache inexistente → null', async () => {
-    const got = await getCachedExtraction('b'.repeat(64))
+    const got = await getCachedExtraction(H('b'))
     expect(got).toBeNull()
   })
 
@@ -76,8 +86,6 @@ describe('Cache CRUD', () => {
       where: { pdfSha256: hash },
     })
     await getCachedExtraction(hash)
-    // Aguarda increment async
-    await new Promise((r) => setTimeout(r, 50))
     const after = await prisma.personalPdfExtractCache.findUnique({
       where: { pdfSha256: hash },
     })
@@ -86,7 +94,7 @@ describe('Cache CRUD', () => {
 })
 
 describe('Cache LGPD ownership', () => {
-  const hashB = 'c'.repeat(64)
+  const hashB = H('c')
 
   test('userB pode SALVAR cache (vira owner)', async () => {
     await saveCachedExtraction({
@@ -112,13 +120,13 @@ describe('Cache LGPD ownership', () => {
   test('listOwnerCaches só retorna do user', async () => {
     const a = await listOwnerCaches(userA.id)
     const b = await listOwnerCaches(userB.id)
-    expect(a.some((c) => c.pdfSha256 === 'a'.repeat(64))).toBe(true)
-    expect(b.some((c) => c.pdfSha256 === 'a'.repeat(64))).toBe(false)
+    expect(a.some((c) => c.pdfSha256 === H('a'))).toBe(true)
+    expect(b.some((c) => c.pdfSha256 === H('a'))).toBe(false)
   })
 })
 
 describe('TTL expiração lazy', () => {
-  const hashExp = 'd'.repeat(64)
+  const hashExp = H('d')
 
   test('cache expirado → null + auto-clean', async () => {
     await prisma.personalPdfExtractCache.create({
@@ -135,8 +143,6 @@ describe('TTL expiração lazy', () => {
     })
     const got = await getCachedExtraction(hashExp)
     expect(got).toBeNull()
-    // Aguarda delete async
-    await new Promise((r) => setTimeout(r, 100))
     const stillExists = await prisma.personalPdfExtractCache.findUnique({
       where: { pdfSha256: hashExp },
     })

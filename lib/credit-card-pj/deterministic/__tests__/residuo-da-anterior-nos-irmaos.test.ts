@@ -19,8 +19,8 @@
  *   │ CAIXA     │ LINHAS do Demonstrativo (D e C), │ ⭐ PAREAMENTO (curado hoje) — o    │
  *   │           │ e o bloco entra no total         │    resíduo vira LINHA sem portador │
  *   │ BANRISUL  │ DECLARADOS no resumo             │ ⭐ a EQUAÇÃO declarada             │
- *   │ SICREDI   │ o total da fatura EXCLUI a       │ ⭐ a linha de ROTATIVO, que já     │
- *   │           │ anterior                         │    entra em "Total cartão"         │
+ *   │ SICREDI   │ (23/11) a anterior ENTRA: o juiz │ ⭐ a EQUAÇÃO DO RESUMO (anterior + │
+ *   │           │ confere a equação do resumo      │    pag/créd + despesas + encargos) │
  *   │ MERC.PAGO │ DECLARADOS, com check informativo│ ⚠️ LATENTE REGISTRADO — fora do    │
  *   │           │                                  │    julgamento (ordem do dono)      │
  *   └───────────┴──────────────────────────────────┴────────────────────────────────────┘
@@ -102,32 +102,38 @@ describe('BANRISUL — quem carrega é a EQUAÇÃO DECLARADA do resumo', () => {
   })
 })
 
-describe('SICREDI — a fatura EXCLUI a anterior; o resíduo volta como ROTATIVO', () => {
+describe('SICREDI — a anterior ENTRA no total (medido no resumo do próprio banco, 23/11)', () => {
   const texto = ler('sicredi-fatura-real.txt')
   const p = parseSicrediFatura(texto)
 
   /**
-   * ⚠️⚠️ ESTE É O ACHADO QUE SÓ A MEDIÇÃO DÁ: o texto do Sicredi **tem** um
-   * `Total da fatura anterior`, e o parser **não o lê** — a mesma forma do buraco da
-   * Caixa. A diferença é ESTRUTURAL e está escrita no próprio PDF dele:
-   * *"Rotativo: saldo remanescente da fatura anterior + encargos"*. Ou seja, no Sicredi
-   * o que sobra **volta como LINHA de rotativo**, que já entra em `Total cartão` e já é
-   * conferida por `Σ compras+encargos = Total cartão`.
-   *
-   * ⛔ Por isso NÃO se aplica aqui a cura da Caixa: parear a anterior declarada com o
-   * pagamento somaria a dívida uma 2ª vez, por cima do rotativo.
+   * ⛔⛔ CORREÇÃO DE 23/11 — este bloco afirmava "a fatura EXCLUI a anterior; o resíduo volta
+   * como linha de ROTATIVO" e conferia `Total cartão + estornos = Total desta Fatura`. A
+   * fatura de novembro (2 cartões) DESMENTIU pela aritmética do próprio banco: o resumo declara
+   * `Subtotal Despesas e Pagamentos = anterior + pagamentos/créditos + despesas`
+   * (6.667,14 − 6.815,54 + 4.959,09 = 4.810,69). A identidade antiga só fechava porque, nas DUAS
+   * fixtures, o pagamento quitou a anterior ao centavo — o "par anulado" que a REGRA 14 diz
+   * que não protege nada. Agora o juiz confere a equação do resumo, que vale com e sem resíduo.
    */
-  it('o texto declara a anterior, o parser NÃO a lê — e isso é correto neste layout', () => {
-    expect(/Total da fatura anterior/i.test(texto)).toBe(true)
-    expect('anterior' in p.declared).toBe(false)
-    expect(/Rotativo:\s*saldo remanescente da fatura anterior/i.test(texto)).toBe(true)
+  it('o parser LÊ a anterior declarada, e a equação do resumo fecha com as linhas', () => {
+    expect(p.declared.anterior).toBe(2304.83)
+    const v = validateSicrediFatura(p)
+    const c = v.checks.find((x) => x.name === 'anterior + pagamentos/créditos + despesas + encargos = Total desta Fatura')!
+    expect(c.pass).toBe(true)
+    expect(c.lei).toBe('FATURA')
+    expect(v.ok).toBe(true)
   })
 
-  it('o total da fatura EXCLUI a anterior (Total cartão + estornos), e fecha', () => {
-    expect(round2((p.declared.totalCartao ?? 0) + p.computed.sumEstornos)).toBe(p.declared.totalFatura)
-    const v = validateSicrediFatura(p)
-    expect(v.checks.find((c) => c.name === 'Σ compras+encargos = Total cartão')?.pass).toBe(true)
-    expect(v.ok).toBe(true)
+  it('⭐ REGRA 14 — variante com RESÍDUO (pagou menos que a anterior): a equação do resumo cobra a diferença', () => {
+    // pagamento parcial: a anterior sobe 500 sem pagamento correspondente → o banco declararia
+    // Total desta Fatura 500 maior. A equação nova fecha; a antiga (cartão + estornos) NÃO.
+    const torto = {
+      ...p,
+      declared: { ...p.declared, anterior: round2(p.declared.anterior! + 500), totalFatura: round2(p.declared.totalFatura! + 500) },
+    }
+    const v = validateSicrediFatura(torto)
+    expect(v.checks.find((x) => x.lei === 'FATURA' && x.name.startsWith('anterior'))!.pass).toBe(true)
+    expect(round2((p.declared.totalCartao ?? 0) + p.computed.sumEstornos)).not.toBe(torto.declared.totalFatura)
   })
 
   /** ⭐ e o pagamento é CONFERIDO contra o declarado — pagamento mal-lido morde. */

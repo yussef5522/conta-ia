@@ -21,6 +21,9 @@ export interface InvoiceLine {
   installmentTotal?: number
   /** Final do cartao (quando ha multiplos cartoes na fatura) */
   cardLastDigits?: string
+  /** ⭐ (23/11) compra no exterior: o valor em dólar e a cotação que a fatura declarou */
+  usd?: number
+  cotacaoDolar?: number
   /** True quando a IA marca como linha duvidosa pro user verificar */
   needsReview?: boolean
   /** Nota livre da IA pro user (ex: "valor pequeno - verifique") */
@@ -75,7 +78,9 @@ export class CreditCardPjExtractError extends Error {
       | 'CLAUDE_TRUNCATED' // Vision cortou a resposta no max_tokens — fatura grande demais
       | 'CLAUDE_API_ERROR'
       | 'CLAUDE_INVALID_JSON'
-      | 'VALIDATION_FAILED'
+      | 'VALIDATION_FAILED' // a conta da fatura não fechou (lei do leitor)
+      | 'LAYOUT_DIFERENTE' // ⭐ (23/11) banco reconhecido, layout que o leitor não conhece
+      | 'BANCO_NAO_SUPORTADO' // ⭐ (23/11) PDF com texto de um banco sem leitor com prova
       | 'GATE_DISABLED',
     message: string,
     public details?: unknown,

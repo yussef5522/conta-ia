@@ -73,6 +73,8 @@ const TELAS: { arquivo: string; ancora: keyof typeof ANCORAS; lista: string; aca
   { arquivo: 'components/estoque/revisao-do-import.tsx', ancora: 'CONFLITO', lista: '{visiveis.map((l) =>', acao: '<AcaoDoConflito' },
   { arquivo: 'components/estoque/busca-item.tsx', ancora: 'JA_EXISTE', lista: '{res.map((it) =>', acao: '>usar o existente<' },
   { arquivo: 'app/(dashboard)/empresas/[id]/estoque/itens/page.tsx', ancora: 'JA_EXISTE', lista: 'placeholder="ex: Molho de tomate"', acao: '>usar o existente' },
+  // (23/11) "algum destes é o pagamento desta fatura?" — morava depois dos totais e dos números
+  { arquivo: 'app/(dashboard)/empresas/[id]/cartoes/[cardId]/importar-fatura/page.tsx', ancora: 'PAGAMENTO_DA_FATURA', lista: 'Linhas extraídas — IA sugeriu, você decide', acao: 'onChange={() => setReclassPaymentTxId(c.id)}' },
 ]
 
 describe('as outras perguntas do sistema — no TOPO, e a ação só dentro do cartão', () => {

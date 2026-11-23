@@ -20,17 +20,19 @@ const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 export function validateBanrisulFatura(parsed: BanrisulFaturaParsed): FaturaValidation {
   const { declared, computed } = parsed
   const checks: FaturaCheck[] = []
-  const mk = (name: string, expected: number | null, got: number): void => {
+  // ⭐ `lei` = qual prova da LEI DO LEITOR o check carrega (CARTAO · FATURA) — ver lei-do-leitor.ts
+  const mk = (name: string, expected: number | null, got: number, lei?: FaturaCheck['lei']): void => {
     if (expected == null) return
     const diff = round2(got - expected)
-    checks.push({ name, expected, got: round2(got), diff, pass: Math.abs(diff) <= TOL })
+    checks.push({ name, expected, got: round2(got), diff, pass: Math.abs(diff) <= TOL, ...(lei ? { lei } : {}) })
   }
 
   mk('V1 Σ Brasil = Débitos no Brasil', declared.brasil, computed.sumBrasil)
   mk('V2 Σ Exterior = Saldo Convertido em Reais', declared.exterior, computed.sumExterior)
   mk('V3 Σ IOF = IOF sobre transações no exterior', declared.iof, computed.sumIof)
-  mk('V4 Σ débitos = TOTAL DE GASTOS', declared.totalGastos, computed.sumPositives)
-  mk('V5 net = Saldo da fatura atual', declared.saldoAtual, computed.net)
+  // ⭐ o Banrisul declara UM "TOTAL DE GASTOS" pra todos os portadores — é a prova de CARTÃO que o PDF dá
+  mk('V4 Σ débitos = TOTAL DE GASTOS', declared.totalGastos, computed.sumPositives, 'CARTAO')
+  mk('V5 net = Saldo da fatura atual', declared.saldoAtual, computed.net, 'FATURA')
   /**
    * Consistência dos totais declarados entre si (não usa as linhas).
    *

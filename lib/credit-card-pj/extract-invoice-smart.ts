@@ -21,6 +21,7 @@ import { validateCaixaFatura } from './deterministic/validate-caixa-fatura'
 import { parseMercadoPagoFatura } from './deterministic/mercadopago-fatura-parser'
 import { validateMercadoPagoFatura } from './deterministic/validate-mercadopago-fatura'
 import { CreditCardPjExtractError, type InvoiceExtraction } from './types'
+import { aplicarLeiDoLeitor } from './deterministic/lei-do-leitor'
 
 export interface SmartExtractResult extends ExtractInvoiceResult {
   /** de onde veio a leitura — pra log/tela. */
@@ -72,6 +73,9 @@ const DETERMINISTIC: DeterministicParser[] = [
   },
 ]
 
+/** ⭐ os bancos que o leitor LÊ COM PROVA — a tela lista estes, nunca "e outros bancos" */
+export const BANCOS_SUPORTADOS: readonly string[] = DETERMINISTIC.map((d) => d.bank)
+
 /**
  * ⭐⭐ O ROTEADOR — escolhe por FORÇA DE EVIDÊNCIA, não por ordem (29/08/2026).
  *
@@ -109,6 +113,52 @@ export function hasDeterministicParser(bankName: string | null | undefined): boo
   return DETERMINISTIC.some((d) => d.match.test(bankName))
 }
 
+/**
+ * ⭐⭐ A LEITURA POR TEXTO — PURA, a porta única (23/11). O orquestrador chama isto sempre que o
+ * PDF tem texto, e os testes chamam ISTO (não uma cópia): roteia por evidência, parseia, julga
+ * pelo validador do banco + LEI DO LEITOR, e ou devolve a leitura PROVADA ou lança a recusa
+ * honesta (BANCO_NAO_SUPORTADO · LAYOUT_DIFERENTE · VALIDATION_FAILED) com o texto junto.
+ */
+export function lerFaturaPorTexto(text: string, pdfSize = 0): SmartExtractResult {
+  const det = escolherParser(text)
+  if (det) {
+    const parsed = det.parse(text)
+    // ⭐⭐ A LEI DO LEITOR (23/11): o validador do banco + as DUAS provas (cartão e fatura)
+    const validation = aplicarLeiDoLeitor(det.validate(parsed), det.bank)
+    if (!validation.ok) {
+      // NÃO cai pro Vision: o Yussef mandou FALHAR quando não fecha (impossibilidade).
+      // ⭐ A RECUSA LEVA O TEXTO E A CONTAGEM JUNTO (16/09 · 20/10) — a quarentena precisa dos dois.
+      throw new CreditCardPjExtractError(
+        validation.motivo === 'LAYOUT_DIFERENTE' ? 'LAYOUT_DIFERENTE' : 'VALIDATION_FAILED',
+        validation.message ?? 'Fatura não fecha.',
+        validation.checks,
+        text,
+        parsed.extraction.lines?.length ?? 0,
+      )
+    }
+    return {
+      extraction: parsed.extraction,
+      metrics: { durationMs: 0, inputTokens: 0, outputTokens: 0, model: 'pdftotext-layout', pdfSize },
+      source: 'PDFTEXT',
+      validation,
+      texto: text,
+    }
+  }
+  /**
+   * ⛔⛔ (23/11) BANCO NÃO RECONHECIDO NUNCA MAIS CAI NO VISION EM SILÊNCIO. O PDF tem texto, mas
+   * nenhum leitor com prova o reconhece: ler "no olho" da IA, sem as provas da lei do leitor, é
+   * importar uma fatura que ninguém conferiu. Recusa honesta, com a lista do que é suportado,
+   * e o TEXTO vai junto (quarentena) — é o que vira o parser do próximo banco.
+   */
+  throw new CreditCardPjExtractError(
+    'BANCO_NAO_SUPORTADO',
+    `Não reconheci o banco desta fatura. Hoje eu leio com prova: ${BANCOS_SUPORTADOS.join(', ')}. Nada foi importado.`,
+    null,
+    text,
+    0,
+  )
+}
+
 export async function extractInvoiceSmart(
   input: { pdfBytes: Uint8Array; fileName: string },
   deps: ExtractInvoiceDeps = {},
@@ -129,36 +179,9 @@ export async function extractInvoiceSmart(
     }
   }
 
-  if (text) {
-    const det = escolherParser(text)
-    if (det) {
-      const parsed = det.parse(text)
-      const validation = det.validate(parsed)
-      if (!validation.ok) {
-        // NÃO cai pro Vision: o Yussef mandou FALHAR quando não fecha (impossibilidade).
-        // ⭐ A RECUSA LEVA O TEXTO JUNTO (16/09) — ver `CreditCardPjExtractError.texto`.
-        // ⭐ e a CONTAGEM vai junto: só aqui ela existe (o `parsed` está na mão). Sem isso a
-        // quarentena grava `linhas: 0`, que se lê como "não achou lançamento nenhum".
-        throw new CreditCardPjExtractError(
-          'VALIDATION_FAILED',
-          validation.message ?? 'Fatura não fecha.',
-          validation.checks,
-          text,
-          parsed.extraction.lines?.length ?? 0,
-        )
-      }
-      return {
-        extraction: parsed.extraction,
-        metrics: { durationMs: 0, inputTokens: 0, outputTokens: 0, model: 'pdftotext-layout', pdfSize: input.pdfBytes.length },
-        source: 'PDFTEXT',
-        validation,
-        texto: text,
-      }
-    }
-    // banco com texto mas sem parser determinístico → Vision (Banrisul/Caixa hoje).
-  }
+  if (text && text.trim()) return lerFaturaPorTexto(text, input.pdfBytes.length)
 
-  // 2. Fallback Vision (escaneado ou banco sem parser).
+  // 2. Fallback Vision — SÓ pra PDF escaneado (sem camada de texto).
   const r = await extractInvoice(input, deps)
   return { ...r, source: 'VISION' }
 }

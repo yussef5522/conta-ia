@@ -94,6 +94,8 @@ describe('fixture REAL — falha quando NÃO fecha (impossibilidade)', () => {
     const semUma = FATURA.replace(/.*Ross Confeitaria Ltda.*R\$ 99,94.*\n/, '')
     const v = validateSicrediFatura(parseSicrediFatura(semUma))
     expect(v.ok).toBe(false)
-    expect(v.message).toMatch(/não fecha|não vou importar/i)
+    // (23/11) a frase nova diz o desfecho: "não fechou … nada foi importado"
+    expect(v.message).toMatch(/não fechou/i)
+    expect(v.message).toMatch(/nada foi importado/i)
   })
 })

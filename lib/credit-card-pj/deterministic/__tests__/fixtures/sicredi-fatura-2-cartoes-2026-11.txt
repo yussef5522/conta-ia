@@ -1,0 +1,324 @@
+Fixture ANONIMIZADO (23/11/2026) — fatura Sicredi Visa Empresas de NOVEMBRO/2026, DOIS cartões
+(físico + portador virtual). Autorizado pelo dono. Mascarados com o MESMO comprimento (as colunas
+do -layout não se mexem): nome do titular, empresa, endereço, finais dos cartões (0000 físico ·
+1111 virtual), número do pagamento e nomes de pessoa física em estabelecimentos. Estrutura e
+VALORES intactos: Total cartão (final 0000) 3.788,86 · (final 1111) 1.170,23 · fatura 4.810,69.
+O PDF cru NUNCA entra no repositório.
+
+                                            Empresa XX                                                                           Limite total de crédito R$ 25.000,00
+                                            Visa Empresas final 0000                                                                                  Melhor dia de compra 28
+                                            Debito em conta Ativo                                                          Fechamento da próxima fatura 27/11/2026
+
+                                            Total fatura de novembro R$ 4.810,69                                Total de parcelas em próximas faturas R$ 6.032,69
+
+
+
+             Pagamento total (R$)                                          Pagamento mínimo (R$)                                                                        R$ 843,96
+
+             R$ 4.810,69                                               Composto por R$ 0,00 ( parcelamentos) + R$ 0,00 ( rotativo do mês anterior) + R$ 843,96 ( mínimo
+                                                                       contratual). Pagando o valor mínimo da fatura, o valor de encargos a serem cobrados na próxima
+                É sempre a melhor opção                                fatura é de R$ 512,73 Juros de 11,3% a.m (261,36% a.a) e CET de 13,11% a.a.
+
+                 Vencimento 13/nov
+                                                                         Financiamento (R$)                                                                Oferta indisponível
+      O valor total será debitado da sua con-
+     ta corrente no vencimento da fatura. Ha-                          Você não possui oferta de adesão ao financiamento. Verifique a melhor opção junto a sua cooperativa.
+  bilite/desabilite o débito em conta nos canais
+                  de atendimento.
+
+
+ Parcelamento (R$)                                                                                                                                           Oferta indisponível
+
+Você não possui oferta de parcelamento. Verifique a melhor opção junto a sua cooperativa.
+
+
+
+ Resumo da fatura                                          Valor (R$) Valor (US$)                       Limite                                                               em 28/10
+
+ Total da fatura anterior                                       6.667,14                                                               Saque à crédito                          Crédito
+ Pagamentos | Créditos                                         -6.815,54               0,00           Total                                     R$ 0,00                R$ 25.000,00
+ Despesas atuais | Débitos no Brasil                            4.666,74                              Utilizado                                R$ 0,00                  R$ 10.843,38
+ Despesas atuais | Débitos no Exterior                            292,35             58,00            Disponível                               R$ 0,00                   R$ 14.156,62
+ Subtotal Despesas e Pagamentos                                 4.810,69                              Saque à crédito: É uma funcionalidade que utiliza um percentual do valor do seu
+                                                                                                      limite de crédito para realizar saques com o seu cartão, conforme o limite do canal.
+ Encargos rotativos                                                 0,00
+                                                                                                      Limite de crédito: É o valor que você tem disponível para realizar compras e saques
+ Encargos saque                                                     0,00                              com o seu cartão de crédito.
+
+ Encargos compras parceladas                                        0,00
+ Encargos parcelamento de fatura                                    0,00
+ Encargos parcelamento de rotativo                                  0,00
+ IOF                                                                0,00
+ Subtotal Encargos                                                  0,00
+ Total desta Fatura                                             4.810,69
+
+
+
+
+                                      EMPRESA XX
+                                      RUA TESTE 0000 SALA X       
+                                      BAIRRO
+                                      00000000 CIDADE UF
+
+
+
+
+                                                                                                                                                                                  1 de 5
+                                         Empresa XX                                                                             Vencimento 13/11/2026
+                                         Visa Empresas final 0000                                               Total fatura de novembro R$ 4.810,69
+
+
+
+  Transações
+
+
+Cartão Titular Tt (final 0000)
+
+
+    Data e hora       Cidade        Compra            Descrição                       Parcela   Valor em Dolar              Cotação    Valor em reais
+                                                                                                (Transações no exterior¹)   do dólar
+
+   26/out 14:07      Sao Paulo      Online            Apple Com/bill                                                                       R$ 5,90
+
+
+   19/out 21:19       Osasco        Online            Mercadolivre Mercadoli                                                              R$ 33,74
+
+
+   17/out 10:28        Itaqui      Presencial         Super Duda                                                                          R$ 43,64
+
+
+   15/out 20:40       Osasco        Online            Mercado Pago Merc                                                                  R$ 488,52
+
+
+   14/out 16:59        Itaqui      Presencial         Panvel Filial 79                 01/02                                             R$ 420,64
+
+   13/out 23:26                                       Pagamento 000000000                                                                -R$ 6.667,14
+
+   12/out 21:27                                       Iof Compra Internacional                                                             R$ 6,35
+
+   11/out 17:45        Itaqui      Presencial         Tba Itaqui Ltda                                                                      R$ 31,41
+
+
+   11/out 18:26        Itaqui      Presencial         Minimercado Padaria E                                                               R$ 48,99
+
+
+   11/out 22:07     Vila Olimpia    Online            Shein Shein Com                                                                     R$ 211,42
+
+                                                      Bnanacademy Com London
+   08/out 09:54                                                                                       US$ 36,00              R$ 5,04      R$ 181,56
+                                                      Gb
+
+   07/out 16:56        Itaqui      Presencial         Brasil Free Shop                                                                    R$ 150,55
+
+   07/out 22:45                                       Iof Compra Internacional                                                             R$ 3,87
+
+   06/out 16:20        Itaqui      Presencial         Lojapessoafisica                 01/03                                              R$ 198,06
+
+                                                      Mercadolivre Naturaldo Osasco
+   06/out 22:45                     Online                                                                                               -R$ 148,40
+                                                      Br
+
+                                                      Bnanacademy Com London
+   06/out 13:38                                                                                       US$ 22,00              R$ 5,04      R$ 110,79
+                                                      Gb
+
+   05/out 14:25        Itaqui      Presencial         Super Duda                                                                          R$ 34,41
+
+
+   04/out 06:41      Sao Paulo      Online            Netflix Com                                                                         R$ 44,90
+
+
+   01/out 09:11       Osasco        Online            Mercadolivre Ibiacesso                                                              R$ 19,39
+
+
+   01/out 09:22       Osasco        Online            Mercadolivre Naturaldo                                                              R$ 230,75
+
+
+   29/set 10:24       Osasco        Online            Mercadolivre Vianelli                                                               R$ 66,90
+
+
+   23/set 23:18                    Presencial         00012 Sh Iguatemi                02/02                                              R$ 184,75
+
+
+                                                                                                        Total cartão (final 0000)      R$ 3.788,86
+
+
+
+
+                                                                                                                                                  2 de 5
+                                           Empresa XX                                                                       Vencimento 13/11/2026
+                                           Visa Empresas final 0000                                         Total fatura de novembro R$ 4.810,69
+
+
+
+  Transações
+
+
+Cartão Titular Tt (final 0000)
+
+
+    Data e hora       Cidade          Compra            Descrição                Parcela    Valor em Dolar              Cotação    Valor em reais
+                                                                                            (Transações no exterior¹)   do dólar
+
+   23/set 23:18                      Presencial         Centauro Ce103            02/02                                               R$ 199,99
+
+
+   11/set 23:18                      Presencial         Italab                    02/03                                               R$ 414,73
+
+
+   31/ago 23:18                        Online           Pg Eduzz Edzpipe          02/12                                               R$ 27,06
+
+
+   15/ago 23:18                        Online           Shein Shein Co            03/03                                               R$ 39,49
+
+
+   10/jul 23:18                        Online           Shein Shein Co            04/04                                               R$ 47,91
+
+
+   06/jul 23:18                        Online           Mercadolivre Mercad       04/06                                               R$ 80,27
+
+
+   23/jun 23:18                      Presencial         Brasil Free Shop          05/08                                               R$ 99,51
+
+
+   23/jun 23:18                      Presencial         Brasil Free Shop          05/08                                               R$ 49,98
+
+
+   13/jun 23:18                        Online           Leiturinha                05/12                                               R$ 54,93
+
+
+   25/fev 23:18                      Presencial         Pdv Grubert E Braga       09/10                                               R$ 258,45
+
+
+                                                                                                    Total cartão (final 0000)      R$ 3.788,86
+Cartão portador virtual Titular Tt (final 1111)
+
+
+   23/out 00:13       Osasco           Online           Mercadolivre Mercad       01/05                                               R$ 35,00
+
+
+   17/out 01:17       Osasco           Online           Mp Vendedorx              01/10                                               R$ 112,71
+
+
+   17/out 00:22       Osasco           Online           Mercadolivre Mercadoli                                                        R$ 125,30
+
+
+   16/out 18:56       Osasco           Online           Mercadolivre Cofi                                                             R$ 91,90
+
+
+   16/out 18:58       Osasco           Online           Mercadolivre Mercadoli                                                        R$ 45,99
+
+
+   10/out 18:18       Osasco           Online           Mercado Mercadolivre                                                          R$ 309,59
+
+
+   09/out 14:22       Osasco           Online           Mercadolivre Mercad       01/03                                               R$ 32,01
+
+
+   08/out 01:53       Osasco           Online           Mercadolivre Mercadoli                                                        R$ 41,98
+
+
+   04/out 17:20       Osasco           Online           Mercadolivre Mercad       01/03                                               R$ 32,01
+
+
+   04/out 18:51       Osasco           Online           Mercado Pago Merc                                                             R$ 121,84
+
+
+                                                                                 Total cartão portador virtual (final 1111)         R$ 1.170,23
+
+
+
+
+                                                                                                                                              3 de 5
+                                                             Empresa XX                                                                                                    Vencimento 13/11/2026
+                                                             Visa Empresas final 0000                                                                     Total fatura de novembro R$ 4.810,69
+
+
+
+   Transações
+
+
+Cartão portador virtual Titular Tt (final 1111)
+
+
+     Data e hora                Cidade                Compra                   Descrição                                   Parcela         Valor em Dolar             Cotação         Valor em reais
+                                                                                                                                          (Transações no exterior¹)   do dólar
+
+     01/out 11:26               Osasco                Online                   Mp Lojabrazil                                01/10                                                         R$ 221,90
+
+
+                                                                                                                           Total cartão portador virtual (final 1111)                   R$ 1.170,23
+
+
+
+
+Legenda:              Artigos                Roupas            Educação               Entretenimento               Saúde               Casa                Mercado              Pet
+
+
+        Restaurante               Serviços             Transporte               Viagem                 Outros
+
+(1) Transações no exterior: As despesas feitas no exterior são convertidas em dólar, independente da moeda. A cotação utilizada está disponível no site sicredi.com.br. Lembre-se que há incidência de IOF em
+compras internacionais.
+
+
+
+                                                                                                                                                                                                    4 de 5
+                                                             Empresa XX                                                                                         Vencimento 13/11/2026
+                                                             Visa Empresas final 0000                                                      Total fatura de novembro R$ 4.810,69
+
+
+
+ Opções de pagamento
+
+  Pagamento Total: é sempre a melhor opção.                              Parcelamento de fatura:               Financiamento: disponível somente para cartões pes-
+                                                          • Quando disponível você poderá optar por uma soa física em caso de pagamento inferior ao valor to-
+  Pagamento Mínimo: é formado pelo:
+                                                          das ações de parcelamento pagando o valor exato da tal da fatura anterior. Você paga qualquer valor entre a
+  • Parcelamentos de fatura rotativo (financiamento)      parcela                                              menor oferta de parcelamento e o valor do pagamento
+  • Rotativo: saldo remanescente da fatura anterior + en- • Indisponível em caso de pagamento de fatura por mínimo para que o saldo seja parcelado automatica-
+  cargos                                                                                                       mente em 12x.
+                                                          débito em conta e quando o valor total da fatura não
+  • Mínimo contratual: juros e encargos + 15% das de- atingir o mínimo estabelecido.
+  spesas ( novos gastos) + saque a crédito + overlimit Encargos: As parcelas dos planos já incluem IOF e taxa Lembre-se: qualquer pagamento menor que o total
+  (limite excedido) + parcelamento de fatura.             de juros.                                            serão cobrados encargos na próxima fatura.
+
+
+
+
+ Fale com a gente
+Serviços por telefone: Qualquer região sem custo         Deficientes auditivos ou de fala: 0800 724 0525   SAC: 0800 724 7220   Outros países: Ligue a cobrar      Ouvidoria: 0800 646 2519
+0800 724 4770                                                                                                                   1 636 722 8881
+
+
+
+ Encargos vigentes                                          Taxa do período              Taxa         Taxa máxima do período             CET             Demais encargos
+                                                               (ao mês)                (ao ano)              (ao mês)                  (ao ano)
+Juros de saque                                                     11,3%               261,36%                12,3%                   1014,92%           Multa por atraso 2%
+Rotativo²                                                          11,3%               261,36%                12,3%                   293,83%            Juros de mora de 1% ao mês
+Parcelamento de fatura e financiamento                              0%                   0%                    0%                         0%             IOF diário 0,0082%
+                                                                                                                                                         IOF no exterior 3,5%
+(2) Rotativo: quando o valor pago é menor que o valor total da fatura.
+
+
+ Outras informações
+
+Programa de recompensas:                                Portabilidade de crédito: Se você possuir saldo deve- Importante: A falta do pagamento mínimo exigível de-
+• Disponível no app ou shopping.sicredi.com.br. Resgate dor no rotativo ou parcelamentos de fatura, poderá so- termina o vencimento antecipado da dívida total, reser-
+seus pontos por produtos, viagens, milhas e cashback. licitar a portabilidade dos valores para outra Instituição vando-se à Cooperativa o direito de cancelar o cartão e
+                                                        Financeira. Consulte o Documento Descritivo de Crédito cobrar o valor total da dívida, a qualquer tempo, com os
+• Consulte os cartões participantes
+                                                        (DDC) através do Whatsapp ou contate sua agência.        devidos acréscimos contratuais.
+Demais benefícios: Você pode consultar os benefícios
+do seu cartão em sicredi.com.br                         Perda ou roubo: Comunique imediatamente através dos Contrato: Você pode consultar às condições gerais do
+                                                        canais de atendimento.                                   seu contrato em sicredi.com.br
+
+
+
+
+                              FATURA PARA SIMPLES CONFERÊNCIA. O VALOR SERÁ DEBITADO DA SUA CONTA CORRENTE NA DATA DO VENCIMENTO.
+
+
+
+
+                                                                                                                                                                                    5 de 5
+

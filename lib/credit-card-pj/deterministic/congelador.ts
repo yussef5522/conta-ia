@@ -48,6 +48,22 @@ export interface GoldenDeFatura {
  */
 export const GOLDENS: readonly GoldenDeFatura[] = [
   {
+    /**
+     * ⭐⭐⭐ O SICREDI DE DOIS CARTÕES (23/11/2026) — a fatura de novembro que o leitor RECUSOU
+     * (17:53 e 17:54, quarentena): o cartão PORTADOR VIRTUAL apareceu pela 1ª vez e o parser
+     * somava os dois cartões contra o "Total cartão" do primeiro (dif 1.170,23 = o virtual).
+     * Texto real anonimizado com o mesmo comprimento (o PDF do dono fica fora do repo).
+     */
+    nome: 'Sicredi PJ · novembro/2026 — DOIS cartões (físico + virtual)',
+    fixture: 'lib/credit-card-pj/deterministic/__tests__/fixtures/sicredi-fatura-2-cartoes-2026-11.txt',
+    parser: 'lib/credit-card-pj/deterministic/sicredi-fatura-parser.ts',
+    // ⚠️ o "declarado" do Sicredi é o "Total desta Fatura" (o campo dele no runner); os totais
+    // por cartão (3.788,86 + 1.170,23) são provados em `lei-do-leitor.test.ts`
+    esperado: { linhas: 42, declarado: 4810.69 },
+    layout: 'v1',
+    motivo: '2º cartão (portador virtual) — cada cartão fecha com o SEU total; parcela antiga com data original',
+  },
+  {
     nome: 'Sicredi PJ · agosto/2026',
     fixture: 'lib/credit-card-pj/deterministic/__tests__/fixtures/sicredi-fatura-real.txt',
     parser: 'lib/credit-card-pj/deterministic/sicredi-fatura-parser.ts',

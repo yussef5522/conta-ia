@@ -30,20 +30,21 @@ const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 export function validateCaixaFatura(parsed: CaixaFaturaParsed): FaturaValidation {
   const { declared, computed } = parsed
   const checks: FaturaCheck[] = []
-  const mk = (name: string, expected: number | null, got: number): void => {
+  // ⭐ `lei` = qual prova da LEI DO LEITOR o check carrega (CARTAO · FATURA) — ver lei-do-leitor.ts
+  const mk = (name: string, expected: number | null, got: number, lei?: FaturaCheck['lei']): void => {
     if (expected == null) return
     const diff = round2(got - expected)
-    checks.push({ name, expected, got: round2(got), diff, pass: Math.abs(diff) <= TOL })
+    checks.push({ name, expected, got: round2(got), diff, pass: Math.abs(diff) <= TOL, ...(lei ? { lei } : {}) })
   }
 
   // V por cartão — cada "Total final (cartão N)" bate a Σ dos débitos daquele cartão.
   for (const [card, total] of Object.entries(declared.totalFinalByCard)) {
-    mk(`V cartão ${card} = Total final`, total, computed.debitsByCard[card] ?? 0)
+    mk(`V cartão ${card} = Total final`, total, computed.debitsByCard[card] ?? 0, 'CARTAO')
   }
   mk('V COMPRAS = Total COMPRAS', declared.totalCompras, computed.comprasSum)
   mk('V PARCELADAS = Total COMPRAS PARCELADAS', declared.totalParceladas, computed.parceladasSum)
   mk('V demonstrativo = Total do Demonstrativo', declared.totalDemonstrativo, computed.demonstrativoNet)
-  mk('V total = Valor total desta fatura', declared.valorTotalFatura, computed.net)
+  mk('V total = Valor total desta fatura', declared.valorTotalFatura, computed.net, 'FATURA')
 
   if (declared.valorTotalFatura == null) {
     return {

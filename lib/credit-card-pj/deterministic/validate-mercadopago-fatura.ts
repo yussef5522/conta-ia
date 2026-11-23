@@ -24,15 +24,16 @@ const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 export function validateMercadoPagoFatura(p: MercadoPagoFaturaParsed): FaturaValidation {
   const d = p.declarados
   const checks: FaturaCheck[] = []
-  const add = (name: string, expected: number | null, got: number) => {
+  // ⭐ `lei` = qual prova da LEI DO LEITOR o check carrega (CARTAO · FATURA) — ver lei-do-leitor.ts
+  const add = (name: string, expected: number | null, got: number, lei?: FaturaCheck['lei']) => {
     if (expected == null) return
     const diff = round2(got - expected)
-    checks.push({ name, expected, got: round2(got), diff, pass: Math.abs(diff) <= TOL })
+    checks.push({ name, expected, got: round2(got), diff, pass: Math.abs(diff) <= TOL, ...(lei ? { lei } : {}) })
   }
 
   // 1) as linhas de consumo somam o que o PDF declara como "Consumos do período"
   //    ⚠️ é esta amarra que decidiu a MADEIRA repetida: só fecha com as DUAS.
-  add('Σ consumos == "Consumos de …"', d.consumos, p.somaConsumos)
+  add('Σ consumos == "Consumos de …"', d.consumos, p.somaConsumos, 'CARTAO')
 
   // 2) os encargos lidos somam juros + tarifas + multa
   const encargosDeclarados = d.jurosMesAnterior != null || d.tarifasEncargos != null || d.multasAtraso != null
@@ -42,7 +43,7 @@ export function validateMercadoPagoFatura(p: MercadoPagoFaturaParsed): FaturaVal
 
   // 3) O TOTAL — consumos + encargos, SEM subtrair pagamentos
   const totalCalculado = round2(p.somaConsumos + p.somaEncargos)
-  add('consumos + encargos == "Total"', d.total, totalCalculado)
+  add('consumos + encargos == "Total"', d.total, totalCalculado, 'FATURA')
 
   // 4) os pagamentos lidos batem com o declarado (não entram no total, mas têm que fechar —
   //    se não fecharem, alguma linha de pagamento foi lida errado)

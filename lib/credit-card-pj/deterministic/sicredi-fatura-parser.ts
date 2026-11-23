@@ -16,6 +16,14 @@
 //  6) linha "Pagamento ..." é o pagamento da fatura ANTERIOR — NÃO importar (e não
 //     entra em nenhum total, então a validação já a exclui).
 //  7) linhas sem cidade e sem Presencial/Online existem (IOF) — não exigir campos.
+//  8) ⭐ (23/11) DOIS OU MAIS CARTÕES na mesma fatura — "Cartão … (final 0115)" (físico) e
+//     "Cartão portador virtual … (final 0708)". ⛔ O CASO: a fatura de novembro trouxe o virtual
+//     pela 1ª vez; o parser somava os dois cartões e comparava com o "Total cartão" do PRIMEIRO
+//     (dif 1.170,23 = o total do virtual) e recusava culpando "transação perdida". Agora cada
+//     transação é do cartão da SEÇÃO em que está, e cada cartão fecha com o SEU total.
+//  9) ⭐ (23/11) PARCELA ANTIGA traz a data ORIGINAL da compra ("25/fev … 09/10"): o ano se
+//     infere pela parcela (a compra foi ~N−1 meses antes do fechamento), não só pelo mês.
+// 10) US$ + cotação (compras no exterior) são PRESERVADOS na linha, não descartados.
 //
 // A VALIDAÇÃO É JUIZ (impossibilidade, não combinado): se a Σ não fecha com os
 // totais declarados, o import FALHA. Nunca grava fatura que não bate.
@@ -48,14 +56,33 @@ function parseParcela(token: string): { number: number; total: number } | null {
   return { number: n, total: t }
 }
 
-/** dd/mmm + mês de fechamento → ISO YYYY-MM-DD. Trap 4: mês > fechamento ⇒ ano-1. */
-function resolveDate(ddmmm: string, closingMonth: number, closingYear: number): string | null {
+/**
+ * dd/mmm + fechamento → ISO YYYY-MM-DD (a fatura não diz o ano da compra).
+ * Trap 4: a compra nunca é DEPOIS do fechamento ⇒ o ano mais recente que não passa dele.
+ * ⭐ Trap 9 (23/11): com PARCELA N/T, a compra foi ~N−1 meses antes do fechamento — o ano é o
+ * que deixa a distância mais perto disso. Sem isso, "15/out 13/18" numa fatura de outubro cairia
+ * no mês CORRENTE (o ano errado, 12 meses adiante).
+ */
+export function resolveDate(
+  ddmmm: string, closingMonth: number, closingYear: number, parcela: { number: number; total: number } | null = null,
+): string | null {
   const m = ddmmm.match(/^(\d{2})\/([a-z]{3})$/i)
   if (!m) return null
   const day = Number(m[1])
   const mon = MONTHS_PT[m[2].toLowerCase()]
   if (!mon || day < 1 || day > 31) return null
-  const year = mon > closingMonth ? closingYear - 1 : closingYear
+  const fecha = closingYear * 12 + (closingMonth - 1)
+  // candidatos: o ano corrente e os 3 anteriores, sem passar do mês de fechamento
+  const candidatos = [0, 1, 2, 3].map((k) => closingYear - k).filter((y) => y * 12 + (mon - 1) <= fecha)
+  let year = candidatos[0] ?? closingYear - 1
+  if (parcela && parcela.number > 1) {
+    const alvo = parcela.number - 1
+    year = candidatos.reduce((melhor, y) => {
+      const d = Math.abs(fecha - (y * 12 + (mon - 1)) - alvo)
+      const dm = Math.abs(fecha - (melhor * 12 + (mon - 1)) - alvo)
+      return d < dm ? y : melhor
+    }, year)
+  }
   return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
@@ -63,6 +90,8 @@ function resolveDate(ddmmm: string, closingMonth: number, closingYear: number): 
 const ANCHOR_RE = /^\s*(\d{2}\/[a-z]{3})\s+(\d{2}:\d{2})\s+(.*?)(-?R\$\s*[\d.]+,\d{2})\s*$/i
 
 interface RawAnchor {
+  /** ⭐ o final do cartão da SEÇÃO em que a linha está (null = fora de seção) */
+  card: string | null
   ddmmm: string
   time: string
   middle: string
@@ -95,15 +124,26 @@ function classifyKind(desc: string, value: number, parcela: { number: number; to
 const CURRENCY_NOISE = /^(us\$|r\$|€|£)?\s*\d[\d.]*,\d{2}$/i
 
 /** Separa o miolo em cidade/tipo/descrição/parcela pelas colunas do -layout. */
-function parseMiddle(middle: string): { description: string; parcela: { number: number; total: number } | null } {
+function parseMiddle(middle: string): {
+  description: string; parcela: { number: number; total: number } | null; usd: number | null; cotacao: number | null
+} {
   const tokens = middle.split(/\s{2,}/).map((t) => t.trim()).filter(Boolean)
   // parcela: qualquer token dd/dd (trap 5)
   let parcela: { number: number; total: number } | null = null
+  let usd: number | null = null
+  let cotacao: number | null = null
   const rest: string[] = []
   for (const t of tokens) {
     const p = parseParcela(t)
     if (p && !parcela) { parcela = p; continue }
-    if (CURRENCY_NOISE.test(t)) continue // linha internacional: US$/R$/valor não é descrição
+    if (CURRENCY_NOISE.test(t)) {
+      // ⭐ trap 10: a linha internacional traz "US$ 36,00   R$ 5,04" — o dólar e a COTAÇÃO não
+      // são descrição, mas são PRESERVADOS (o valor em US$ é o dólar; o R$ seguinte, a cotação)
+      const v = parseBRNumber(t)
+      if (/^us\$/i.test(t)) usd = v
+      else if (usd != null && cotacao == null) cotacao = v
+      continue
+    }
     rest.push(t)
   }
   // tipo Presencial/Online delimita: cidade = antes, descrição = depois.
@@ -115,18 +155,25 @@ function parseMiddle(middle: string): { description: string; parcela: { number: 
     // sem tipo (IOF, pagamento, linha especial — trap 7): descrição = tudo restante.
     description = rest.join(' ').trim()
   }
-  return { description, parcela }
+  return { description, parcela, usd, cotacao }
 }
 
 export interface SicrediFaturaParsed {
   extraction: InvoiceExtraction
   /** totais declarados no PDF pra a validação (juiz). */
   declared: {
+    /** ⭐ Σ dos "Total cartão (final XXXX)" — um por cartão (o total repete por página: conta 1×) */
     totalCartao: number | null // "Total cartao (final XXXX)"
     totalFatura: number | null // "Total desta Fatura"
     brasil: number | null
     exterior: number | null
     pagamentosCreditos: number | null // "Pagamentos|Creditos"
+    /** ⭐ (23/11) o total declarado de CADA cartão, pelo final */
+    totalPorCartao: Record<string, number>
+    /** ⛔ finais cujo "Total cartão" apareceu com valores DIFERENTES entre páginas */
+    totalPorCartaoConflito: string[]
+    anterior: number | null // "Total da fatura anterior"
+    subtotalEncargos: number | null // "Subtotal Encargos"
   }
   /** somas COM SINAL, calculadas das linhas (pra a validação bater com o declarado). */
   computed: {
@@ -134,6 +181,10 @@ export interface SicrediFaturaParsed {
     sumEstornos: number // créditos/estornos negativos (não-pagamento)
     sumPayments: number // pagamento(s) da fatura anterior
     count: number // nº de transações importáveis (exclui pagamento)
+    /** ⭐ (23/11) Σ positivos por cartão (deve bater o "Total cartão" de cada um) */
+    positivosPorCartao: Record<string, number>
+    /** ⛔ transações que apareceram FORA de qualquer seção "Cartão … (final)" */
+    linhasSemCartao: number
   }
 }
 
@@ -167,9 +218,23 @@ function readDeclaredTotals(text: string): SicrediFaturaParsed['declared'] {
     return null
   }
   // "Total cartão (final XXXX) ... R$ 7.995,55" — rótulo COMPLETO + R$.
-  const totalCartaoM = text.match(/total\s+cart[aã]o\s*\(final\s*\w*\)\s*R\$\s*[\d.]+,\d{2}/i)
+  // ⭐ (23/11) TODOS os "Total cartão … (final NNNN) R$ X" — um por cartão. O mesmo total
+  // repete em cada página (trap 3): conta uma vez; valores DIFERENTES pro mesmo final = conflito.
+  const totalPorCartao: Record<string, number> = {}
+  const conflito = new Set<string>()
+  for (const m of text.matchAll(/total\s+cart[aã]o\b[^\n(]*\(final\s*(\w+)\)\s*R\$\s*([\d.]+,\d{2})/gi)) {
+    const v = parseBRL(`R$ ${m[2]}`)
+    if (v == null) continue
+    if (m[1] in totalPorCartao && Math.abs(totalPorCartao[m[1]] - v) > 0.005) conflito.add(m[1])
+    totalPorCartao[m[1]] ??= v
+  }
+  const finais = Object.keys(totalPorCartao)
   return {
-    totalCartao: totalCartaoM ? parseBRL(totalCartaoM[0]) : null,
+    totalCartao: finais.length ? round2(finais.reduce((acc, f) => acc + totalPorCartao[f], 0)) : null,
+    totalPorCartao,
+    totalPorCartaoConflito: [...conflito],
+    anterior: resumo(/^\s*Total\s+da\s+fatura\s+anterior\b/i),
+    subtotalEncargos: resumo(/^\s*Subtotal\s+Encargos\b/i),
     totalFatura: resumo(/^\s*Total\s+desta\s+Fatura\b/i),
     brasil: resumo(/^\s*Despesas\s+atuais.*?\bBrasil\b/i),
     exterior: resumo(/^\s*Despesas\s+atuais.*?\bExterior\b/i),
@@ -224,14 +289,20 @@ export function parseSicrediFatura(text: string): SicrediFaturaParsed {
   }
   const anchors: RawAnchor[] = []
   const pendingPrefix: string[] = []
+  // ⭐ trap 8: a SEÇÃO do cartão manda — "Cartão … (final NNNN)" no início da linha abre a seção
+  // (o cabeçalho repete a cada página; "Visa Empresas final 0115" do topo NÃO é seção)
+  const SECAO_RE = /^\s*Cart[aã]o\b.*\(final\s+(\w+)\)\s*$/i
+  let cartaoAtual: string | null = null
   for (const raw of lines) {
     const line = raw.replace(/\s+$/, '')
     if (!line.trim()) { pendingPrefix.length = 0; continue } // linha em branco quebra o grupo
+    const secao = line.match(SECAO_RE)
+    if (secao) { cartaoAtual = secao[1]; pendingPrefix.length = 0; continue }
     const m = line.match(ANCHOR_RE)
     if (m) {
       const value = parseBRL(m[4])
       if (value == null) { continue }
-      anchors.push({ ddmmm: m[1], time: m[2], middle: m[3], value, prefix: [...pendingPrefix], suffix: [] })
+      anchors.push({ card: cartaoAtual, ddmmm: m[1], time: m[2], middle: m[3], value, prefix: [...pendingPrefix], suffix: [] })
       pendingPrefix.length = 0
     } else if (isDescFragment(line)) {
       // sufixo da âncora anterior SE ela é internacional (miolo sem descrição) e
@@ -251,7 +322,10 @@ export function parseSicrediFatura(text: string): SicrediFaturaParsed {
   // NÃO deduplica (trap 2). Acumula somas COM SINAL pra a validação.
   const invLines: InvoiceLine[] = []
   let sumPositives = 0, sumEstornos = 0, sumPayments = 0
+  const positivosPorCartao: Record<string, number> = {}
+  let linhasSemCartao = 0
   for (const a of anchors) {
+    if (a.card == null) linhasSemCartao++
     const mid = parseMiddle(a.middle)
     let description = mid.description
     if (description === '') {
@@ -261,15 +335,23 @@ export function parseSicrediFatura(text: string): SicrediFaturaParsed {
     const { kind, isPayment } = classifyKind(description, a.value, mid.parcela)
     if (isPayment) { sumPayments += a.value; continue } // trap 6: não entra
     if (a.value < 0) sumEstornos += a.value
-    else sumPositives += a.value
-    const date = resolveDate(a.ddmmm, closing.month, closing.year)
+    else {
+      sumPositives += a.value
+      if (a.card != null) positivosPorCartao[a.card] = round2((positivosPorCartao[a.card] ?? 0) + a.value)
+    }
+    const date = resolveDate(a.ddmmm, closing.month, closing.year, mid.parcela)
     invLines.push({
       date: date ?? `${closing.year}-01-01`,
       description: description || '(sem descrição)',
       amount: round2(Math.abs(a.value)),
       suggestedKind: kind,
       ...(mid.parcela ? { installmentNumber: mid.parcela.number, installmentTotal: mid.parcela.total } : {}),
-      ...(a.value < 0 ? { note: 'crédito/estorno (valor negativo na fatura)' } : {}),
+      ...(a.card != null ? { cardLastDigits: a.card } : {}),
+      ...(mid.usd != null ? { usd: mid.usd } : {}),
+      ...(mid.cotacao != null ? { cotacaoDolar: mid.cotacao } : {}),
+      ...(a.value < 0
+        ? { note: 'crédito/estorno (valor negativo na fatura)' }
+        : mid.usd != null ? { note: `compra no exterior: US$ ${mid.usd.toFixed(2).replace('.', ',')}${mid.cotacao != null ? ` × cotação R$ ${mid.cotacao.toFixed(2).replace('.', ',')}` : ''}` } : {}),
     })
   }
 
@@ -281,7 +363,7 @@ export function parseSicrediFatura(text: string): SicrediFaturaParsed {
     creditLimit: null,
     availableLimit: null,
     detectedBank: 'Sicredi',
-    cardLastDigitsFound: Array.from(new Set((text.match(/final\s+(\d{4})/gi) ?? []).map((s) => s.replace(/\D/g, '')))),
+    cardLastDigitsFound: Array.from(new Set([...Object.keys(declared.totalPorCartao), ...anchors.map((a) => a.card).filter((c): c is string => c != null)])),
     scanQuality: 'GOOD',
     lines: invLines,
     notes: [],
@@ -294,6 +376,8 @@ export function parseSicrediFatura(text: string): SicrediFaturaParsed {
       sumEstornos: round2(sumEstornos),
       sumPayments: round2(sumPayments),
       count: invLines.length,
+      positivosPorCartao,
+      linhasSemCartao,
     },
   }
 }

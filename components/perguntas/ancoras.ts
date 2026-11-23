@@ -6,4 +6,5 @@ export const ANCORAS = {
   SANIDADE: 'pergunta-sanidade',
   CONFLITO: 'pergunta-conflito',
   JA_EXISTE: 'pergunta-ja-existe',
+  PAGAMENTO_DA_FATURA: 'pergunta-pagamento-da-fatura',
 } as const

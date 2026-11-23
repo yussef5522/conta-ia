@@ -30,7 +30,7 @@ async function lerComOParserCerto(g: (typeof GOLDENS)[number], texto: string): P
   if (g.parser.includes('sicredi-fatura-parser')) {
     const { parseSicrediFatura } = await import('../sicredi-fatura-parser')
     const r = parseSicrediFatura(texto)
-    return { declarado: r.declared.totalFatura ?? r.declared.totalCartao ?? null }
+    return { declarado: r.declared.totalFatura ?? r.declared.totalCartao ?? null, linhas: r.extraction.lines?.length ?? null }
   }
   if (g.parser.includes('banrisul-fatura-parser')) {
     const { parseBanrisulFatura } = await import('../banrisul-fatura-parser')

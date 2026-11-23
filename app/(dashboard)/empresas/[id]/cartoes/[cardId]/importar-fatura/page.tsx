@@ -2,6 +2,10 @@
 
 'use client'
 
+import { PerguntaNoTopo } from '@/components/perguntas/pergunta-no-topo'
+import { ANCORAS } from '@/components/perguntas/ancoras'
+import { TITULO_DA_RECUSA, BANCOS_COM_LEITOR } from '@/lib/credit-card-pj/deterministic/lei-do-leitor'
+import type { MotivoDaRecusa } from '@/lib/credit-card-pj/deterministic/validate-fatura'
 import { useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -142,7 +146,16 @@ export default function ImportarFaturaPage() {
   const [file, setFile] = useState<File | null>(null)
   const [previewData, setPreviewData] = useState<PreviewResponse | null>(null)
   const [editableLines, setEditableLines] = useState<EditableLine[]>([])
-  const [extractError, setExtractError] = useState<string | null>(null)
+  /**
+   * ⭐⭐ (23/11) A RECUSA TEM CARA DE RECUSA — "falha nunca é silenciosa". Antes era uma `string`
+   * vermelha DEBAIXO do botão de upload; agora carrega o MOTIVO (banco não suportado · layout
+   * diferente · a conta não fechou), as provas que falharam e a lista do que o leitor lê.
+   */
+  const [extractError, setExtractError] = useState<{
+    msg: string
+    motivo: MotivoDaRecusa | null
+    checks: { name: string; expected: number; got: number; pass: boolean }[]
+  } | null>(null)
   const [reclassPaymentTxId, setReclassPaymentTxId] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<{ inseridas: number; duplicadas: number; reclassificadaTxId: string | null } | null>(null)
   /** Pagamento ja casado imediato pelo banner (alem do fluxo do confirm) */
@@ -167,7 +180,12 @@ export default function ImportarFaturaPage() {
           'A leitura da fatura demorou mais que o esperado. Tente de novo ou use OFX.',
       })
       if (!ok || !data) {
-        setExtractError(message ?? 'Erro na extração da fatura')
+        const corpo = (data ?? {}) as { motivo?: MotivoDaRecusa | null; checks?: unknown }
+        setExtractError({
+          msg: message ?? 'Erro na extração da fatura',
+          motivo: corpo.motivo ?? null,
+          checks: Array.isArray(corpo.checks) ? (corpo.checks as { name: string; expected: number; got: number; pass: boolean }[]) : [],
+        })
         setStep('UPLOAD')
         return
       }
@@ -184,7 +202,7 @@ export default function ImportarFaturaPage() {
       )
       setStep('PREVIEW')
     } catch (err) {
-      setExtractError(err instanceof Error ? err.message : 'Erro de rede')
+      setExtractError({ msg: err instanceof Error ? err.message : 'Erro de rede', motivo: null, checks: [] })
       setStep('UPLOAD')
     }
   }
@@ -437,8 +455,27 @@ export default function ImportarFaturaPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Até 10 MB. Funciona com Caixa, Banrisul, Sicredi, Itaú e outros bancos BR.
+            {/* ⭐⭐ (23/11) A RECUSA ABRE A TELA — título pelo motivo, as provas que falharam, e a
+                certeza de que NADA foi importado (meia-fatura não existe). */}
+            {extractError && (
+              <div role="alert" data-testid="recusa-da-fatura" className="rounded-xl border-2 border-red-300 bg-red-50 p-3">
+                <p className="flex items-start gap-2 text-sm font-semibold text-red-800">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-red-600" />
+                  {extractError.motivo ? TITULO_DA_RECUSA[extractError.motivo] : 'Não consegui ler esta fatura'}
+                </p>
+                <p className="mt-1 text-sm text-red-700">{extractError.msg}</p>
+                {extractError.checks.filter((c) => !c.pass).length > 0 && (
+                  <ul className="mt-2 space-y-0.5 text-xs text-red-800 tabular-nums">
+                    {extractError.checks.filter((c) => !c.pass).map((c) => (
+                      <li key={c.name}>✗ {c.name}: o PDF diz {formatBRL(c.expected)}, a leitura deu {formatBRL(c.got)}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-2 text-xs font-semibold text-red-800">Nada foi importado. A tentativa ficou registrada pra diagnóstico.</p>
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground" data-testid="bancos-com-leitor">
+              Até 10 MB. Leio com prova (cada cartão e a fatura inteira fecham com o PDF): {BANCOS_COM_LEITOR.join(', ')}.
             </p>
             <div
               onClick={() => fileInputRef.current?.click()}
@@ -457,12 +494,6 @@ export default function ImportarFaturaPage() {
                 if (f) handleUpload(f)
               }}
             />
-            {extractError && (
-              <div className="rounded-md bg-red-50 border border-red-200 p-3 flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-700">{extractError}</p>
-              </div>
-            )}
             <div className="rounded-md bg-amber-50 border border-amber-200 p-3">
               <p className="text-xs text-amber-800">
                 <strong>Regra de ouro:</strong> a IA SUGERE classificação de cada linha. Você revisa
@@ -611,6 +642,60 @@ export default function ImportarFaturaPage() {
             </Card>
           )}
 
+          {/* Outros candidatos de pagamento (so quando NAO ha banner azul de top match
+              OU quando user dismissou o banner). Mantemos pra casos ambiguos.
+              ⭐ (23/11) LEI DA PERGUNTA NO TOPO: era uma pergunta ao dono MORANDO depois dos
+              totais e dos cartões de números — subiu pro topo, logo abaixo do pagamento achado. */}
+          {(() => {
+            const otherCandidates = previewData.paymentCandidates.filter(
+              (c) => c.matchScore < 0.9 && c.id !== casadoImediatoId,
+            )
+            if (otherCandidates.length === 0) return null
+            return (
+              <PerguntaNoTopo id={ANCORAS.PAGAMENTO_DA_FATURA}
+                titulo="Algum destes é o pagamento desta fatura? (confiança menor)"
+                quantas={otherCandidates.length}
+                singular="possível pagamento"
+                plural="possíveis pagamentos"
+              >
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-700">
+                    Se algum desses for o pagamento desta fatura, marque aqui — será reclassificado
+                    no momento do "Confirmar e importar".
+                  </p>
+                  <div className="space-y-1">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="reclass"
+                        checked={reclassPaymentTxId === null}
+                        onChange={() => setReclassPaymentTxId(null)}
+                      />
+                      <span>Nenhum — não reclassificar nada</span>
+                    </label>
+                    {otherCandidates.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="reclass"
+                          checked={reclassPaymentTxId === c.id}
+                          onChange={() => setReclassPaymentTxId(c.id)}
+                        />
+                        <span>
+                          {fmtDateBR(c.date)} · {c.description} · <strong>{formatBRL(c.amount)}</strong> ·{' '}
+                          {c.bankAccountName ?? 'Conta'}{' '}
+                          {c.currentCategoryName && (
+                            <span className="text-muted-foreground">(hoje: {c.currentCategoryName})</span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </PerguntaNoTopo>
+            )
+          })()}
+
           {/* Banner CARTÃO PESSOAL — grita o default de retirada (nunca silencioso) */}
           {previewData.cardTreatment === 'PESSOAL_SOCIO' && (
             <Card className="border-amber-300 bg-amber-50/60">
@@ -735,59 +820,6 @@ export default function ImportarFaturaPage() {
               </>
             )}
           </div>
-
-          {/* Outros candidatos de pagamento (so quando NAO ha banner azul de top match
-              OU quando user dismissou o banner). Mantemos pra casos ambiguos. */}
-          {(() => {
-            const otherCandidates = previewData.paymentCandidates.filter(
-              (c) => c.matchScore < 0.9 && c.id !== casadoImediatoId,
-            )
-            if (otherCandidates.length === 0) return null
-            return (
-              <Card className="border-slate-200 bg-slate-50/40">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Repeat className="h-4 w-4 text-slate-500" />
-                    Outros possíveis pagamentos (confiança menor)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <p className="text-xs text-slate-700">
-                    Se algum desses for o pagamento desta fatura, marque aqui — será reclassificado
-                    no momento do "Confirmar e importar".
-                  </p>
-                  <div className="space-y-1">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="reclass"
-                        checked={reclassPaymentTxId === null}
-                        onChange={() => setReclassPaymentTxId(null)}
-                      />
-                      <span>Nenhum — não reclassificar nada</span>
-                    </label>
-                    {otherCandidates.map((c) => (
-                      <label key={c.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="radio"
-                          name="reclass"
-                          checked={reclassPaymentTxId === c.id}
-                          onChange={() => setReclassPaymentTxId(c.id)}
-                        />
-                        <span>
-                          {fmtDateBR(c.date)} · {c.description} · <strong>{formatBRL(c.amount)}</strong> ·{' '}
-                          {c.bankAccountName ?? 'Conta'}{' '}
-                          {c.currentCategoryName && (
-                            <span className="text-muted-foreground">(hoje: {c.currentCategoryName})</span>
-                          )}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })()}
 
           {/* Tabela editável */}
           <Card>
