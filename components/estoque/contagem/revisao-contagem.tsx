@@ -32,6 +32,7 @@
 import { useState } from 'react'
 import { Check, RotateCcw, Search, ChevronRight, ChevronDown, Eye, HelpCircle, MessageSquare } from 'lucide-react'
 import { casaBusca } from '@/lib/busca-texto'
+import { bateu } from '@/lib/stock/contagem/bateu'
 
 export interface LinhaRevisao {
   itemId: string
@@ -73,9 +74,9 @@ export function RevisaoContagem({
   const [filtro, setFiltro] = useState<'todas' | 'diverg' | 'apurar' | 'bateu'>('todas')
   const [aberta, setAberta] = useState<Set<string>>(new Set())
 
-  const comDiverg = linhas.filter((l) => l.contado && Math.abs(l.contado.divergencia) > 1e-9)
+  const comDiverg = linhas.filter((l) => l.contado && !bateu(l.contado.divergencia))
   const aApurar = linhas.filter((l) => l.estado === 'NAO_SEI')
-  const bateram = linhas.filter((l) => l.contado && Math.abs(l.contado.divergencia) <= 1e-9)
+  const bateram = linhas.filter((l) => l.contado && bateu(l.contado.divergencia))
   const valorDiverg = comDiverg.reduce((s, l) => s + (l.contado?.valorDivergencia ?? 0), 0)
 
   /**
@@ -161,7 +162,7 @@ export function RevisaoContagem({
               // sentido (falta × sobra) e passa a inverter no tema escuro.
               const cor = !d
                 ? 'text-[color:var(--prod-muted)]'
-                : Math.abs(div) <= 1e-9
+                : bateu(div)
                   ? 'text-[color:var(--prod-muted)]'
                   : div < 0
                     ? 'text-[color:var(--fam-coral-ink)]'
@@ -198,10 +199,10 @@ export function RevisaoContagem({
                       {l.observacao && <MessageSquare className="ml-1 inline h-3 w-3" style={{ color: 'var(--fam-azul-mid)' }} aria-label="tem observação" />}
                     </td>
                     <td className={`px-3 py-0 text-right text-[13px] font-medium tabular-nums ${cor}`}>
-                      {d && Math.abs(div) > 1e-9 ? `${div > 0 ? '+' : ''}${num(div)}` : '—'}
+                      {d && !bateu(div) ? `${div > 0 ? '+' : ''}${num(div)}` : '—'}
                     </td>
                     <td className={`px-3 py-0 text-right text-[13px] tabular-nums ${cor}`}>
-                      {d && Math.abs(div) > 1e-9 ? brl(d.valorDivergencia) : '—'}
+                      {d && !bateu(div) ? brl(d.valorDivergencia) : '—'}
                     </td>
                     <td className="px-3 py-0 text-right">
                       {podeDecidir ? (

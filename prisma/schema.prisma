@@ -4647,6 +4647,87 @@ model StockContagemOrdem {
   @@map("stock_contagem_ordem")
 }
 
+// ⭐⭐ CONTAGEM COM DIREÇÃO (lei v3, 23/11 — docs/contagem-referencia.html, R36–R43). CREATE only.
+// R43 — AS ZONAS SÃO DO DONO: criar, renomear, EXCLUIR de verdade. ⛔ Excluir zona nunca apaga
+// item: só as linhas de `stock_contagem_zona_item` dela somem e o item fica "sem zona".
+model StockContagemZona {
+  id           String   @id @default(cuid())
+  companyId    String
+  nome         String
+  criadoPorId  String
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([companyId, nome])
+  @@index([companyId])
+  @@map("stock_contagem_zona")
+}
+
+// ⭐ o item MORA numa zona só (unique por item) e a ORDEM é o caminho que a equipe anda nela.
+model StockContagemZonaItem {
+  id            String   @id @default(cuid())
+  companyId     String
+  zonaId        String
+  itemId        String
+  ordem         Int
+  definidoPorId String?
+  atualizadoEm  DateTime @updatedAt
+
+  @@unique([companyId, itemId])
+  @@index([zonaId, ordem])
+  @@map("stock_contagem_zona_item")
+}
+
+// ⭐ R36 — o GRUPO do item (A/B/C) é decisão do DONO; sem linha = o sistema só SUGERE.
+// `ignorado` = o dono disse "não" ao candidato de nunca-contado (some da fila de candidatos).
+model StockItemGrupo {
+  id            String   @id @default(cuid())
+  companyId     String
+  itemId        String
+  /// A | B | C | null (null só com ignorado=true — CHECK chk_stock_item_grupo_valor)
+  grupo         String?
+  ignorado      Boolean  @default(false)
+  definidoPorId String
+  atualizadoEm  DateTime @updatedAt
+
+  @@unique([companyId, itemId])
+  @@index([companyId])
+  @@map("stock_item_grupo")
+}
+
+// ⭐ R36/R43 — o ritmo por grupo, editável. Sem linha = padrão A todo dia · B semanal · C mensal.
+model StockContagemRitmo {
+  id            String   @id @default(cuid())
+  companyId     String   @unique
+  diasA         Int
+  diasB         Int
+  diasC         Int
+  definidoPorId String
+  atualizadoEm  DateTime @updatedAt
+
+  @@map("stock_contagem_ritmo")
+}
+
+// ⭐ R37/R42 — ZONA FECHADA ASSINA. `zonaChave` = id da zona · "__sem_zona__" · "__sessao__"
+// (a finalização). Quem assina: a conta logada, ou — em conta de APARELHO — o dono do PIN.
+// Append-only: uma assinatura por zona por sessão.
+model StockContagemAssinatura {
+  id              String   @id @default(cuid())
+  companyId       String
+  contagemId      String
+  zonaChave       String
+  zonaNome        String
+  assinadoPorNome String
+  assinadoPorId   String?
+  colaboradorId   String?
+  viaPin          Boolean  @default(false)
+  assinadoEm      DateTime @default(now())
+
+  @@unique([contagemId, zonaChave])
+  @@index([companyId, contagemId])
+  @@map("stock_contagem_assinatura")
+}
+
 // ESTOQUE — ENTRADA MANUAL (23/08): compra SEM nota nenhuma (produtor rural que não
 // emite, compra avulsa no mercado). NÃO dá pra reusar `stock_receipt_conference` nem
 // `stock_payable_suggestion`: as duas exigem `nfeId` NOT NULL e o isolamento proíbe ALTER

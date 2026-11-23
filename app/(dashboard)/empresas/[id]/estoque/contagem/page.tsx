@@ -31,9 +31,21 @@
  * ⚠️ `text-[color:var(--x)]` precisa do **hint de tipo**; ⛔ e **nunca `bg-[var(--x)]/10`** —
  * opacidade sobre valor arbitrário sai **TRANSPARENTE** no Tailwind 3 (medido em 06/10).
  */
+/**
+ * ⭐⭐⭐ **CONTAGEM COM DIREÇÃO (lei v3, 23/11 — docs/contagem-referencia.html, R36–R43).**
+ * A tela abre no **POSTO DE COMANDO** (placar + o que conta hoje + o mapa das zonas); a sessão
+ * percorre um **ESCOPO** — `hoje` (a regra dos grupos, atrasados primeiro, sem zona no fim),
+ * `zona:<id>` (a ordem da zona) ou `tudo` (a escolha explícita). Zona fechada ASSINA (conta
+ * logada, ou o PIN em conta de aparelho); finalizar assina a sessão e abre o RECIBO.
+ * ⛔ Nada do que já funcionava saiu: cega, freio do servidor, "não sei", causa do negativo, portão.
+ */
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ClipboardList, Loader2, Play, AlertTriangle, ListChecks, Pencil, Check, X } from 'lucide-react'
+import { ClipboardList, Loader2, Play, AlertTriangle, ListChecks, Pencil, Check, X, LayoutGrid, Search, Lock } from 'lucide-react'
+import { PostoDeComando } from '@/components/estoque/contagem/posto-de-comando'
+import { FolhaDeBaixo } from '@/components/estoque/contagem/folha-de-baixo'
+import { PedirPin } from '@/components/estoque/contagem/pedir-pin'
+import type { Posto, HistoriaDoItem } from '@/lib/stock/contagem/direcao-dados'
 import { CartaoContar, type LinhaContar } from '@/components/estoque/contagem/cartao-contar'
 import { TrilhoFila } from '@/components/estoque/contagem/trilho-fila'
 import { RevisaoContagem, type VersaoLinha, type Decisao } from '@/components/estoque/contagem/revisao-contagem'
@@ -80,7 +92,15 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
   const { id } = use(params)
   const { pode } = usePermissoes(id)
   const [q, setQ] = useState<Quadro | null | undefined>(undefined)
-  const [modo, setModo] = useState<'contar' | 'revisar'>('contar')
+  const [modo, setModo] = useState<'posto' | 'contar' | 'revisar'>('posto')
+  const [posto, setPosto] = useState<Posto | null>(null)
+  /** ⭐ R36 — o que a sessão percorre: 'hoje' · 'zona:<chave>' · 'tudo' */
+  const [escopo, setEscopo] = useState<string>('hoje')
+  const [historias, setHistorias] = useState<Record<string, HistoriaDoItem | null>>({})
+  const [folha, setFolha] = useState<'busca' | 'zonas' | 'proximos' | null>(null)
+  /** R37/R42 — o PIN pedido (conta de aparelho) pra fechar a zona ou finalizar */
+  const [pedirPin, setPedirPin] = useState<{ acao: 'zona' | 'finalizar'; chave?: string; erro?: string } | null>(null)
+  const [fechandoZona, setFechandoZona] = useState(false)
   const [atualId, setAtualId] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   /**
@@ -113,12 +133,19 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
   const [decisoes, setDecisoes] = useState<Record<string, { decisao: string; motivo: string | null; decididoPorNome: string | null }>>({})
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/contagem`).then((r) => r.json()).then((j) => setQ(j.quadro ?? null)).catch(() => setQ(null))
+  const carregarPosto = () => fetch(`/api/empresas/${id}/estoque/contagem/posto`).then((r) => (r.ok ? r.json() : null)).then((j) => setPosto(j?.posto ?? null)).catch(() => {})
   // V11 · o PORTÃO (vendas ao vivo): dia com venda ainda aberto → "feche o dia antes de contar"
   const [portao, setPortao] = useState<{ liberada: boolean; dia: string | null } | null>(null)
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/contagem/portao`).then((r) => (r.ok ? r.json() : null)).then((j) => setPortao(j)).catch(() => setPortao(null))
   }, [id])
-  useEffect(() => { carregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { carregar(); carregarPosto() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  // ⭐ R37 — o mapa AO VIVO: quem está contando cada zona (polling, como as outras telas ao vivo da casa)
+  useEffect(() => {
+    if (modo !== 'posto') return
+    const t = setInterval(carregarPosto, 30_000)
+    return () => clearInterval(t)
+  }, [modo, id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // o histórico só é buscado quando o dono abre a revisão — a contagem não precisa dele
   useEffect(() => {
@@ -129,26 +156,78 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
       .catch(() => {})
   }, [modo, q?.contagem?.id, id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pendentes = useMemo(() => (q?.linhas ?? []).filter((l) => !l.estado), [q])
-  const atual = useMemo(() => {
+  /**
+   * ⭐⭐ R36 — AS LINHAS DO ESCOPO. `tudo` = o quadro inteiro (a escolha explícita); `hoje` e
+   * `zona:` = o caminho que o POSTO calculou (a regra dos grupos, nunca os 271 sem regra).
+   */
+  const linhasDoEscopo = useMemo(() => {
     const ls = q?.linhas ?? []
-    return ls.find((l) => l.itemId === atualId) ?? pendentes[0] ?? ls[0] ?? null
-  }, [q, atualId, pendentes])
+    if (escopo === 'tudo' || !posto) return ls
+    const ids = posto.escopos[escopo] ?? []
+    const porId = new Map(ls.map((l) => [l.itemId, l]))
+    return ids.map((i) => porId.get(i)).filter((l): l is Linha => !!l)
+  }, [q, posto, escopo])
+  const pendentes = useMemo(() => linhasDoEscopo.filter((l) => !l.estado), [linhasDoEscopo])
+  const atual = useMemo(() => {
+    const ls = linhasDoEscopo
+    return ls.find((l) => l.itemId === atualId) ?? pendentes[0] ?? null
+  }, [linhasDoEscopo, atualId, pendentes])
+  const zonaDoEscopo = escopo.startsWith('zona:') ? posto?.zonas.find((z) => `zona:${z.chave}` === escopo) ?? null : null
 
-  /** ⚠️ o próximo é sempre o próximo PENDENTE — quem já passou não volta sozinho */
+  // ⭐ R41 — a história do item chega quando ele entra no cartão (uma vez por item)
+  useEffect(() => {
+    if (!atual || atual.itemId in historias) return
+    const itemId = atual.itemId
+    setHistorias((h) => ({ ...h, [itemId]: null }))
+    fetch(`/api/empresas/${id}/estoque/contagem/item/${itemId}/historia`).then((r) => (r.ok ? r.json() : null))
+      .then((j) => setHistorias((h) => ({ ...h, [itemId]: j?.historia ?? null }))).catch(() => {})
+  }, [atual?.itemId, id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** ⚠️ o próximo é sempre o próximo PENDENTE DO ESCOPO — quem já passou não volta sozinho */
   const irProximo = () => {
-    const prox = (q?.linhas ?? []).find((l) => !l.estado && l.itemId !== atual?.itemId)
+    const prox = linhasDoEscopo.find((l) => !l.estado && l.itemId !== atual?.itemId)
     setAtualId(prox?.itemId ?? null)
   }
 
-  async function iniciar(tipo?: 'INICIAL' | 'ROTINA') {
+  /** ⭐ do posto pra contagem: abre a sessão se preciso e entra no escopo */
+  async function comecar(e: string) {
+    // V11 · o portão continua mandando: dia com venda aberto → não se abre contagem
+    if (!q?.contagem && portao && !portao.liberada) return
+    if (!q?.contagem) {
+      const ok = await iniciar()
+      if (!ok) return
+    }
+    setEscopo(e); setAtualId(null); setModo('contar')
+  }
+
+  /** ⭐ R37 — FECHAR A ZONA = ASSINAR (conta logada; em conta de aparelho, o PIN de quem contou) */
+  async function fecharZona(chave: string, pin: string | null = null) {
+    if (!q?.contagem) return
+    setFechandoZona(true); setErro(null)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/contagem/assinar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contagemId: q.contagem.id, zonaChave: chave, pin }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (r.status === 409 && j.code === 'PIN_OBRIGATORIO') { setPedirPin({ acao: 'zona', chave }); return }
+      if (r.status === 401 && j.code === 'PIN_ERRADO') { setPedirPin({ acao: 'zona', chave, erro: j.erro }); return }
+      if (!r.ok) { setErro(comoErro(j, 'fechar a zona')); return }
+      setPedirPin(null)
+      await carregarPosto()
+      setModo('posto')
+    } catch { setErro({ msg: 'A rede falhou ao fechar a zona — nada foi assinado; tente de novo.' }) } finally { setFechandoZona(false) }
+  }
+
+  async function iniciar(tipo?: 'INICIAL' | 'ROTINA'): Promise<boolean> {
     setIniciando(true); setErro(null)
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/contagem`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tipo ? { tipo } : {}) })
       const j = await r.json().catch(() => ({}))
-      if (!r.ok) { setErro(comoErro(j, 'iniciar a contagem')); return }
-      await carregar()
-    } catch { setErro({ msg: 'A rede falhou ao iniciar a contagem — tente de novo.' }) } finally { setIniciando(false) }
+      if (!r.ok) { setErro(comoErro(j, 'iniciar a contagem')); return false }
+      await Promise.all([carregar(), carregarPosto()])
+      return true
+    } catch { setErro({ msg: 'A rede falhou ao iniciar a contagem — tente de novo.' }); return false } finally { setIniciando(false) }
   }
 
   async function contar(
@@ -187,7 +266,7 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
       }
       if (!r.ok) { setErro(comoErro(j, 'gravar a contagem')); return }
       setFreio(null); setMotivo(null)
-      await carregar()
+      await Promise.all([carregar(), carregarPosto()])
       irProximo()
     } catch { setErro({ msg: 'A rede falhou ao gravar a contagem — o que você digitou continua aí; tente de novo.' }) } finally { setSalvando(false) }
   }
@@ -202,7 +281,7 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { setErro(comoErro(j, 'marcar a linha')); return }
-      await carregar()
+      await Promise.all([carregar(), carregarPosto()])
       irProximo()
     } catch { setErro({ msg: 'A rede falhou — o que você digitou continua aí; tente de novo.' }) } finally { setSalvando(false) }
   }
@@ -228,14 +307,18 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
     if (r.ok) setDecisoes((s) => ({ ...s, [itemId]: { decisao, motivo: null, decididoPorNome: null } }))
   }
 
-  async function finalizar(acao: 'finalizar' | 'cancelar') {
+  async function finalizar(acao: 'finalizar' | 'cancelar', pin: string | null = null) {
     if (!q?.contagem) return
     setFinalizando(true); setErro(null)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/contagem/finalizar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contagemId: q.contagem.id, acao }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/contagem/finalizar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contagemId: q.contagem.id, acao, pin }) })
       const j = await r.json().catch(() => ({}))
+      // ⭐ R42 — finalizar = ASSINATURA: em conta de aparelho, o PIN de quem fecha
+      if (r.status === 409 && j.code === 'PIN_OBRIGATORIO') { setPedirPin({ acao: 'finalizar' }); return }
+      if (r.status === 401 && j.code === 'PIN_ERRADO') { setPedirPin({ acao: 'finalizar', erro: j.erro }); return }
       if (!r.ok) { setErro(comoErro(j, 'encerrar a contagem')); return }
-      location.href = `/empresas/${id}/estoque/contagens`
+      // ⭐ R42 — o recibo assinado abre na hora
+      location.href = acao === 'finalizar' ? `/empresas/${id}/estoque/contagens/${q.contagem.id}` : `/empresas/${id}/estoque/contagens`
     } catch { setErro({ msg: 'A rede falhou ao encerrar — a contagem segue aberta; tente de novo.' }) } finally { setFinalizando(false) }
   }
 
@@ -251,42 +334,68 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
     </div>
   )
 
-  // ── sem sessão aberta ──
-  if (!q.contagem && portaoFechado) return <div className="mx-auto max-w-3xl p-4">{avisoFecheODia}</div>
-  if (!q.contagem) {
+  const pinModal = pedirPin && (
+    <PedirPin
+      titulo={pedirPin.acao === 'zona' ? 'Quem contou esta zona? Digite o teu PIN pra fechar e assinar.' : 'Quem fecha a contagem? Digite o teu PIN pra assinar o recibo.'}
+      erro={pedirPin.erro ?? null}
+      ocupado={fechandoZona || finalizando}
+      onPin={(pin) => (pedirPin.acao === 'zona' ? fecharZona(pedirPin.chave!, pin) : finalizar('finalizar', pin))}
+      onFechar={() => setPedirPin(null)}
+    />
+  )
+  const caixaDeErro = erro && (
+    <div className="rounded-md px-3 py-2 text-xs" style={{ background: 'var(--fam-coral-bg)', color: 'var(--fam-coral-ink)' }}>
+      <p>{erro.msg}</p>
+      {/* ⭐ o gesto que RESOLVE — recusa sem saída é beco */}
+      {erro.saida && (
+        <a href={erro.saida.href} className="mt-1 inline-block font-semibold underline">
+          {erro.saida.rotulo} →
+        </a>
+      )}
+    </div>
+  )
+
+  // ── ⭐⭐ O POSTO DE COMANDO (abertura, R36/R37/R40) — com ou sem sessão aberta ──
+  if (modo === 'posto' || !q.contagem) {
     const primeira = q.linhas.every((l) => l.ultimaContagemEm == null)
     return (
-      <div className="space-y-3">
-        <Cabecalho id={id} />
-        <Card><CardContent className="flex flex-col items-center gap-3 p-10 text-center">
-          <ClipboardList className="h-10 w-10" style={{ color: 'var(--prod-line-strong)' }} />
-          <p className="text-sm font-medium" style={{ color: 'var(--prod-primary)' }}>{primeira ? 'Nenhuma contagem ainda — essa é a INICIAL, o ponto-zero do estoque.' : 'Nenhuma contagem aberta.'}</p>
-          <p className="max-w-lg text-xs" style={{ color: 'var(--prod-muted)' }}>
-            Você conta <b>sem ver</b> o que o sistema acha que tem — é o que faz a contagem
-            valer. Cada linha confirmada ajusta o saldo na hora, e dá pra parar e voltar:
-            a sessão fica aberta até você finalizar.
-          </p>
-          {erro && (
-        <div className="rounded-md px-3 py-2 text-xs" style={{ background: 'var(--fam-coral-bg)', color: 'var(--fam-coral-ink)' }}>
-          <p>{erro.msg}</p>
-          {/* ⭐ o gesto que RESOLVE — recusa sem saída é beco */}
-          {erro.saida && (
-            <a href={erro.saida.href} className="mt-1 inline-block font-semibold underline">
-              {erro.saida.rotulo} →
-            </a>
-          )}
-        </div>
-      )}
-          <button onClick={() => iniciar()} disabled={iniciando} className="inline-flex h-10 items-center gap-2 rounded-xl px-5 text-sm font-semibold disabled:opacity-50"
-            style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
-            {iniciando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} {primeira ? 'Começar contagem inicial' : 'Começar contagem'}
-          </button>
-        </CardContent></Card>
+      <div className="space-y-3 pb-6">
+        {/* V11 · o portão: dia com venda aberto → não se abre contagem (o servidor também tranca a linha) */}
+        {portaoFechado && avisoFecheODia}
+        {caixaDeErro}
+        {q.contagem && (
+          <div className="flex flex-wrap items-center gap-2 rounded-[var(--prod-r-cartao)] border px-3 py-2 text-xs" style={{ borderColor: 'var(--prod-line-strong)' }}>
+            <span style={{ color: 'var(--prod-secondary)' }}>contagem aberta em {fmtQuando(q.contagem.iniciadaEm)}{q.contagem.criadoPorNome ? ` por ${q.contagem.criadoPorNome}` : ''}</span>
+            <span className="flex-1" />
+            <button onClick={() => { setModo('contar') }} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 font-semibold" style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}><Pencil className="h-3.5 w-3.5" /> voltar a contar</button>
+            <button onClick={() => setModo('revisar')} className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-3" style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}><ListChecks className="h-3.5 w-3.5" /> revisar e fechar</button>
+          </div>
+        )}
+        {posto
+          ? <PostoDeComando id={id} posto={posto} sessaoAberta={!!q.contagem} iniciando={iniciando} podeGerenciar={pode('stock.manage')} onComecar={comecar} />
+          : <Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--prod-muted)' }} />}
+        {!q.contagem && primeira && (
+          <Card><CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+            <ClipboardList className="h-10 w-10" style={{ color: 'var(--prod-line-strong)' }} />
+            <p className="text-sm font-medium" style={{ color: 'var(--prod-primary)' }}>Nenhuma contagem ainda — essa é a INICIAL, o ponto-zero do estoque.</p>
+            <p className="max-w-lg text-xs" style={{ color: 'var(--prod-muted)' }}>
+              Você conta <b>sem ver</b> o que o sistema acha que tem — é o que faz a contagem
+              valer. Cada linha confirmada ajusta o saldo na hora, e dá pra parar e voltar:
+              a sessão fica aberta até você finalizar.
+            </p>
+            <button onClick={() => comecar('tudo')} disabled={iniciando || portaoFechado} className="inline-flex h-10 items-center gap-2 rounded-xl px-5 text-sm font-semibold disabled:opacity-50"
+              style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
+              {iniciando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Começar contagem inicial
+            </button>
+          </CardContent></Card>
+        )}
+        {pinModal}
       </div>
     )
   }
 
-  const feitos = q.linhas.filter((l) => l.estado).length
+  const feitos = linhasDoEscopo.filter((l) => l.estado).length
+  const rotuloDoEscopo = escopo === 'tudo' ? 'tudo' : escopo === 'hoje' ? 'hoje' : zonaDoEscopo?.nome ?? 'zona'
 
   return (
     <div className="space-y-3 pb-6">
@@ -310,6 +419,10 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
       {/* os dois modos */}
       <div className="flex flex-wrap items-center gap-1.5">
         <div className="inline-flex rounded-lg border p-0.5" style={{ borderColor: 'var(--prod-line-strong)' }}>
+          <button onClick={() => { setModo('posto'); carregarPosto() }}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium" style={{ color: 'var(--prod-muted)' }}>
+            <LayoutGrid className="h-3.5 w-3.5" /> Posto
+          </button>
           <button onClick={() => setModo('contar')}
             className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium"
             style={modo === 'contar'
@@ -327,7 +440,7 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
           </button>
         </div>
         <span className="ml-auto text-xs tabular-nums" style={{ color: 'var(--prod-muted)' }}>
-          <b style={{ color: 'var(--prod-primary)' }}>{feitos}</b> de {q.totalItens}
+          {rotuloDoEscopo} · <b style={{ color: 'var(--prod-primary)' }}>{feitos}</b> de {linhasDoEscopo.length}{linhasDoEscopo.length > 0 && feitos >= linhasDoEscopo.length ? ' ✓' : ''}
         </span>
         {modo === 'revisar' && pode('stock.manage') && (
           <button onClick={() => finalizar('finalizar')} disabled={finalizando}
@@ -338,16 +451,20 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
         )}
       </div>
 
-      {erro && (
-        <div className="rounded-md px-3 py-2 text-xs" style={{ background: 'var(--fam-coral-bg)', color: 'var(--fam-coral-ink)' }}>
-          <p>{erro.msg}</p>
-          {/* ⭐ o gesto que RESOLVE — recusa sem saída é beco */}
-          {erro.saida && (
-            <a href={erro.saida.href} className="mt-1 inline-block font-semibold underline">
-              {erro.saida.rotulo} →
-            </a>
-          )}
-        </div>
+      {caixaDeErro}
+
+      {/* ⭐ R37 — contando uma ZONA: fechar = assinar (o botão some quando ela já foi assinada) */}
+      {modo === 'contar' && zonaDoEscopo && !zonaDoEscopo.assinada && (
+        <button onClick={() => fecharZona(zonaDoEscopo.chave)} disabled={fechandoZona} data-testid="fechar-zona"
+          className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border text-xs font-semibold disabled:opacity-50 sm:w-auto sm:px-4"
+          style={feitos >= linhasDoEscopo.length
+            ? { borderColor: 'transparent', background: 'var(--fam-verde-solid)', color: 'var(--fam-verde-on)' }
+            : { borderColor: 'var(--prod-line-strong)', color: 'var(--prod-primary)' }}>
+          {fechandoZona ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />} fechar a zona {zonaDoEscopo.nome} e assinar
+        </button>
+      )}
+      {modo === 'contar' && zonaDoEscopo?.assinada && (
+        <p className="text-xs font-semibold" style={{ color: 'var(--fam-verde-ink)' }}>✓ zona fechada — assinada por {zonaDoEscopo.assinada.quem}</p>
       )}
 
       {modo === 'contar' ? (
@@ -357,7 +474,10 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
               <CartaoContar
                 linha={atual}
                 posicao={feitos + 1}
-                total={q.totalItens}
+                total={linhasDoEscopo.length}
+                historia={historias[atual.itemId] ?? null}
+                historicoHref={`/empresas/${id}/estoque/itens/${atual.itemId}`}
+                zonaNome={zonaDoEscopo?.nome ?? null}
                 salvando={salvando}
                 onConfirmar={(qtd, opts) => contar(atual.itemId, qtd, opts)}
                 onMarcar={(estado, obs) => marcar(atual.itemId, estado, obs)}
@@ -367,18 +487,26 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
 
             <Card className="hidden lg:block"><CardContent className="p-2.5">
               <TrilhoFila
-                itens={q.linhas}
+                itens={linhasDoEscopo}
                 atualId={atual.itemId}
                 onIr={setAtualId}
                 onMover={reordenar}
-                podeReordenar={pode('stock.manage')}
+                // ⚠️ o arrastar mexe no CAMINHO da empresa inteira — só faz sentido vendo TUDO
+                podeReordenar={pode('stock.manage') && escopo === 'tudo'}
               />
             </CardContent></Card>
+
+            {/* ⭐ R39 — CELULAR É A TELA PRINCIPAL: busca, zonas e próximos numa folha de baixo */}
+            <div className="flex gap-[7px] lg:hidden" data-testid="rodape-do-celular">
+              <button onClick={() => setFolha('busca')} className="h-[33px] flex-1 rounded-[9px] border text-[11.5px] font-extrabold" style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-secondary)' }}><Search className="mr-1 inline h-3.5 w-3.5" />buscar</button>
+              <button onClick={() => setFolha('zonas')} className="h-[33px] flex-1 rounded-[9px] border text-[11.5px] font-extrabold" style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>zonas</button>
+              <button onClick={() => setFolha('proximos')} className="h-[33px] flex-1 rounded-[9px] border text-[11.5px] font-extrabold" style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--prod-secondary)' }}>próximos ({Math.max(0, pendentes.length - 1)})</button>
+            </div>
           </div>
         ) : (
           <Card><CardContent className="p-10 text-center">
             <Check className="mx-auto h-10 w-10" style={{ color: 'var(--fam-verde-mid)' }} />
-            <p className="mt-2 text-sm font-medium" style={{ color: 'var(--prod-primary)' }}>Tudo passou — {feitos} de {q.totalItens}.</p>
+            <p className="mt-2 text-sm font-medium" style={{ color: 'var(--prod-primary)' }} data-testid="escopo-terminado">Tudo passou — {feitos} de {linhasDoEscopo.length} ✓</p>
             <p className="mt-1 text-xs" style={{ color: 'var(--prod-muted)' }}>Agora é a revisão: lá o sistema aparece e dá pra comparar.</p>
             <button onClick={() => setModo('revisar')} className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-xs font-semibold"
               style={{ background: 'var(--prod-acao-bg)', color: 'var(--prod-acao-ink)' }}>
@@ -396,6 +524,23 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
           onRecontar={(itemId) => { setAtualId(itemId); setModo('contar') }}
         />
       )}
+
+      {folha && posto && (
+        <FolhaDeBaixo
+          aba={folha}
+          onAba={setFolha}
+          onFechar={() => setFolha(null)}
+          linhas={linhasDoEscopo}
+          todas={q.linhas}
+          atualId={atual?.itemId ?? null}
+          zonas={posto.zonas}
+          escopo={escopo}
+          // ⭐ a busca alcança QUALQUER item: fora do escopo, a sessão passa a ver tudo (nunca some)
+          onIr={(itemId) => { if (!linhasDoEscopo.some((l) => l.itemId === itemId)) setEscopo('tudo'); setAtualId(itemId); setFolha(null) }}
+          onEscopo={(e) => { setEscopo(e); setAtualId(null); setFolha(null) }}
+        />
+      )}
+      {pinModal}
 
       {/**
         * ⛔⛔⛔ A CAUSA DO NEGATIVO — 1 toque, e a contagem ENTRA (05/10).

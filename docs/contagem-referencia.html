@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CONTAGEM COM DIREÇÃO (estoque) — referência v3 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════
+CONTAGEM COM DIREÇÃO v2 — reescrita inteira após o pente do dono
+("mudar tudo"). Três momentos: POSTO DE COMANDO (abertura) ·
+CARTÃO DE CONTAR (celular) · RECIBO ASSINADO (fechamento).
+EVOLUI a tela real /estoque/contagem (dossiê 19/11) e PRESERVA
+tudo que já funciona: contagem cega, "ver o que o sistema diz"
+registrado, freios do servidor (R$ 200 / 30%+R$ 20), "não sei =
+a apurar", causa do negativo em 1 toque, trava do dia parado,
+Revisar (Divergência / A apurar / Bateram). Lições dos líderes:
+total escrito NO botão de confirmar e contagem por toques (WISK);
+unidade sempre com NOME, nunca "unidade alternativa" (reclamação
+real de usuário do Crunchtime); teclado próprio na tela.
+Família R continua (R32–R35 na Bancada). Herdadas: S15, S16, S18,
+S19, S20, R11 (escala única).
+
+R36 — A SESSÃO TEM ESCOPO E FIM. "O que conta hoje" nasce da regra
+      dos grupos (A·B·C, ritmo editável; amostra: A a cada 2 dias,
+      B semanal, C mensal). Atrasado entra primeiro; nunca-contado
+      tem fila própria. "Contar tudo (271) →" continua existindo.
+      "18 de 18 ✓" é uma vitória possível.
+
+R37 — ZONAS SÃO UM MAPA, NÃO UMA LISTA. Cada zona é um CARTÃO com
+      anel de progresso, quantos itens hoje, última contagem (quem
+      · quando) e estado. Quem está contando AGORA aparece ao vivo
+      no cartão da zona. Várias pessoas, zonas diferentes, mesma
+      sessão; zona fechada assina com o PIN de quem contou.
+
+R38 — O CAMPO É NÚMERO PURO (emenda do dono 23/11). Digita-se o
+      número na unidade do próprio item — 220, 450, 2,4 — KG ou
+      UN conforme o cadastro, com o teclado próprio na tela
+      (teclas enormes). O atalho de caixa é OPCIONAL e só aparece
+      em item que TEM caixa cadastrada ("+1 cx", nome sempre dito:
+      "caixa ×12", nunca "unidade alternativa"); usado o atalho, a
+      conta aparece feita ("1 cx + 2,4 = 14,4 KG"). Digitou só
+      número, nada de caixa na tela. O TOTAL vai escrito no botão:
+      "Confirmar 22,4 KG" — ninguém confirma número que não viu.
+
+R39 — CELULAR É A TELA PRINCIPAL. Busca, zonas e próximos no
+      celular; a sessão sobrevive sem wi-fi na câmara fria e
+      sincroniza ao voltar. Contagem se faz andando.
+
+R40 — ACURACIDADE É O PLACAR. A abertura abre com o anel da
+      acuracidade (% de itens dentro da tolerância na última
+      contagem), a tendência de 30 dias, o DINHEIRO sob contagem
+      (R$ do giro protegido pelo grupo A) e os ajustes da semana
+      com gráfico em escala única. Número feio aparece até doer.
+
+R41 — O ITEM CONTA A PRÓPRIA HISTÓRIA. No cartão de contar: a
+      linha do saldo dos últimos 14 dias com os pontos das
+      contagens (verde = bateu · âmbar = ajustou) e as últimas 10
+      em bolinhas. "Nunca bate" (5+ contagens, <20% batidas) se
+      declara no cartão com "histórico →" (S19). A tela expõe; a
+      cura vem do AvT (fase 5).
+
+R42 — O RECIBO ASSINA A SESSÃO. Fechar a contagem gera o recibo:
+      itens, bateram, ajustes (líquido e mexido em R$), a apurar,
+      tempo real × estimado, zona por zona com o PIN de quem
+      contou, e o efeito na acuracidade. Finalizar = assinatura.
+
+R43 — AS ZONAS SÃO DO DONO (emenda do dono 23/11). Criar zona
+      nova, renomear, e EXCLUIR de verdade (R23/R24 da casa:
+      excluir zona nunca apaga item — os itens dela ficam "sem
+      zona" e aparecem para realocar; a confirmação diz quantos).
+      O dono escolhe QUAIS itens moram em cada zona (busca +
+      adicionar; remover na linha) e a ORDEM deles (o arrastar que
+      já existe). Item sem zona entra no fim de "o que conta hoje"
+      até ganhar casa — nunca some da contagem.
+      Ritmo padrão ajustado ao uso real: A · TODO DIA (a equipe já
+      conta assim) · B semanal · C mensal — tudo editável.
+
+Números da amostra: dossiê 19/11 (74 itens = 73% do giro = R$
+210,7 mil; porção queijo 0/30; QUEIJO EM PEÇA 0/3; Brahma 27/29).
+As faixas pretas são da AMOSTRA.
+═══════════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --esc-bg:#F3F5FA; --esc-card:#FFFFFF; --esc-linha:#C9D0E3;
+  --esc-tinta:#0A0F1E; --esc-tinta2:#46516B; --esc-tinta3:#8B94AD;
+  --esc-indigo:#4F46E5; --esc-indigo50:#EEF0FE; --esc-indigo-t:#3730A3;
+  --esc-verde:#0E9F6E; --esc-verde50:#E4F7EF; --esc-verde-t:#065F46;
+  --esc-ambar50:#FCF0DC; --esc-ambar-t:#7C4A03; --esc-ambar:#B45309;
+  --esc-roxo50:#F3EFFE; --esc-roxo-t:#5B21B6;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--esc-bg);color:var(--esc-tinta);font-family:var(--font)}
+body{padding:0 0 46px}
+.num{font-variant-numeric:tabular-nums}
+.nav{position:sticky;top:0;z-index:5;display:flex;gap:7px;flex-wrap:wrap;
+  background:#0A0F1E;padding:9px 14px}
+.nav button{border:1px solid #334155;background:#1E293B;color:#CBD5E1;border-radius:999px;
+  padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.nav button.on{background:#F1F5F9;color:#0A0F1E;border-color:#F1F5F9}
+.faixa{background:#0A0F1E;color:#8FA0BF;font-size:10px;font-weight:800;letter-spacing:.12em;
+  text-transform:uppercase;padding:7px 18px}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 18px 26px}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.top h1{margin:0;font-size:21px;font-weight:800;letter-spacing:-.01em}
+.top .lks{display:flex;gap:16px}
+.top .lk{color:var(--esc-indigo);font-size:12px;font-weight:800;text-decoration:none}
+
+/* hero do placar (R40) */
+.hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(0,1.15fr) minmax(0,1fr);
+  gap:12px;margin-top:16px}
+.hk{background:var(--esc-card);border:1px solid var(--esc-linha);border-radius:14px;padding:14px 16px}
+.hk .rot{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase}
+.hk .sub{font-size:11px;font-weight:700;color:var(--esc-tinta3);margin-top:3px}
+.hk .sub b{color:var(--esc-tinta2)}
+.acur{display:flex;align-items:center;gap:14px}
+.acur .anel{position:relative;width:86px;height:86px;flex:none}
+.acur .anel .pc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:21px;font-weight:800}
+.acur .tx .v{font-size:13px;font-weight:800;color:var(--esc-verde-t)}
+.hk .big{font-size:20px;font-weight:800;letter-spacing:-.01em;margin-top:5px}
+.hk .big.amb{color:var(--esc-ambar)}
+.mini{display:flex;align-items:flex-end;gap:6px;height:44px;margin-top:9px}
+.mini .mb{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.mini .mb i{display:block;width:100%;border-radius:4px 4px 0 0;background:#D9DEF0}
+.mini .mb.on i{background:var(--esc-indigo)}
+.mini .mb span{font-size:8.5px;font-weight:800;color:var(--esc-tinta3)}
+
+/* o que conta hoje + mapa das zonas */
+.card{background:var(--esc-card);border:1px solid var(--esc-linha);border-radius:14px;
+  padding:14px 16px;margin-top:16px}
+.chead{display:flex;align-items:center;gap:8px;font-size:9.5px;font-weight:800;
+  letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase;margin-bottom:4px}
+.chead .sp{flex:1}
+.chead a{color:var(--esc-indigo);font-size:11.5px;font-weight:800;letter-spacing:0;
+  text-transform:none;text-decoration:none}
+.iwr{position:relative;display:inline-flex}
+.i{width:17px;height:17px;border-radius:50%;border:1px solid var(--esc-linha);background:var(--esc-card);
+  color:var(--esc-tinta3);font-size:10.5px;font-weight:800;cursor:pointer;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;padding:0;font-family:var(--font)}
+.pop{display:none;position:absolute;top:22px;left:-8px;z-index:9;width:280px;
+  background:#0A0F1E;color:#E2E8F0;border-radius:10px;padding:10px 12px;
+  font-size:11.5px;font-weight:600;line-height:1.5;letter-spacing:0;text-transform:none}
+.iwr.aberto .pop{display:block}
+.hoje-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:2px 0 12px}
+.hoje-top .big{font-size:17px;font-weight:800}
+.hoje-top .mut{font-size:12px;font-weight:700;color:var(--esc-tinta2)}
+.btpri{border:0;background:var(--esc-indigo);color:#fff;border-radius:10px;height:42px;
+  font-size:13.5px;font-weight:800;cursor:pointer;font-family:var(--font);padding:0 18px}
+.mapa{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.zc{border:1px solid var(--esc-linha);border-radius:13px;padding:12px 13px;position:relative}
+.zc .zt{display:flex;align-items:center;gap:8px}
+.zc .zn{font-size:13.5px;font-weight:800}
+.zc .viva{display:inline-flex;align-items:center;gap:5px;margin-left:auto;font-size:10px;
+  font-weight:800;color:var(--esc-verde-t)}
+.zc .viva .dot{width:7px;height:7px;border-radius:50%;background:var(--esc-verde);
+  animation:pulsa 2s infinite}
+@keyframes pulsa{0%{box-shadow:0 0 0 0 rgba(14,159,110,.45)}70%{box-shadow:0 0 0 6px rgba(14,159,110,0)}100%{box-shadow:0 0 0 0 rgba(14,159,110,0)}}
+.zc .zmeio{display:flex;align-items:center;gap:12px;margin-top:9px}
+.zc .zanel{position:relative;width:52px;height:52px;flex:none}
+.zc .zanel .pc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:11.5px;font-weight:800}
+.zc .zinfo .l1{font-size:12px;font-weight:800}
+.zc .zinfo .l1 .amb{color:var(--esc-ambar-t)}
+.zc .zinfo .l2{font-size:10.5px;font-weight:700;color:var(--esc-tinta3);margin-top:2px}
+.zc .zbt{margin-top:10px}
+.zc .zbt button{width:100%;border:1px solid var(--esc-linha);background:var(--esc-card);
+  color:var(--esc-indigo);border-radius:9px;height:32px;font-size:12px;font-weight:800;
+  cursor:pointer;font-family:var(--font)}
+.zc.ok{opacity:.72}
+.zc.ok .zbt button{color:var(--esc-tinta3)}
+
+/* ───────── cartão de contar (celular) ───────── */
+.fone{max-width:400px;margin:26px auto 0;background:var(--esc-card);
+  border:1px solid var(--esc-linha);border-radius:20px;padding:15px 15px 13px;
+  box-shadow:0 10px 30px rgba(10,15,30,.08)}
+.ftop{display:flex;align-items:center;gap:9px}
+.ftop .fz{font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);text-transform:uppercase}
+.ftop .fanel{position:relative;width:34px;height:34px;margin-left:auto;flex:none}
+.ftop .fanel .pc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:8.5px;font-weight:800}
+.fitem{margin-top:10px}
+.fitem .fn{font-size:21px;font-weight:800;letter-spacing:-.015em;line-height:1.15}
+.fitem .fs{font-size:12px;font-weight:700;color:var(--esc-tinta2);margin-top:4px}
+.fitem .fmeta{font-size:11px;font-weight:700;color:var(--esc-tinta3);margin-top:2px}
+.spark{margin-top:11px;border:1px solid #E8EBF5;border-radius:11px;padding:9px 11px 7px}
+.spark .sl{display:flex;align-items:center;gap:8px;font-size:9px;font-weight:800;
+  letter-spacing:.06em;color:var(--esc-tinta3);text-transform:uppercase}
+.spark .sl .pt{width:7px;height:7px;border-radius:50%;display:inline-block}
+.spark svg{display:block;width:100%;height:52px;margin-top:4px}
+.hist10{display:flex;align-items:center;gap:5px;margin-top:9px;font-size:10.5px;
+  font-weight:800;color:var(--esc-ambar-t)}
+.hist10 .b{width:9px;height:9px;border-radius:50%}
+.hist10 a{color:var(--esc-ambar-t)}
+.disp{display:flex;align-items:baseline;gap:10px;border:2px solid var(--esc-indigo);
+  border-radius:13px;padding:11px 14px;margin-top:12px}
+.disp .val{font-size:26px;font-weight:800;letter-spacing:-.01em;flex:1}
+.disp .un{font-size:12px;font-weight:800;color:var(--esc-tinta3)}
+.conta{margin-top:7px;font-size:12.5px;font-weight:800;color:var(--esc-verde-t)}
+.conta small{font-weight:700;color:var(--esc-tinta3)}
+.rapidos{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:11px}
+.rapidos button{border:1px solid var(--esc-linha);background:#F7F8FC;color:var(--esc-tinta);
+  border-radius:10px;height:38px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:7px}
+.pad button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta);
+  border-radius:10px;height:46px;font-size:17px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.btconf{width:100%;margin-top:10px;border:0;background:var(--esc-indigo);color:#fff;
+  border-radius:12px;height:50px;font-size:15px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.flinks{display:flex;justify-content:center;gap:18px;margin-top:10px;font-size:12px;font-weight:800}
+.flinks a{color:var(--esc-tinta2);text-decoration:none}
+.flinks a.azul{color:var(--esc-indigo)}
+.frod{display:flex;gap:7px;margin-top:11px}
+.frod button{flex:1;border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);
+  border-radius:9px;height:33px;font-size:11.5px;font-weight:800;cursor:pointer;font-family:var(--font)}
+
+/* ───────── recibo ───────── */
+.recibo{max-width:560px;margin:26px auto 0;background:var(--esc-card);
+  border:1px solid var(--esc-linha);border-radius:18px;padding:18px 18px 16px}
+.rtit{display:flex;align-items:center;gap:12px}
+.rtit .ranel{position:relative;width:62px;height:62px;flex:none}
+.rtit .ranel .pc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:800;color:var(--esc-verde-t)}
+.rtit .t1{font-size:16px;font-weight:800}
+.rtit .t2{font-size:11.5px;font-weight:700;color:var(--esc-tinta3);margin-top:2px}
+.rgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:14px}
+.rg{border:1px solid #E8EBF5;border-radius:11px;padding:9px 11px}
+.rg .rot{font-size:8.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);text-transform:uppercase}
+.rg .v{font-size:15px;font-weight:800;margin-top:3px}
+.rg .v.amb{color:var(--esc-ambar)}
+.rg .v.ok{color:var(--esc-verde-t)}
+.rg .s{font-size:9.5px;font-weight:700;color:var(--esc-tinta3);margin-top:1px}
+.rzonas{margin-top:13px;border-top:1px solid #E3E7F2;padding-top:9px}
+.rz{display:flex;align-items:center;gap:9px;padding:6px 0;font-size:12.5px;font-weight:700}
+.rz .ok{color:var(--esc-verde-t);font-weight:800}
+.rz .quem{margin-left:auto;color:var(--esc-tinta2)}
+.rz .hora{color:var(--esc-tinta3);font-weight:700}
+.rdiv{margin-top:11px;border-top:1px solid #E3E7F2;padding-top:10px}
+.rdiv .dl{display:flex;align-items:baseline;gap:9px;padding:5px 0;font-size:12.5px;font-weight:700}
+.rdiv .dl b{font-weight:800}
+.rdiv .dl .rs{margin-left:auto;font-weight:800;color:var(--esc-ambar)}
+.rdiv .dl a{color:var(--esc-indigo);font-weight:800;text-decoration:none;white-space:nowrap}
+.rass{display:flex;align-items:center;gap:9px;margin-top:13px;background:var(--esc-verde50);
+  border-radius:11px;padding:10px 13px;font-size:12px;font-weight:800;color:var(--esc-verde-t)}
+
+/* gerenciar zonas (R43) */
+.zg-nova{display:flex;gap:9px;margin:8px 0 12px}
+.zg-nova input{flex:1;border:1px solid var(--esc-linha);border-radius:9px;height:36px;
+  background:var(--esc-card);color:var(--esc-tinta);font-size:13px;font-weight:700;
+  font-family:var(--font);padding:0 11px;outline:none}
+.zg{border:1px solid var(--esc-linha);border-radius:12px;margin-top:9px;overflow:hidden}
+.zg-h{display:flex;align-items:center;gap:10px;padding:10px 13px}
+.zg-h button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta);
+  border-radius:8px;height:29px;padding:0 10px;font-size:11px;font-weight:800;cursor:pointer;font-family:var(--font)}
+.zg-h button.perigo{color:#B42318;border-color:#EBCDCB}
+.zg-nome{font-size:13.5px;font-weight:800}
+.zg-n{font-size:11.5px;font-weight:700;color:var(--esc-tinta3)}
+.zg-dica{font-size:10.5px;font-weight:700;color:var(--esc-tinta3)}
+.zg-corpo{border-top:1px solid #E8EBF5;padding:10px 13px;background:#FAFBFE}
+.zg-busca{display:flex;align-items:center;gap:7px;border:1px solid var(--esc-linha);
+  border-radius:9px;height:34px;padding:0 11px;background:var(--esc-card);
+  font-size:12px;color:var(--esc-tinta3);margin-bottom:8px}
+.zg-busca input{border:0;outline:0;flex:1;font-size:12.5px;font-weight:700;
+  color:var(--esc-tinta);font-family:var(--font);background:transparent}
+.zg-it{display:flex;align-items:center;gap:10px;padding:7px 2px;font-size:13px;
+  font-weight:700;border-bottom:1px solid #EEF1F8}
+.zg-it:last-of-type{border-bottom:0}
+.zg-it .al{color:var(--esc-tinta3);cursor:grab;font-size:14px}
+.zg-it .rm{margin-left:auto;color:var(--esc-tinta3);cursor:pointer;font-size:12px;font-weight:800}
+.zg-mais{padding:8px 2px 2px;font-size:11px;font-weight:700;color:var(--esc-tinta3)}
+.zg.semz{border-style:dashed}
+
+@media (max-width:980px){
+  .hero{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mapa{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:640px){
+  .hero{grid-template-columns:minmax(0,1fr)}
+  .mapa{grid-template-columns:minmax(0,1fr)}
+  .rgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button class="on">Estoque</button><button>Vendas</button><button>Produção</button>
+  <button>Financeiro</button><button>Cardápio</button>
+</nav>
+
+<div class="faixa">amostra · posto de comando (abertura)</div>
+
+<main class="wrap">
+  <header class="top">
+    <h1>Contagem</h1>
+    <div class="lks"><a class="lk" href="#">contar tudo (271) →</a><a class="lk" href="#">Sessões →</a></div>
+  </header>
+
+  <div class="hero">
+    <div class="hk">
+      <div class="rot">Acuracidade do estoque</div>
+      <div class="acur" style="margin-top:7px">
+        <div class="anel" id="anel-acur"></div>
+        <div class="tx"><div class="v num">+3 pontos · 30 dias</div>
+          <div class="sub">itens dentro da tolerância na última contagem</div></div>
+      </div>
+    </div>
+    <div class="hk">
+      <div class="rot">Sob contagem · grupo A</div>
+      <div class="big num">R$ 210,7 mil</div>
+      <div class="sub num"><b>73% do giro</b> protegido · 74 itens</div>
+    </div>
+    <div class="hk">
+      <div class="rot">Ajustes · por semana</div>
+      <div class="big amb num">−R$ 312</div>
+      <div class="mini" id="mini-aj"></div>
+    </div>
+    <div class="hk">
+      <div class="rot">Nunca contados</div>
+      <div class="big amb num">140</div>
+      <div class="sub num"><b>15 candidatos</b> a grupo A · <a href="#" style="color:var(--esc-indigo);font-weight:800;text-decoration:none">decidir →</a></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="chead">O que conta hoje
+      <span class="iwr"><button class="i" onclick="this.parentNode.classList.toggle('aberto')">i</button>
+        <span class="pop">A lista do dia nasce da regra dos grupos (A todo dia ·
+        B semanal · C mensal, editável): atrasado entra primeiro. Cada
+        zona segue a ordem em que vocês andam pelo estoque. Zona fechada
+        assina com o PIN de quem contou; várias pessoas contam zonas
+        diferentes da mesma sessão ao mesmo tempo. As zonas são tuas:
+        criar, renomear, excluir e escolher os itens — em "gerenciar
+        zonas".</span></span>
+      <span class="sp"></span>
+    </div>
+    <div class="hoje-top">
+      <span class="big num">18 itens · 5 zonas · ~15 min</span>
+      <span class="mut">atrasados primeiro · contagem cega</span>
+      <span style="flex:1"></span>
+      <button class="btpri">Começar a contagem de hoje</button>
+    </div>
+
+    <div class="mapa">
+      <div class="zc">
+        <div class="zt"><span class="zn">Câmara fria</span></div>
+        <div class="zmeio">
+          <div class="zanel" data-anel="0,6"></div>
+          <div class="zinfo"><div class="l1 num"><span class="amb">3 vencem hoje</span> · 6 itens</div>
+            <div class="l2 num">ontem: Michele · 19:10</div></div>
+        </div>
+        <div class="zbt"><button>contar esta zona →</button></div>
+      </div>
+      <div class="zc">
+        <div class="zt"><span class="zn">Bebidas</span><span class="viva"><span class="dot"></span>Tauan contando</span></div>
+        <div class="zmeio">
+          <div class="zanel" data-anel="2,4"></div>
+          <div class="zinfo"><div class="l1 num">2 de 4 feitos</div>
+            <div class="l2 num">começou 19:02</div></div>
+        </div>
+        <div class="zbt"><button>acompanhar →</button></div>
+      </div>
+      <div class="zc">
+        <div class="zt"><span class="zn">Despensa</span></div>
+        <div class="zmeio">
+          <div class="zanel" data-anel="0,5"></div>
+          <div class="zinfo"><div class="l1 num">5 itens · <span style="color:var(--esc-roxo-t)">2 novos no grupo</span></div>
+            <div class="l2 num">última: 02/10</div></div>
+        </div>
+        <div class="zbt"><button>contar esta zona →</button></div>
+      </div>
+      <div class="zc">
+        <div class="zt"><span class="zn">Bancada</span></div>
+        <div class="zmeio">
+          <div class="zanel" data-anel="0,3"></div>
+          <div class="zinfo"><div class="l1 num">3 itens</div>
+            <div class="l2 num">ontem: Débora · 18:55</div></div>
+        </div>
+        <div class="zbt"><button>contar esta zona →</button></div>
+      </div>
+      <div class="zc ok">
+        <div class="zt"><span class="zn">Freezer</span></div>
+        <div class="zmeio">
+          <div class="zanel" data-anel="5,5"></div>
+          <div class="zinfo"><div class="l1 num" style="color:var(--esc-verde-t)">em dia ✓</div>
+            <div class="l2 num">hoje: Michele · 18:40</div></div>
+        </div>
+        <div class="zbt"><button>nada pra hoje</button></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="faixa">amostra · gerenciar zonas (do dono)</div>
+
+<main class="wrap" style="padding-top:18px">
+  <div class="card" style="margin-top:0">
+    <div class="chead">Zonas
+      <span class="iwr"><button class="i" onclick="this.parentNode.classList.toggle('aberto')">i</button>
+        <span class="pop">Criar, renomear e excluir zonas é teu. Excluir zona nunca
+        apaga item: os itens dela ficam "sem zona" e aparecem aqui pra
+        realocar. A ordem dos itens dentro da zona é a ordem em que
+        vocês andam pelo estoque — arrasta pra ajustar.</span></span>
+    </div>
+
+    <div class="zg-nova">
+      <input placeholder="nome da nova zona">
+      <button class="btpri" style="height:36px">Criar zona</button>
+    </div>
+
+    <div class="zg">
+      <div class="zg-h aberta">
+        <span class="zg-nome">Câmara fria</span><span class="zg-n num">12 itens</span>
+        <span class="sp" style="flex:1"></span>
+        <button>renomear</button><button class="perigo">excluir</button>
+      </div>
+      <div class="zg-corpo">
+        <div class="zg-busca">⌕ <input placeholder="adicionar item à zona…"></div>
+        <div class="zg-it"><span class="al">≡</span>QUEIJO MUSSARELA EM PEÇA<span class="rm">✕</span></div>
+        <div class="zg-it"><span class="al">≡</span>porção queijo 130 g<span class="rm">✕</span></div>
+        <div class="zg-it"><span class="al">≡</span>beef de xis<span class="rm">✕</span></div>
+        <div class="zg-it"><span class="al">≡</span>Coxão Mole<span class="rm">✕</span></div>
+        <div class="zg-mais num">+ 8 itens · arrasta pra mudar a ordem</div>
+      </div>
+    </div>
+
+    <div class="zg"><div class="zg-h"><span class="zg-nome">Bebidas</span><span class="zg-n num">9 itens</span>
+      <span class="sp" style="flex:1"></span><button>renomear</button><button class="perigo">excluir</button></div></div>
+    <div class="zg"><div class="zg-h"><span class="zg-nome">Freezer</span><span class="zg-n num">14 itens</span>
+      <span class="sp" style="flex:1"></span><button>renomear</button><button class="perigo">excluir</button></div></div>
+    <div class="zg"><div class="zg-h"><span class="zg-nome">Bancada</span><span class="zg-n num">7 itens</span>
+      <span class="sp" style="flex:1"></span><button>renomear</button><button class="perigo">excluir</button></div></div>
+    <div class="zg"><div class="zg-h"><span class="zg-nome">Despensa</span><span class="zg-n num">11 itens</span>
+      <span class="sp" style="flex:1"></span><button>renomear</button><button class="perigo">excluir</button></div></div>
+
+    <div class="zg semz"><div class="zg-h"><span class="zg-nome" style="color:var(--esc-ambar-t)">sem zona</span>
+      <span class="zg-n num">218 itens</span>
+      <span class="sp" style="flex:1"></span><span class="zg-dica">entram no fim do "conta hoje" até ganhar casa</span></div></div>
+  </div>
+</main>
+
+<div class="faixa">amostra · contando no celular (zona câmara fria)</div>
+
+<div style="padding:0 18px">
+  <div class="fone">
+    <div class="ftop"><span class="fz">Câmara fria</span><div class="fanel" data-anel="2,6"></div></div>
+    <div class="fitem">
+      <div class="fn">QUEIJO MUSSARELA EM PEÇA</div>
+      <div class="fs">conta em KG · caixa ×12 KG</div>
+      <div class="fmeta num">contado em 16/11 por Michele</div>
+    </div>
+
+    <div class="spark">
+      <div class="sl">saldo · 14 dias
+        <span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px"><span class="pt" style="background:var(--esc-verde)"></span>bateu</span>
+        <span style="display:inline-flex;align-items:center;gap:4px"><span class="pt" style="background:var(--esc-ambar)"></span>ajustou</span>
+      </div>
+      <svg viewBox="0 0 316 52" preserveAspectRatio="none" id="sparksvg"></svg>
+    </div>
+    <div class="hist10" id="hist10"></div>
+
+    <div class="disp"><span class="val num" id="dval">22,4</span><span class="un">KG</span></div>
+    <div class="conta num" id="dconta"></div>
+
+    <div class="rapidos">
+      <button>+1 cx</button><button>+1</button><button>+0,5</button><button>limpar</button>
+    </div>
+    <div class="pad">
+      <button>7</button><button>8</button><button>9</button>
+      <button>4</button><button>5</button><button>6</button>
+      <button>1</button><button>2</button><button>3</button>
+      <button>,</button><button>0</button><button>⌫</button>
+    </div>
+    <button class="btconf num" id="btconf"></button>
+    <div class="flinks"><a href="#">não sei</a><a href="#">pular</a><a class="azul" href="#">ver o que o sistema diz</a></div>
+    <div class="frod"><button>⌕ buscar</button><button>zonas</button><button>próximos (4)</button></div>
+  </div>
+</div>
+
+<div class="faixa">amostra · recibo da sessão (fechamento)</div>
+
+<div style="padding:0 18px">
+  <div class="recibo">
+    <div class="rtit">
+      <div class="ranel" data-anel="18,18"></div>
+      <div><div class="t1">Contagem de hoje — fechada</div>
+        <div class="t2 num">quinta, 19/11 · 19:02 → 19:13 · 11 min (estimado ~15)</div></div>
+    </div>
+    <div class="rgrid">
+      <div class="rg"><div class="rot">Bateram</div><div class="v ok num">14</div><div class="s">de 18</div></div>
+      <div class="rg"><div class="rot">Ajustados</div><div class="v amb num">3</div><div class="s num">−R$ 37,20 líq. · R$ 62,02 mexidos</div></div>
+      <div class="rg"><div class="rot">A apurar</div><div class="v num">1</div><div class="s">"não sei" registrado</div></div>
+      <div class="rg"><div class="rot">Acuracidade</div><div class="v num">78%</div><div class="s num">acumulada 92% (+1)</div></div>
+    </div>
+    <div class="rzonas">
+      <div class="rz"><span class="ok">✓</span>Câmara fria<span class="quem">Michele</span><span class="hora num">19:10</span></div>
+      <div class="rz"><span class="ok">✓</span>Bebidas<span class="quem">Tauan</span><span class="hora num">19:06</span></div>
+      <div class="rz"><span class="ok">✓</span>Despensa<span class="quem">Michele</span><span class="hora num">19:12</span></div>
+      <div class="rz"><span class="ok">✓</span>Bancada<span class="quem">Débora</span><span class="hora num">19:08</span></div>
+    </div>
+    <div class="rdiv">
+      <div class="dl"><b>porção queijo 130 g</b> −6 UN<span class="rs num">−R$ 22,62</span><a href="#">investigar →</a></div>
+      <div class="dl"><b>FRUKI GUARANÁ 2L</b> −3 UN<span class="rs num">−R$ 19,19</span><a href="#">investigar →</a></div>
+      <div class="dl"><b>Coxão Mole</b> +0,4 KG<span class="rs num" style="color:var(--esc-verde-t)">+R$ 4,61</span><a href="#">conferido ✓</a></div>
+    </div>
+    <div class="rass">✓ assinada pelos PINs de Michele, Tauan e Débora · ajustes aplicados linha a linha</div>
+  </div>
+</div>
+
+<script>
+/* ═══ ESPECIFICAÇÃO EXECUTÁVEL — CONTAGEM COM DIREÇÃO v2 ═══ */
+
+/* R36 — ritmo por grupo; vence quando chega no ritmo */
+const RITMO = {A: 1, B: 7, C: 30};
+const venceHoje = (g, dias) => dias == null ? true : dias >= RITMO[g];
+const atrasado  = (g, dias) => dias == null ? false : dias > RITMO[g];
+const ordemDoDia = itens => [...itens].sort((a,b) =>
+  (atrasado(b.g,b.d) - atrasado(a.g,a.d)) || (b.d ?? 999) - (a.d ?? 999));
+
+/* R38 — dupla unidade nomeada + total no botão */
+function duplaUn(txt, fator){
+  const m = String(txt).trim().toLowerCase()
+    .match(/^(?:(\d+(?:[.,]\d+)?)\s*cx)?\s*(?:\+)?\s*(\d+(?:[.,]\d+)?)?$/);
+  if (!m || (!m[1] && !m[2])) return null;
+  const n = s => s ? parseFloat(s.replace(',','.')) : 0;
+  return n(m[1]) * fator + n(m[2]);
+}
+const fmt1 = n => (Math.round(n*10)/10).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:1});
+const rotConfirmar = (total, un) => 'Confirmar ' + fmt1(total) + ' ' + un;
+
+/* R40 — acuracidade e anel (SVG) */
+const acur = (dentro, total) => Math.round(dentro/total*100);
+const RAIO = 0.42;                       /* fração do box */
+function anelSvg(pct, cor){
+  const r = 42, C = 2*Math.PI*r;
+  const off = C * (1 - pct/100);
+  return `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="${r}" fill="none" stroke="#E8EBF5" stroke-width="10"/>
+    <circle cx="50" cy="50" r="${r}" fill="none" stroke="${cor}" stroke-width="10" stroke-linecap="round"
+    stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" transform="rotate(-90 50 50)"/></svg>`;
+}
+
+/* R41 — nunca bate + caminho da linha do saldo */
+const nuncaBate = (bateu, total) => total >= 5 && bateu/total < 0.2;
+function sparkPath(vals, w, h){
+  const max = Math.max(...vals), min = Math.min(...vals);
+  const x = i => i/(vals.length-1)*w;
+  const y = v => h - 6 - (v-min)/(max-min||1)*(h-12);
+  return vals.map((v,i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
+}
+
+/* R42 — recibo: líquido e mexido */
+const liquido = aj => Math.round(aj.reduce((s,x)=>s+x,0)*100)/100;
+const mexido  = aj => Math.round(aj.reduce((s,x)=>s+Math.abs(x),0)*100)/100;
+
+/* ── amostra ────────────────────────────────────────────────── */
+const SALDO14 = [34,31,28,25,23,35,32,29,26,24,22,34,30,27];
+const CONTAGENS = [{i:4,ok:false},{i:10,ok:false},{i:13,ok:false}];   /* 0 de 3 */
+const AJUSTES = [-22.62, -19.19, 4.61];
+const SEMANAS = [310, 480, 220, 62];
+
+/* ── pinos (rodam sempre; em node, só eles) ─────────────────── */
+const PINOS = [
+  ['A todo dia: 1 dia vence hoje',    venceHoje('A', 1) === true],
+  ['A contado hoje não vence',        venceHoje('A', 0) === false],
+  ['nunca contado entra na lista',    venceHoje('C', null) === true],
+  ['atrasado vem primeiro',           ordemDoDia([{g:'A',d:2},{g:'B',d:9}])[0].g === 'B'],
+  ['1 cx + 2,4 com fator 12 = 14,4',  duplaUn('1 cx + 2,4', 12) === 14.4],
+  ['2 cx + 7 com fator 24 = 55',      duplaUn('2 cx + 7', 24) === 55],
+  ['só número continua valendo',      duplaUn('13', 24) === 13],
+  ['total vai escrito no botão',      rotConfirmar(14.4,'KG') === 'Confirmar 14,4 KG'],
+  ['acuracidade 165/180 = 92',        acur(165,180) === 92],
+  ['sessão 14/18 = 78',               acur(14,18) === 78],
+  ['0 de 30 é nunca-bate',            nuncaBate(0,30) === true],
+  ['27 de 29 não é',                  nuncaBate(27,29) === false],
+  ['2 contagens não julgam',          nuncaBate(0,2) === false],
+  ['caminho do saldo é desenhável',   sparkPath(SALDO14,316,52).startsWith('M')],
+  ['líquido dos ajustes = −37,20',    liquido(AJUSTES) === -37.20],
+  ['mexido dos ajustes = 46,42',      mexido(AJUSTES) === 46.42],
+];
+for (const [nome,ok] of PINOS) if (!ok) throw new Error('PINO FALHOU: '+nome);
+
+/* ── render ─────────────────────────────────────────────────── */
+function render(){
+  const $ = id => document.getElementById(id);
+
+  /* anel grande da acuracidade */
+  $('anel-acur').innerHTML = anelSvg(92, 'var(--esc-indigo)') + '<div class="pc num">92%</div>';
+
+  /* anéis das zonas, do fone e do recibo */
+  for (const el of document.querySelectorAll('[data-anel]')){
+    const [f,t] = el.getAttribute('data-anel').split(',').map(Number);
+    const pct = t ? f/t*100 : 0;
+    const cor = pct >= 100 ? 'var(--esc-verde)' : 'var(--esc-indigo)';
+    el.innerHTML = anelSvg(pct, cor) + `<div class="pc num">${f}/${t}</div>`;
+  }
+
+  /* mini gráfico: ajustes por semana, escala única (R11) */
+  const max = Math.max(...SEMANAS);
+  $('mini-aj').innerHTML = SEMANAS.map((v,k)=>
+    `<div class="mb${k===SEMANAS.length-1?' on':''}"><i style="height:${Math.round(v/max*34)}px"></i><span class="num">${k===SEMANAS.length-1?'esta':'s'+(k+1)}</span></div>`).join('');
+
+  /* sparkline do item */
+  const path = sparkPath(SALDO14, 316, 52);
+  const maxS = Math.max(...SALDO14), minS = Math.min(...SALDO14);
+  const px = i => i/(SALDO14.length-1)*316;
+  const py = v => 52 - 6 - (v-minS)/(maxS-minS)*(52-12);
+  $('sparksvg').innerHTML =
+    `<path d="${path}" fill="none" stroke="#B9C2DC" stroke-width="2"/>` +
+    CONTAGENS.map(c=>`<circle cx="${px(c.i).toFixed(1)}" cy="${py(SALDO14[c.i]).toFixed(1)}" r="4.5"
+      fill="${c.ok?'var(--esc-verde)':'var(--esc-ambar)'}" stroke="#fff" stroke-width="1.5"/>`).join('');
+
+  /* últimas 10 em bolinhas (amostra: 0 de 3 + 7 sem dado) */
+  $('hist10').innerHTML = 'nunca bate — ' +
+    [false,false,false].map(ok=>`<span class="b" style="background:${ok?'var(--esc-verde)':'var(--esc-ambar)'}"></span>`).join('') +
+    '&nbsp;bateu 0 de 3 · <a href="#">histórico →</a>';
+
+  /* número puro é o caminho (R38): conta explicada SÓ quando usar o atalho de caixa */
+  const digitado = '22,4';
+  const total = duplaUn(digitado, 12);
+  $('dconta').textContent = /cx/.test(digitado)
+    ? '= ' + fmt1(total) + ' KG · caixa ×12 + solto'
+    : '';
+  $('btconf').textContent = rotConfirmar(total, 'KG');
+}
+
+if (typeof document !== 'undefined') render();
+else console.log('PINOS OK — ' + PINOS.length + ' verdes');
+</script>
+</body>
+</html>

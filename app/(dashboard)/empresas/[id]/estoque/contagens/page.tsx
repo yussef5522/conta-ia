@@ -113,6 +113,8 @@ export default function ContagensPage({ params }: { params: Promise<{ id: string
                   <td className="px-3 py-0"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_CHIP[c.status] ?? 'bg-slate-100 text-slate-500'}`}>{c.status.toLowerCase()}</span></td>
                   <td className="px-3 py-0 text-right">
                     {c.status === 'ABERTA' && <a href={`/empresas/${id}/estoque/contagem`} className="text-xs font-medium text-[#185FA5] hover:underline">continuar</a>}
+                    {/* ⭐ R42 — o histórico de sessões mostra os RECIBOS */}
+                    {c.status === 'FINALIZADA' && <a href={`/empresas/${id}/estoque/contagens/${c.id}`} data-testid="link-recibo" className="text-xs font-semibold hover:underline" style={{ color: 'var(--fam-indigo-ink)' }}>recibo →</a>}
                   </td>
                 </tr>
               ))}
@@ -134,6 +136,7 @@ export default function ContagensPage({ params }: { params: Promise<{ id: string
                   {Math.abs(c.valorDivergencia) >= 0.005 && <span className={`text-sm font-semibold tabular-nums ${c.valorDivergencia < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{brl(c.valorDivergencia)}</span>}
                 </div>
                 {c.status === 'ABERTA' && <a href={`/empresas/${id}/estoque/contagem`} className="mt-3 flex h-11 items-center justify-center rounded-lg bg-[#185FA5] text-sm font-semibold text-white">Continuar contagem</a>}
+                {c.status === 'FINALIZADA' && <a href={`/empresas/${id}/estoque/contagens/${c.id}`} className="mt-3 flex h-10 items-center justify-center rounded-lg border text-sm font-semibold" style={{ borderColor: 'var(--prod-line-strong)', color: 'var(--fam-indigo-ink)' }}>ver o recibo</a>}
               </div>
             ))}
           </div>

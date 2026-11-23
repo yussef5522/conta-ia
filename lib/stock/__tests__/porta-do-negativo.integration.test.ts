@@ -203,8 +203,13 @@ describe('⛔ A TELA ENTREGA A PORTA — composição ÚNICA, os dois viewports 
     // ⚠️ a tela tem UMA composição (não há bloco mobile + bloco desktop) — o que existe
     // são dois ESTADOS (antes de começar e contando). Os dois precisam do link, senão a
     // porta some justamente quando o dono bate nela no meio da contagem.
-    const blocos = tela.match(/erro\.saida &&/g) ?? []
-    expect(blocos.length, 'um dos estados de erro ficou sem a saída').toBe(2)
+    // ⭐ (23/11, lei v3) a caixa de erro virou UMA composição (`caixaDeErro`, com o link da saída)
+    // desenhada nos DOIS estados — o posto de comando (antes de contar) e a sessão (contando).
+    // ⛔ uso, não menção: o guard conta os USOS `{caixaDeErro}` fora de comentário.
+    const semComentario = tela.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
+    expect((semComentario.match(/erro\.saida &&/g) ?? []).length, 'a caixa de erro perdeu a saída').toBe(1)
+    const usos = semComentario.match(/\{caixaDeErro\}/g) ?? []
+    expect(usos.length, 'um dos estados de erro ficou sem a saída').toBe(2)
     expect(tela).toContain('erro.saida.href')
     expect(tela).toContain('erro.saida.rotulo')
   })

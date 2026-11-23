@@ -8,12 +8,16 @@ import { prisma } from '@/lib/db'
 import { requireStock } from '@/lib/stock/require-stock'
 import { finalizarContagem, cancelarContagem, ContagemError } from '@/lib/stock/contagem'
 import { respostaDeErroDoEstoque } from '@/lib/stock/erro-da-tela'
+import { assinarZona, CHAVE_SESSAO, DirecaoError } from '@/lib/stock/contagem/direcao-dados'
+import { respostaDaDirecao } from '@/lib/stock/contagem/resposta'
 
 interface Params { params: Promise<{ id: string }> }
 
 const schema = z.object({
   contagemId: z.string().min(1),
   acao: z.enum(['finalizar', 'cancelar']).default('finalizar'),
+  // ⭐ R42: finalizar = ASSINATURA. Em conta de aparelho, o PIN de quem fecha.
+  pin: z.string().max(12).nullable().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -22,6 +26,15 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!auth.ok) return auth.res
   const parsed = schema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: 'Informe a contagem.' }, { status: 400 })
+  if (parsed.data.acao === 'finalizar') {
+    // ⭐⭐ R42 — o recibo nasce ASSINADO: a assinatura da sessão vem ANTES do encerramento (sessão
+    // fechada não aceita assinatura). Uma tentativa anterior que assinou e não fechou não trava.
+    try {
+      await assinarZona({ companyId, contagemId: parsed.data.contagemId, zonaChave: CHAVE_SESSAO, userId: auth.userId, userName: auth.userName, pin: parsed.data.pin ?? null })
+    } catch (e) {
+      if (!(e instanceof DirecaoError && e.code === 'JA_ASSINADA')) return respostaDaDirecao(e)
+    }
+  }
   try {
     const c = parsed.data.acao === 'cancelar'
       ? await cancelarContagem(companyId, parsed.data.contagemId, prisma)
