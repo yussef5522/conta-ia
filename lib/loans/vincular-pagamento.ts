@@ -17,7 +17,7 @@
 // (`loan_installment_no_double_link`) recusa quem tiver as duas. Agora só existe uma.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
-import { computeLinkSplit, storedScheduleValid, shouldWriteSplit, bloqueioDoVinculo } from './link-payment'
+import { computeLinkSplit, storedScheduleValid, shouldWriteSplit, bloqueioDoVinculo, somaNoEventoDoMes } from './link-payment'
 // ⭐ a terceira base do teto (04/11/2026) — a MESMA leitura que o preview faz
 import { encargoRealRecente } from './encargo-real-recente'
 // ⚠️ o arredondamento vem de um lugar só — um `round2` local aqui seria a 3ª cópia
@@ -80,7 +80,7 @@ export async function vincularPagamentoDeParcela(input: VincularInput): Promise<
 
   const jaVinculados = await prisma.loanInstallmentPayment.findMany({
     where: { installmentId: target.id },
-    select: { amount: true },
+    select: { amount: true, transaction: { select: { date: true } } },
   })
 
   const txs = await prisma.transaction.findMany({
@@ -174,6 +174,8 @@ export async function vincularPagamentoDeParcela(input: VincularInput): Promise<
     openingBalance: target.openingBalance,
     rateMonthly: loan.interestRateMonthly,
     encargoRealRecente: encReal,
+    // ⭐ 24/11 — linha do evento do mês numa parcela de encargo apurado: é o encargo dela
+    mesmoEvento: somaNoEventoDoMes(target, jaVinculados.map((p) => p.transaction.date), txs.map((t) => t.date), loan.interestRateMonthly),
   })
   if (bloqueio) throw new VinculoDeParcelaError(bloqueio.code, bloqueio.mensagem)
 

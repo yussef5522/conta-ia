@@ -59,11 +59,12 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     // Parcelas ABERTAS por contrato — pra sugerir também QUAL parcela (26/08).
     const abertas = await prisma.loanInstallment.findMany({
-      where: { loanId: { in: loans.map((l) => l.id) }, status: { not: 'PAID' } },
-      select: { loanId: true, number: true, dueDate: true, payment: true, status: true, paidTotal: true },
+      // ⭐ 24/11 — as PAGAS recentes também: a sobra do evento do mês é encargo DELAS (`parcelaDoEvento`)
+      where: { loanId: { in: loans.map((l) => l.id) }, OR: [{ status: { not: 'PAID' } }, { dueDate: { gte: new Date(Date.now() - 120 * 86_400_000) } }] },
+      select: { loanId: true, number: true, dueDate: true, payment: true, status: true, paidTotal: true, interest: true, loan: { select: { interestRateMonthly: true } }, payments: { select: { transaction: { select: { date: true } } } } },
     })
     const parcelasPorLoan: Record<string, ParcelaLite[]> = {}
-    for (const i of abertas) (parcelasPorLoan[i.loanId] ??= []).push(i)
+    for (const { loan: l, payments: pg, ...i } of abertas) (parcelasPorLoan[i.loanId] ??= []).push({ ...i, rateMonthly: l.interestRateMonthly, diasPagos: pg.map((x) => x.transaction.date) })
 
     const detections: Record<string, unknown> = {}
     let count = 0

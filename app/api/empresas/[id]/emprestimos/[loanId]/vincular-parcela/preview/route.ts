@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
-import { buildLinkGroup, computeLinkSplit, storedScheduleValid, shouldWriteSplit, pickTargetInstallment, bloqueioDoVinculo } from '@/lib/loans/link-payment'
+import { buildLinkGroup, computeLinkSplit, storedScheduleValid, shouldWriteSplit, pickTargetInstallment, parcelaDoEvento, somaNoEventoDoMes, bloqueioDoVinculo } from '@/lib/loans/link-payment'
 import { exigeContaDoEmprestimo, MutuoSemContaError } from '@/lib/loans/exige-conta'
 // ⭐ a terceira base do teto (04/11/2026) — a MESMA leitura que a porta faz
 import { encargoRealRecente } from '@/lib/loans/encargo-real-recente'
@@ -60,7 +60,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const installments = await prisma.loanInstallment.findMany({
       where: { loanId }, orderBy: { number: 'asc' },
-      select: { id: true, number: true, dueDate: true, amortization: true, openingBalance: true, closingBalance: true, interest: true, correcao: true, payment: true, status: true, isEstimate: true, reconciledTransactionId: true },
+      select: { id: true, number: true, dueDate: true, amortization: true, openingBalance: true, closingBalance: true, interest: true, correcao: true, payment: true, status: true, isEstimate: true, reconciledTransactionId: true,
+        payments: { select: { transaction: { select: { date: true } } } } },
     })
 
     /**
@@ -128,7 +129,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     // mais antiga aberta. Alerta quando o valor não distingue (parcelas iguais).
     const originTx = body.originTxId ? pend.find((t) => t.id === body.originTxId) : undefined
     const pick = pickTargetInstallment(openList, originTx?.date ?? null, originTx?.amount ?? null)
-    const targetNumber = body.installmentNumber ?? pick.target?.number
+    // ⭐ 24/11 — a sobra do evento do mês fica NA PARCELA DO MÊS (encargo apurado); a seguinte
+    // só se o dono escolher (`body.installmentNumber`). Mesma régua da porta (`parcelaDoEvento`).
+    const doEvento = originTx
+      ? parcelaDoEvento(installments.filter((i) => i.number >= startNumber).map((i) => ({ ...i, diasPagos: i.payments.map((p) => p.transaction.date) })), originTx.date, loan.interestRateMonthly)
+      : null
+    const targetNumber = body.installmentNumber ?? doEvento?.number ?? pick.target?.number
     const target = targetNumber != null ? installments.find((i) => i.number === targetNumber) : undefined
     if (!target) return NextResponse.json({ erro: 'Nenhuma parcela em aberto pra vincular' }, { status: 400 })
     const group = buildLinkGroup({
@@ -180,6 +186,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       openingBalance: target.openingBalance,
       rateMonthly: loan.interestRateMonthly,
       encargoRealRecente: encReal,
+      mesmoEvento: somaNoEventoDoMes(target, target.payments.map((p) => p.transaction.date), group.candidates.filter((t) => t.selected).map((t) => t.date), loan.interestRateMonthly),
     })
 
     const split = computeLinkSplit({

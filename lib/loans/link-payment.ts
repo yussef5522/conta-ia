@@ -7,6 +7,7 @@
 
 import { validateSchedule, type ScheduleRowForValidation } from './validate-schedule'
 import { descriptionMatchesContract } from './contract-core'
+import { encargosSaoApurados } from './estado-da-parcela'
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -377,6 +378,11 @@ export interface FatosDoVinculo {
    * e aí o teto é exatamente o de antes.
    */
   encargoRealRecente?: EncargoRealRecente | null
+  /**
+   * ⭐ 24/11 — o gesto é do MESMO evento do mês de uma parcela de encargo apurado
+   * (`somaNoEventoDoMes`): somar nela é o encargo que o banco apurou, não pedaço avulso.
+   */
+  mesmoEvento?: boolean
 }
 
 export interface BloqueioDoVinculo {
@@ -401,7 +407,7 @@ export function bloqueioDoVinculo(f: FatosDoVinculo): BloqueioDoVinculo | null {
    * deixou paga sem transação. Barrar `PAID` seco tornaria **impossível** anexar depois a
    * transação verdadeira — e essa correção é justamente uma decisão em aberto do dono.
    */
-  if (f.status === 'PAID' && f.jaVinculados.quantos > 0) {
+  if (f.status === 'PAID' && f.jaVinculados.quantos > 0 && !f.mesmoEvento) {
     const ja = round2(f.jaVinculados.soma)
     return {
       code: 'JA_QUITADA',
@@ -511,6 +517,69 @@ export function pickTargetInstallment(
   const target = sorted[0]
   const dateAmbiguo = valorAmbiguo && sorted.length > 1 && dist(sorted[0]) === dist(sorted[1])
   return { target, byDate: valorAmbiguo, valorAmbiguo, dateAmbiguo, alternatives: [...openList].sort((a, b) => dist(a) - dist(b)) }
+}
+
+/**
+ * ⭐⭐⭐ A SOBRA DO MÊS É ENCARGO DO MÊS, NÃO PARCELA SEGUINTE (24/11/2026 — ordem do dono).
+ *
+ * ⛔⛔ **O caso real:** Sicredi `C41022570`, 16/11 — a conta garantida debitou em DUAS linhas
+ * (`LIQUIDACAO DE PARCELA` 5.347,30 + `AMORTIZACAO CONTRATO` 215,68 = **5.562,98**). A 1ª
+ * quitou a #16; a 2ª foi procurar parcela **ABERTA** (todo picker filtrava `PAID`) e caiu na
+ * #17 de dezembro como *"parcial — capital"*. Mas no pagamento pela conta garantida **o
+ * capital é fixo e os encargos são APURADOS no pagamento**: o encargo da #16 era 1.396,32
+ * (correção 970,37 — na série de 989 / 984 dos meses anteriores), não 1.180,64.
+ *
+ * ⭐ **A regra:** linha do mesmo contrato no EVENTO do mês (o MESMO DIA do débito que quitou)
+ * de uma parcela já paga e de encargo apurado → é **encargo apurado da parcela do mês**. Ir
+ * pra parcela seguinte só se o dono escolher a parcela na tela (o `installmentNumber`
+ * explícito continua mandando). O teto (`tetoDoPagamento`) segue valendo — é ele que impede
+ * a sobra de virar "encargo que ninguém explica".
+ *
+ * ⚠️ Contrato de encargo CONHECIDO (juros na agenda) ou taxa 0 **não** entra: ali o total é
+ * sabido, e uma linha a mais não é "o encargo que o banco apurou".
+ */
+export interface ParcelaDoEventoLite {
+  number: number
+  dueDate: Date
+  status: string
+  /** juros da AGENDA — 0 = encargo apurado no pagamento */
+  interest: number
+  /** os dias dos débitos JÁ vinculados a ela (o evento que a quitou) */
+  diasPagos?: readonly Date[]
+}
+
+/**
+ * ⚠️ O EVENTO é o DIA do débito que já quitou a parcela (por dia UTC — a cicatriz de fuso),
+ * não uma janela em volta do vencimento. Medido: as duas linhas de 16/11 são do mesmo dia;
+ * e um pedaço avulso em OUTRO dia numa parcela quitada continua barrado (`JA_QUITADA`, a trava
+ * de 19/10 contra o encargo fantasma). *Janela de distância já deu falso verde E falso vermelho.*
+ */
+export function noEventoDaParcela(diasPagos: readonly Date[], datas: readonly Date[]): boolean {
+  const dias = new Set(diasPagos.map(diaUTC))
+  return dias.size > 0 && datas.length > 0 && datas.every((d) => dias.has(diaUTC(d)))
+}
+
+/**
+ * A parcela do mês desta linha: PAGA, de encargo apurado, quitada por débito do MESMO dia —
+ * `null` nos outros casos (aí vale o picker de sempre, que olha as abertas).
+ */
+export function parcelaDoEvento<T extends ParcelaDoEventoLite>(parcelas: readonly T[], dataTx: Date, rateMonthly: number): T | null {
+  const t = diaUTC(dataTx)
+  const doDia = parcelas.filter((p) => p.status === 'PAID'
+    && encargosSaoApurados(p, { rateMonthly })
+    && noEventoDaParcela(p.diasPagos ?? [], [dataTx]))
+  if (doDia.length === 0) return null
+  return [...doDia].sort((a, b) => Math.abs(diaUTC(a.dueDate) - t) - Math.abs(diaUTC(b.dueDate) - t))[0]
+}
+
+/** o gesto soma na parcela já quitada por ser o MESMO evento (libera o `JA_QUITADA`) */
+export function somaNoEventoDoMes(
+  target: { interest: number },
+  diasPagos: readonly Date[],
+  datasDoGesto: readonly Date[],
+  rateMonthly: number,
+): boolean {
+  return encargosSaoApurados(target, { rateMonthly }) && noEventoDaParcela(diasPagos, datasDoGesto)
 }
 
 /**

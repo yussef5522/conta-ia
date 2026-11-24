@@ -117,10 +117,11 @@ export async function palpitesDaCaixa(
   const parcelasPorLoan: Record<string, ParcelaLite[]> = {}
   if (loans.length > 0) {
     const parcelas = await db.loanInstallment.findMany({
-      where: { loanId: { in: loans.map((l) => l.id) }, status: { not: 'PAID' } },
-      select: { loanId: true, number: true, dueDate: true, payment: true, paidTotal: true, status: true },
+      // ⭐ 24/11 — as PAGAS recentes também: a sobra do evento do mês é encargo DELAS (`parcelaDoEvento`)
+      where: { loanId: { in: loans.map((l) => l.id) }, OR: [{ status: { not: 'PAID' } }, { dueDate: { gte: new Date(Date.now() - 120 * 86_400_000) } }] },
+      select: { loanId: true, number: true, dueDate: true, payment: true, paidTotal: true, status: true, interest: true, loan: { select: { interestRateMonthly: true } }, payments: { select: { transaction: { select: { date: true } } } } },
     })
-    for (const p of parcelas) (parcelasPorLoan[p.loanId] ??= []).push(p as unknown as ParcelaLite)
+    for (const { loan: l, payments: pg, ...p } of parcelas) (parcelasPorLoan[p.loanId] ??= []).push({ ...p, rateMonthly: l.interestRateMonthly, diasPagos: pg.map((x) => x.transaction.date) })
   }
 
   /**

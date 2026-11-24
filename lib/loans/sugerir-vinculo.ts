@@ -14,6 +14,7 @@
 // pro dono escolher — a Cacula tem 2 contratos por conta nesses dois bancos.
 
 import { detectLoanPayment, type DetectLoanLite } from './detect-payment'
+import { parcelaDoEvento } from './link-payment'
 
 export interface ParcelaLite {
   number: number
@@ -23,6 +24,14 @@ export interface ParcelaLite {
   status: string
   /** quanto já foi pago por mordidas anteriores */
   paidTotal?: number | null
+  /**
+   * ⭐ 24/11 — juros da AGENDA e a taxa do contrato: com os dois, uma parcela PAGA do evento
+   * do mês recebe a sobra como encargo apurado (`parcelaDoEvento`). Ausentes = régua antiga.
+   */
+  interest?: number | null
+  rateMonthly?: number | null
+  /** os dias dos débitos já vinculados (o evento que a quitou) */
+  diasPagos?: Date[]
 }
 
 export type SugestaoVinculo =
@@ -125,7 +134,30 @@ export function sugerirVinculoEmprestimo(
     return { kind: 'ESCOLHER', candidates: det.candidates.map((c) => ({ loanId: c.loanId, contractNumber: c.contractNumber, lender: c.lender })) }
   }
 
-  const parcela = escolherParcela(parcelasPorLoan[det.loanId] ?? [], tx.date)
+  /**
+   * ⭐⭐⭐ 24/11 — A SOBRA DO MÊS É ENCARGO DO MÊS (C41022570, 16/11: 5.347,30 + 215,68). A linha
+   * do evento de uma parcela JÁ PAGA de encargo apurado fica nela — nunca pula sozinha pra
+   * seguinte como "parcial — capital". Régua única em `parcelaDoEvento`.
+   */
+  const todas = parcelasPorLoan[det.loanId] ?? []
+  const comRegua = todas.filter((p) => p.interest != null && p.rateMonthly != null)
+  const doEvento = comRegua.length > 0
+    ? parcelaDoEvento(comRegua.map((p) => ({ ...p, interest: p.interest as number })), tx.date, comRegua[0].rateMonthly as number)
+    : null
+  if (doEvento) {
+    return {
+      kind: 'SUGERIDO',
+      loanId: det.loanId,
+      contractNumber: det.contractNumber,
+      lender: det.lender,
+      installmentNumber: doEvento.number,
+      rotulo: `Pgto empréstimo ${det.contractNumber} — parcela ${doEvento.number} (encargo apurado do mês: soma ao que já foi pago)`,
+      parcial: false,
+      faltaDepois: 0,
+    }
+  }
+
+  const parcela = escolherParcela(todas, tx.date)
   if (!parcela) {
     // contrato certo, mas sem parcela aberta — não inventa (pode ser tarifa/quitação)
     return { kind: 'ESCOLHER', candidates: [{ loanId: det.loanId, contractNumber: det.contractNumber, lender: det.lender }] }
