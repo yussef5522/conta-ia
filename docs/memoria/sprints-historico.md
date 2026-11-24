@@ -6534,3 +6534,8 @@ Lei `docs/emprestimos-referencia.html` (md5 f44e8305…; 18 pinos rodam contra a
   regra aprendida em `cheque_especial_regras` (só palpita). Replantios 5/5 (2ª porta, agenda escrita, cheque fora do custo,
   sem PATCH, import pulando calado).
 
+- **Prova em prod (25/11):** gate 5/5 (0e18c386), migration aditiva aplicada. Backfill: 8 vínculos 1:1 viraram pedaços N:1 (67→75),
+  PARTIAL C41033828-8 #22 → PAID 25/09 (encargo 505,01), #57 ganhou data 27/07; regravação = **ESCRITAS 0**. DRE juros 2026
+  44.759,56 → 45.264,57 (+505,01 = o encargo do PARTIAL, antes invisível). Restam 2 pagas sem data nem tx (C41022227-1 #22, Caixa #31).
+- ⚠️ **Cicatriz medida:** o atalho "categoria Juros sobre Empréstimos = rotativo" contou PREV-EMP.BBH 4.177,96 (prestação) e
+  Mercado Pago 2.568,04 (Stone) como cheque. Agora só `Juros Cheque Especial` decide (b39433db). *Categoria genérica não classifica.*
