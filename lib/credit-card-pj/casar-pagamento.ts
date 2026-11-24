@@ -10,7 +10,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { formatBRL } from '@/lib/format/money'
 import { resolvePaidInvoiceMonth } from './resolve-paid-month'
-import { pagoDaFatura, estadoCiclo, type EstadoCiclo } from './ciclo'
+import { contaDaFatura, excessoDoPagamento, datasDoCiclo, type EstadoCiclo } from './ciclo'
 import { faturaNetTotal } from './fatura-net-total'
 
 /**
@@ -33,34 +33,44 @@ export interface CasarPagamentoResultado {
   paidInvoiceMonth: string | null
   previousCategoryId: string | null
   deltaDespesaRemovidoDoDRE: number
+  /** ⭐ 24/11 — a diferença a maior declarada neste gesto (0 = coube na fatura) */
+  acrescimoDeclarado: number
   /** R48 — o que a fatura ficou depois do gesto (Paga/Parcial NA HORA) */
-  fatura: { id: string | null; total: number; pago: number; estado: EstadoCiclo }
+  fatura: { id: string | null; total: number; pago: number; estado: EstadoCiclo; falta: number; acrescimo: number }
 }
 
 /** R46/R48 — o estado da fatura (cartão, competência) lido do vínculo — a MESMA conta da tela */
 export async function estadoDaFatura(db: Db, cardId: string, mes: string): Promise<CasarPagamentoResultado['fatura']> {
   const [registro, linhas, pagamentos] = await Promise.all([
-    db.faturaCartaoPJ.findUnique({ where: { cardId_mes: { cardId, mes } }, select: { id: true, quitacao: true, totalDeclarado: true } }),
+    db.faturaCartaoPJ.findUnique({ where: { cardId_mes: { cardId, mes } }, select: { id: true, quitacao: true, totalDeclarado: true, acrescimo: true } }),
     db.transaction.findMany({ where: { businessCreditCardId: cardId, invoiceMonth: mes, isCardPayment: false }, select: { type: true, amount: true } }),
     db.transaction.findMany({ where: { businessCreditCardId: cardId, isCardPayment: true, paidInvoiceMonth: mes }, select: { amount: true } }),
   ])
   // ⭐ R53 — a fatura de QUITAÇÃO não tem linhas: o total é o semeado. Mesma porta, zero caminho especial.
   const quitacao = registro?.quitacao === true && linhas.length === 0
   const total = quitacao ? (registro?.totalDeclarado ?? 0) : faturaNetTotal(linhas).net
-  const pago = pagoDaFatura(total, pagamentos.map((p) => p.amount))
-  return { id: registro?.id ?? null, total, pago, estado: estadoCiclo({ total, pago, fechada: linhas.length > 0 || quitacao }) }
+  const c = contaDaFatura(total, registro?.acrescimo, pagamentos.map((p) => p.amount), linhas.length > 0 || quitacao)
+  return { id: registro?.id ?? null, total, pago: c.pago, estado: c.estado, falta: c.falta, acrescimo: registro?.acrescimo ?? 0 }
 }
 
 export async function casarPagamentoDeCartao(
-  input: { companyId: string; cardId: string; txId: string; invoiceMonth?: string | null },
+  input: {
+    companyId: string; cardId: string; txId: string; invoiceMonth?: string | null
+    /**
+     * ⭐⭐ 24/11 — A DIFERENÇA A MAIOR DECLARADA: o pagamento passou do que falta na fatura (multa,
+     * juros, tarifa). O dono diz o QUE são os R$ a mais — o valor EXATO que a tela mostrou.
+     * ⛔ Sem a declaração a porta RECUSA (antes passava calado e a fatura virava "Paga").
+     */
+    diferencaAMaior?: { valor: number; motivo: string; livre?: string | null } | null
+  },
   db: Db,
 ): Promise<CasarPagamentoResultado> {
-  const card = await db.businessCreditCard.findFirst({ where: { id: input.cardId, companyId: input.companyId }, select: { id: true } })
+  const card = await db.businessCreditCard.findFirst({ where: { id: input.cardId, companyId: input.companyId }, select: { id: true, closingDay: true, dueDay: true } })
   if (!card) throw new CasarPagamentoError('Cartão não encontrado.')
 
   const tx = await db.transaction.findFirst({
     where: { id: input.txId, bankAccount: { companyId: input.companyId } },
-    select: { id: true, type: true, amount: true, categoryId: true, isCardPayment: true, businessCreditCardId: true },
+    select: { id: true, type: true, amount: true, categoryId: true, isCardPayment: true, businessCreditCardId: true, paidInvoiceMonth: true, notes: true },
   })
   if (!tx) throw new CasarPagamentoError('Transação não encontrada.')
   // ⛔ o sentido manda: crédito não paga fatura. A mesma lei do balcão, na FONTE.
@@ -93,6 +103,24 @@ export async function casarPagamentoDeCartao(
     )
   }
 
+  // ⭐⭐ A DIFERENÇA A MAIOR — medida contra o que FALTAVA antes deste pagamento (a mesma conta da tela)
+  const jaNestaFatura = tx.businessCreditCardId === input.cardId && tx.paidInvoiceMonth === paidInvoiceMonth
+  const antes = jaNestaFatura ? null : await estadoDaFatura(db, input.cardId, paidInvoiceMonth)
+  const excesso = antes && antes.total > 0 ? excessoDoPagamento(tx.amount, antes.falta) : 0
+  if (excesso > 0) {
+    const d = input.diferencaAMaior
+    if (!d || !d.motivo?.trim()) {
+      throw new CasarPagamentoError(
+        `O pagamento de ${formatBRL(tx.amount)} passa ${formatBRL(excesso)} do que falta na fatura ${paidInvoiceMonth} (${formatBRL(antes!.falta)}). ` +
+        `Diga o que são os ${formatBRL(excesso)} a mais (multa, juros de atraso, tarifa) — fica no histórico da conta e na fatura.`,
+      )
+    }
+    if (Math.abs(d.valor - excesso) > 0.01) {
+      throw new CasarPagamentoError(`A diferença declarada (${formatBRL(d.valor)}) não é a desta fatura (${formatBRL(excesso)}) — recarregue a tela.`)
+    }
+  }
+  const textoDoAcrescimo = excesso > 0 ? `${formatBRL(excesso)} a mais na fatura ${paidInvoiceMonth}: ${input.diferencaAMaior!.motivo.trim()}` : null
+
   const updated = await db.transaction.update({
     where: { id: tx.id },
     data: {
@@ -106,9 +134,22 @@ export async function casarPagamentoDeCartao(
       ...(tx.businessCreditCardId == null
         ? { cardPaymentPrevCategoryId: tx.categoryId, cardPaymentPrevFlag: tx.isCardPayment }
         : {}),
+      // ⭐ o histórico DA CONTA (a linha do banco) diz o que são os R$ a mais
+      ...(textoDoAcrescimo ? { notes: [tx.notes, `[FATURA] ${textoDoAcrescimo}`].filter(Boolean).join('\n') } : {}),
     },
     select: { id: true, paidInvoiceMonth: true },
   })
+  if (excesso > 0) {
+    // ⭐ e o registro DA FATURA guarda a diferença (ela passa a cobrar total + acréscimo → PAGA)
+    const reg = await db.faturaCartaoPJ.findUnique({ where: { cardId_mes: { cardId: input.cardId, mes: paidInvoiceMonth } }, select: { id: true, acrescimo: true, acrescimoMotivo: true } })
+    const motivo = [reg?.acrescimoMotivo, textoDoAcrescimo].filter(Boolean).join(' · ')
+    const acrescimo = Math.round(((reg?.acrescimo ?? 0) + excesso) * 100) / 100
+    if (reg) await db.faturaCartaoPJ.update({ where: { id: reg.id }, data: { acrescimo, acrescimoMotivo: motivo } })
+    else {
+      const d = datasDoCiclo(paidInvoiceMonth, card.closingDay, card.dueDay)
+      await db.faturaCartaoPJ.create({ data: { companyId: input.companyId, cardId: input.cardId, mes: paidInvoiceMonth, origem: 'BACKFILL', fechamento: new Date(d.fechamento + 'T12:00:00Z'), vencimento: new Date(d.vencimento + 'T12:00:00Z'), acrescimo, acrescimoMotivo: motivo } })
+    }
+  }
   // ⭐ o pino `casar()` da lei generalizado a N pagamentos (`pagoDaFatura` = min(Σ, total)):
   // a fatura sai do gesto já Paga/Parcial — lida do MESMO vínculo que a tela lê
   const f = await estadoDaFatura(db, input.cardId, paidInvoiceMonth)
@@ -126,6 +167,7 @@ export async function casarPagamentoDeCartao(
      * — o que a régua garante é que **sem categoria o delta é ZERO**.
      */
     deltaDespesaRemovidoDoDRE: tx.categoryId ? tx.amount : 0,
+    acrescimoDeclarado: excesso,
     fatura: f,
   }
 }

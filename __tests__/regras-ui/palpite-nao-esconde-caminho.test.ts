@@ -45,8 +45,8 @@ describe('⭐⭐ 2. o menu diz CARTÃO e COMPETÊNCIA — um toque, as duas resp
     {
       id: 'c1', nome: 'mercado pago',
       faturas: [
-        { invoiceMonth: '2026-09', net: 2900.34, vencimento: '2026-09-05', jaPaga: false },
-        { invoiceMonth: '2026-08', net: 1500, vencimento: '2026-08-05', jaPaga: true },
+        { invoiceMonth: '2026-09', net: 2900.34, vencimento: '2026-09-05', jaPaga: false, estado: 'fechada', falta: 2900.34, vencida: false, quitacao: false },
+        { invoiceMonth: '2026-08', net: 1500, vencimento: '2026-08-05', jaPaga: true, estado: 'paga', falta: 0, vencida: false, quitacao: false },
       ],
     },
     { id: 'c2', nome: 'carter banrisul', faturas: [] },
@@ -124,7 +124,15 @@ describe('⭐⭐ 3. o palpite de fatura tem a porta de troca — o irmão do "n�
     const i = c.indexOf('não é essa — escolher outro cartão/fatura →')
     const bloco = c.slice(i, i + 600)
     expect(bloco).not.toContain('fetch(')
-    expect(bloco).toContain('onGesto(')
+    // ⭐ (24/11) a troca passa pela PERGUNTA antes de quitar (`quitarFatura`), e ela termina no
+    // MESMO gesto — sem fetch próprio: continua não sendo uma 2ª porta de gravação
+    expect(bloco).toContain('quitarFatura(')
+    const q = c.slice(c.indexOf('function quitarFatura('), c.indexOf('function confirmarQuitacao('))
+    expect(q).toContain("onGesto(l, 'PGTO_CARTAO', alvo)")
+    expect(q).not.toContain('fetch(')
+    const conf = c.slice(c.indexOf('function confirmarQuitacao('), c.indexOf('const quitacaoPronta'))
+    expect(conf).toContain("onGesto(l, 'PGTO_CARTAO', corpo)")
+    expect(conf).not.toContain('fetch(')
   })
 })
 

@@ -37,6 +37,7 @@ import { reconcileTransactions, ReconciliationError } from './reconcile'
 import type { MotivoDaDiferenca } from './regua-da-diferenca'
 import type { AuthContext } from '@/lib/auth/rbac'
 import { logAudit } from '@/lib/audit'
+import { textoDoMotivo } from './regua-da-diferenca'
 
 /**
  * ⭐ O CONTEXTO QUE O RECONCILE EXIGE — e a recusa aqui **ENSINA** em vez de estourar.
@@ -258,7 +259,11 @@ async function executarGesto(input: ResolverInput, db: PrismaClient): Promise<Re
     case 'PGTO_CARTAO': {
       if (!input.cardId) throw new ResolverError('Escolha o cartão cuja fatura este pagamento quita.')
       try {
-        const r = await casarPagamentoDeCartao({ companyId: input.companyId, cardId: input.cardId, txId: tx.id, invoiceMonth: input.invoiceMonth }, db)
+        // ⭐ 24/11 — a diferença A MAIOR declarada no card vai pela MESMA porta (o motivo da lista fechada)
+        const dam = input.diferencaAceita !== undefined && input.motivoDaDiferenca
+          ? { valor: Math.abs(input.diferencaAceita), motivo: textoDoMotivo(input.motivoDaDiferenca, input.motivoLivre) }
+          : null
+        const r = await casarPagamentoDeCartao({ companyId: input.companyId, cardId: input.cardId, txId: tx.id, invoiceMonth: input.invoiceMonth, diferencaAMaior: dam }, db)
         // ⭐ o efeito NOMEIA a fatura que baixou — "marquei como pagamento" não seria efeito
         return { efeito: `fatura ${r.paidInvoiceMonth ?? '(sem competência)'} do cartão quitada por esta linha`, saiuDaCaixa: true }
       } catch (e) {

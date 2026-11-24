@@ -29,7 +29,7 @@ import { nomeDaBusca } from '@/lib/conciliacao/nome-da-busca'
 import type { ConviteDaPonte } from '@/lib/conciliacao/convite-da-ponte'
 import { consequenciaDeVincular } from '@/lib/conciliacao/uma-casa-por-caso'
 import { venceuOuVence } from '@/lib/conciliacao/vencimento-na-tela'
-import { secoesDeFatura, alvoDaFatura } from '@/lib/credit-card-pj/faturas-pra-quitar'
+import { secoesDeFatura, alvoDaFatura, perguntaAntesDeQuitar, type FaturaPraQuitar, type PerguntaAntesDeQuitar } from '@/lib/credit-card-pj/faturas-pra-quitar'
 import { avaliarDiferenca, MOTIVOS_DA_DIFERENCA, type MotivoDaDiferenca } from '@/lib/conciliacao/regua-da-diferenca'
 import { avaliarDistanciaDeDatas } from '@/lib/conciliacao/regua-da-data'
 
@@ -62,7 +62,8 @@ interface PalpiteDTO {
 interface CartaoComFaturasDTO {
   id: string
   nome: string
-  faturas: { invoiceMonth: string; net: number; vencimento: string | null; jaPaga: boolean }[]
+  /** ⭐ 24/11 — o MESMO tipo da lib (estado, falta, vencida, quitação) — cópia do shape divergiria */
+  faturas: FaturaPraQuitar[]
 }
 
 interface LinhaDTO {
@@ -888,6 +889,78 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFatur
    * NOME — pior que o ideal, **e infinitamente melhor que um menu vazio dizendo que a
    * empresa não tem cartão**, que é a ausência fingindo verdade.
    */
+  /**
+   * ⭐⭐⭐ 24/11 — ANTES DE QUITAR UMA FATURA, A PERGUNTA CERTA (o PIX de R$ 527,82 do Mercado Pago).
+   * Os três caminhos de "pagamento de fatura" (o palpite, o chip e o "não é essa") passam por
+   * `quitarFatura`: fatura JÁ PAGA pergunta antes; pagamento MAIOR que o que falta pede o que são
+   * os R$ a mais (vai no gesto — a porta recusa sem isso). A decisão é da lib (`perguntaAntesDeQuitar`).
+   */
+  const [quitando, setQuitando] = useState<{ alvo: Record<string, unknown>; p: Exclude<PerguntaAntesDeQuitar, { tipo: 'DIRETO' }>; fatura: string } | null>(null)
+  const [motivoAMaior, setMotivoAMaior] = useState<MotivoDaDiferenca | null>(null)
+  const [livreAMaior, setLivreAMaior] = useState('')
+  const [pagaConfirmada, setPagaConfirmada] = useState(false)
+  function quitarFatura(alvo: Record<string, unknown>) {
+    const cardId = alvo.cardId as string | undefined
+    const mes = alvo.invoiceMonth as string | undefined
+    const f = cartoesComFaturas.find((k) => k.id === cardId)?.faturas.find((x) => x.invoiceMonth === mes)
+    const p = perguntaAntesDeQuitar(Math.abs(l.valor), f)
+    if (p.tipo === 'DIRETO') { onGesto(l, 'PGTO_CARTAO', alvo); return }
+    setMotivoAMaior(null); setLivreAMaior(''); setPagaConfirmada(false)
+    setQuitando({ alvo, p, fatura: mes ?? '' })
+  }
+  function confirmarQuitacao() {
+    if (!quitando) return
+    const { alvo, p } = quitando
+    const corpo = p.excesso > 0 && motivoAMaior
+      ? { ...alvo, diferencaAceita: p.excesso, motivoDaDiferenca: motivoAMaior, ...(motivoAMaior === 'OUTRO' ? { motivoLivre: livreAMaior } : {}) }
+      : alvo
+    setQuitando(null)
+    onGesto(l, 'PGTO_CARTAO', corpo)
+  }
+  const quitacaoPronta = !!quitando && (quitando.p.tipo !== 'JA_PAGA' || pagaConfirmada)
+    && (quitando.p.excesso === 0 || (!!motivoAMaior && (motivoAMaior !== 'OUTRO' || livreAMaior.trim().length > 1)))
+  const quadroDaFatura = quitando && (
+    <div data-testid="quadro-da-fatura" className="mt-2 rounded-xl border-[1.5px] p-2.5" style={{ borderColor: V3.ambar, background: V3.ambarBg }}>
+      {quitando.p.tipo === 'JA_PAGA' && (
+        <label className="flex items-start gap-2 text-[12px] font-bold" style={{ color: V3.ambar }}>
+          <input type="checkbox" checked={pagaConfirmada} onChange={(e) => setPagaConfirmada(e.target.checked)} className="mt-0.5" />
+          A fatura {quitando.fatura} JÁ ESTÁ PAGA — um 2º pagamento na mesma fatura é raro. É mesmo outro pagamento dela?
+        </label>
+      )}
+      {quitando.p.excesso > 0 && (
+        <>
+          <p className="mt-1 text-[12px] font-bold" style={{ color: V3.ambar }}>
+            O pagamento passa {brl(quitando.p.excesso)} do que falta na fatura {quitando.fatura} ({brl(quitando.p.falta)}) — o que são os {brl(quitando.p.excesso)} a mais?
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {MOTIVOS_DA_DIFERENCA.filter((m) => m.chave !== 'DESCONTO').map((m) => (
+              <button key={m.chave} type="button" disabled={ocupado} onClick={() => setMotivoAMaior(m.chave)}
+                className="rounded-full border-[1.5px] px-2.5 py-[5px] text-[11.5px] font-bold"
+                style={motivoAMaior === m.chave ? { borderColor: V3.ambar, background: V3.ambar, color: '#fff' } : { borderColor: V3.ambar, background: '#fff', color: V3.ambar }}>
+                {m.rotulo}
+              </button>
+            ))}
+          </div>
+          {motivoAMaior === 'OUTRO' && (
+            <input value={livreAMaior} onChange={(e) => setLivreAMaior(e.target.value)} maxLength={80} aria-label="o que são os R$ a mais?"
+              placeholder="ex.: compra depois do fechamento" className="mt-1.5 w-full rounded-lg border-[1.5px] px-2.5 py-1.5 text-[12px]" style={{ borderColor: V3.ambar }} />
+          )}
+          <p className="mt-1.5 text-[11px]" style={{ color: V3.sub }}>fica escrito no histórico da conta e na fatura — a fatura vira PAGA com a diferença guardada</p>
+        </>
+      )}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <button type="button" disabled={ocupado || !quitacaoPronta} onClick={confirmarQuitacao}
+          className="rounded-xl px-3 py-[7px] text-[12.5px] font-extrabold text-white disabled:opacity-40" style={{ background: V3.verde }}>
+          ✓ Confirmar — baixa a fatura {quitando.fatura}
+        </button>
+        <button type="button" disabled={ocupado} onClick={() => setQuitando(null)}
+          className="rounded-xl border-[1.5px] px-3 py-[7px] text-[12.5px] font-bold" style={{ borderColor: V3.line, background: '#fff', color: V3.sub }}>
+          cancelar
+        </button>
+      </div>
+    </div>
+  )
+
   const menuDeFaturas: SecaoDoChip[] = useMemo(() => (
     cartoesComFaturas.length
       ? secoesDeFatura(cartoesComFaturas, brl)
@@ -1227,7 +1300,9 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFatur
               */}
               <button type="button"
                 disabled={ocupado || !podeDisparar(l.palpite.acao as AcaoDoBalcao, temCategoria) || !difRespondida || !dataRespondida}
-                onClick={() => onGesto(l, l.palpite!.acao, comDiferenca(comCategoria(l.palpite!.alvo)))}
+                onClick={() => l.palpite!.acao === 'PGTO_CARTAO'
+                  ? quitarFatura(comCategoria(l.palpite!.alvo))
+                  : onGesto(l, l.palpite!.acao, comDiferenca(comCategoria(l.palpite!.alvo)))}
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-[13px] text-[15px] font-extrabold text-white disabled:opacity-50"
                 style={{ background: `linear-gradient(135deg,${V3.verde},${V3.verde2})`, boxShadow: '0 6px 18px rgba(15,157,88,.35)' }}>
                 {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : l.palpite.botao}
@@ -1275,8 +1350,9 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFatur
                   style={{ background: V3.card, borderColor: V3.line, color: V3.sub }}
                   secoes={menuDeFaturas}
                   vazio={VAZIO.cartoes(cargas.cartoes).texto}
-                  onEscolher={(id) => onGesto(l, 'PGTO_CARTAO', alvoDaFatura(id))} />
+                  onEscolher={(id) => quitarFatura(alvoDaFatura(id))} />
               )}
+              {quadroDaFatura}
             </div>
           )}
 
@@ -1383,7 +1459,7 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFatur
                     className={chip} style={cor}
                     secoes={menuDeFaturas}
                     vazio={VAZIO.cartoes(cargas.cartoes).texto}
-                    onEscolher={(id) => onGesto(l, a.acao, alvoDaFatura(id))} />
+                    onEscolher={(id) => quitarFatura(alvoDaFatura(id))} />
                 )
               }
               /**

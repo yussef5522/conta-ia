@@ -36,9 +36,11 @@ const vencimentoDaFatura = (mes: string, c: { dueDay?: number | null }): string 
 
 /** ⚠️ dia/mês curto, em UTC — a data é de CALENDÁRIO (o fuso a puxaria pro dia anterior) */
 const diaCurto = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
-import { signedFaturaAmount } from '@/lib/credit-card-pj/fatura-net-total'
 import { sugerirAporte } from '@/lib/investimentos/sugerir-aporte'
 import type { LinhaCrua } from './leitura-da-caixa'
+import { lerCarteira, type FaturaResumo } from '@/lib/credit-card-pj/carteira'
+import { linhaCitaOEmissor, INICIO_DO_MODULO } from '@/lib/credit-card-pj/ciclo'
+import { diaDoBrasil } from '@/lib/margem/dia'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const dia = (d: Date) => d.toISOString().slice(0, 10).split('-').reverse().join('/')
@@ -67,7 +69,7 @@ export async function palpitesDaCaixa(
      * faltava e matava todo palpite de empréstimo): **o motor decide com um campo que a
      * consulta não trouxe, e não dá erro — dá silêncio.** Aqui o `tsc` cobrou.
      */
-    db.businessCreditCard.findMany({ where: { companyId: empresaId, isActive: true }, select: { id: true, name: true, dueDay: true } }),
+    db.businessCreditCard.findMany({ where: { companyId: empresaId, isActive: true }, select: { id: true, name: true, dueDay: true, bankName: true } }),
     /**
      * ⛔⛔⛔ **O `status` FALTAVA NESTE SELECT — e isso matava TODO palpite de empréstimo**
      * (achado em prod, 19/09). `detectLoanPayment` começa com
@@ -96,17 +98,19 @@ export async function palpitesDaCaixa(
    * consultas numa rota que a tela abre a cada visita. É a regressão de 9,6 s de 10/09
    * esperando pra acontecer.
    */
+  /**
+   * ⛔⛔ 24/11 — AS FATURAS SAEM DA CARTEIRA, não das linhas: a conta pelas linhas não via a fatura
+   * de QUITAÇÃO (semeada, sem linhas) — o PIX do Mercado Pago não tinha fatura nenhuma pra bater.
+   * ⭐ `lerCarteira` em lote (consultas constantes): o total de cada fatura e o que FALTA nela.
+   */
   const netPorMes = new Map<string, Map<string, number>>()
+  const abertasPorCartao = new Map<string, FaturaResumo[]>()
   if (cartoes.length > 0) {
-    const itens = await db.transaction.findMany({
-      where: { businessCreditCardId: { in: cartoes.map((c) => c.id) }, invoiceMonth: { not: null }, isCardPayment: false },
-      select: { businessCreditCardId: true, invoiceMonth: true, type: true, amount: true },
-    })
-    for (const it of itens) {
-      const porCartao = netPorMes.get(it.businessCreditCardId!) ?? new Map<string, number>()
-      const m = it.invoiceMonth as string
-      porCartao.set(m, (porCartao.get(m) ?? 0) + signedFaturaAmount({ type: it.type, amount: it.amount, isCardPayment: false }))
-      netPorMes.set(it.businessCreditCardId!, porCartao)
+    const cart = await lerCarteira(empresaId, diaDoBrasil(new Date()), db)
+    for (const k of cart.cartoes) {
+      netPorMes.set(k.id, new Map(k.faturas.map((f) => [f.mes, f.total])))
+      // as que ainda devem (desde o marco), a vencida mais antiga primeiro
+      abertasPorCartao.set(k.id, k.faturas.filter((f) => f.estado !== 'paga' && f.mes >= INICIO_DO_MODULO).sort((a, b) => a.vencimento.localeCompare(b.vencimento)))
     }
   }
 
@@ -157,6 +161,29 @@ export async function palpitesDaCaixa(
     // ── 1. FATURA DE CARTÃO (só débito) ────────────────────────────────────
     if (l.type === 'DEBIT' && cartoes.length > 0) {
       for (const c of cartoes) {
+        /**
+         * ⭐⭐ 24/11 — O NOME DO EMISSOR DECIDE. "PIX - MERCADO PAGO INSTITUICAO DE PAGAMENTO LTDA"
+         * cita o emissor do cartão Mercado Pago: com fatura dele em aberto, o palpite é o PAGAMENTO
+         * DESSA FATURA — com a diferença NOMEADA —, nunca a conta a pagar que só chegou perto no
+         * valor (era o salário da debora, R$ 18 de diferença: um clique de virar erro contábil).
+         */
+        const citada = linhaCitaOEmissor(descricao, c.bankName) || linhaCitaOEmissor(descricao, c.name)
+        const devendo = abertasPorCartao.get(c.id) ?? []
+        if (citada && devendo.length > 0) {
+          const f = devendo[0]!
+          const venc = f.vencimento
+          candidatos.push({
+            acao: 'PGTO_CARTAO',
+            familia: '💳 PAGAMENTO DE FATURA',
+            titulo: `Fatura do cartão ${c.name}`,
+            detalhe: `fatura ${f.mes}${f.quitacao ? ' (quitação)' : ''} · falta ${brl(f.falta)} · vence ${diaCurto(venc)} · o nome do emissor está na linha`,
+            diferenca: Math.round((l.amount - f.falta) * 100) / 100,
+            confianca: 'ALTA',
+            porNome: true,
+            alvo: { cardId: c.id, invoiceMonth: f.mes },
+          })
+          continue
+        }
         try {
           const mes = mesQueBateOValor(netPorMes.get(c.id) ?? new Map(), l.amount)
           if (!mes) continue

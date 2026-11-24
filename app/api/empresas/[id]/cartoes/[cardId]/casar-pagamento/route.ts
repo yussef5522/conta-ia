@@ -78,6 +78,8 @@ const casarSchema = z.object({
     .regex(/^\d{4}-\d{2}$/, 'competência inválida (YYYY-MM)')
     .optional()
     .nullable(),
+  // ⭐ 24/11 — o pagamento a maior DECLARADO (o valor exato que a tela mostrou + o que são)
+  diferencaAMaior: z.object({ valor: z.number().positive(), motivo: z.string().trim().min(2).max(120), livre: z.string().trim().max(80).nullable().optional() }).nullable().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -142,7 +144,7 @@ export async function POST(request: NextRequest, { params }: Params) {
    */
   try {
     const r = await casarPagamentoDeCartao(
-      { companyId, cardId, txId: targetTx.id, invoiceMonth: body.invoiceMonth ?? null },
+      { companyId, cardId, txId: targetTx.id, invoiceMonth: body.invoiceMonth ?? null, diferencaAMaior: body.diferencaAMaior ?? null },
       prisma,
     )
     /**
@@ -162,6 +164,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       previousCategoryId: r.previousCategoryId,
       previousCategoryName: targetTx.category?.name ?? null,
       deltaDespesaRemovidoDoDRE: r.deltaDespesaRemovidoDoDRE,
+      acrescimoDeclarado: r.acrescimoDeclarado,
+      motivoDoAcrescimo: body.diferencaAMaior?.motivo ?? null,
     })
     return NextResponse.json({
       casado: true,

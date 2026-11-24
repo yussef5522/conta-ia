@@ -19,7 +19,9 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { signedFaturaAmount } from './fatura-net-total'
 // ⭐ as datas do ciclo moram no módulo PURO (`ciclo.ts`) — a tela também precisa delas; aqui só reexporta
 export { vencimentoDaCompetencia, fechamentoDaCompetencia } from './ciclo'
-import { vencimentoDaCompetencia, fechamentoDaCompetencia } from './ciclo'
+import { vencimentoDaCompetencia, fechamentoDaCompetencia, excessoDoPagamento } from './ciclo'
+import { lerCarteira } from './carteira'
+import { diaDoBrasil } from '@/lib/margem/dia'
 
 export interface FaturaPraQuitar {
   /** YYYY-MM — a competência */
@@ -30,6 +32,13 @@ export interface FaturaPraQuitar {
   vencimento: string | null
   /** ⭐ já tem pagamento vinculado? (pelo VÍNCULO, nunca por status gravado) */
   jaPaga: boolean
+  /** ⭐ 24/11 — o estado do ciclo e o que FALTA pagar (a conta da carteira, `contaDaFatura`) */
+  estado: 'aberta' | 'fechada' | 'parcial' | 'paga'
+  falta: number
+  /** vencida sem estar paga (o destaque da lista) */
+  vencida: boolean
+  /** R53 — fatura de quitação (cartão encerrado) */
+  quitacao: boolean
 }
 
 export interface CartaoComFaturas {
@@ -75,50 +84,41 @@ export function competenciaDaFatura(dueDate: string | null | undefined): string 
 export async function cartoesComFaturas(
   companyId: string,
   db: PrismaClient = defaultPrisma,
+  hoje: string = diaDoBrasil(new Date()),
 ): Promise<CartaoComFaturas[]> {
-  const cartoes = await db.businessCreditCard.findMany({
-    where: { companyId, isActive: true },
-    select: { id: true, name: true, dueDay: true },
-    orderBy: { name: 'asc' },
-  })
-  if (!cartoes.length) return []
-
-  const ids = cartoes.map((c) => c.id)
-  const [itens, pagamentos] = await Promise.all([
-    db.transaction.findMany({
-      where: { businessCreditCardId: { in: ids }, invoiceMonth: { not: null }, isCardPayment: false },
-      select: { businessCreditCardId: true, invoiceMonth: true, type: true, amount: true },
-    }),
-    // ⭐ o VÍNCULO: pagamento marcado E apontando a competência
-    db.transaction.findMany({
-      where: { businessCreditCardId: { in: ids }, isCardPayment: true, paidInvoiceMonth: { not: null } },
-      select: { businessCreditCardId: true, paidInvoiceMonth: true },
-    }),
-  ])
-
-  const net = new Map<string, Map<string, number>>()
-  for (const it of itens) {
-    const porCartao = net.get(it.businessCreditCardId!) ?? new Map<string, number>()
-    const m = it.invoiceMonth as string
-    porCartao.set(m, (porCartao.get(m) ?? 0) + signedFaturaAmount({ type: it.type, amount: it.amount, isCardPayment: false }))
-    net.set(it.businessCreditCardId!, porCartao)
-  }
-  const pagas = new Set(pagamentos.map((p) => `${p.businessCreditCardId}|${p.paidInvoiceMonth}`))
-  const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
-
-  return cartoes.map((c) => ({
+  /**
+   * ⛔⛔ 24/11 — A LISTA PULAVA A FATURA DE QUITAÇÃO. Ela montava as faturas SÓ das linhas
+   * (`invoiceMonth` das compras): a quitação do Mercado Pago (R$ 430,51, semeada das parcelas,
+   * SEM linhas) não existia aqui — o grupo parava em 2026-10. Era a 2ª régua de "que faturas
+   * existem", paralela ao registro.
+   * ⭐ Agora a lista é VISTA da carteira (`lerCarteira`): TODA fatura do registro, de qualquer
+   * origem, com o estado e o que falta pela MESMA conta da página.
+   */
+  const cart = await lerCarteira(companyId, hoje, db)
+  return cart.cartoes.map((c) => ({
     id: c.id,
     nome: c.name,
-    faturas: [...(net.get(c.id) ?? new Map<string, number>())]
-      // ⭐ a mais recente primeiro: é a que o dono quita no dia a dia
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([invoiceMonth, valor]) => ({
-        invoiceMonth,
-        net: round2(valor),
-        vencimento: vencimentoDaCompetencia(invoiceMonth, c.dueDay),
-        jaPaga: pagas.has(`${c.id}|${invoiceMonth}`),
-      })),
+    faturas: ordenarFaturasPraQuitar(c.faturas.map((f) => ({
+      invoiceMonth: f.mes,
+      net: Math.round((f.total + f.acrescimo) * 100) / 100,
+      vencimento: f.vencimento,
+      jaPaga: f.estado === 'paga',
+      estado: f.estado,
+      falta: f.falta,
+      vencida: f.estado !== 'paga' && f.vencimento < hoje,
+      quitacao: f.quitacao,
+    }))),
   }))
+}
+
+/**
+ * ⭐ 24/11 — A ORDEM DA LISTA: não pagas primeiro (a vencida mais antiga no topo), pagas depois
+ * (a mais recente primeiro). É a fatura que o dono quita hoje que tem que estar à mão.
+ */
+export function ordenarFaturasPraQuitar(fs: FaturaPraQuitar[]): FaturaPraQuitar[] {
+  const abertas = fs.filter((f) => !f.jaPaga).sort((a, b) => (a.vencimento ?? '').localeCompare(b.vencimento ?? '') || a.invoiceMonth.localeCompare(b.invoiceMonth))
+  const pagas = fs.filter((f) => f.jaPaga).sort((a, b) => b.invoiceMonth.localeCompare(a.invoiceMonth))
+  return [...abertas, ...pagas]
 }
 
 /** o formato que o `MenuDoChip` desenha — mesmo shape do menu de contrato/parcela */
@@ -156,9 +156,11 @@ export function secoesDeFatura(
       titulo: `💳 ${k.nome}`,
       itens: k.faturas.map((f) => ({
         id: `${k.id}|${f.invoiceMonth}`,
-        nome: `fatura ${f.invoiceMonth}`,
+        nome: `${f.jaPaga ? '✓ ' : f.vencida ? '⚠ ' : ''}fatura ${f.invoiceMonth}`,
         // ⭐ valor E vencimento — a mesma honestidade do retrato da conta a pagar
-        detalhe: `${brl(f.net)}${f.vencimento ? ` · vence ${diaCurto(f.vencimento)}` : ''}${f.jaPaga ? ' · já paga' : ''}`,
+        // ⭐ 24/11 — o ESTADO na linha: vencida em destaque, parcial diz o que falta, paga diz que é paga
+        detalhe: `${brl(f.net)}${f.vencimento ? ` · vence ${diaCurto(f.vencimento)}` : ''}${
+          f.jaPaga ? ' · já paga' : f.vencida ? ' · ⚠ VENCIDA' : ''}${!f.jaPaga && f.estado === 'parcial' ? ` · faltam ${brl(f.falta)}` : ''}${f.quitacao ? ' · quitação' : ''}`,
       })),
     }))
   const semFatura = cartoes.filter((k) => k.faturas.length === 0)
@@ -175,4 +177,23 @@ export function secoesDeFatura(
 export function alvoDaFatura(id: string): { cardId: string; invoiceMonth?: string } {
   const [cardId, invoiceMonth] = id.split('|')
   return invoiceMonth ? { cardId, invoiceMonth } : { cardId }
+}
+
+/**
+ * ⭐⭐ 24/11 — O QUE PERGUNTAR ANTES DE QUITAR (puro; a caixa de entrada e o guard decidem por aqui).
+ *  · fatura JÁ PAGA → pergunta antes (2º pagamento na mesma fatura é raro, merece confirmação);
+ *  · pagamento MAIOR que o que falta → o dono declara o que são os R$ a mais (vai pelo gesto);
+ *  · senão → direto.
+ * A medida do excesso é a MESMA da porta (`excessoDoPagamento`) — a tela não pergunta o que o
+ * servidor não cobra, nem deixa passar o que ele recusa.
+ */
+export type PerguntaAntesDeQuitar =
+  | { tipo: 'DIRETO' }
+  | { tipo: 'JA_PAGA'; excesso: number; falta: number }
+  | { tipo: 'A_MAIOR'; excesso: number; falta: number }
+export function perguntaAntesDeQuitar(valorDaLinha: number, f: FaturaPraQuitar | undefined): PerguntaAntesDeQuitar {
+  if (!f) return { tipo: 'DIRETO' }
+  const excesso = excessoDoPagamento(valorDaLinha, f.falta)
+  if (f.jaPaga) return { tipo: 'JA_PAGA', excesso, falta: f.falta }
+  return excesso > 0 ? { tipo: 'A_MAIOR', excesso, falta: f.falta } : { tipo: 'DIRETO' }
 }

@@ -278,6 +278,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       { status: 422 },
     )
   }
+  // ⛔ 24/11 — pagamento MAIOR que a fatura pede a diferença DECLARADA, e a prévia do import não tem
+  // onde declarar: recusa ANTES de gravar, ensinando o caminho (nada de import pela metade)
+  if (reclassTx && body.totalToPay != null && reclassTx.amount - body.totalToPay > 0.02) {
+    return NextResponse.json(
+      { erro: `O pagamento marcado (R$ ${reclassTx.amount.toFixed(2)}) é maior que a fatura (R$ ${body.totalToPay.toFixed(2)}). Importe sem marcar o pagamento e case na tela da fatura — lá você declara o que são os R$ ${(reclassTx.amount - body.totalToPay).toFixed(2)} a mais.`, code: 'VALIDATION_FAILED' },
+      { status: 422 },
+    )
+  }
 
   let inseridas = 0
   let duplicadas = 0

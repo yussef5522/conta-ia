@@ -236,3 +236,34 @@ export function quitacaoASemear(p: {
   const total = Math.round(p.previstasDoMes(mes) * 100) / 100
   return total > 0 ? { mes, total } : null
 }
+
+/**
+ * ⭐⭐⭐ A CONTA DA FATURA, UM DONO SÓ (24/11/2026) — total, acréscimo declarado, pago, falta, estado.
+ * A carteira (a página, a caixa de entrada, o sininho) e a porta de casar calculam POR AQUI.
+ * ⭐ ACRÉSCIMO: pagamento maior que a fatura (multa, juros, tarifa) que o dono DECLAROU — a fatura
+ * cobra total + acréscimo e vira PAGA com a diferença guardada. Sem declaração, o acréscimo é zero.
+ */
+export function contaDaFatura(total: number, acrescimo: number | null | undefined, pagamentos: number[], fechada: boolean) {
+  const cobrado = Math.round((total + (acrescimo ?? 0)) * 100) / 100
+  const pago = pagoDaFatura(cobrado, pagamentos)
+  return { cobrado, pago, falta: Math.round((cobrado - pago) * 100) / 100, estado: estadoCiclo({ total: cobrado, pago, fechada }) }
+}
+
+/** ⭐ quanto este pagamento passa do que FALTA na fatura (0 = cabe); acima do centavo pede declaração */
+export function excessoDoPagamento(valor: number, falta: number): number {
+  const e = Math.round((Math.abs(valor) - Math.max(0, falta)) * 100) / 100
+  return e > 0.02 ? e : 0
+}
+
+/**
+ * ⭐⭐ R51+ — O NOME DO EMISSOR NA LINHA DO BANCO (24/11/2026). "PIX - MERCADO PAGO INSTITUICAO DE
+ * PAGAMENTO LTDA" contém o emissor do cartão Mercado Pago: o palpite é PAGAMENTO DE FATURA desse
+ * cartão, nunca uma conta a pagar que só chegou perto no valor. Compara sem acento e sem caixa,
+ * por palavra inteira (nome curto demais não decide nada).
+ */
+export function linhaCitaOEmissor(descricao: string, emissor: string | null | undefined): boolean {
+  const n = (s: string) => ` ${s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `
+  const e = n(emissor ?? '').trim()
+  if (e.length < 4) return false
+  return n(descricao).includes(` ${e} `)
+}

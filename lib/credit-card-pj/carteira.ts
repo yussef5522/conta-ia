@@ -12,7 +12,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import {
-  disponivel, estadoCiclo, pagoDaFatura, mesSoma, datasDoCiclo, diasAte, INICIO_DO_MODULO,
+  disponivel, contaDaFatura, mesSoma, datasDoCiclo, diasAte, INICIO_DO_MODULO,
   type EstadoCiclo,
 } from './ciclo'
 
@@ -30,6 +30,10 @@ export interface FaturaResumo {
   pagamentos: { id: string; data: string; valor: number; conta: string | null }[]
   /** R53 — fatura de quitação (semeada das parcelas do cartão encerrado; não tem linhas) */
   quitacao: boolean
+  /** ⭐ 24/11 — o acréscimo DECLARADO (multa/juros/tarifa) e o que falta pagar (cobrado − pago) */
+  acrescimo: number
+  acrescimoMotivo: string | null
+  falta: number
 }
 
 export interface CartaoNaCarteira {
@@ -105,7 +109,7 @@ export async function lerCarteira(
 
   // 2..6 — tudo em lote, em paralelo
   const [registros, somas, pagamentos, previstas, linhasPorCartao] = await Promise.all([
-    db.faturaCartaoPJ.findMany({ where: { cardId: { in: ids } }, select: { cardId: true, mes: true, fechamento: true, vencimento: true, totalDeclarado: true, quitacao: true } }),
+    db.faturaCartaoPJ.findMany({ where: { cardId: { in: ids } }, select: { cardId: true, mes: true, fechamento: true, vencimento: true, totalDeclarado: true, quitacao: true, acrescimo: true, acrescimoMotivo: true } }),
     db.transaction.groupBy({
       by: ['businessCreditCardId', 'invoiceMonth', 'type'],
       where: { businessCreditCardId: { in: ids }, isCardPayment: false, invoiceMonth: { not: null } },
@@ -153,14 +157,16 @@ export async function lerCarteira(
       const ehQuitacao = reg?.quitacao === true && s.linhas === 0
       const total = r2(ehQuitacao ? (reg?.totalDeclarado ?? 0) : s.total)
       const pg = pagosPor.get(`${c.id}|${s.mes}`) ?? []
-      const pago = pagoDaFatura(total, pg.map((p) => p.amount))
+      // ⭐ a conta da fatura tem UM dono (`contaDaFatura`): total + acréscimo declarado − pagamentos
+      const conta = contaDaFatura(total, reg?.acrescimo, pg.map((p) => p.amount), true)
       const dd = datasDoCiclo(s.mes, c.closingDay, c.dueDay)
       const d = {
         fechamento: reg?.fechamento?.toISOString().slice(0, 10) ?? dd.fechamento,
         vencimento: reg?.vencimento?.toISOString().slice(0, 10) ?? dd.vencimento,
       }
       return {
-        mes: s.mes, total, pago, estado: estadoCiclo({ total, pago, fechada: true }),
+        mes: s.mes, total, pago: conta.pago, estado: conta.estado, falta: conta.falta,
+        acrescimo: reg?.acrescimo ?? 0, acrescimoMotivo: reg?.acrescimoMotivo ?? null,
         fechamento: d.fechamento, vencimento: d.vencimento, linhas: s.linhas,
         pagamentos: pg.map((p) => ({ id: p.id, data: p.date.toISOString().slice(0, 10), valor: p.amount, conta: p.bankAccount?.name ?? null })),
         quitacao: ehQuitacao,
@@ -170,7 +176,7 @@ export async function lerCarteira(
     const atual = todas[0] ?? null
     const fechadasNaoPagas = r2(todas
       .filter((f) => f.mes >= INICIO_DO_MODULO && (f.estado === 'fechada' || f.estado === 'parcial'))
-      .reduce((a, f) => a + (f.total - f.pago), 0))
+      .reduce((a, f) => a + f.falta, 0))
     // a aberta: a competência seguinte à última importada (cartão sem fatura: a do ciclo de hoje)
     const mesAberta = atual ? mesSoma(atual.mes, 1) : competenciaDoCicloDeHoje(hoje, c.closingDay, c.dueDay)
     const prevs = previstas.filter((p) => p.cardId === c.id && p.mes >= mesAberta)

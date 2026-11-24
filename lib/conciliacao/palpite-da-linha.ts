@@ -127,6 +127,11 @@ export interface CandidatoBruto {
   alvoNome?: string
   /** ⭐ 23/09 — o retrato da conta sugerida (ver `AlvoDetalhado`) */
   alvoDetalhe?: AlvoDetalhado
+  /**
+   * ⭐⭐ 24/11 — a linha CITA o alvo pelo nome (o emissor do cartão). Nome declarado na linha do
+   * banco vale mais que proximidade de valor: entre candidatos, quem tem nome passa na frente.
+   */
+  porNome?: boolean
 }
 
 const PESO = { ALTA: 3, MEDIA: 2, BAIXA: 1 } as const
@@ -148,7 +153,9 @@ export function escolherPalpite(
   valorDaLinha: number,
 ): PalpiteDaLinha | null {
   // ⛔ a lei do sentido vale aqui também: a tela não oferece o que o servidor recusaria
-  const validos = candidatos.filter((c) => acaoValePraSentido(c.acao, sentido))
+  const todos = candidatos.filter((c) => acaoValePraSentido(c.acao, sentido))
+  // ⭐ 24/11 — o NOME decide antes do valor: havendo candidato citado pelo nome, só eles concorrem
+  const validos = todos.some((c) => c.porNome) ? todos.filter((c) => c.porNome) : todos
   if (validos.length === 0) return null
 
   const ordenados = [...validos].sort((a, b) => {

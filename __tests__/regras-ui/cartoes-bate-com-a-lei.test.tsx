@@ -76,7 +76,7 @@ describe('tokens por VALOR', () => {
 
 // ── dado de verdade (os números da amostra da lei) ──
 const fat = (o: Partial<FaturaResumo> = {}): FaturaResumo => ({
-  mes: '2026-11', total: 4810.69, pago: 0, estado: 'fechada', fechamento: '2026-10-27', vencimento: '2026-11-26', linhas: 42, pagamentos: [], quitacao: false, ...o,
+  mes: '2026-11', total: 4810.69, pago: 0, estado: 'fechada', fechamento: '2026-10-27', vencimento: '2026-11-26', linhas: 42, pagamentos: [], quitacao: false, acrescimo: 0, acrescimoMotivo: null, falta: 4810.69, ...o,
 })
 const cartao = (o: Partial<CartaoNaCarteira> = {}): CartaoNaCarteira => ({
   id: 'c1', name: 'Sicredi', bankName: 'Sicredi', brand: 'Visa', lastDigits: '0115', creditLimit: 25000, closingDay: 27, dueDay: 26,

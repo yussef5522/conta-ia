@@ -16,7 +16,8 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { valorDoSeletor, opcoesDoSeletor } from '@/lib/credit-card-pj/valor-do-seletor'
 import type { FaturaDetalhe, LinhaDaFatura } from '@/lib/credit-card-pj/fatura-detalhe'
-import { rotuloFatura, rotuloMes, diasAte } from '@/lib/credit-card-pj/ciclo'
+import { rotuloFatura, rotuloMes, diasAte, excessoDoPagamento } from '@/lib/credit-card-pj/ciclo'
+import { MOTIVOS_DA_DIFERENCA, textoDoMotivo, type MotivoDaDiferenca } from '@/lib/conciliacao/regua-da-diferenca'
 import { extractAnchorWord } from '@/lib/categorization/extract-anchor-word'
 import { Chip, Selo, Trilho, PainelFuturo, PorCategoria, FaturaPorMes, corDaCategoria, SOMBRA, ROT } from '@/components/cartoes/visual'
 
@@ -196,13 +197,23 @@ export default function FaturaDoCartaoPage() {
     }
   }
 
-  async function casarPagamento(txId: string) {
+  /** ⭐ 24/11 — pagamento MAIOR que o que falta: o dono declara o que são os R$ a mais (a porta exige) */
+  const [aMaior, setAMaior] = useState<{ txId: string; excesso: number } | null>(null)
+  const [motivoAMaior, setMotivoAMaior] = useState<MotivoDaDiferenca | null>(null)
+  const [livreAMaior, setLivreAMaior] = useState('')
+  function pedirCasar(txId: string, valor: number) {
+    const excesso = data?.fatura ? excessoDoPagamento(valor, data.fatura.falta) : 0
+    if (excesso > 0) { setMotivoAMaior(null); setLivreAMaior(''); setAMaior({ txId, excesso }); return }
+    casarPagamento(txId)
+  }
+
+  async function casarPagamento(txId: string, diferencaAMaior?: { valor: number; motivo: string }) {
     setCasandoId(txId)
     try {
       const resp = await fetch(`/api/empresas/${params.id}/cartoes/${params.cardId}/casar-pagamento`, {
         method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
         // amarra o pagamento à fatura que está sendo vista (competência ativa)
-        body: JSON.stringify({ txId, invoiceMonth: data?.fatura?.mes ?? undefined }),
+        body: JSON.stringify({ txId, invoiceMonth: data?.fatura?.mes ?? undefined, ...(diferencaAMaior ? { diferencaAMaior } : {}) }),
       })
       const json = await resp.json()
       if (!resp.ok) { toast({ title: 'Erro', description: json.erro || 'Tente novamente', variant: 'destructive' }); return }
@@ -340,9 +351,33 @@ export default function FaturaDoCartaoPage() {
             {fatura.estado !== 'paga' && topCandidate && (
               <div className="num mt-[11px] flex flex-wrap items-center gap-[10px] rounded-[11px] px-[13px] py-[10px] text-[12px] font-extrabold" style={{ background: 'var(--esc-indigo50)', color: 'var(--esc-indigo-t)' }}>
                 <span className="min-w-0 flex-1">Achei pagamento {formatBRL(topCandidate.amount)} em {ddmmm(topCandidate.date)}{topCandidate.bankAccountName ? ` · ${topCandidate.bankAccountName}` : ''}{topCandidate.matchLabel ? ` · ${topCandidate.matchLabel}` : ''}</span>
-                <button type="button" disabled={casandoId === topCandidate.id} onClick={() => casarPagamento(topCandidate.id)} className="h-7 rounded-[8px] px-3 text-[11.5px] font-extrabold" style={{ background: 'var(--esc-indigo)', color: 'var(--esc-on)' }}>
+                <button type="button" disabled={casandoId === topCandidate.id} onClick={() => pedirCasar(topCandidate.id, topCandidate.amount)} className="h-7 rounded-[8px] px-3 text-[11.5px] font-extrabold" style={{ background: 'var(--esc-indigo)', color: 'var(--esc-on)' }}>
                   {casandoId === topCandidate.id ? '…' : 'Casar pagamento'}
                 </button>
+              </div>
+            )}
+            {aMaior && (
+              <div data-testid="quadro-a-maior" className="mt-[11px] rounded-[11px] px-[13px] py-[10px] text-[12px] font-bold" style={{ background: 'var(--esc-ambar50)', color: 'var(--esc-ambar-t)' }}>
+                <p className="font-extrabold">O pagamento passa {formatBRL(aMaior.excesso)} do que falta na fatura ({formatBRL(fatura.falta)}) — o que são os {formatBRL(aMaior.excesso)} a mais?</p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {MOTIVOS_DA_DIFERENCA.filter((m) => m.chave !== 'DESCONTO').map((m) => (
+                    <button key={m.chave} type="button" onClick={() => setMotivoAMaior(m.chave)} className="rounded-full border px-2.5 py-[4px] text-[11.5px] font-extrabold"
+                      style={motivoAMaior === m.chave ? { background: 'var(--esc-ambar)', borderColor: 'var(--esc-ambar)', color: 'var(--esc-on)' } : { borderColor: 'var(--esc-ambar)', color: 'var(--esc-ambar-t)' }}>{m.rotulo}</button>
+                  ))}
+                </div>
+                {motivoAMaior === 'OUTRO' && <input value={livreAMaior} onChange={(e) => setLivreAMaior(e.target.value)} maxLength={80} aria-label="o que são os R$ a mais?" className="mt-1.5 h-8 w-full min-w-0 rounded-[8px] border px-2 text-[12px]" style={{ borderColor: 'var(--esc-ambar)', background: 'var(--esc-card)', color: 'var(--esc-tinta)' }} />}
+                <p className="mt-1 text-[11px]">fica no histórico da conta e na fatura — ela vira PAGA com a diferença guardada</p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" disabled={!motivoAMaior || (motivoAMaior === 'OUTRO' && livreAMaior.trim().length < 2) || casandoId === aMaior.txId}
+                    onClick={() => { const d = { valor: aMaior.excesso, motivo: textoDoMotivo(motivoAMaior, livreAMaior) }; setAMaior(null); casarPagamento(aMaior.txId, d) }}
+                    className="h-7 rounded-[8px] px-3 text-[11.5px] font-extrabold disabled:opacity-40" style={{ background: 'var(--esc-indigo)', color: 'var(--esc-on)' }}>Casar e guardar a diferença</button>
+                  <button type="button" onClick={() => setAMaior(null)} className="text-[11.5px] font-extrabold">cancelar</button>
+                </div>
+              </div>
+            )}
+            {fatura.acrescimo > 0 && (
+              <div className="num mt-[11px] rounded-[11px] px-[13px] py-[8px] text-[11.5px] font-bold" style={{ background: 'var(--esc-trilho)', color: 'var(--esc-tinta2)' }}>
+                + {formatBRL(fatura.acrescimo)} declarados a mais{fatura.acrescimoMotivo ? ` — ${fatura.acrescimoMotivo}` : ''}
               </div>
             )}
             {!pagou && !topCandidate && (
@@ -356,7 +391,7 @@ export default function FaturaDoCartaoPage() {
                 {data.candidatos.slice(1).map((p) => (
                   <div key={p.id} className="num flex flex-wrap items-center gap-2 py-1.5 text-[12px] font-bold" style={{ borderTop: '1px solid var(--esc-linha2)' }}>
                     <span className="min-w-0 flex-1 truncate">{ddmmm(p.date)} · {p.description} · <b>{formatBRL(p.amount)}</b>{p.bankAccountName ? ` · ${p.bankAccountName}` : ''}</span>
-                    <button type="button" disabled={casandoId === p.id} onClick={() => casarPagamento(p.id)} className="text-[11.5px] font-extrabold" style={{ color: 'var(--esc-indigo)' }}>{casandoId === p.id ? '…' : 'Casar'}</button>
+                    <button type="button" disabled={casandoId === p.id} onClick={() => pedirCasar(p.id, p.amount)} className="text-[11.5px] font-extrabold" style={{ color: 'var(--esc-indigo)' }}>{casandoId === p.id ? '…' : 'Casar'}</button>
                   </div>
                 ))}
               </div>

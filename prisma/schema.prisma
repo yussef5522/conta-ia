@@ -6047,6 +6047,10 @@ model FaturaCartaoPJ {
   // ⭐ R53 — fatura de QUITAÇÃO: semeada pelo sistema pro cartão encerrado, a partir das parcelas
   // previstas do mês (total = totalDeclarado; não tem linhas). null/false = fatura do banco.
   quitacao            Boolean?
+  // ⭐ 24/11 — DIFERENÇA A MAIOR DECLARADA: o pagamento passou da fatura (multa, juros, tarifa) e o
+  // dono disse o que são os R$ a mais. A fatura vira PAGA com a diferença guardada aqui.
+  acrescimo           Float?
+  acrescimoMotivo     String?
   importId            String?
   criadoEm            DateTime  @default(now())
   atualizadoEm        DateTime  @updatedAt
