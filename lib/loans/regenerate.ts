@@ -196,7 +196,14 @@ export function regenerateSchedule(
       }
     })
 
-  const lost = reconciled.filter((x) => !x.preserved)
+  // ⭐ R54 (25/11/2026) — a parcela paga pela porta N:1 (a única viva) também não pode sumir:
+  // apagar a linha da agenda levaria os pedaços junto (cascade) e o encargo sairia do DRE.
+  const lost = [
+    ...reconciled.filter((x) => !x.preserved).map((x) => ({ number: x.number })),
+    ...installments
+      .filter((i) => i.linkedPaidTotal != null && i.linkedPaidTotal > 0 && !newByNumber.has(i.number))
+      .map((i) => ({ number: i.number })),
+  ]
   const blocked = lost.length > 0
   const blockReason = blocked
     ? `${lost.length} parcela(s) reconciliada(s) (ex #${lost[0].number}) somem do novo cronograma — o vínculo com a transação bancária não pode ser preservado. Revise prazo/parcelas pagas antes.`

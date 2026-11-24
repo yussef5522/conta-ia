@@ -115,9 +115,11 @@ describe('⛔⛔⛔ as três superfícies leem a MESMA régua', () => {
   })
 
   it('⭐⭐ as DUAS telas conhecem o estado PARCIAL — senão a parcial volta a ser chamada de atrasada', () => {
-    for (const tela of [TELA_LISTA, TELA_CONTRATO]) {
-      expect(semComentario(ler(tela)), `${tela} não conhece PARCIAL`).toContain("'PARCIAL'")
-    }
+    // ⭐ 25/11 (lei v1) — a lista desenha os cards por `components/emprestimos/visual.tsx`: a tela
+    // da lista é a página + as peças dela
+    const lista = semComentario(ler(TELA_LISTA)) + semComentario(ler('components/emprestimos/visual.tsx'))
+    expect(lista, `${TELA_LISTA} não conhece PARCIAL`).toContain("'PARCIAL'")
+    expect(semComentario(ler(TELA_CONTRATO)), `${TELA_CONTRATO} não conhece PARCIAL`).toContain("'PARCIAL'")
   })
 
   it('⛔ e o cabeçalho do contrato mostra o que FALTA numa parcial, não o nominal da agenda', () => {

@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { CONTRATO_VISIVEL } from '@/lib/loans/ficha'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   const installments = await prisma.loanInstallment.findMany({
     where: {
       // Mútuo FLEXIBLE (sem prazo fixo) NÃO tem parcela do mês — excluído (2.4).
-      loan: { companyId, scheduleSource: { not: 'FLEXIBLE' } },
+      loan: { companyId, scheduleSource: { not: 'FLEXIBLE' }, ...CONTRATO_VISIVEL },
       dueDate: { gte: startDate, lte: endDate },
     },
     select: {
@@ -58,6 +59,9 @@ export async function GET(request: NextRequest, { params }: Params) {
       paidDate: true,
       isEstimate: true,
       reconciledTransactionId: true,
+      // ⭐ R55/R59 (25/11) — o pago e o encargo APURADO moram nos campos de pago
+      paidTotal: true, paidInterest: true, paidCorrection: true, paidPenalty: true,
+      _count: { select: { payments: true } },
       loan: {
         select: {
           id: true,
@@ -93,6 +97,11 @@ export async function GET(request: NextRequest, { params }: Params) {
       status: visualStatus,
       paidDate: li.paidDate?.toISOString().slice(0, 10) ?? null,
       reconciledTransactionId: li.reconciledTransactionId,
+      vinculada: li.reconciledTransactionId != null || li._count.payments > 0,
+      pagoReal: li.paidTotal,
+      encargoApurado: li.paidInterest != null
+        ? round2((li.paidInterest ?? 0) + (li.paidCorrection ?? 0) + (li.paidPenalty ?? 0))
+        : null,
       loan: {
         id: li.loan.id,
         lender: li.loan.lender,
@@ -111,14 +120,16 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 
   const totals = {
-    valorPago: round2(items.filter((i) => i.status === 'PAGA').reduce((s, i) => s + i.payment, 0)),
+    // ⭐ R55 — pago é o PAGO (paidTotal), nunca a agenda (que o pagamento não reescreve mais)
+    valorPago: round2(items.filter((i) => i.status === 'PAGA').reduce((s, i) => s + (i.pagoReal ?? i.payment), 0)),
     valorEsperado: round2(items.filter((i) => i.status !== 'PAGA' && i.status !== 'PLACEHOLDER').reduce((s, i) => s + i.payment, 0)),
-    jurosPago: round2(items.filter((i) => i.status === 'PAGA').reduce((s, i) => s + i.interest, 0)),
+    // ⭐ R59 — juros pagos = encargo APURADO; a agenda é previsão
+    jurosPago: round2(items.filter((i) => i.status === 'PAGA').reduce((s, i) => s + (i.encargoApurado ?? 0), 0)),
   }
 
   // Lista de meses disponíveis (qualquer mês com ao menos 1 parcela). FLEXIBLE fora.
   const allLoans = await prisma.loan.findMany({
-    where: { companyId, scheduleSource: { not: 'FLEXIBLE' } },
+    where: { companyId, scheduleSource: { not: 'FLEXIBLE' }, ...CONTRATO_VISIVEL },
     select: {
       installments: {
         select: { dueDate: true },

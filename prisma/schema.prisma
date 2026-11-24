@@ -118,6 +118,7 @@ model SavedView {
 }
 
 model Company {
+  chequeEspecialRegras ChequeEspecialRegra[]
   id        String  @id @default(cuid())
   cnpj      String  @unique
   name      String
@@ -217,6 +218,7 @@ model UserCompany {
 }
 
 model BankAccount {
+  chequeEspecialRegras ChequeEspecialRegra[]
   id            String  @id @default(cuid())
   companyId     String
   name          String
@@ -3014,6 +3016,9 @@ model Loan {
   notes          String?
 
   status    String   @default("ACTIVE") // ACTIVE | PAID_OFF | LATE
+  // R60 (25/11/2026) — excluído COM história: some de todas as telas (todo leitor de tela filtra
+  // `archivedAt: null`), o nome sobrevive só nos relatórios históricos (DRE lê as parcelas).
+  archivedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -6090,4 +6095,20 @@ model ParcelaFuturaPJ {
   @@index([companyId, mes])
   @@index([cardId, mes])
   @@map("business_card_installments")
+}
+
+// ⭐ R65 (25/11/2026) — juros de cheque especial confirmados uma vez viram REGRA (conta + descrição
+// normalizada). A regra só faz PALPITE na caixa de entrada — nunca marca sozinha.
+model ChequeEspecialRegra {
+  id            String      @id @default(cuid())
+  companyId     String
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankAccountId String
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  padrao        String
+  createdAt     DateTime    @default(now())
+
+  @@unique([bankAccountId, padrao])
+  @@index([companyId])
+  @@map("cheque_especial_regras")
 }

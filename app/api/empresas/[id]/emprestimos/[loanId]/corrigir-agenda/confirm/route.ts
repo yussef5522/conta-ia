@@ -11,7 +11,6 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { regenerateSchedule } from '@/lib/loans/regenerate'
-import { computePosFixedSplit, computePreFixedSplit } from '@/lib/loans/installment-match'
 import { computeLinkSplit } from '@/lib/loans/link-payment'
 
 export const runtime = 'nodejs'
@@ -54,7 +53,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       orderBy: { number: 'asc' },
       select: {
         id: true, number: true, dueDate: true, openingBalance: true, interest: true, amortization: true,
-        correcao: true, payment: true, closingBalance: true, status: true, isEstimate: true, paidDate: true,
+        correcao: true, payment: true, closingBalance: true, status: true, isEstimate: true, paidDate: true, paidTotal: true,
         reconciledTransactionId: true, realPayment: true, paidInterest: true, paidCorrection: true,
         reconciledTransaction: { select: { amount: true } },
         payments: { select: { amount: true } },
@@ -113,44 +112,24 @@ export async function POST(request: NextRequest, { params }: Params) {
         },
       })
 
+      /**
+       * ⭐⭐ R55 + N+1 (25/11/2026). Corrigir a agenda É escrever a agenda (gesto do dono) — mas:
+       *  - a parcela PAGA recebe a linha NOVA da agenda e o pago é RE-APURADO em `paid*` pela
+       *    mesma função da porta (`computeLinkSplit`); antes o pago era escrito POR CIMA da
+       *    agenda (`payment = paidTotal`, `interest = paidInterest`) e o parcial virava `PARTIAL`;
+       *  - a parcela SEM vínculo não tem quem aponte pra ela: sai e volta numa escrita só
+       *    (deleteMany + createMany), em vez de um `update` por linha.
+       */
+      const linkedTotal = (ex: (typeof installments)[number]) =>
+        linkedByNumber.get(ex.number) ?? (ex.reconciledTransactionId ? ex.reconciledTransaction?.amount ?? ex.payment : null)
+      // ⛔ só sai-e-volta a parcela ABERTA sem pago nenhum — PAID sem vínculo (pago por documento,
+      // ex. C41022227 #22) mantém a linha e o status; só a agenda dela é corrigida
+      const intocavel = (ex: (typeof installments)[number]) => ex.status === 'PAID' || ex.paidTotal != null
+      const semVinculo: typeof result.rows = []
       for (const nr of result.rows) {
         const ex = byNumber.get(nr.number)
-        if (ex && ex.reconciledTransactionId) {
-          // Preserva o vínculo; recomputa o split com o valor REAL debitado (amount
-          // da tx reconciliada quando realPayment é null) sobre a amort nova.
-          const realPayment = ex.realPayment ?? ex.reconciledTransaction?.amount ?? ex.payment
-          const split = body.isPostFixed
-            ? computePosFixedSplit({ amortization: nr.amortization, openingBalance: nr.openingBalance }, realPayment, body.rateMonthly)
-            : computePreFixedSplit({ interest: nr.interest, amortization: nr.amortization, payment: nr.payment, openingBalance: nr.openingBalance })
-          await trx.loanInstallment.update({
-            where: { id: ex.id },
-            data: {
-              dueDate: nr.dueDate, openingBalance: nr.openingBalance, amortization: nr.amortization,
-              interest: split.interest, correcao: split.correcao, payment: split.realPayment,
-              // Persiste o valor REAL pra próximos recálculos não caírem no fallback.
-              realPayment: split.realPayment,
-              closingBalance: split.closingBalance, isEstimate: false,
-              // status/paidDate/reconciledTransactionId INTOCADOS (vínculo preservado).
-            },
-          })
-        } else if (ex && linkedByNumber.has(nr.number)) {
-          // FIX 2: parcela paga por vínculo N:1 (débito parcial). Recomputa o split
-          // com a amort NOVA + o valor REAL pago (Σ LoanInstallmentPayment), pra o
-          // encargo passar a entrar no DRE. Não desvincula nada.
-          const paidTotal = linkedByNumber.get(nr.number)!
-          const split = computeLinkSplit({ installment: { amortization: nr.amortization, openingBalance: nr.openingBalance }, rateMonthly: body.rateMonthly, paidTotal })
-          await trx.loanInstallment.update({
-            where: { id: ex.id },
-            data: {
-              dueDate: nr.dueDate, openingBalance: nr.openingBalance, amortization: nr.amortization,
-              interest: split.paidInterest, correcao: split.paidCorrection, payment: split.paidTotal,
-              paidTotal: split.paidTotal, paidInterest: split.paidInterest, paidCorrection: split.paidCorrection, paidPenalty: split.paidPenalty,
-              closingBalance: split.closingBalance, isEstimate: false,
-              status: split.isPartial ? 'PARTIAL' : 'PAID',
-              // vínculos LoanInstallmentPayment INTOCADOS — só o split é recalculado.
-            },
-          })
-        } else if (ex) {
+        const pago = ex ? linkedTotal(ex) : null
+        if (ex && pago == null && intocavel(ex)) {
           await trx.loanInstallment.update({
             where: { id: ex.id },
             data: {
@@ -159,22 +138,36 @@ export async function POST(request: NextRequest, { params }: Params) {
               closingBalance: nr.closingBalance, isEstimate: nr.isEstimate,
             },
           })
-        } else {
-          await trx.loanInstallment.create({
-            data: {
-              loanId, number: nr.number, dueDate: nr.dueDate, openingBalance: nr.openingBalance,
-              interest: nr.interest, amortization: nr.amortization, correcao: nr.correcao,
-              payment: nr.payment, closingBalance: nr.closingBalance, isEstimate: nr.isEstimate, status: 'OPEN',
-            },
-          })
+          continue
         }
+        if (!ex || pago == null) { semVinculo.push(nr); continue }
+        const split = computeLinkSplit({ installment: { amortization: nr.amortization, openingBalance: nr.openingBalance }, rateMonthly: body.rateMonthly, paidTotal: pago })
+        await trx.loanInstallment.update({
+          where: { id: ex.id },
+          data: {
+            dueDate: nr.dueDate, openingBalance: nr.openingBalance, interest: nr.interest,
+            amortization: nr.amortization, correcao: nr.correcao, payment: nr.payment,
+            closingBalance: nr.closingBalance, isEstimate: nr.isEstimate,
+            paidTotal: split.paidTotal, paidInterest: split.paidInterest, paidCorrection: split.paidCorrection, paidPenalty: split.paidPenalty,
+            status: split.isPartial ? 'OPEN' : 'PAID',
+          },
+        })
       }
-
-      // Parcelas rastreadas que sumiram do novo cronograma (não reconciliadas —
-      // reconciliadas já teriam bloqueado acima): remove.
-      const toDelete = installments.filter((i) => i.number >= startNumber && !newNumbers.has(i.number) && !i.reconciledTransactionId)
-      if (toDelete.length > 0) {
-        await trx.loanInstallment.deleteMany({ where: { id: { in: toDelete.map((i) => i.id) } } })
+      const numerosSemVinculo = new Set(semVinculo.map((r) => r.number))
+      const saem = installments.filter((i) =>
+        i.number >= startNumber && linkedTotal(i) == null && !intocavel(i)
+        && (numerosSemVinculo.has(i.number) || !newNumbers.has(i.number)))
+      if (saem.length > 0) {
+        await trx.loanInstallment.deleteMany({ where: { id: { in: saem.map((i) => i.id) } } })
+      }
+      if (semVinculo.length > 0) {
+        await trx.loanInstallment.createMany({
+          data: semVinculo.map((nr) => ({
+            loanId, number: nr.number, dueDate: nr.dueDate, openingBalance: nr.openingBalance,
+            interest: nr.interest, amortization: nr.amortization, correcao: nr.correcao,
+            payment: nr.payment, closingBalance: nr.closingBalance, isEstimate: nr.isEstimate, status: 'OPEN',
+          })),
+        })
       }
     })
 

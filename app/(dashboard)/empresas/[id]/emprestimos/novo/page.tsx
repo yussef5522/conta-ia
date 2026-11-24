@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
+import { prefillDoCadastro } from '@/lib/loans/cadastro-na-hora'
 import { Header } from '@/components/layout/header'
 import { formatBRL } from '@/lib/format/money'
 import { fmtPercentValue, cleanFloat } from '@/lib/loans/format'
@@ -106,6 +107,12 @@ export default function NovoEmprestimoPage({
     trackingStartDate: '',
     carencia: '0',
   })
+
+  // ⭐ R63 (25/11) — veio do "cadastrar agora →" do importar agenda: nº e banco do documento
+  useEffect(() => {
+    const pre = prefillDoCadastro(new URLSearchParams(window.location.search))
+    if (Object.keys(pre).length > 0) setForm((f) => ({ ...f, ...pre }))
+  }, [])
 
   async function handleUploadPdf(file: File) {
     setAiExtracting(true)

@@ -30,6 +30,9 @@ import { fmtRateMonthly } from '@/lib/loans/format'
 import { CandidatosDialog } from './_components/candidatos-dialog'
 import { RegistrarDevolucaoDialog } from './_components/registrar-devolucao-dialog'
 import { rotuloDaConta } from '@/lib/loans/rotulo-conta'
+import { CurvaRealAgenda, SplitEmChips, type PontoDaCurva } from '@/components/emprestimos/visual'
+import { EditarContrato } from '@/components/emprestimos/editar-contrato'
+import { progresso as progressoDaLei } from '@/lib/loans/carteira'
 
 const SaldoDevedorChart = dynamic(
   () => import('./_components/saldo-devedor-chart').then((m) => m.SaldoDevedorChart),
@@ -70,6 +73,13 @@ interface LoanDetalhe {
     } | null
   }
   agregados: {
+    // ⭐ R59/R60 (25/11) — o custo PAGO (apurado), a curva real × agenda, a história e as pendências
+    custoPago: { desdeInicio: number; noAno: number; jurosAno: number; correcaoAno: number; multaAno: number; agendaAno: number }
+    curva: PontoDaCurva[]
+    historia: { parcelas: number; pagas: number; vinculos: number; liberacaoVinculada: boolean; temHistoria: boolean }
+    destinoDaExclusao: 'apaga' | 'relatorios'
+    fraseDoExcluir: string
+    pendencias: Array<{ campo: string; rotulo: string }>
     saldoDevedor: number
     jurosTotalContrato: number
     jurosPagos: number
@@ -246,6 +256,12 @@ export default function DetalheEmprestimoPage({
   const [confirmUndo, setConfirmUndo] = useState<number | null>(null)
   /** ⚠️ REGRA 9 — hook no TOPO, nunca colado ao JSX que o consome (a cicatriz de 25/08) */
   const [abrirDevolucao, setAbrirDevolucao] = useState(false)
+  // ⭐ R60 (25/11) — editar a ficha (e o "completar →" do cadastro incompleto abre aqui)
+  const [editando, setEditando] = useState<false | 'ficha' | 'indexer'>(false)
+  // ⭐ os pedaços do dia de cada parcela paga, expandíveis
+  const [abertos, setAbertos] = useState<Set<number>>(() => new Set())
+  // ⭐ o link da carteira chega com ?editar=1 / ?devolucao=1 — abre o gesto direto
+  const [pedidoDaUrl, setPedidoDaUrl] = useState<string | null>(null)
 
   function refresh() {
     setLoading(true)
@@ -259,6 +275,17 @@ export default function DetalheEmprestimoPage({
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId, loanId])
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    setPedidoDaUrl(q.get('editar') ? 'editar' : q.get('devolucao') ? 'devolucao' : null)
+  }, [])
+  useEffect(() => {
+    if (!data || !pedidoDaUrl) return
+    if (pedidoDaUrl === 'editar') setEditando(data.agregados.pendencias.some((p) => p.campo === 'indexer') ? 'indexer' : 'ficha')
+    if (pedidoDaUrl === 'devolucao' && data.loan.flexible) setAbrirDevolucao(true)
+    setPedidoDaUrl(null)
+  }, [data, pedidoDaUrl])
 
   async function desfazer(number: number) {
     const res = await fetch(
@@ -280,7 +307,9 @@ export default function DetalheEmprestimoPage({
       credentials: 'include',
     })
     if (res.ok) {
-      toast({ title: 'Empréstimo excluído' })
+      const j = await res.json().catch(() => ({}))
+      // ⭐ R60 — o destino é DITO: apagado de vez × fora das telas (nome só nos relatórios)
+      toast({ title: j.destino === 'relatorios' ? 'Contrato fora das telas — o histórico fica nos relatórios' : 'Contrato apagado' })
       window.location.href = `/empresas/${empresaId}/emprestimos`
     } else {
       toast({ variant: 'destructive', title: 'Falha ao excluir' })
@@ -338,6 +367,9 @@ export default function DetalheEmprestimoPage({
             Corrigir agenda (fórmula)
           </Button>
         </Link>
+        <Button variant="outline" onClick={() => setEditando('ficha')}>
+          Editar
+        </Button>
         <Button variant="ghost" onClick={() => setConfirmDel(true)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
           <Trash2 className="h-4 w-4 mr-1" />
           Excluir
@@ -356,6 +388,13 @@ export default function DetalheEmprestimoPage({
         >
           {loan.status === 'PAID_OFF' ? 'Quitado' : 'Ativo'}
         </Badge>
+        {/* ⛔ R60 — cadastro incompleto é COBRADO na tela, nunca preenchido por palpite */}
+        {agregados.pendencias.map((pd) => (
+          <button key={pd.campo} type="button" data-pendencia={pd.campo} onClick={() => setEditando(pd.campo === 'indexer' ? 'indexer' : 'ficha')}
+            className="rounded-full px-2.5 py-0.5 text-xs font-bold" style={{ background: 'var(--emp-rosbg)', color: 'var(--emp-ros)' }}>
+            {pd.rotulo} — completar →
+          </button>
+        ))}
         {loan.flexible && (
           <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200">
             Mútuo sem prazo fixo · devolução conforme caixa
@@ -432,20 +471,29 @@ export default function DetalheEmprestimoPage({
           }
           tone="primary"
         />
-        <KpiCard
-          icon={<TrendingDown className="h-4 w-4 text-slate-600" />}
-          label="Principal"
-          value={formatBRL(loan.principal)}
-          sub={`${formatBRL(agregados.principalAmortizado)} amortizado`}
-          tone="slate"
-        />
+        {/* ⛔⛔ R59 — o card antigo "Juros do contrato / X pagos" mostrava a MESMA variável duas
+            vezes. Agora: o custo PAGO (encargo apurado) desde o início e no ano, com a agenda ao lado. */}
         <KpiCard
           icon={<TrendingDown className="h-4 w-4 text-red-600" />}
-          label="Juros do contrato"
-          value={formatBRL(agregados.jurosTotalContrato)}
-          sub={`${formatBRL(agregados.jurosPagos)} pagos`}
+          label="Custo pago desde o início"
+          value={formatBRL(agregados.custoPago.desdeInicio)}
+          sub={`${new Date().getFullYear()}: ${formatBRL(agregados.custoPago.noAno)} · agenda previa ${formatBRL(agregados.custoPago.agendaAno)}`}
           tone="red"
         />
+        {(() => {
+          const pg = loan.flexible
+            ? { txt: `${formatBRL(agregados.devolvido ?? 0)} de ${formatBRL(agregados.valorBase ?? loan.principal)}`, pct: agregados.progressoValor ?? 0 }
+            : progressoDaLei(agregados.parcelasPagas, agregados.parcelasTotal)
+          return (
+            <KpiCard
+              icon={<TrendingDown className="h-4 w-4 text-slate-600" />}
+              label={loan.flexible ? 'Devolvido' : 'Progresso'}
+              value={loan.flexible ? `${pg.pct}%` : pg.txt}
+              sub={loan.flexible ? pg.txt : `${pg.pct}% · principal ${formatBRL(loan.principal)}`}
+              tone="slate"
+            />
+          )
+        })()}
         {loan.flexible ? (
           <KpiCard
             icon={<Calendar className="h-4 w-4 text-slate-600" />}
@@ -542,7 +590,8 @@ export default function DetalheEmprestimoPage({
               {loan.flexible ? 'agenda nominal' : `${loan.termMonths} parcelas`}
             </p>
           </div>
-          <SaldoDevedorChart points={chartPoints} />
+          {/* ⭐ R55 — real × agenda lado a lado no contrato de banco; o mútuo segue na agenda nominal */}
+          {loan.flexible ? <SaldoDevedorChart points={chartPoints} /> : <CurvaRealAgenda pontos={agregados.curva} />}
         </CardContent>
       </Card>
 
@@ -614,12 +663,13 @@ export default function DetalheEmprestimoPage({
                     <td className="p-3">
                       <div className="flex items-center gap-2">
                         <StatusInstallment s={i.status} estado={i.estado} selo={i.selo} />
-                        {i.status === 'PAID' && i.reconciledTransaction && (
+                        {/* ⭐ R54 — desfazer vale pra QUALQUER vínculo (o N:1 é o único vivo; antes só o 1:1 oferecia) */}
+                        {i.status === 'PAID' && (i.reconciledTransaction || i.pagamentos.length > 0) && !loan.flexible && (
                           <button
                             type="button"
                             onClick={() => setConfirmUndo(i.number)}
                             className="text-[10px] text-muted-foreground hover:text-red-600 underline"
-                            title={`Tx ${i.reconciledTransaction.date.slice(0, 10)} · ${formatBRL(i.reconciledTransaction.amount)}`}
+                            title="volta a parcela pra em aberto e solta os pedaços do extrato"
                           >
                             Desfazer
                           </button>
@@ -650,7 +700,18 @@ export default function DetalheEmprestimoPage({
                       C41033828 saiu em 3 débitos no mesmo dia (4.923,71 + 3.224,94 +
                       2.085,70 = 10.234,35). Um "pago" seco esconderia isso — cada
                       mordida tem data, valor, conta e link pro extrato. */}
-                  {i.pagamentos.length > 1 && (
+                  {i.pagamentos.length > 0 && (
+                    <tr className="border-t border-dashed">
+                      <td />
+                      <td colSpan={7} className="px-3 py-1">
+                        <button type="button" data-expande={i.number} className="text-[11px] font-semibold" style={{ color: 'var(--emp-ind)' }}
+                          onClick={() => setAbertos((a) => { const n = new Set(a); if (n.has(i.number)) n.delete(i.number); else n.add(i.number); return n })}>
+                          {abertos.has(i.number) ? '▾' : '▸'} {i.pagamentos.length === 1 ? '1 pedaço do extrato' : `${i.pagamentos.length} pedaços do extrato`}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  {i.pagamentos.length > 0 && abertos.has(i.number) && (
                     <tr className="border-t border-dashed bg-emerald-50/10">
                       <td />
                       <td colSpan={7} className="px-3 py-2">
@@ -666,7 +727,7 @@ export default function DetalheEmprestimoPage({
                               <span className="truncate text-muted-foreground">{pg.description ?? ''}</span>
                               {pg.transactionId && (
                                 <Link href={`/transacoes?tx=${pg.transactionId}`} className="ml-auto shrink-0 text-primary hover:underline">
-                                  ver no extrato
+                                  ver no extrato →
                                 </Link>
                               )}
                             </div>
@@ -678,6 +739,9 @@ export default function DetalheEmprestimoPage({
                             </span>
                             <span className="text-muted-foreground">= parcela {formatBRL(i.payment)}</span>
                           </div>
+                          {i.linha.realizado && i.linha.detalhe && (
+                            <SplitEmChips capital={i.linha.amortizacao} juros={i.linha.detalhe.juros} correcao={i.linha.detalhe.correcao} mora={i.linha.detalhe.mora} />
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -722,12 +786,28 @@ export default function DetalheEmprestimoPage({
         />
       )}
 
+      {editando && (
+        <EditarContrato
+          empresaId={empresaId}
+          loanId={loanId}
+          focar={editando === 'indexer' ? 'indexer' : undefined}
+          ficha={{
+            lender: loan.lender, contractNumber: loan.contractNumber, rateType: loan.rateType, indexer: loan.indexer,
+            indexerPercent: loan.indexerPercent, interestRateMonthly: loan.interestRateMonthly,
+            amortizationSystem: loan.amortizationSystem, termMonths: loan.termMonths, principal: loan.principal,
+            iof: loan.iof, carencia: loan.carencia, notes: loan.notes,
+          }}
+          onClose={() => setEditando(false)}
+          onGravado={() => { setEditando(false); refresh() }}
+        />
+      )}
+
       <ConfirmDialog
         open={confirmDel}
         onOpenChange={setConfirmDel}
         title="Excluir empréstimo?"
-        description="Vai apagar o contrato + cronograma. Tx OFX vinculadas continuam existindo (sem vínculo)."
-        confirmLabel="Excluir"
+        description={data.agregados.fraseDoExcluir}
+        confirmLabel={data.agregados.destinoDaExclusao === 'relatorios' ? 'Tirar das telas' : 'Apagar de vez'}
         onConfirm={excluirLoan}
         variant="destructive"
       />

@@ -8,6 +8,12 @@ import { linhaDoCronograma, jurosRealizados } from '@/lib/loans/linha-do-cronogr
 import { saldoDevedorAtual } from '@/lib/loans/saldo'
 import { estadoDaParcela, ofereceMarcarPaga, rotuloDoGesto } from '@/lib/loans/estado-da-parcela'
 import { resumoDoFlexivel } from '@/lib/loans/resumo-do-flexivel'
+import { custoPagoDoContrato, credorDe, NOME_DO_CREDOR } from '@/lib/loans/carteira'
+import {
+  destinoExclusao, fraseDoExcluir, historiaDoContrato, cadastroIncompleto, patchDoContratoSchema,
+} from '@/lib/loans/ficha'
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
 interface Params {
   params: Promise<{ id: string; loanId: string }>
@@ -63,6 +69,10 @@ export async function GET(request: NextRequest, { params }: Params) {
     if (loan.companyId !== empresaId) {
       return NextResponse.json({ erro: 'Empréstimo de outra empresa' }, { status: 403 })
     }
+    // ⭐ R60 — excluído com história some de todas as telas (o nome só vive nos relatórios)
+    if (loan.archivedAt) {
+      return NextResponse.json({ erro: 'Empréstimo excluído' }, { status: 404 })
+    }
 
     const now = new Date()
 
@@ -81,8 +91,16 @@ export async function GET(request: NextRequest, { params }: Params) {
     // despesa financeira do DRE"*. Antes era Σ da AGENDA inteira, que num pós-fixado
     // soma a previsão das pagas com ZERO das futuras: nem realizado, nem projeção.
     // Medido no C61021346-2: dizia R$ 3.089,34 com R$ 4.649,06 realizados.
-    const jurosTotalContrato = jurosRealizados(loan.installments)
-    const jurosPagos = jurosTotalContrato
+    /**
+     * ⛔⛔ O BUG DO CARD "Juros do contrato / X pagos" (raio-X 24/11): as DUAS variáveis eram a
+     * MESMA (`jurosPagos = jurosTotalContrato`). Agora são duas perguntas diferentes (R59): o que a
+     * AGENDA prevê no contrato inteiro, e o que foi PAGO de fato (encargo apurado).
+     */
+    const jurosTotalContrato = round2(loan.installments.reduce((s, i) => s + i.interest + i.correcao, 0))
+    const ano = Number(now.toISOString().slice(0, 4))
+    const custoPago = custoPagoDoContrato(loan.installments, ano)
+    const jurosPagos = custoPago.desdeInicio
+    const jurosRealizadosLegado = jurosRealizados(loan.installments)
 
     // FLEXIBLE: quanto já foi devolvido = base original − saldo atual.
     const devolvido = Math.round((loan.principal - saldoDevedor) * 100) / 100
@@ -227,6 +245,26 @@ export async function GET(request: NextRequest, { params }: Params) {
     })
 
     // Pontos do gráfico = saldo devedor após cada parcela (closingBalance)
+    /**
+     * ⭐ a CURVA REAL × AGENDA (R55: convivem declaradas lado a lado). A agenda é o saldo final
+     * de cada parcela do banco; o real desce pelo CAPITAL efetivamente pago (pago − encargo
+     * apurado), parcela paga a parcela paga — só até hoje.
+     */
+    const rastreadas = loan.installments.filter((i) => i.number > loan.installmentsPaidBefore)
+    let saldoReal = rastreadas[0]?.openingBalance ?? loan.principal
+    const curva = rastreadas.map((i) => {
+      let real: number | null = null
+      if (i.status === 'PAID') {
+        const capital = i.paidTotal != null && i.paidInterest != null
+          ? i.paidTotal - (i.paidInterest + (i.paidCorrection ?? 0) + (i.paidPenalty ?? 0))
+          : i.amortization
+        saldoReal = round2(saldoReal - capital)
+        real = saldoReal
+      }
+      return { n: i.number, mes: i.dueDate.toISOString().slice(0, 7), agenda: round2(i.closingBalance), real }
+    })
+    const historia = await historiaDoContrato(prisma, loan.id)
+
     const chartPoints = [
       { x: 0, label: 'Inicial', saldoDevedor: loan.principal },
       ...loan.installments.map((i) => ({
@@ -278,6 +316,17 @@ export async function GET(request: NextRequest, { params }: Params) {
         saldoDevedor,
         jurosTotalContrato: Math.round(jurosTotalContrato * 100) / 100,
         jurosPagos: Math.round(jurosPagos * 100) / 100,
+        jurosRealizadosLegado,
+        // ⭐ R59 — o custo PAGO (apurado): desde o início e no ano, com a agenda do ano ao lado
+        custoPago,
+        banco: credorDe(loan.lender, loan.scheduleSource),
+        rotuloDoCredor: NOME_DO_CREDOR[credorDe(loan.lender, loan.scheduleSource)],
+        curva,
+        // ⭐ R60 — a confirmação de excluir DIZ os números, e o cadastro incompleto é cobrado
+        historia,
+        destinoDaExclusao: destinoExclusao(historia.temHistoria),
+        fraseDoExcluir: fraseDoExcluir(historia),
+        pendencias: cadastroIncompleto(loan),
         principalAmortizado: Math.round(paidAmort * 100) / 100,
         parcelasPagas: paid.length,
         parcelasTotal: loan.installments.length,
@@ -327,29 +376,67 @@ export async function GET(request: NextRequest, { params }: Params) {
 }
 
 // DELETE — remove o Loan inteiro (cascade installments). Tx OFX permanecem.
+/**
+ * ⭐⭐ R60 — EDITAR existe, campo a campo. ⚠️ A agenda NÃO é regerada por aqui (R55): taxa e sistema
+ * são a FICHA; a agenda muda só por "importar agenda do banco" ou "corrigir agenda".
+ */
+export async function PATCH(request: NextRequest, { params }: Params) {
+  try {
+    const { id: empresaId, loanId } = await params
+    const ctx = await getAuthContext(request, empresaId)
+    ctx.requirePermission('transaction.update')
+    const body = patchDoContratoSchema.parse(await request.json())
+
+    const loan = await prisma.loan.findFirst({
+      where: { id: loanId, companyId: empresaId, archivedAt: null },
+      select: { id: true },
+    })
+    if (!loan) return NextResponse.json({ erro: 'Empréstimo não encontrado' }, { status: 404 })
+    if (body.bankAccountId) {
+      const conta = await prisma.bankAccount.findFirst({ where: { id: body.bankAccountId, companyId: empresaId }, select: { id: true } })
+      if (!conta) return NextResponse.json({ erro: 'Conta bancária de outra empresa' }, { status: 400 })
+    }
+    // ⚠️ pré-fixado não carrega indexador (cobrar o pós sem indexador é a outra metade da regra)
+    const data = body.rateType === 'PRE' ? { ...body, indexer: null, indexerPercent: null } : body
+    const atualizado = await prisma.loan.update({
+      where: { id: loanId },
+      data,
+      select: { id: true, rateType: true, indexer: true, scheduleSource: true },
+    })
+    return NextResponse.json({ ok: true, pendencias: cadastroIncompleto(atualizado) })
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
+
+/**
+ * ⭐⭐ R60 — EXCLUIR com DOIS destinos.
+ *  - sem história (nenhuma paga, nenhum vínculo, liberação solta) → apaga de vez;
+ *  - com história → `archivedAt`: some de TODAS as telas (`CONTRATO_VISIVEL`), e as parcelas pagas
+ *    continuam onde o DRE as lê — o nome sobrevive só nos relatórios históricos.
+ * ⛔ Antes: apagava SEMPRE, e a cascata levava os pedaços N:1 → os encargos já apurados SUMIAM do
+ * DRE de meses fechados.
+ */
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
     const { id: empresaId, loanId } = await params
     const ctx = await getAuthContext(request, empresaId)
     ctx.requirePermission('transaction.delete')
 
-    const loan = await prisma.loan.findUnique({
-      where: { id: loanId },
-      select: { companyId: true },
+    const loan = await prisma.loan.findFirst({
+      where: { id: loanId, companyId: empresaId, archivedAt: null },
+      select: { id: true },
     })
     if (!loan) return NextResponse.json({ erro: 'Não encontrado' }, { status: 404 })
-    if (loan.companyId !== empresaId) {
-      return NextResponse.json({ erro: 'Empréstimo de outra empresa' }, { status: 403 })
+
+    const historia = await historiaDoContrato(prisma, loanId)
+    const destino = destinoExclusao(historia.temHistoria)
+    if (destino === 'relatorios') {
+      await prisma.loan.update({ where: { id: loanId }, data: { archivedAt: new Date() } })
+    } else {
+      await prisma.loan.delete({ where: { id: loanId } })
     }
-
-    // Limpa reconciledTransactionId antes (FK SetNull já cuida, mas explícito)
-    await prisma.loanInstallment.updateMany({
-      where: { loanId },
-      data: { reconciledTransactionId: null },
-    })
-    await prisma.loan.delete({ where: { id: loanId } })
-
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, destino, frase: fraseDoExcluir(historia) })
   } catch (error) {
     return handleApiError(error)
   }

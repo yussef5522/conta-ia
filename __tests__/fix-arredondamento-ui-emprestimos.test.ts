@@ -70,10 +70,8 @@ describe('Fix arredondamento — uso nas telas', () => {
       join(ROOT, 'app/(dashboard)/empresas/[id]/emprestimos/[loanId]/page.tsx'),
       'utf-8',
     )
-    const carteira = readFileSync(
-      join(ROOT, 'app/(dashboard)/empresas/[id]/emprestimos/page.tsx'),
-      'utf-8',
-    )
+    // ⭐ 25/11 (lei v1) — o rótulo da taxa da carteira nasce na lib da carteira (rotuloDaTaxa)
+    const carteira = readFileSync(join(ROOT, 'lib/loans/carteira.ts'), 'utf-8')
     expect(detalhe).toMatch(/fmtRateMonthly/)
     expect(carteira).toMatch(/fmtRateMonthly/)
     // não tem mais o ad-hoc .toFixed(2)% a.m. em detalhe

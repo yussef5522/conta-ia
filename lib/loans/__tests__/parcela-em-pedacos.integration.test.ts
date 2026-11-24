@@ -206,7 +206,9 @@ describe('⭐⭐⭐ O CASO REAL: duas linhas do banco → UMA parcela', () => {
     const meio = await prisma.loanInstallment.findUniqueOrThrow({
       where: { id: parcela25 }, select: { status: true, paidTotal: true },
     })
-    expect(meio.status, 'a 1ª mordida já quitou a parcela (ela não deveria)').toBe('PARTIAL')
+    // ⭐ R55 (25/11) — o parcial fica OPEN com o pago gravado; o PARCIAL é DERIVADO da Σ dos
+    // pedaços (`estadoDaParcela`), nunca um status escrito (o fantasma do C41033828 #22)
+    expect(meio.status, 'a 1ª mordida já quitou a parcela (ela não deveria)').toBe('OPEN')
     expect(meio.paidTotal).toBe(4257.46)
 
     await vincular([txLiquid])

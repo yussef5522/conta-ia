@@ -17,9 +17,7 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { calculateDRE } from '@/lib/dre/calculator'
 import { dreQuerySchema } from '@/lib/dre/validation'
 import {
-  buildLoan1to1InterestTx,
   buildLoanN1InterestTx,
-  type Loan1to1Row,
   type LoanN1Row,
 } from '@/lib/loans/dre-interest'
 import type {
@@ -300,60 +298,6 @@ export async function computeDreResult(
       select: { id: true },
     })
 
-    if (jurosCategory) {
-      const installmentTxsRaw = await prisma.transaction.findMany({
-        where: {
-          ...tenantFilter,
-          // Tem parcela casada apontando pra ela
-          loanInstallmentPaid: { isNot: null },
-          // Mesmos filtros qualitativos da query principal — exceto
-          // loanInstallmentPaid (que aqui exigimos NOT NULL).
-          type: { not: 'TRANSFER' },
-          isCardPayment: false,
-          pendingTransfer: false,
-          loanDisbursement: { is: null },
-          lifecycle: lifecycleFilter,
-          isInternalTransfer: false,
-          status: { not: 'IGNORED' },
-          ...(view === 'realizado'
-            ? {
-                NOT: {
-                  origin: 'OFX',
-                  reconciledWithId: null,
-                  reconciledFrom: { some: {} },
-                },
-              }
-            : {}),
-          OR: lifecycleDateClauses,
-        },
-        select: {
-          id: true,
-          type: true,
-          amount: true,
-          date: true,
-          competenceDate: true,
-          paymentDate: true,
-          isCardPayment: true,
-          pendingTransfer: true,
-          loanInstallmentPaid: {
-            // Sprint Pagamento Parcela Redesign (28/06/2026): inclui `correcao`
-            // (CDI/IPCA pós-fixado). DRE conta interest + correcao como Despesa
-            // Financeira (STJ: "CDI sobre empréstimo é juros na essência").
-            select: { interest: true, correcao: true, amortization: true, dreHeld: true },
-          },
-        },
-      })
-
-      // Sprint DRE-Represado (14/08/2026): construção via lib única (respeita
-      // dreHeld — parcela represada não entra no DRE). Ver lib/loans/dre-interest.ts.
-      transactions.push(
-        ...buildLoan1to1InterestTx(
-          installmentTxsRaw as unknown as Loan1to1Row[],
-          jurosCategory.id,
-        ),
-      )
-    }
-
     // Sprint Casar Pagamento (04/08/2026): parcelas pagas via ponte N:1 (débito
     // parcial Sicredi). Reinjeta os ENCARGOS REAIS (juros+correção+mora) como
     // Despesa Financeira. Amortização fica FORA (baixa de passivo). Só entra
@@ -364,7 +308,13 @@ export async function computeDreResult(
         where: {
           loan: { companyId },
           status: 'PAID',
-          payments: { some: {} },
+          /**
+           * ⛔⛔ R54 (25/11/2026) — UMA FONTE SÓ: os encargos APURADOS (`paid*`). O ramo 1:1, que
+           * lia `interest + correcao` da AGENDA pela data da transação, morreu — era a segunda
+           * régua do mesmo fato. O vínculo 1:1 legado só é lido aqui pra achar a parcela até o
+           * backfill (scripts/backfill-emprestimos-v1.ts) movê-lo pra pedaço N:1.
+           */
+          OR: [{ payments: { some: {} } }, { reconciledTransactionId: { not: null } }],
           paidInterest: { not: null },
           paidDate: { gte: searchRange.start, lte: searchRange.end },
         },

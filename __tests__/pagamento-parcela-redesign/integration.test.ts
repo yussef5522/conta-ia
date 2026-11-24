@@ -6,77 +6,28 @@ import { join } from 'path'
 
 const root = (p: string) => join(__dirname, '..', '..', p)
 
-describe('endpoint candidatos — aceita PDF + tolerância pos-fixado', () => {
-  const code = readFileSync(
-    root('app/api/empresas/[id]/emprestimos/[loanId]/parcelas/[number]/candidatos/route.ts'),
-    'utf-8',
-  )
-
-  it("origin aceita IN ('OFX','PDF','MANUAL')", () => {
-    expect(code).toMatch(/origin:\s*\{\s*in:\s*\[\s*'OFX',\s*'PDF',\s*'MANUAL'\s*\]\s*\}/)
+// ⛔⛔ R54/R55 (25/11/2026) — AQUI VIVIAM 3 DESCRIBES QUE EXIGIAM O DEFEITO: a rota do "marcar
+// paga" com split PRÓPRIO (installment-match) gravando `payment`/`interest`/`correcao`/
+// `closingBalance` POR CIMA da agenda, e o DRE lendo `interest + correcao` da agenda pela porta
+// 1:1. A lei nova (docs/emprestimos-referencia.html) mata as duas coisas. O comportamento novo é
+// provado por EXECUÇÃO em `lib/loans/__tests__/porta-unica-r54.integration.test.ts`; o que fica
+// aqui é a trava estrutural de que a rota é um fio fino em volta da porta.
+describe('⛔ R54 — o "marcar paga" do detalhe é a PORTA ÚNICA', () => {
+  const sem = (c: string) => c.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+  const rota = sem(readFileSync(root('app/api/empresas/[id]/emprestimos/[loanId]/parcelas/[number]/route.ts'), 'utf-8'))
+  const cand = sem(readFileSync(root('app/api/empresas/[id]/emprestimos/[loanId]/parcelas/[number]/candidatos/route.ts'), 'utf-8'))
+  it('POST grava por vincularPagamentoDeParcela e DELETE desfaz por desfazerVinculoDeParcela', () => {
+    expect(rota).toMatch(/vincularPagamentoDeParcela\(/)
+    expect(rota).toMatch(/desfazerVinculoDeParcela\(/)
   })
-
-  it('NÃO usa mais hardcoded origin=OFX', () => {
-    expect(code).not.toMatch(/origin:\s*'OFX'\s*,/)
+  it('⛔ a rota não escreve na parcela por conta própria (a agenda é sagrada — R55)', () => {
+    expect(rota).not.toMatch(/loanInstallment\.update/)
+    expect(rota).not.toMatch(/installment-match/)
   })
-
-  it('importa lib pura installment-match', () => {
-    expect(code).toMatch(/from '@\/lib\/loans\/installment-match'/)
-    expect(code).toMatch(/computeMatchConfidence/)
-    expect(code).toMatch(/computePosFixedSplit/)
-    expect(code).toMatch(/computePreFixedSplit/)
+  it('as candidatas são a PRÉVIA da porta (mesma régua, mesmo split)', () => {
+    expect(cand).toMatch(/previaDoVinculo\(/)
+    expect(cand).not.toMatch(/computePosFixedSplit|computePreFixedSplit/)
   })
-
-  it('retorna confidence + split por candidato', () => {
-    expect(code).toMatch(/confidence,/)
-    expect(code).toMatch(/split,/)
-  })
-})
-
-describe('endpoint POST — recalcula split pos-fixado server-side', () => {
-  const code = readFileSync(
-    root('app/api/empresas/[id]/emprestimos/[loanId]/parcelas/[number]/route.ts'),
-    'utf-8',
-  )
-
-  it('importa computePosFixedSplit / computePreFixedSplit', () => {
-    expect(code).toMatch(/from '@\/lib\/loans\/installment-match'/)
-    expect(code).toMatch(/computePosFixedSplit/)
-    expect(code).toMatch(/computePreFixedSplit/)
-  })
-
-  it('escolhe split baseado em isEstimate', () => {
-    expect(code).toMatch(/installment\.isEstimate\s*\?\s*computePosFixedSplit/)
-  })
-
-  it('grava interest + correcao + realPayment + closingBalance', () => {
-    expect(code).toMatch(/realPayment:\s*split\.realPayment/)
-    expect(code).toMatch(/interest:\s*split\.interest/)
-    expect(code).toMatch(/correcao:\s*split\.correcao/)
-    expect(code).toMatch(/closingBalance:\s*split\.closingBalance/)
-    expect(code).toMatch(/payment:\s*split\.realPayment/)
-  })
-
-  it('response inclui split (pro toast da UI mostrar)', () => {
-    expect(code).toMatch(/split:\s*\{/)
-    expect(code).toMatch(/totalDespesaFinanceira/)
-  })
-})
-
-describe('DRE — query auxiliar soma correcao + interest', () => {
-  const code = readFileSync(root('app/api/empresas/[id]/dre/route.ts'), 'utf-8')
-
-  it('select inclui correcao no loanInstallmentPaid', () => {
-    expect(code).toMatch(/select:\s*\{\s*interest:\s*true,\s*correcao:\s*true,\s*amortization:\s*true/)
-  })
-
-  // ⛔ AQUI VIVIAM DOIS GREPS DE FONTE — `const jurosTotal = interest + correcao` e
-  // `if (jurosTotal <= 0) continue` DENTRO da rota do DRE. Ficaram VERMELHOS por dias e
-  // **não era regressão: a lógica mudou de arquivo** (extraída pra `lib/loans/dre-interest.ts`
-  // em 14/08, dono único). O grep não distingue "refatorei" de "quebrei" — REGRA 3.
-  // Substituídos por `dre-juros-pipeline.test.ts`, que MONTA as transações pelo caminho
-  // real, roda o `calculateDRE` e confere o NÚMERO (445,67), inclusive o contrafactual do
-  // juros derivado NEGATIVO (o −3.024 real do C41022570) que viraria lucro inventado.
 })
 
 describe('UI — modal CandidatosDialog tem confirmação premium', () => {
@@ -85,22 +36,13 @@ describe('UI — modal CandidatosDialog tem confirmação premium', () => {
     'utf-8',
   )
 
-  it('mostra selo IA com % confidence', () => {
-    expect(code).toMatch(/IA ·/)
-    expect(code).toMatch(/Math\.round\(.*?\.score.*?\* 100\)/)
-  })
-
-  it('banner CDI quando pos-fixado + diff positivo', () => {
-    expect(code).toMatch(/showCDIBanner/)
-    expect(code).toMatch(/correção do CDI/)
-    expect(code).toMatch(/STJ/)
-  })
-
+  // ⛔ 25/11 (R54) — o selo de % de confiança e o banner do CDI morreram com o split próprio: o
+  // diálogo mostra a PRÉVIA da porta (o que vai ser gravado), e a recusa da régua única
   it('breakdown "Como fica nos livros" com amortização + juros + correção', () => {
     expect(code).toMatch(/Como fica nos livros/)
     expect(code).toMatch(/Amortização do principal/)
     expect(code).toMatch(/Juros do contrato/)
-    expect(code).toMatch(/split\.correcao > 0/)
+    expect(code).toMatch(/split\.paidCorrection > 0/)
   })
 
   it('botões "Não é esta" e "Confirmar pagamento"', () => {

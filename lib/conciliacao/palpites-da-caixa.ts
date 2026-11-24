@@ -41,6 +41,8 @@ import type { LinhaCrua } from './leitura-da-caixa'
 import { lerCarteira, type FaturaResumo } from '@/lib/credit-card-pj/carteira'
 import { linhaCitaOEmissor, INICIO_DO_MODULO } from '@/lib/credit-card-pj/ciclo'
 import { diaDoBrasil } from '@/lib/margem/dia'
+import { sugereJurosCheque, padraoDaDescricao, categoriaDosJurosDeCheque } from '@/lib/loans/cheque-especial'
+import { CONTRATO_VISIVEL } from '@/lib/loans/ficha'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const dia = (d: Date) => d.toISOString().slice(0, 10).split('-').reverse().join('/')
@@ -62,7 +64,7 @@ export async function palpitesDaCaixa(
   const debitos = linhas.filter((l) => l.type === 'DEBIT')
 
   // ── o que cada motor precisa, buscado UMA vez ─────────────────────────────
-  const [cartoes, loans, fornecedores, recusados, padroes] = await Promise.all([
+  const [cartoes, loans, fornecedores, recusados, padroes, chequeRegras, chequeCategoria, contasDaEmpresa] = await Promise.all([
     /**
      * ⚠️ `dueDay` entrou em 25/09 — sem ele o retrato da fatura não tem como dizer o
      * vencimento, e é a MESMA doença que o comentário abaixo documenta (o `status` que
@@ -84,13 +86,20 @@ export async function palpitesDaCaixa(
      * TypeScript teria acusado o campo faltando.
      */
     db.loan.findMany({
-      where: { companyId: empresaId, status: { not: 'PAID' } },
+      // ⭐ R60 (25/11) — contrato excluído com história some da caixa de entrada também
+      where: { companyId: empresaId, status: { not: 'PAID' }, ...CONTRATO_VISIVEL },
       select: { id: true, contractNumber: true, lender: true, bankAccountId: true, status: true },
     }),
     fornecedoresDaEmpresa(db, empresaId),
     paresRecusados(db, empresaId),
     padroesDeProcessadora(db, empresaId),
+    // ⭐ R65 (25/11) — juros de cheque especial: as regras aprendidas, a categoria-alvo e o nome das contas
+    debitos.length ? db.chequeEspecialRegra.findMany({ where: { companyId: empresaId }, select: { bankAccountId: true, padrao: true } }) : Promise.resolve([]),
+    debitos.length ? categoriaDosJurosDeCheque(db, empresaId) : Promise.resolve(null),
+    debitos.length ? db.bankAccount.findMany({ where: { companyId: empresaId }, select: { id: true, name: true } }) : Promise.resolve([]),
   ])
+  const chavesCheque = new Set(chequeRegras.map((r) => `${r.bankAccountId}|${r.padrao}`))
+  const nomeDaConta = new Map(contasDaEmpresa.map((c) => [c.id, c.name.trim()]))
 
   /**
    * ⭐ O NET DE CADA FATURA, buscado UMA vez pros N cartões.
@@ -271,6 +280,27 @@ export async function palpitesDaCaixa(
           })
         }
       } catch { /* fail-soft: sem palpite de aporte nesta linha */ }
+    }
+
+    // ── 2c. JUROS DE CHEQUE ESPECIAL (só débito) — R65 ─────────────────────
+    /**
+     * ⭐⭐ R65 (25/11/2026): descrição conhecida de juros de limite (o código do banco) OU regra
+     * aprendida da conta → palpite pronto. ⛔ É PALPITE: o dono confirma; confirmado uma vez, o
+     * resolver grava a regra (`aprenderCheque`). Nunca marca sozinho.
+     */
+    if (l.type === 'DEBIT' && chequeCategoria && l.bankAccountId) {
+      const aprendida = chavesCheque.has(`${l.bankAccountId}|${padraoDaDescricao(descricao)}`)
+      if (aprendida || sugereJurosCheque(descricao)) {
+        candidatos.push({
+          acao: 'CATEGORIA',
+          familia: '💳 JUROS DE CHEQUE ESPECIAL',
+          titulo: `juros de cheque especial · ${nomeDaConta.get(l.bankAccountId) ?? 'conta'}`,
+          detalhe: `${chequeCategoria.name} · ${brl(l.amount)}${aprendida ? ' · regra aprendida' : ''}`,
+          diferenca: 0,
+          confianca: aprendida ? 'ALTA' : 'MEDIA',
+          alvo: { categoryId: chequeCategoria.id, aprenderCheque: true },
+        })
+      }
     }
 
     // ── 3. CONTA A PAGAR (só débito) ───────────────────────────────────────

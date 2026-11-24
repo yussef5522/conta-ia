@@ -6515,3 +6515,22 @@ Replantios 9/9.
 - **Fila** `fila-de-gemeos.ts` + `stock_item_par_decidido` (migration CREATE-only): parecido = palavras
   contidas (2+) ou ≤2 letras sem mudar dígito; aviso `GEMEOS_SUSPEITOS` → tela `/estoque/itens/gemeos`.
 Replantios 5/5.
+
+## ⭐⭐⭐ EMPRÉSTIMOS NÍVEL MUNDO — lei v1, porta única, agenda sagrada, cheque especial (25/11/2026)
+Lei `docs/emprestimos-referencia.html` (md5 f44e8305…; 18 pinos rodam contra a lib em
+`__tests__/regras-ui/emprestimos-bate-com-a-lei.test.tsx`).
+- **R54/R55**: "marcar paga" do detalhe, OFX (`autoConciliarParcelas`) e caixa gravam por `vincularPagamentoDeParcela`
+  (N:1 + paid*); a porta não escreve mais `closingBalance`/`amortization`; parcial fica `OPEN` (o `PARTIAL` gravado
+  morreu — era ele o fantasma do C41033828 #22). Desfazer = `desfazerVinculoDeParcela` (devolve tudo, `realPayment` inclusive).
+  O motor da prévia (conta garantida, teto, bloqueio) morava numa rota servida por um modal ÓRFÃO
+  (`LinkPaymentModal`) — porta sem maçaneta; virou `lib/loans/previa-do-vinculo.ts` e serve o diálogo vivo.
+  DRE lê juros de UMA fonte (paid*). Mútuo: o devolvido é `capitalDevolvidoNaPaga` (paidTotal), não a amortização.
+- **R58**: a valoração da parcela no mês saiu do laço de `lerCompromissos` pra `lib/loans/valor-da-parcela.ts`
+  (`avaliarParcela`) — Mesa/Custos Fixos e a carteira usam a mesma. Na carteira, PARCIAL conta o que FALTA.
+- **R60**: PATCH da ficha; DELETE com dois destinos (`archivedAt` = some das telas, história fica pro DRE).
+- **R63**: importar agenda oferece "cadastrar agora →" (`lib/loans/cadastro-na-hora.ts`), nunca pula calado.
+- **R64/R65**: `lib/loans/cheque-especial.ts` — juros de limite pelo código do banco (medido: Sicredi `JUROS UTILIZ.CH.ESPECIAL`,
+  Banrisul `ENCARGOS CTA UNICA`/`JUROS` exato, Caixa `COBRANCA DE JUROS`; a Stone `JUROS — fornecedor` é mora e fica fora),
+  regra aprendida em `cheque_especial_regras` (só palpita). Replantios 5/5 (2ª porta, agenda escrita, cheque fora do custo,
+  sem PATCH, import pulando calado).
+

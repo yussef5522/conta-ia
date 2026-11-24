@@ -9,12 +9,12 @@
 // vermelho de verdade.
 //
 // ⭐ O QUE ESTES TESTES FAZEM NO LUGAR: montam as transações de juros pelo caminho REAL
-// (`buildLoan1to1InterestTx` / `buildLoanN1InterestTx`), passam pelo `calculateDRE` de
+// (`buildLoanN1InterestTx` — uma fonte só desde R54, 25/11), passam pelo `calculateDRE` de
 // verdade e **conferem o NÚMERO** que sai em DESPESAS_FINANCEIRAS. Se alguém mover o
 // arquivo de novo, isto continua verde; se alguém quebrar a conta, fica vermelho.
 
 import { describe, it, expect } from 'vitest'
-import { buildLoan1to1InterestTx, buildLoanN1InterestTx } from '../../lib/loans/dre-interest'
+import { buildLoanN1InterestTx } from '../../lib/loans/dre-interest'
 import { calculateDRE } from '../../lib/dre/calculator'
 import type { TransactionForDRE, CategoryForDRE } from '../../lib/dre/types'
 
@@ -32,13 +32,12 @@ function despesaFinanceira(txs: TransactionForDRE[]): number {
   return r.groups.find((g) => g.group === 'DESPESAS_FINANCEIRAS')?.total ?? 0
 }
 
-const parcela = (over: Partial<Parameters<typeof buildLoan1to1InterestTx>[0][number]>) => ({
-  id: 'tx1', type: 'DEBIT' as const, amount: 2927.02,
-  date: new Date('2026-07-27'), competenceDate: new Date('2026-07-27'),
-  paymentDate: new Date('2026-07-27'), isCardPayment: false, pendingTransfer: false,
-  loanInstallmentPaid: { interest: 311.26, correcao: 134.41, dreHeld: false },
-  ...over,
-})
+// ⛔ R54 (25/11/2026) — os juros vêm dos encargos APURADOS (paid*), nunca da agenda
+type Enc = { interest: number; correcao: number; dreHeld: boolean }
+const parcela = (over: { id?: string; loanInstallmentPaid?: Enc } = {}) => {
+  const e = over.loanInstallmentPaid ?? { interest: 311.26, correcao: 134.41, dreHeld: false }
+  return { id: over.id ?? 'i1', paidDate: new Date('2026-07-27'), paidInterest: e.interest, paidCorrection: e.correcao, paidPenalty: 0, dreHeld: e.dreHeld }
+}
 
 describe('⭐ o DRE conta juros + CORREÇÃO, não só o juros', () => {
   it('⭐ parcela 2.927,02 (amort 2.481,35 + juros 311,26 + correção 134,41) → DRE 445,67', () => {
@@ -46,13 +45,13 @@ describe('⭐ o DRE conta juros + CORREÇÃO, não só o juros', () => {
     // DRE subestimaria a despesa financeira em toda parcela pós-fixada (STJ: a correção
     // pelo CDI é juros na essência). E a AMORTIZAÇÃO (2.481,35) não entra em nada:
     // é baixa de passivo, não despesa.
-    const txs = buildLoan1to1InterestTx([parcela({})], JUROS.id)
+    const txs = buildLoanN1InterestTx([parcela({})], JUROS.id)
     expect(txs[0].loanInterestSplit).toBeCloseTo(445.67, 2)
     expect(despesaFinanceira(txs)).toBeCloseTo(445.67, 2)
   })
 
   it('⛔ contrafactual: se contasse só `interest`, o DRE diria 311,26 — 134,41 a menos', () => {
-    const soJuros = buildLoan1to1InterestTx(
+    const soJuros = buildLoanN1InterestTx(
       [parcela({ loanInstallmentPaid: { interest: 311.26, correcao: 0, dreHeld: false } })],
       JUROS.id,
     )
@@ -72,7 +71,7 @@ describe('⭐ o DRE conta juros + CORREÇÃO, não só o juros', () => {
 
 describe('⛔⛔ o guard `jurosTotal <= 0` — e o que ele evita é LUCRO INVENTADO', () => {
   it('⛔ parcela 100% amortização (juros 0 + correção 0) não gera despesa nenhuma', () => {
-    const txs = buildLoan1to1InterestTx(
+    const txs = buildLoanN1InterestTx(
       [parcela({ loanInstallmentPaid: { interest: 0, correcao: 0, dreHeld: false } })],
       JUROS.id,
     )
@@ -86,20 +85,20 @@ describe('⛔⛔ o guard `jurosTotal <= 0` — e o que ele evita é LUCRO INVENT
     // menor que a amortização agendada). Sem o guard, essa parcela entraria como despesa
     // NEGATIVA e **abateria a despesa financeira das outras parcelas do mês** — inflando
     // o lucro com um número que não existe. Órfã é melhor que casada errado.
-    const negativa = buildLoan1to1InterestTx(
+    const negativa = buildLoanN1InterestTx(
       [parcela({ id: 'tx-neg', loanInstallmentPaid: { interest: -3024, correcao: 0, dreHeld: false } })],
       JUROS.id,
     )
     expect(negativa).toHaveLength(0)
 
     // e no DRE, junto com uma parcela boa, o total NÃO é contaminado
-    const boas = buildLoan1to1InterestTx([parcela({})], JUROS.id)
+    const boas = buildLoanN1InterestTx([parcela({})], JUROS.id)
     expect(despesaFinanceira([...boas, ...negativa])).toBeCloseTo(445.67, 2)
   })
 
   it('⚠️ represado (dreHeld) fica FORA do DRE mesmo com juros gravado', () => {
     // mês fechado: o encargo existe na parcela, mas só reaparece quando o contador libera
-    const txs = buildLoan1to1InterestTx(
+    const txs = buildLoanN1InterestTx(
       [parcela({ loanInstallmentPaid: { interest: 311.26, correcao: 134.41, dreHeld: true } })],
       JUROS.id,
     )

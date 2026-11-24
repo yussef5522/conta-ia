@@ -9,19 +9,16 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { buildLoan1to1InterestTx, type Loan1to1Row } from '../../lib/loans/dre-interest'
+import { buildLoanN1InterestTx, type LoanN1Row } from '../../lib/loans/dre-interest'
 
 const root = (p: string) => join(__dirname, '..', '..', p)
 
 // Sprint DRE-Represado (14/08/2026): a construção da tx de juros saiu da rota
 // pra lib/loans/dre-interest.ts (dono único + respeita dreHeld). Os 2 testes
 // abaixo que eram grep-de-string viraram COMPORTAMENTAIS (REGRA 3).
-function row1to1(interest: number, correcao: number): Loan1to1Row {
-  return {
-    id: 't', type: 'DEBIT', amount: 100, date: new Date('2026-07-10T00:00:00Z'),
-    competenceDate: null, paymentDate: null, isCardPayment: false, pendingTransfer: false,
-    loanInstallmentPaid: { interest, correcao, dreHeld: false },
-  }
+// ⛔ R54 (25/11/2026) — uma fonte só: os encargos APURADOS da parcela (paid*).
+function rowN1(paidInterest: number, paidCorrection: number): LoanN1Row {
+  return { id: 'i', paidDate: new Date('2026-07-10T00:00:00Z'), paidInterest, paidCorrection, paidPenalty: 0, dreHeld: false }
 }
 
 describe('Sprint DRE Cleanup — ACHADO #2 query principal filtra parcela casada', () => {
@@ -35,25 +32,25 @@ describe('Sprint DRE Cleanup — ACHADO #2 query principal filtra parcela casada
     expect(code).toMatch(/loanDisbursement:\s*\{\s*is:\s*null\s*\}/)
   })
 
-  it('query auxiliar busca parcelas casadas com interest + correcao', () => {
-    expect(code).toMatch(/loanInstallmentPaid:\s*\{\s*isNot:\s*null\s*\}/)
-    // Sprint Pagamento Parcela Redesign (28/06/2026) — select inclui correcao
-    expect(code).toMatch(/loanInstallmentPaid:[\s\S]*?select:[\s\S]*?interest:\s*true/)
-    expect(code).toMatch(/loanInstallmentPaid:[\s\S]*?select:[\s\S]*?correcao:\s*true/)
+  it('⛔ R54: a query auxiliar NÃO lê mais juros da AGENDA pela porta 1:1 (uma fonte só)', () => {
+    const sem = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    expect(sem).not.toMatch(/loanInstallmentPaid:\s*\{\s*isNot:\s*null\s*\}/)
+    expect(sem).not.toMatch(/buildLoan1to1InterestTx/)
+    expect(sem).toMatch(/paidInterest:\s*\{\s*not:\s*null\s*\}/)
   })
 
-  it('reinjeta parcela casada como juros = interest + correcao (COMPORTAMENTAL)', () => {
-    const out = buildLoan1to1InterestTx([row1to1(70, 30)], 'cat-juros')
+  it('reinjeta os encargos apurados como juros = paidInterest + paidCorrection (COMPORTAMENTAL)', () => {
+    const out = buildLoanN1InterestTx([rowN1(70, 30)], 'cat-juros')
     expect(out).toHaveLength(1)
     expect(out[0].loanInterestSplit).toBe(100) // 70 + 30
     expect(out[0].categoryId).toBe('cat-juros')
     // a rota DELEGA pra lib única
-    expect(code).toMatch(/buildLoan1to1InterestTx/)
-    expect(code).toMatch(/categoryId:\s*jurosCategory\.id|jurosCategory\.id/)
+    expect(code).toMatch(/buildLoanN1InterestTx/)
+    expect(code).toMatch(/jurosCategory\.id/)
   })
 
-  it('pula parcela 100% amortizacao (jurosTotal <= 0) (COMPORTAMENTAL)', () => {
-    const out = buildLoan1to1InterestTx([row1to1(0, 0)], 'cat-juros')
+  it('pula parcela 100% amortizacao (encargos <= 0) (COMPORTAMENTAL)', () => {
+    const out = buildLoanN1InterestTx([rowN1(0, 0)], 'cat-juros')
     expect(out).toHaveLength(0)
   })
 

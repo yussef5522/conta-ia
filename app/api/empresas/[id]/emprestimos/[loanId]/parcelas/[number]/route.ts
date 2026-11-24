@@ -1,214 +1,95 @@
 // POST   /api/empresas/[id]/emprestimos/[loanId]/parcelas/[number]
-//        → confirma parcela como paga (manual, escolhe tx) OU sugere candidatos
+//        → "marcar paga" do detalhe: grava pela PORTA ÚNICA (pedaços N:1 + encargos apurados)
 // DELETE /api/empresas/[id]/emprestimos/[loanId]/parcelas/[number]
-//        → desfaz pagamento (OPEN de novo, libera tx)
+//        → desfaz: devolve TUDO (status, data, vínculos, encargos) — a agenda não é tocada
 // GET    /api/empresas/[id]/emprestimos/[loanId]/parcelas/[number]/candidatos
-//        → mostra debitos candidatos pra marcação manual
+//        → mostra os débitos candidatos
+//
+// ⛔⛔ R54 — UMA PORTA SÓ PRA PAGAR PARCELA (25/11/2026, lei docs/emprestimos-referencia.html).
+// Esta rota tinha caminho PRÓPRIO: gravava o vínculo 1:1 (`reconciledTransactionId`) e
+// SOBRESCREVIA `payment`/`interest`/`correcao`/`closingBalance` da agenda com o split — e o
+// desfazer devolvia só o status, deixando a agenda alterada pra sempre (R55). Agora ela é um
+// fio fino em volta das MESMAS duas funções que a caixa de entrada e o import OFX usam.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
-// Sprint Pagamento Parcela Redesign (28/06/2026) — split contábil pos-fixado.
-import {
-  computePosFixedSplit,
-  computePreFixedSplit,
-} from '@/lib/loans/installment-match'
 import { JanelaBancariaNoFlexivelError, ehJanelaBancaria } from '@/lib/loans/janela-bancaria'
+import { vincularPagamentoDeParcela, VinculoDeParcelaError } from '@/lib/loans/vincular-pagamento'
+import { desfazerVinculoDeParcela, DesfazerVinculoError } from '@/lib/loans/desfazer-vinculo'
 
 interface Params {
   params: Promise<{ id: string; loanId: string; number: string }>
 }
 
-const confirmSchema = z.object({
-  transactionId: z.string().cuid(),
-})
+// um débito (o gesto clássico) ou o grupo do dia (os pedaços)
+const confirmSchema = z.union([
+  z.object({ transactionId: z.string().cuid() }),
+  z.object({ transactionIds: z.array(z.string().cuid()).min(1).max(20) }),
+])
 
-// POST — marca parcela PAID + linka tx
+function numeroDaParcela(s: string): number | null {
+  const n = parseInt(s, 10)
+  return Number.isInteger(n) && n >= 1 ? n : null
+}
+
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { id: empresaId, loanId, number: numberStr } = await params
-    const number = parseInt(numberStr, 10)
-    if (!Number.isInteger(number) || number < 1) {
-      return NextResponse.json({ erro: 'number inválido' }, { status: 400 })
-    }
+    const number = numeroDaParcela(numberStr)
+    if (number == null) return NextResponse.json({ erro: 'number inválido' }, { status: 400 })
     const ctx = await getAuthContext(request, empresaId)
     ctx.requirePermission('transaction.update')
 
-    const body = await request.json()
-    const { transactionId } = confirmSchema.parse(body)
+    const body = confirmSchema.parse(await request.json())
+    const transactionIds = 'transactionIds' in body ? body.transactionIds : [body.transactionId]
 
-    const loan = await prisma.loan.findUnique({
-      where: { id: loanId },
-      select: {
-        companyId: true,
-        bankAccountId: true,
-        interestRateMonthly: true,
-        scheduleSource: true,
-      },
+    const loan = await prisma.loan.findFirst({
+      where: { id: loanId, companyId: empresaId },
+      select: { scheduleSource: true },
     })
-    if (!loan) return NextResponse.json({ erro: 'Loan não encontrado' }, { status: 404 })
-    if (loan.companyId !== empresaId) {
-      return NextResponse.json({ erro: 'Outra empresa' }, { status: 403 })
-    }
-    /**
-     * ⛔⛔ A GRAVAÇÃO DO «MARCAR PAGA» TAMBÉM FECHA NO FLEXÍVEL (09/10) — não só a busca.
-     *
-     * ⚠️ Travar só o `candidatos` deixaria **a porta de escrita aberta** pro mesmo fato: duas
-     * portas gravando devolução é exatamente o que o `loan_installment_no_double_link` existe
-     * pra recusar, e o dono foi explícito — *"o botão novo é a porta"*.
-     */
+    if (!loan) return NextResponse.json({ erro: 'Empréstimo não encontrado' }, { status: 404 })
     if (!ehJanelaBancaria(loan.scheduleSource)) {
       const e = new JanelaBancariaNoFlexivelError()
       return NextResponse.json({ erro: e.message, code: e.code }, { status: 422 })
     }
 
-    const installment = await prisma.loanInstallment.findFirst({
-      where: { loanId, number },
-      select: {
-        id: true,
-        status: true,
-        payment: true,
-        interest: true,
-        amortization: true,
-        openingBalance: true,
-        isEstimate: true,
-        reconciledTransactionId: true,
-      },
-    })
-    if (!installment) {
-      return NextResponse.json({ erro: 'Parcela não encontrada' }, { status: 404 })
-    }
-    if (installment.status === 'PAID' && installment.reconciledTransactionId) {
-      return NextResponse.json({ erro: 'Parcela já está paga' }, { status: 409 })
-    }
-
-    const tx = await prisma.transaction.findUnique({
-      where: { id: transactionId },
-      select: {
-        id: true,
-        type: true,
-        bankAccountId: true,
-        date: true,
-        amount: true,
-        loanInstallmentPaid: { select: { id: true } },
-      },
-    })
-    if (!tx) return NextResponse.json({ erro: 'Tx não encontrada' }, { status: 404 })
-    // ⛔ os dois null dariam `false` e APROVARIAM o vínculo (ver lib/loans/exige-conta.ts)
-    if (!loan.bankAccountId || !tx.bankAccountId || tx.bankAccountId !== loan.bankAccountId) {
-      return NextResponse.json(
-        { erro: 'Tx deve ser da mesma conta do empréstimo' },
-        { status: 400 },
-      )
-    }
-    if (tx.type !== 'DEBIT') {
-      return NextResponse.json({ erro: 'Pagamento de parcela deve ser DEBIT' }, { status: 400 })
-    }
-    if (tx.loanInstallmentPaid && tx.loanInstallmentPaid.id !== installment.id) {
-      return NextResponse.json(
-        { erro: 'Tx já vinculada a outra parcela' },
-        { status: 409 },
-      )
-    }
-
-    // Sprint Pagamento Parcela Redesign (28/06/2026): recalcular split contábil.
-    // Pré-fixado: usa valores planejados, correcao=0.
-    // Pós-fixado (isEstimate=true): juros base = openingBalance × rateMonthly;
-    //                                correcao = realPayment − amortização − juros;
-    //                                payment = realPayment.
-    // Espelha lib/loans/auto-conciliacao.ts pra ter UM caminho contábil.
-    const split = installment.isEstimate
-      ? computePosFixedSplit(
-          {
-            amortization: installment.amortization,
-            openingBalance: installment.openingBalance,
-          },
-          tx.amount,
-          loan.interestRateMonthly,
-        )
-      : computePreFixedSplit({
-          interest: installment.interest,
-          amortization: installment.amortization,
-          payment: installment.payment,
-          openingBalance: installment.openingBalance,
-        })
-
-    await prisma.$transaction(async (trx) => {
-      await trx.loanInstallment.update({
-        where: { id: installment.id },
-        data: {
-          status: 'PAID',
-          paidDate: tx.date,
-          reconciledTransactionId: tx.id,
-          // Recalculado pelo split (idêntico ao auto-conciliação)
-          realPayment: split.realPayment,
-          payment: split.realPayment,
-          interest: split.interest,
-          correcao: split.correcao,
-          closingBalance: split.closingBalance,
-        },
-      })
-      // Se todas as parcelas estão PAID → marca Loan PAID_OFF
-      const remaining = await trx.loanInstallment.count({
-        where: { loanId, status: { not: 'PAID' } },
-      })
-      if (remaining === 0) {
-        await trx.loan.update({ where: { id: loanId }, data: { status: 'PAID_OFF' } })
-      }
-    })
-
+    const r = await prisma.$transaction((db) =>
+      vincularPagamentoDeParcela({ db, companyId: empresaId, loanId, installmentNumber: number, transactionIds }),
+    )
     return NextResponse.json({
       ok: true,
-      split: {
-        realPayment: split.realPayment,
-        interest: split.interest,
-        correcao: split.correcao,
-        closingBalance: split.closingBalance,
-        totalDespesaFinanceira: split.totalDespesaFinanceira,
-      },
+      status: r.status,
+      paidTotal: r.paidTotal,
+      encargoApurado: r.splitInjected,
     })
   } catch (error) {
+    if (error instanceof VinculoDeParcelaError) {
+      return NextResponse.json({ erro: error.message, code: error.code }, { status: 422 })
+    }
     return handleApiError(error)
   }
 }
 
-// DELETE — desfaz pagamento
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
     const { id: empresaId, loanId, number: numberStr } = await params
-    const number = parseInt(numberStr, 10)
+    const number = numeroDaParcela(numberStr)
+    if (number == null) return NextResponse.json({ erro: 'number inválido' }, { status: 400 })
     const ctx = await getAuthContext(request, empresaId)
     ctx.requirePermission('transaction.update')
 
-    const loan = await prisma.loan.findUnique({
-      where: { id: loanId },
-      select: { companyId: true, status: true },
-    })
-    if (!loan) return NextResponse.json({ erro: 'Não encontrado' }, { status: 404 })
-    if (loan.companyId !== empresaId) {
-      return NextResponse.json({ erro: 'Outra empresa' }, { status: 403 })
-    }
-
-    const installment = await prisma.loanInstallment.findFirst({
-      where: { loanId, number },
-      select: { id: true },
-    })
-    if (!installment) return NextResponse.json({ erro: 'Parcela não encontrada' }, { status: 404 })
-
-    await prisma.$transaction(async (trx) => {
-      await trx.loanInstallment.update({
-        where: { id: installment.id },
-        data: { status: 'OPEN', paidDate: null, reconciledTransactionId: null },
-      })
-      if (loan.status === 'PAID_OFF') {
-        await trx.loan.update({ where: { id: loanId }, data: { status: 'ACTIVE' } })
-      }
-    })
-
-    return NextResponse.json({ ok: true })
+    const r = await prisma.$transaction((db) =>
+      desfazerVinculoDeParcela({ db, companyId: empresaId, loanId, installmentNumber: number }),
+    )
+    return NextResponse.json({ ok: true, soltos: r.soltos })
   } catch (error) {
+    if (error instanceof DesfazerVinculoError) {
+      const status = error.code === 'LOAN_NOT_FOUND' || error.code === 'INSTALLMENT_NOT_FOUND' ? 404 : 422
+      return NextResponse.json({ erro: error.message, code: error.code }, { status })
+    }
     return handleApiError(error)
   }
 }

@@ -23,7 +23,9 @@ interface ContractPreview {
   parcelasAntes?: number; parcelasDepois?: number; carenciaAntes?: number; carenciaDepois?: number | null; prazoTotalMeses?: number | null
   dreImpactByMonth?: MonthImpact[]; historicoSemVinculoCount?: number; historicoEncargos?: number
   blocked?: boolean; blockReason?: string | null
+  banco?: string; cadastrarHref?: string
 }
+interface Desconhecido { contractNumber: string; banco: string | null; cadastrarHref: string }
 interface Preview {
   contracts: ContractPreview[]
   impactoDRE: { total: number; porCompetencia: Array<{ month: string; encargos: number }> }
@@ -39,7 +41,7 @@ export default function ImportarAgendaPage() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [pv, setPv] = useState<Preview | null>(null)
-  const [done, setDone] = useState<{ applied: number; saldos: string } | null>(null)
+  const [done, setDone] = useState<{ applied: number; saldos: string; desconhecidos: Desconhecido[] } | null>(null)
 
   const gerarPreview = useCallback(async () => {
     if (!file) return
@@ -55,13 +57,19 @@ export default function ImportarAgendaPage() {
   async function confirmar() {
     if (!file || !pv) return
     const aplicaveis = pv.contracts.filter((c) => c.matched && !c.blocked).map((c) => c.contractNumber)
-    if (aplicaveis.length === 0) { toast({ variant: 'destructive', title: 'Nada a aplicar', description: 'Nenhum contrato casado e liberado.' }); return }
+    if (aplicaveis.length === 0) { toast({ variant: 'destructive', title: 'Nada a aplicar', description: 'Nenhum contrato cadastrado e liberado — cadastre os desconhecidos pelo link de cada um.' }); return }
     setSaving(true)
     const fd = new FormData(); fd.append('file', file); fd.append('contracts', aplicaveis.join(','))
     const resp = await fetch(`/api/empresas/${empresaId}/emprestimos/importar-agenda/confirm`, { method: 'POST', credentials: 'include', body: fd })
-    const { ok, data, message } = await readJsonResponse<{ applied: Array<{ contractNumber: string; saldo: number }> }>(resp)
+    const { ok, data, message } = await readJsonResponse<{ applied: Array<{ contractNumber: string; saldo: number }>; desconhecidos?: Desconhecido[] }>(resp)
     if (!ok || !data) { toast({ variant: 'destructive', title: 'Não gravei', description: message ?? 'Erro' }); setSaving(false); return }
-    setDone({ applied: data.applied.length, saldos: data.applied.map((a) => `${a.contractNumber} → ${formatBRL(a.saldo)}`).join(' · ') })
+    // ⭐ R63 — os contratos que o documento trouxe e o sistema não tem também chegam na tela
+    const desconhecidos = [
+      ...(data.desconhecidos ?? []),
+      ...pv.contracts.filter((c) => !c.matched && c.cadastrarHref && !(data.desconhecidos ?? []).some((d) => d.contractNumber === c.contractNumber))
+        .map((c) => ({ contractNumber: c.contractNumber, banco: c.banco ?? null, cadastrarHref: c.cadastrarHref! })),
+    ]
+    setDone({ applied: data.applied.length, saldos: data.applied.map((a) => `${a.contractNumber} → ${formatBRL(a.saldo)}`).join(' · '), desconhecidos })
     setSaving(false)
   }
 
@@ -76,6 +84,19 @@ export default function ImportarAgendaPage() {
           <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto" />
           <p className="text-lg font-semibold">{done.applied} contrato(s) atualizado(s) com a agenda oficial</p>
           <p className="text-sm text-muted-foreground">{done.saldos}</p>
+          {done.desconhecidos.length > 0 && (
+            <div data-testid="desconhecidos" className="mx-auto max-w-xl rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-left text-sm">
+              <p className="font-semibold text-amber-900">{done.desconhecidos.length} contrato(s) do documento ainda não estão cadastrados</p>
+              <ul className="mt-1 space-y-1">
+                {done.desconhecidos.map((d) => (
+                  <li key={d.contractNumber} className="flex items-center justify-between gap-3">
+                    <span className="tabular-nums">{d.contractNumber}{d.banco ? ` · ${d.banco}` : ''}</span>
+                    <Link href={d.cadastrarHref} className="font-semibold text-amber-800 underline">cadastrar agora →</Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <Link href={`/empresas/${empresaId}/emprestimos`}><Button>Ver empréstimos</Button></Link>
         </CardContent></Card>
       ) : (
@@ -114,7 +135,7 @@ export default function ImportarAgendaPage() {
                   <CardHeader><CardTitle className="text-base flex items-center gap-2"><Landmark className="h-4 w-4" />{c.contractNumber} {c.lender ? `· ${c.lender}` : ''}</CardTitle></CardHeader>
                   <CardContent className="space-y-2 text-sm">
                     {!c.matched ? (
-                      <p className="flex items-center gap-2 text-amber-700"><AlertTriangle className="h-4 w-4" />Não cadastrado no sistema — cadastre o empréstimo antes de importar. (financiado {formatBRL(c.valorFinanciado)}, {c.numParcelas} parcelas)</p>
+                      <p className="flex flex-wrap items-center gap-2 text-amber-700"><AlertTriangle className="h-4 w-4" />Não cadastrado no sistema (financiado {formatBRL(c.valorFinanciado)}, {c.numParcelas} parcelas){c.cadastrarHref && <Link href={c.cadastrarHref} className="font-semibold underline">cadastrar agora →</Link>}</p>
                     ) : c.blocked ? (
                       <p className="flex items-center gap-2 text-red-700"><AlertTriangle className="h-4 w-4" />{c.blockReason}</p>
                     ) : (

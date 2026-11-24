@@ -10,6 +10,8 @@ import { extractPdfText, PdfExtractError } from '@/lib/bank-statement-pdf/extrac
 import { detectScheduleParser } from '@/lib/loans/bank-parsers'
 import { applyImportedSchedule } from '@/lib/loans/apply-imported-schedule'
 import { descriptionMatchesContract } from '@/lib/loans/contract-core'
+import { hrefCadastrarNaHora } from '@/lib/loans/cadastro-na-hora'
+import { CONTRATO_VISIVEL } from '@/lib/loans/ficha'
 import { saldoDevedorAtual } from '@/lib/loans/saldo'
 
 export const runtime = 'nodejs'
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const loans = await prisma.loan.findMany({
-      where: { companyId: empresaId },
+      where: { companyId: empresaId, ...CONTRATO_VISIVEL },
       select: {
         id: true, contractNumber: true, lender: true, principal: true, rateType: true,
         installmentsPaidBefore: true, interestRateMonthly: true, scheduleSource: true,
@@ -80,7 +82,12 @@ export async function POST(request: NextRequest, { params }: Params) {
       const loan = loans.find((l) => l.contractNumber === c.contractNumber)
         ?? loans.find((l) => l.contractNumber && descriptionMatchesContract(c.contractNumber, l.contractNumber))
       if (!loan) {
-        return { contractNumber: c.contractNumber, matched: false, numParcelas: c.numParcelas, valorFinanciado: c.valorFinanciado, saldoDevedor: c.saldoDevedor }
+        // ⭐ R63 (25/11) — desconhecido vira OFERTA de cadastro, com nº e banco do documento
+        return {
+          contractNumber: c.contractNumber, matched: false, numParcelas: c.numParcelas, valorFinanciado: c.valorFinanciado, saldoDevedor: c.saldoDevedor,
+          banco: parser.bank,
+          cadastrarHref: hrefCadastrarNaHora(empresaId, { contractNumber: c.contractNumber, banco: parser.bank, valorFinanciado: c.valorFinanciado, numParcelas: c.numParcelas }),
+        }
       }
       const plan = applyImportedSchedule(
         c,

@@ -84,6 +84,8 @@ export async function desfazerVinculoDeParcela(input: DesfazerInput): Promise<De
     data: {
       status: 'OPEN', paidDate: null, reconciledTransactionId: null,
       paidTotal: null, paidInterest: null, paidCorrection: null, paidPenalty: null,
+      // ⭐ R55 (25/11) — a marca do caminho 1:1 antigo também volta; a agenda NÃO é tocada aqui
+      realPayment: null,
     },
   })
 

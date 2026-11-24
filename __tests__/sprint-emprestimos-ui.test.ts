@@ -48,8 +48,9 @@ describe('Sprint Empréstimos UI — APIs', () => {
     const code = readFileSync(p, 'utf-8')
     expect(code).toMatch(/export async function POST/)
     expect(code).toMatch(/export async function DELETE/)
-    expect(code).toMatch(/reconciledTransactionId/)
-    expect(code).toMatch(/PAID_OFF/)
+    // ⭐ R54 (25/11) — a rota delega à porta única (quem fecha o contrato em PAID_OFF é a porta)
+    expect(code).toMatch(/vincularPagamentoDeParcela/)
+    expect(code).toMatch(/desfazerVinculoDeParcela/)
   })
 
   it('parcelas/[number]/candidatos GET', () => {
@@ -57,7 +58,7 @@ describe('Sprint Empréstimos UI — APIs', () => {
     expect(existsSync(p)).toBe(true)
     const code = readFileSync(p, 'utf-8')
     expect(code).toMatch(/export async function GET/)
-    expect(code).toMatch(/candidates/)
+    expect(code).toMatch(/previaDoVinculo/)
   })
 })
 
@@ -72,18 +73,11 @@ describe('Sprint Empréstimos UI — telas', () => {
     const p = join(ROOT, 'app/(dashboard)/empresas/[id]/emprestimos/page.tsx')
     expect(existsSync(p)).toBe(true)
     const code = readFileSync(p, 'utf-8')
-    expect(code).toMatch(/groupedByBank/)
-    expect(code).toMatch(/ProgressBar/)
-    expect(code).toMatch(/StatusPill/)
-    expect(code).toMatch(/Dívida total|totalSaldoDevedor/)
-    // KPI top revisado: Vence este mês + Parcela mensal total (substitui
-    // Compromisso do mês + Juros do mês)
-    expect(code).toMatch(/Vence este mês/)
-    // ⛔ AQUI HAVIA UM GREP DE `/Parcela mensal total/` — vermelho por dias sem saber
-    // dizer se era o RÓTULO que mudou ou a SOMA que quebrou. A régua saiu do laço da rota
-    // pra `lib/loans/parcela-mensal-total.ts` e agora tem teste que confere o NÚMERO
-    // (R$ 26.471,06 da carteira real, com o mútuo FLEXIBLE de fora). REGRA 3.
-    expect(code).toMatch(/Próximo vencimento/)
+    // ⭐ 25/11 — a carteira da lei v1 (docs/emprestimos-referencia.html): o guard por VALOR mora em
+    // __tests__/regras-ui/emprestimos-bate-com-a-lei.test.tsx; aqui só a presença das peças
+    for (const peca of ['HeroCarteira', 'Montanha', 'Compromisso', 'Podio', 'ChequeEspecial', 'GrupoDoCredor']) {
+      expect(code, `a carteira perdeu a peça ${peca}`).toMatch(new RegExp(`<${peca}\\b`))
+    }
   })
 
   it('Cadastro page existe + form + linkar liberação', () => {

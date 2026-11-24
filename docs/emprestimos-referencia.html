@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EMPRÉSTIMOS (financeiro) — referência v1 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+EMPRÉSTIMOS — ARQUIVO-LEI v1 · 24/11/2026
+Amostra com os números REAIS do raio-X de 24/11 (prod, só leitura).
+Linguagem visual: a mesma família de CARTÕES v3 APROVADA (Apple Wallet /
+Nubank / Revolut): fundo #F4F5F7, cards sem borda com sombra dupla, radius
+20–22, chips de credor com gradiente + brilho, heros tingidos, curvas suaves.
+
+LEIS DA CAMPANHA (família R, continuando de R53):
+
+R54 — UMA PORTA SÓ PRA PAGAR PARCELA. Caixa de entrada, "marcar paga" do
+      detalhe e OFX gravam o MESMO registro: pedaços N:1 + encargos apurados
+      (paid*). O caminho 1:1 antigo morre. Desfazer devolve tudo.
+R55 — A AGENDA É SAGRADA. Agenda importada do banco nunca é reescrita por
+      pagamento; o pago mora nos campos de pago. Real e agenda convivem
+      declarados lado a lado.
+R56 — DÍVIDA NA CARA. A carteira abre com: dívida total (bancos e mútuo
+      separados), custo do dinheiro no ano (APURADO, não estimado), o
+      compromisso do mês e a data de ficar livre.
+R57 — A MONTANHA. Um gráfico só do saldo total descendo até zero, empilhado
+      por credor, escala única (S20), sem pizza, com hover/toque mostrando o
+      mês. Cores por credor validadas (claro: Sicredi #178A5C · Banrisul
+      #2E6BE0 · Caixa #C2600A · Mútuo #C2418B; escuro: #22A06B · #4E7DF0 ·
+      #CE6F15 · #D45A9E — ordem de empilhamento é a ordem validada).
+R58 — COMPROMISSO FUTURO MÊS A MÊS. Barras de TODAS as parcelas em aberto
+      até a última; pico destacado; mesma fonte do forecast do app (Mesa,
+      Custos Fixos) — um número só no sistema inteiro.
+R59 — CUSTO SE PROVA. Juros + correção apurados mandam; a agenda é previsão
+      e aparece ao lado ("agenda previa X · Y acima"). Todo número com
+      "ver →" (S19) e custo clicável (S17).
+R60 — CONTRATO COM FICHA COMPLETA. Editar EXISTE (campo a campo). Excluir
+      EXISTE: sem história apaga de vez; com história some de todas as telas
+      e o nome sobrevive só nos relatórios históricos; a confirmação diz os
+      números. Cadastro incompleto (pós sem indexador) é cobrado na tela.
+R61 — MÚTUO É OUTRA NATUREZA. Nunca soma com banco sem rótulo próprio,
+      nunca "atrasa" (agenda nominal), devolução tem registro próprio e
+      fica fora do ranking de custo (declarado).
+R62 — ESTIMATIVA SE DECLARA. Parcela estimada (pós-fixado) sempre com "~"
+      e vira real na conciliação; total que contém estimativa herda o "~".
+R63 — AGENDA NÃO PULA CONTRATO EM SILÊNCIO. Importar agenda com contrato
+      desconhecido oferece cadastrar na hora, nunca pula calado.
+R64 — CHEQUE ESPECIAL É CRÉDITO. As linhas rotativas (cheque especial /
+      conta garantida) moram NESTA tela, em seção própria por conta:
+      juros pagos no ano e no mês, usado × limite quando o limite estiver
+      cadastrado. O CUSTO DO DINHEIRO soma contratos + cheque especial,
+      declarado separado. Rotativo não entra na montanha nem no
+      compromisso — não tem agenda.
+R65 — JUROS DE CHEQUE SE RECONHECEM SOZINHOS. Linha do extrato com
+      descrição conhecida de juros de limite chega na caixa de entrada
+      com palpite pronto ("juros de cheque especial · conta X");
+      confirmada uma vez, vira regra aprendida (banco + descrição).
+      Nunca se marca sozinha.
+
+HERDADAS (valem inteiras): S15 TELA MUDA (zero prosa/nº de lei na UI;
+explicação só no ⓘ) · S16 LINHA É COLUNA · S17 CUSTO CLICÁVEL · S18 CELULAR
+NUNCA ESCONDE DINHEIRO · S19 DADO SE PROVA ("ver →") · S20 NUNCA MISTURAR
+UNIDADE/ESCALA · S22 INCOMPLETO SE DECLARA ("~", "a apurar") · S24 LARGURA
+DA ÁREA ÚTIL (container padrão do app; tela larga ganha COLUNAS, nunca
+vazio).
+
+DISCIPLINA DE VETO: nenhum bloco inventado de previsão/simulação nesta v1
+(lição R5/R6). Tudo aqui é dado real ou derivado de registro.
+
+NOTA DE IMPLEMENTAÇÃO: o seletor de data nativo entra no real; a amostra usa
+pill estática. Tema escuro: usar os tokens escuros validados acima.
+═══════════════════════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --bg:#F4F5F7; --card:#FFFFFF; --ink:#0B1220; --ink2:#5A6475; --ink3:#8B93A3;
+  --line:#E9EBF1; --ind:#4F46E5; --rox:#7C3AED; --amb:#B45309; --ambbg:#FEF3C7;
+  --ver:#0F766E; --verbg:#D6F2EC; --ros:#BE123C; --rosbg:#FDE8EC;
+  --c-sic:#178A5C; --c-ban:#2E6BE0; --c-cax:#C2600A; --c-mut:#C2418B;
+  --sh:0 1px 2px rgba(10,15,30,.05),0 10px 28px rgba(10,15,30,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,"SF Pro Text",Inter,Segoe UI,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.masthead{max-width:1600px;margin:0 auto;padding:26px 32px 6px;display:flex;align-items:baseline;gap:14px}
+.masthead h1{font-size:15px;letter-spacing:.12em;color:var(--ink3);font-weight:700}
+.masthead .tag{font-size:12px;color:var(--ink3)}
+.secao{max-width:1600px;margin:26px auto 0;padding:0 32px}
+.secao>.rot{font-size:12px;letter-spacing:.14em;color:var(--ink3);font-weight:700;margin-bottom:12px}
+.wrap{max-width:1600px;margin:0 auto;padding:10px 32px 46px}
+.topo{display:flex;align-items:center;gap:14px;margin:8px 0 18px}
+.topo h2{font-size:26px;letter-spacing:-.02em}
+.topo .acoes{margin-left:auto;display:flex;gap:10px}
+.btn{border:0;border-radius:12px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;background:#fff;box-shadow:var(--sh);color:var(--ink)}
+.btn.pri{background:linear-gradient(135deg,#4F46E5,#7C3AED);color:#fff}
+.btn.ghost{background:transparent;box-shadow:none;color:var(--ink2)}
+.i{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#EDEFF5;color:var(--ink2);font-size:12px;font-weight:700;cursor:pointer;border:0}
+/* ───────── hero KPIs */
+.hero{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.hk{border-radius:20px;background:var(--card);box-shadow:var(--sh);padding:16px 20px 18px;position:relative;overflow:hidden}
+.hk .k{font-size:12px;color:var(--ink2);font-weight:700;letter-spacing:.04em;display:flex;align-items:center;gap:10px}
+.hk .v{font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:8px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.hk .s{font-size:12.5px;color:var(--ink2);margin-top:5px;position:relative;z-index:1}
+.hk .s a{color:var(--ind);text-decoration:none;font-weight:600}
+.hk.t-ind{background:linear-gradient(135deg,#EEF0FF 0%,#fff 58%)}
+.hk.t-amb{background:linear-gradient(135deg,#FFF4DE 0%,#fff 58%)}
+.hk.t-rox{background:linear-gradient(135deg,#F4EDFF 0%,#fff 58%)}
+.hk.t-ver{background:linear-gradient(135deg,#E2F7F0 0%,#fff 58%)}
+.hk::after{content:"";position:absolute;right:-34px;top:-34px;width:150px;height:150px;border-radius:50%;pointer-events:none}
+.hk.t-ind::after{background:radial-gradient(closest-side,rgba(79,70,229,.13),transparent)}
+.hk.t-amb::after{background:radial-gradient(closest-side,rgba(217,119,6,.14),transparent)}
+.hk.t-rox::after{background:radial-gradient(closest-side,rgba(124,58,237,.13),transparent)}
+.hk.t-ver::after{background:radial-gradient(closest-side,rgba(15,118,110,.13),transparent)}
+.ico{width:34px;height:34px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex:0 0 auto;box-shadow:0 3px 8px rgba(10,15,30,.18)}
+.ic-ind{background:linear-gradient(135deg,#6366F1,#4F46E5)}
+.ic-amb{background:linear-gradient(135deg,#F59E0B,#D97706)}
+.ic-rox{background:linear-gradient(135deg,#8B5CF6,#7C3AED)}
+.ic-ver{background:linear-gradient(135deg,#14B8A6,#0F766E)}
+/* ───────── cards gerais */
+.card{border-radius:22px;background:var(--card);box-shadow:var(--sh);padding:20px 22px;margin-bottom:16px}
+.card .t{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+.card .t h3{font-size:16px;font-weight:700}
+.card .t .sub{font-size:12.5px;color:var(--ink3)}
+.card .t .dir{margin-left:auto;font-size:13px;color:var(--ind);font-weight:600;text-decoration:none;white-space:nowrap}
+.duo{display:grid;grid-template-columns:7fr 5fr;gap:16px}
+/* ───────── legenda / chips de série */
+.leg{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px}
+.leg .lg{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink2)}
+.leg .sw{width:14px;height:14px;border-radius:5px}
+.leg b{color:var(--ink);font-weight:700}
+/* ───────── chip do credor */
+.chip{width:54px;height:36px;border-radius:9px;position:relative;overflow:hidden;flex:0 0 auto;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25),0 2px 6px rgba(10,15,30,.18)}
+.chip::after{content:"";position:absolute;inset:0;background:radial-gradient(90px 46px at 18% 0%,rgba(255,255,255,.42),transparent 60%)}
+.chip.b-sicredi{background:linear-gradient(135deg,#0A3D2C,#1E8F63)}
+.chip.b-banrisul{background:linear-gradient(135deg,#0E2A66,#2E6BE0)}
+.chip.b-caixa{background:linear-gradient(135deg,#3C4654,#7A8699)}
+.chip.b-mutuo{background:linear-gradient(135deg,#5B1540,#C2418B)}
+.chip .sg{position:absolute;left:7px;bottom:5px;color:#fff;font-size:9px;font-weight:800;letter-spacing:.06em;opacity:.95}
+/* ───────── grupos e cards de contrato */
+.gcab{display:flex;align-items:baseline;gap:10px;margin:22px 2px 10px}
+.gcab h4{font-size:13px;letter-spacing:.1em;color:var(--ink2);font-weight:800}
+.gcab .gn{font-size:12.5px;color:var(--ink3)}
+.gcab .gs{margin-left:auto;font-size:14px;font-weight:700}
+.ggrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.cc{border-radius:20px;background:var(--card);box-shadow:var(--sh);padding:16px 18px;position:relative}
+.cc .cab{display:flex;gap:12px;align-items:center}
+.cc .nome{font-weight:700;font-size:14.5px}
+.cc .num{font-size:12px;color:var(--ink3)}
+.cc .menu{margin-left:auto;border:0;background:#F1F2F7;border-radius:9px;width:30px;height:30px;font-size:16px;color:var(--ink2);cursor:pointer}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 8px}
+.bdg{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:#F1F2F7;color:var(--ink2)}
+.bdg.ok{background:var(--verbg);color:var(--ver)}
+.bdg.est{background:#EEF0FF;color:var(--ind)}
+.bdg.err{background:var(--rosbg);color:var(--ros)}
+.cc .cab .chip{width:62px;height:41px}
+.cc .saldo{font-size:24px;font-weight:800;letter-spacing:-.02em;white-space:nowrap;font-variant-numeric:tabular-nums}
+.cc .sl{font-size:11.5px;color:var(--ink3)}
+.pb{height:8px;border-radius:999px;background:#EDEFF4;margin:10px 0 6px;overflow:hidden}
+.pb i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#4F46E5,#7C3AED)}
+.pb.verde i{background:linear-gradient(90deg,#0F9D73,#1E8F63)}
+.cc .pbl{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2)}
+.cc .prox{display:flex;align-items:baseline;gap:8px;margin-top:12px;padding:9px 12px;border-radius:12px;background:#F7F8FC;font-size:13px;color:var(--ink2)}
+.cc .prox b{font-size:15px;color:var(--ink);font-weight:800;white-space:nowrap}
+.cc .prox .quando{margin-left:auto;font-size:12px;color:var(--ink3)}
+/* ───────── ranking de custo */
+.rk{display:flex;flex-direction:column;gap:6px}
+.rk .rw{display:grid;grid-template-columns:26px 44px 1fr 110px 96px 52px;gap:12px;align-items:center;padding:7px 10px;border-radius:14px}
+.rk .rw.top{background:linear-gradient(90deg,#FFF6E8,#fff 75%)}
+.pos{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;background:#F1F2F7;color:var(--ink2)}
+.pos.ouro{background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;box-shadow:0 3px 8px rgba(217,119,6,.35)}
+.rk .rn{font-weight:700;font-size:13.5px}
+.rk .rn span{display:block;font-weight:400;font-size:11.5px;color:var(--ink3)}
+.rk .bar{height:10px;border-radius:999px;background:#F3EAD9;overflow:hidden}
+.rk .bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#F59E0B,#B45309)}
+.rk .pf{font-weight:800;font-size:14px;text-align:right;white-space:nowrap}
+.rk .jr{font-size:12.5px;color:var(--ink2);text-align:right;white-space:nowrap}
+.rk .ver{font-size:12.5px;color:var(--ind);font-weight:600;text-align:right;text-decoration:none}
+.nota-mutuo{margin-top:12px;font-size:12.5px;color:var(--ink3)}
+/* ───────── svg charts */
+.ch{width:100%;display:block}
+.ax{font-size:11px;fill:var(--ink3)}
+.axb{font-size:11.5px;font-weight:700;fill:var(--ink2)}
+.gl{stroke:#ECEEF4;stroke-width:1}
+.lbl-band{font-size:12px;font-weight:700;fill:#fff;opacity:.95}
+.vlab{font-size:11.5px;font-weight:700;fill:var(--ink2)}
+.vlab.amb{fill:var(--amb)}
+.pico-bdg{font-size:11px;font-weight:800;fill:var(--amb)}
+/* ───────── detalhe: cronograma */
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th{font-size:11.5px;letter-spacing:.06em;color:var(--ink3);text-align:right;font-weight:700;padding:8px 10px;border-bottom:1px solid var(--line)}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl td{padding:11px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.tbl td.l{text-align:left}
+.tbl .mut{color:var(--ink3);font-size:12px}
+.pill{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px;display:inline-block}
+.pill.paga{background:var(--verbg);color:var(--ver)}
+.pill.aberta{background:#EEF0FF;color:var(--ind)}
+.pill.venc{background:var(--rosbg);color:var(--ros)}
+.lk{color:var(--ind);text-decoration:none;font-weight:600;font-size:12.5px}
+.exp{background:#F8F9FC;border-radius:14px;margin:4px 0 10px;padding:12px 14px}
+.exp .pz{display:flex;gap:10px;align-items:baseline;font-size:13px;padding:5px 0;color:var(--ink2)}
+.exp .pz b{color:var(--ink);font-weight:700;white-space:nowrap}
+.exp .pz .vx{margin-left:auto}
+.exp .soma{display:flex;gap:10px;align-items:baseline;border-top:1px dashed #DDE1EA;margin-top:6px;padding-top:8px;font-size:13px;font-weight:700}
+.exp .split{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.exp .split .sp{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:#fff;box-shadow:var(--sh);color:var(--ink2)}
+.exp .split .sp b{color:inherit}
+.sp.cap{background:#EEF0FF;color:#3730A3;box-shadow:none}
+.sp.jur{background:#FEF3C7;color:#92400E;box-shadow:none}
+.sp.cor{background:#F4EDFF;color:#6D28D9;box-shadow:none}
+.sp.okk{background:#D6F2EC;color:#0F766E;box-shadow:none}
+/* ───────── celular */
+.phone{width:390px;border-radius:46px;border:10px solid #0B1220;background:var(--bg);overflow:hidden;box-shadow:0 24px 60px rgba(10,15,30,.25);margin:0 2px}
+.phone .ph-in{padding:18px 14px 22px}
+.phone h2{font-size:20px;margin:2px 2px 12px}
+.ph-hero{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.ph-hero .hk{padding:12px 14px;border-radius:16px}
+.ph-hero .hk .v{font-size:15.5px}
+.ph-hero .hk .k{font-size:11px}
+.ph-hero .hk .s{font-size:10.5px}
+.phone .card{border-radius:18px;padding:14px 14px;margin-bottom:12px}
+.phone .card .t h3{font-size:14px}
+.phone .cc{margin-bottom:10px}
+.phone .cc .saldo{font-size:20px}
+.flex-tel{display:flex;gap:40px;align-items:flex-start}
+.tel-notas{font-size:13px;color:var(--ink2);max-width:420px;line-height:1.7;padding-top:8px}
+.tel-notas b{color:var(--ink)}
+/* ───────── dialogs ⓘ */
+dialog{border:0;border-radius:18px;padding:22px 24px;max-width:520px;box-shadow:0 30px 80px rgba(10,15,30,.3)}
+dialog::backdrop{background:rgba(10,15,30,.35)}
+dialog h5{font-size:15px;margin-bottom:8px}
+dialog p{font-size:13.5px;color:var(--ink2);margin-bottom:6px}
+@media (max-width:1280px){.ggrid{grid-template-columns:repeat(2,1fr)}.hero{grid-template-columns:repeat(2,1fr)}.duo{grid-template-columns:1fr}}
+@media (max-width:760px){.ggrid{grid-template-columns:1fr}.hero{grid-template-columns:1fr 1fr}.rk .rw{grid-template-columns:44px 1fr 90px 54px}.rk .jr{display:none}}
+</style>
+</head>
+<body>
+
+<div class="masthead"><h1>EMPRÉSTIMOS — REFERÊNCIA v1 APROVADA</h1><span class="tag">lei da campanha · amostra com números reais de 24/11 · largura = área útil padrão do app (S24)</span></div>
+
+<!-- ════════════════ TELA 1 — CARTEIRA ════════════════ -->
+<section class="secao" id="t1">
+<div class="rot">TELA 1 — CARTEIRA (a página principal)</div>
+</section>
+<div class="wrap" id="w1">
+  <div class="topo">
+    <h2>Empréstimos</h2>
+    <div class="acoes">
+      <button class="btn">Parcelas do mês</button>
+      <button class="btn">Importar agenda</button>
+      <button class="btn pri">+ Novo empréstimo</button>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div class="hk t-ind"><div class="k"><span class="ico ic-ind">R$</span>DÍVIDA TOTAL <button class="i" onclick="dlg('d-divida')">i</button></div>
+      <div class="v" id="k-total"></div><div class="s">bancos <b id="k-bancos"></b> · mútuo <b id="k-mutuo"></b></div></div>
+    <div class="hk t-amb"><div class="k"><span class="ico ic-amb">%</span>CUSTO DO DINHEIRO · 2026 <button class="i" onclick="dlg('d-custo')">i</button></div>
+      <div class="v" id="k-custo"></div><div class="s">contratos <b id="k-ctr"></b> (<b id="k-acima" style="color:var(--amb)"></b> acima da agenda) · cheque especial <b id="k-cheq"></b> · <a href="#">ver →</a></div></div>
+    <div class="hk t-rox"><div class="k"><span class="ico ic-rox">◔</span>NOVEMBRO <button class="i" onclick="dlg('d-mes')">i</button></div>
+      <div class="v" id="k-mes"></div><div class="s"><b>4 parcelas</b> · dezembro vem com <b id="k-prox-mes"></b></div></div>
+    <div class="hk t-ver"><div class="k"><span class="ico ic-ver">✓</span>LIVRE DA DÍVIDA EM <button class="i" onclick="dlg('d-livre')">i</button></div>
+      <div class="v" id="k-livre"></div><div class="s">última parcela <b id="k-ultima"></b> · <b id="k-meses"></b> meses pela frente</div></div>
+  </div>
+
+  <div class="card">
+    <div class="t"><h3>A montanha — saldo devedor até zerar</h3><span class="sub">empilhado por credor · passe o dedo pra ver o mês</span><a class="dir" href="#">ver por credor →</a></div>
+    <svg id="ch-montanha" class="ch" viewBox="0 0 1536 300" preserveAspectRatio="none" style="height:280px"></svg>
+    <div class="leg" id="leg-montanha"></div>
+  </div>
+
+  <div class="card">
+    <div class="t"><h3>O compromisso, mês a mês</h3><span class="sub">todas as parcelas em aberto, até a última</span><a class="dir" href="#">abrir parcelas do mês →</a></div>
+    <svg id="ch-comp" class="ch" viewBox="0 0 1536 230" preserveAspectRatio="none" style="height:215px"></svg>
+  </div>
+
+  <div class="duo">
+    <div>
+      <div class="gcab" style="margin-top:0"><h4>QUEM COBRA MAIS CARO</h4><span class="gn">custo real por contrato · juros + correção pagos em 2026 ÷ saldo médio</span></div>
+      <div class="card" style="margin-bottom:0">
+        <div class="rk" id="rk"></div>
+        <div class="nota-mutuo">mútuo fora do ranking — sem juros (ⓘ)</div>
+      </div>
+    </div>
+    <div>
+      <div class="gcab" style="margin-top:0"><h4>CUSTO POR CREDOR · 2026</h4><button class="i" onclick="dlg('d-custo')">i</button></div>
+      <div class="card">
+        <div class="rk" id="rk-banco"></div>
+      </div>
+      <div class="gcab"><h4>CHEQUE ESPECIAL · 2026</h4><span class="gn">juros por conta — entram no custo do dinheiro</span><button class="i" onclick="dlg('d-cheque')">i</button></div>
+      <div class="card" style="margin-bottom:0">
+        <div class="rk" id="rk-cheque"></div>
+        <div class="nota-mutuo" id="cheque-nota"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="gcab"><h4>SICREDI</h4><span class="gn">4 contratos</span><span class="gs" id="g-sic"></span></div>
+  <div class="ggrid" id="grp-sicredi"></div>
+  <div class="gcab"><h4>BANRISUL</h4><span class="gn">2 contratos</span><span class="gs" id="g-ban"></span></div>
+  <div class="ggrid" id="grp-banrisul"></div>
+  <div class="gcab"><h4>CAIXA</h4><span class="gn">2 contratos</span><span class="gs" id="g-cax"></span></div>
+  <div class="ggrid" id="grp-caixa"></div>
+  <div class="gcab"><h4>MÚTUO PF</h4><span class="gn">agenda nominal — nunca atrasa</span><span class="gs" id="g-mut"></span></div>
+  <div class="ggrid" id="grp-mutuo"></div>
+</div>
+
+<!-- ════════════════ TELA 2 — DETALHE DO CONTRATO ════════════════ -->
+<section class="secao" id="t2">
+<div class="rot">TELA 2 — DETALHE DO CONTRATO (C41022570 · Sicredi)</div>
+</section>
+<div class="wrap" id="w2">
+  <div class="topo">
+    <div style="display:flex;gap:14px;align-items:center">
+      <span class="chip b-sicredi"><span class="sg">SICREDI</span></span>
+      <div><h2 style="font-size:22px">C41022570</h2>
+      <div class="badges" style="margin:4px 0 0">
+        <span class="bdg">PÓS · 0,49% a.m. + correção</span><span class="bdg">SAC</span><span class="bdg ok">agenda do banco ✓</span><span class="bdg">liberado 12/2024</span>
+      </div></div>
+    </div>
+    <div class="acoes">
+      <button class="btn">Importar agenda</button>
+      <button class="btn">Corrigir agenda</button>
+      <button class="btn">Editar</button>
+      <button class="btn" style="color:var(--ros)">Excluir</button>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div class="hk t-ind"><div class="k"><span class="ico ic-ind">R$</span>SALDO DEVEDOR</div><div class="v" id="d-saldo"></div><div class="s">de <b>R$ 150.000,00</b> liberados</div></div>
+    <div class="hk t-amb"><div class="k"><span class="ico ic-amb">%</span>CUSTO PAGO · DESDE O INÍCIO</div><div class="v" id="d-custo-tot"></div><div class="s">em 2026: <b id="d-custo-26"></b> · <a href="#">ver →</a></div></div>
+    <div class="hk t-rox"><div class="k"><span class="ico ic-rox">◔</span>PROGRESSO</div><div class="v" id="d-prog"></div>
+      <div class="pb" style="margin:8px 0 0"><i id="d-prog-bar"></i></div></div>
+    <div class="hk t-ver"><div class="k"><span class="ico ic-ver">✓</span>PRÓXIMA PARCELA</div><div class="v" id="d-prox"></div><div class="s"><b>15/dez</b> · capital 4.166,66 + encargos a apurar</div></div>
+  </div>
+
+  <div class="card">
+    <div class="t"><h3>Saldo deste contrato — real × agenda</h3><span class="sub">linha cheia = apurado nos pagamentos · tracejada = agenda do banco</span></div>
+    <svg id="ch-contrato" class="ch" viewBox="0 0 1536 170" preserveAspectRatio="none" style="height:160px"></svg>
+  </div>
+
+  <div class="card">
+    <div class="t"><h3>Cronograma</h3><span class="sub">36 parcelas · encargos apurados no pagamento</span><a class="dir" href="#">ver as 36 →</a></div>
+    <table class="tbl">
+      <thead><tr><th>#</th><th>VENCIMENTO</th><th>JUROS + CORREÇÃO</th><th>CAPITAL</th><th>PARCELA</th><th>PAGO EM</th><th>SALDO</th><th></th><th></th></tr></thead>
+      <tbody id="cron"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════ TELA 3 — CELULAR ════════════════ -->
+<section class="secao" id="t3">
+<div class="rot">TELA 3 — CELULAR (a carteira na mão)</div>
+</section>
+<div class="wrap">
+  <div class="flex-tel">
+  <div class="phone"><div class="ph-in">
+    <h2>Empréstimos</h2>
+    <div class="ph-hero">
+      <div class="hk t-ind"><div class="k">DÍVIDA TOTAL</div><div class="v" id="m-total"></div><div class="s">bancos + mútuo</div></div>
+      <div class="hk t-amb"><div class="k">CUSTO 2026</div><div class="v" id="m-custo"></div><div class="s" id="m-acima"></div></div>
+      <div class="hk t-rox"><div class="k">NOVEMBRO</div><div class="v" id="m-mes"></div><div class="s">4 parcelas</div></div>
+      <div class="hk t-ver"><div class="k">LIVRE EM</div><div class="v" id="m-livre"></div><div class="s" id="m-meses"></div></div>
+    </div>
+    <div class="card">
+      <div class="t"><h3>A montanha</h3></div>
+      <svg id="ch-montanha-m" class="ch" viewBox="0 0 332 150" preserveAspectRatio="none" style="height:140px"></svg>
+      <div class="leg" id="leg-montanha-m" style="gap:10px;font-size:11px"></div>
+    </div>
+    <div id="m-cards"></div>
+  </div></div>
+  <div class="tel-notas">
+    <b>O que a lei manda no celular:</b><br>
+    · os 4 números do topo inteiros — dinheiro nunca some nem vira "..." (S18);<br>
+    · a montanha completa, com toque mostrando o mês (R57);<br>
+    · cards de contrato em 1 coluna, com saldo, barra e próxima parcela;<br>
+    · o compromisso mês a mês vira lista rolável com o pico marcado (R58);<br>
+    · cheque especial por conta, com juros do mês (R64);<br>
+    · "marcar paga", editar e excluir existem também aqui (R54 · R60).
+  </div>
+  </div>
+</div>
+
+<!-- ⓘ -->
+<dialog id="d-divida"><h5>Dívida total</h5><p>Soma do saldo devedor de todos os contratos vivos. Bancos e mútuo aparecem separados porque são naturezas diferentes: banco tem juros e atraso; mútuo tem agenda nominal.</p><p>Cada número se prova: toque pra ver os contratos que somam.</p></dialog>
+<dialog id="d-custo"><h5>Custo do dinheiro</h5><p>Juros + correção + multa realmente pagos no ano, apurados pagamento a pagamento — não é estimativa. A agenda do banco previa menos; a diferença aparece declarada.</p><p>Soma duas partes, sempre separadas: juros dos contratos e juros do cheque especial das contas.</p></dialog>
+<dialog id="d-cheque"><h5>Cheque especial</h5><p>As contas operam no limite (cheque especial / conta garantida) e o banco cobra juros todo mês. Esses juros são custo do dinheiro igual ao dos contratos — por isso moram aqui.</p><p>A linha do extrato chega na caixa de entrada com o palpite pronto; confirmada uma vez, vira regra aprendida e nunca mais dá trabalho. Rotativo não tem agenda, então não entra na montanha nem no compromisso.</p></dialog>
+<dialog id="d-mes"><h5>Compromisso do mês</h5><p>Parcelas em aberto com vencimento neste mês. A mesma fonte alimenta a Mesa e os Custos Fixos — um número só no sistema inteiro.</p></dialog>
+<dialog id="d-livre"><h5>Livre da dívida</h5><p>O mês da última parcela em aberto de todos os contratos, pela agenda atual dos bancos e do mútuo.</p></dialog>
+
+<script>
+/* ══════════════════════ ESPECIFICAÇÃO EXECUTÁVEL — EMPRÉSTIMOS v1 ══════════════════════
+   Pinos rodam em node: node spec.js  →  "PINOS OK"                                      */
+
+const fmt = n => n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtR = n => 'R$ ' + fmt(n);
+const fmtK = n => (n/1000).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'k';
+const r2 = n => Math.round(n*100)/100;
+
+/* ── contratos (números reais de 24/11; taxas/efetivas da amostra) ── */
+const CONTRATOS = [
+ {id:'sic-22227', banco:'sicredi',  rot:'Sicredi',  num:'C41022227-1', saldo:140351.00, taxa:'PÓS · CDI + ?', pagas:14, total:48, prox:{d:'15/dez', v:4890.00, est:true},  ef:1.52, juros26:24612.00, incompleto:'indexador em branco'},
+ {id:'sic-22570', banco:'sicredi',  rot:'Sicredi',  num:'C41022570',   saldo:83333.36,  taxa:'PÓS · 0,49% + corr.', pagas:16, total:36, prox:{d:'15/dez', v:4166.66, enc:true}, ef:1.71, juros26:16943.00},
+ {id:'sic-33828', banco:'sicredi',  rot:'Sicredi',  num:'C41033828-8', saldo:62480.51,  taxa:'PRÉ · 1,35% a.m.', pagas:22, total:42, prox:{d:'25/dez', v:2558.59}, ef:2.12, juros26:18410.00},
+ {id:'sic-29974', banco:'sicredi',  rot:'Sicredi',  num:'C41029974',   saldo:35377.22,  taxa:'PRÉ · 1,18% a.m.', pagas:30, total:48, prox:{d:'10/dez', v:2213.40}, ef:1.41, juros26:7744.93},
+ {id:'ban-38834', banco:'banrisul', rot:'Banrisul', num:'•• 57538834', saldo:41286.45,  taxa:'PRÉ · 1,49% a.m.', pagas:57, total:72, prox:{d:'19/dez', v:3327.11}, ef:1.64, juros26:11230.00},
+ {id:'ban-01122', banco:'banrisul', rot:'Banrisul', num:'•• 57601122', saldo:25054.42,  taxa:'PRÉ · 1,61% a.m.', pagas:18, total:36, prox:{d:'22/dez', v:1684.50}, ef:1.98, juros26:6542.75},
+ {id:'cax-27478', banco:'caixa',    rot:'Caixa',    num:'•• 1827478',  saldo:21677.00,  taxa:'PRÉ · 1,27% a.m.', pagas:31, total:48, prox:{d:'12/dez', v:1511.83}, ef:1.49, juros26:4356.27},
+ {id:'cax-37311', banco:'caixa',    rot:'Caixa',    num:'•• 1837311',  saldo:5975.14,   taxa:'PRÉ · 2,38% a.m. · giro', pagas:20, total:24, prox:{d:'08/dez', v:1593.30}, ef:3.21, juros26:3100.00},
+ {id:'mut-1',     banco:'mutuo',    rot:'Mútuo PF', num:'1ª tranche',  saldo:160000.00, taxa:'sem juros · nominal', principal:200000, devolvido:40000, prox:{d:'livre', v:0}, ef:0, juros26:0},
+ {id:'mut-2',     banco:'mutuo',    rot:'Mútuo PF', num:'2ª tranche',  saldo:110000.00, taxa:'sem juros · nominal', principal:110000, devolvido:0, prox:{d:'livre', v:0}, ef:0, juros26:0},
+];
+
+/* ── custo do ano (apurado × agenda) — reais de 24/11 ── */
+const CUSTO26 = { real: 92938.95, juros: 82170.27, correcao: 10768.68, multa: 0, agenda: 65433.70 };
+const CUSTO_BANCO = [ ['Sicredi',67709.93], ['Banrisul',17772.75], ['Caixa',7456.27] ];
+
+/* ── cheque especial por conta (R64) — valores da amostra ── */
+const CHEQUE = [
+ {conta:'Banrisul · Conta Única', banco:'banrisul', juros26:9842.10, mes:812.44, usado:38412.00, limite:60000},
+ {conta:'Sicredi · conta PJ',     banco:'sicredi',  juros26:6230.45, mes:540.12, usado:12980.00, limite:40000},
+ {conta:'Caixa · conta PJ',       banco:'caixa',    juros26:1510.20, mes:0,      usado:0,        limite:15000},
+];
+const REGRAS_JUROS_CHEQUE = ['JUROS CHEQUE ESPECIAL','JUROS LIMITE','JUR ADC','JUROS CONTA GARANTIDA','ENCARGOS LIMITE','JUROS S/ SALDO DEVEDOR'];
+function sugereJurosCheque(desc){ const d=String(desc).toUpperCase(); return REGRAS_JUROS_CHEQUE.some(p=>d.includes(p)); }  /* R65 */
+function somaCheque(){ return r2(CHEQUE.reduce((s,q)=>s+q.juros26,0)); }
+
+/* ── compromisso mês a mês (parcelas em aberto, reais de 24/11) ── */
+const COMPROMISSO = (()=>{ const a=[]; const push=(m,v)=>a.push({m,v});
+ push('nov/26',22606.28); push('dez/26',27755.52); push('jan/27',25084.66);
+ push('fev/27',59123.43); push('mar/27',59064.32);
+ ['abr/27','mai/27','jun/27','jul/27','ago/27','set/27'].forEach(m=>push(m,33200.00));
+ push('out/27',29076.84);
+ ['nov/27','dez/27','jan/28','fev/28'].forEach(m=>push(m,13300.00));
+ ['mar/28','abr/28','mai/28','jun/28','jul/28'].forEach(m=>push(m,11330.00));
+ ['ago/28','set/28','out/28','nov/28','dez/28','jan/29','fev/29','mar/29','abr/29','mai/29','jun/29'].forEach(m=>push(m,7163.70));
+ push('jul/29',4385.97); return a; })();
+
+/* ── funções-lei ── */
+function totais(cs){ const bancos=r2(cs.filter(c=>c.banco!=='mutuo').reduce((s,c)=>s+c.saldo,0));
+ const mutuo=r2(cs.filter(c=>c.banco==='mutuo').reduce((s,c)=>s+c.saldo,0));
+ return { total:r2(bancos+mutuo), bancos, mutuo }; }
+function custoAno(){ const cheque=somaCheque();
+ return { contratos:CUSTO26.real, cheque, total:r2(CUSTO26.real+cheque), agenda:CUSTO26.agenda, acima:r2(CUSTO26.real-CUSTO26.agenda) }; }   /* R64 */
+function pico(comp){ return comp.reduce((p,x)=>x.v>p.v?x:p,comp[0]); }
+function livreEm(comp){ return comp[comp.length-1].m; }
+function compromisso(m){ const x=COMPROMISSO.find(e=>e.m===m); return x?x.v:0; }
+function custoRank(cs){ return cs.filter(c=>c.banco!=='mutuo').slice().sort((a,b)=>b.ef-a.ef); }
+function progresso(p,t){ return { txt:`${p} de ${t}`, pct:Math.round(p/t*100) }; }
+function rotEst(v,est){ return (est?'~ ':'')+fmtR(v); }                             /* R62 */
+function encargoApurado(pago,capital){ return r2(pago-capital); }                   /* R55/R59 */
+function somaPedacos(pzs){ return r2(pzs.reduce((s,p)=>s+p.v,0)); }
+function destinoExclusao(temHistoria){ return temHistoria?'relatorios':'apaga'; }   /* R60 */
+function grupo(cs,b){ return cs.filter(c=>c.banco===b); }
+function somaGrupo(cs,b){ return r2(grupo(cs,b).reduce((s,c)=>s+c.saldo,0)); }
+
+/* ── a montanha: saldo por credor, nov/26 → jul/29 (33 pontos) ── */
+const MESES33 = COMPROMISSO.map(e=>e.m);
+function serieLinear(v0, fimIdx, n){ const a=[]; for(let i=0;i<n;i++) a.push(i>=fimIdx?0:r2(v0*(1-i/fimIdx))); return a; }
+const MONTANHA = (()=>{ const n=33;
+ const sic = serieLinear(321542.09, 32, n);
+ const ban = serieLinear(66340.87, 15, n);
+ const cax = serieLinear(27652.14, 16, n);
+ const mut = []; for(let i=0;i<n;i++){ if(i<=2) mut.push(270000); else if(i===3) mut.push(244000); else if(i===4) mut.push(218000); else if(i<10) mut.push(r2(218000*(1-(i-4)/6))); else mut.push(0); }
+ return { sic, ban, cax, mut, tot:i=>r2(sic[i]+ban[i]+cax[i]+mut[i]) }; })();
+
+/* ── detalhe C41022570 (print real de 24/11) ── */
+const CRON = [
+ {n:14, venc:'15/set', j:1450.59, jd:'466,52 + corr. 984,07',  cap:4166.64, tot:5617.23, pago:'15/set', saldo:91666.72, st:'paga'},
+ {n:15, venc:'15/out', j:1435.25, jd:'446,23 + corr. 989,02',  cap:4166.70, tot:5601.95, pago:'15/out', saldo:87500.02, st:'paga'},
+ {n:16, venc:'15/nov', j:1396.32, jd:'425,95 + corr. 970,37 · apurado ✓', cap:4166.66, tot:5562.98, pago:'16/nov', saldo:83333.36, st:'paga', exp:true},
+ {n:17, venc:'15/dez', j:null, jd:'a apurar', cap:4166.66, tot:null, pago:null, saldo:79166.70, st:'aberta'},
+ {n:18, venc:'15/jan', j:null, jd:'a apurar', cap:4166.69, tot:null, pago:null, saldo:75000.01, st:'aberta'},
+];
+const PEDACOS16 = [
+ {d:'16/nov', desc:'LIQUIDACAO DE PARCELA — C41022570', v:5347.30},
+ {d:'16/nov', desc:'AMORTIZACAO CONTRATO — encargo do dia', v:215.68},
+];
+const SPLIT16 = { capital:4166.66, juros:425.95, correcao:970.37 };
+
+/* ══════════════════════ PINOS ══════════════════════ */
+const PINOS = [
+ ['P1 fmt pt-BR', ()=> fmt(685535.10)==='685.535,10' && fmtK(22606.28)==='22,6k'],
+ ['P2 totais', ()=>{ const t=totais(CONTRATOS); return t.total===685535.10 && t.bancos===415535.10 && t.mutuo===270000; }],
+ ['P3 custo soma contratos + cheque', ()=>{ const c=custoAno(); return c.contratos===92938.95 && c.cheque===17582.75 && c.total===110521.70 && c.agenda===65433.70 && c.acima===27505.25 && r2(CUSTO26.juros+CUSTO26.correcao+CUSTO26.multa)===c.contratos; }],
+ ['P4 pico fev/27', ()=>{ const p=pico(COMPROMISSO); return p.m==='fev/27' && p.v===59123.43; }],
+ ['P5 livre em jul/29', ()=> livreEm(COMPROMISSO)==='jul/29' && COMPROMISSO.length===33],
+ ['P6 novembro', ()=> compromisso('nov/26')===22606.28 && compromisso('dez/26')===27755.52],
+ ['P7 ranking desc e sem mútuo', ()=>{ const r=custoRank(CONTRATOS);
+   return r[0].id==='cax-37311' && r.every((c,i)=>i===0||r[i-1].ef>=c.ef) && r.every(c=>c.banco!=='mutuo') && r.length===8; }],
+ ['P8 progresso', ()=>{ const p=progresso(16,36); return p.txt==='16 de 36' && p.pct===44; }],
+ ['P9 estimativa com ~', ()=> rotEst(4890,true)==='~ R$ 4.890,00' && rotEst(4166.66,false)==='R$ 4.166,66'],
+ ['P10 montanha empilha certo', ()=>{ for(let i=0;i<33;i++){ const t=MONTANHA.tot(i);
+   if(Math.abs(t-r2(MONTANHA.sic[i]+MONTANHA.ban[i]+MONTANHA.cax[i]+MONTANHA.mut[i]))>0.01) return false; } return true; }],
+ ['P11 montanha começa na dívida e zera', ()=> MONTANHA.tot(0)===685535.10 && MONTANHA.tot(32)===0],
+ ['P12 pedaços somam a parcela', ()=> somaPedacos(PEDACOS16)===5562.98],
+ ['P13 encargo apurado = pago − capital', ()=> encargoApurado(5562.98,4166.66)===1396.32 && r2(SPLIT16.juros+SPLIT16.correcao)===1396.32],
+ ['P14 excluir tem dois destinos', ()=> destinoExclusao(true)==='relatorios' && destinoExclusao(false)==='apaga'],
+ ['P15 grupos somam o raio-X', ()=> somaGrupo(CONTRATOS,'sicredi')===321542.09 && somaGrupo(CONTRATOS,'banrisul')===66340.87 && somaGrupo(CONTRATOS,'caixa')===27652.14 && somaGrupo(CONTRATOS,'mutuo')===270000],
+ ['P16 custo por credor fecha no total', ()=> r2(CUSTO_BANCO.reduce((s,b)=>s+b[1],0))===92938.95],
+ ['P17 cheque por conta fecha no total', ()=> somaCheque()===17582.75],
+ ['P18 juros de cheque se reconhecem', ()=> sugereJurosCheque('JUROS CHEQUE ESPECIAL BANRISUL')===true
+   && sugereJurosCheque('DB JUR ADC CONTA GARANTIDA')===true && sugereJurosCheque('PIX RECEBIDO CLIENTE')===false],
+];
+
+function rodaPinos(){ const falhas=[];
+ for(const [nome,fn] of PINOS){ let ok=false; try{ ok=!!fn(); }catch(e){ ok=false; }
+  if(!ok) falhas.push(nome); }
+ if(falhas.length) throw new Error('PINOS FALHARAM: '+falhas.join(' | '));
+ return 'PINOS OK'; }
+
+/* ══════════════════════ RENDER (só no navegador) ══════════════════════ */
+function el(h){ const t=document.createElement('template'); t.innerHTML=h.trim(); return t.content.firstChild; }
+function dlg(id){ document.getElementById(id).showModal(); }
+
+const CORES = { sic:'#178A5C', ban:'#2E6BE0', cax:'#C2600A', mut:'#C2418B' };
+const GRADS = { sic:['#23A574','#0F6A47'], ban:['#4C82EC','#2254BC'], cax:['#D9812B','#A04E08'], mut:['#D35BA3','#A3326F'] };
+const NOMES = { sic:'Sicredi', ban:'Banrisul', cax:'Caixa', mut:'Mútuo' };
+function smoothPath(P, abre){ /* catmull-rom → bézier, curva suave da casa */
+ if(P.length<3) return (abre?'M':'L')+P.map(p=>p[0]+' '+p[1]).join(' L ');
+ let d=(abre?'M':'L')+P[0][0]+' '+P[0][1];
+ for(let i=0;i<P.length-1;i++){ const p0=P[Math.max(0,i-1)],p1=P[i],p2=P[i+1],p3=P[Math.min(P.length-1,i+2)];
+  const c1=[p1[0]+(p2[0]-p0[0])/6,p1[1]+(p2[1]-p0[1])/6], c2=[p2[0]-(p3[0]-p1[0])/6,p2[1]-(p3[1]-p1[1])/6];
+  d+=` C${c1[0].toFixed(1)} ${c1[1].toFixed(1)} ${c2[0].toFixed(1)} ${c2[1].toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`; }
+ return d; }
+function pillSvg(x,y,txt,cor,escuro){ const w=txt.length*6.9+30;
+ return `<g><rect x="${x}" y="${y-13}" width="${w}" height="24" rx="12" fill="${escuro?'rgba(255,255,255,.93)':'#fff'}" opacity="0.95"/><circle cx="${x+13}" cy="${y-1}" r="4.2" fill="${cor}"/><text x="${x+23}" y="${y+3}" style="font-size:12px;font-weight:700" fill="#1F2937">${txt}</text></g>`; }
+
+function svgMontanha(elId, W, H, legId, mini){
+ const svg=document.getElementById(elId); if(!svg) return;
+ const padL=mini?0:46, padR=mini?0:10, padT=10, padB=20;
+ const iw=W-padL-padR, ih=H-padT-padB, n=33, max=700000;
+ const X=i=>padL+iw*i/(n-1), Y=v=>padT+ih*(1-v/max);
+ let out='';
+ if(!mini){ [0,350000,700000].forEach(v=>{ out+=`<line class="gl" x1="${padL}" x2="${W-padR}" y1="${Y(v)}" y2="${Y(v)}"/>`;
+  out+=`<text class="ax" x="${padL-8}" y="${Y(v)+4}" text-anchor="end">${v===0?'0':fmtK(v).replace(',0','')}</text>`; }); }
+ const ordem=['sic','ban','cax','mut'];
+ let defs='<defs>';
+ ordem.forEach(s=>{ defs+=`<linearGradient id="g-${elId}-${s}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${GRADS[s][0]}"/><stop offset="1" stop-color="${GRADS[s][1]}"/></linearGradient>`; });
+ defs+='</defs>';
+ let base=new Array(n).fill(0);
+ for(const s of ordem){ const serie=MONTANHA[s];
+  const top=serie.map((v,i)=>base[i]+v);
+  const ptsT=top.map((v,i)=>[X(i),Y(v)]);
+  const ptsBrev=base.map((v,i)=>[X(i),Y(v)]).reverse();
+  const d=smoothPath(ptsT,true)+' '+smoothPath(ptsBrev,false)+' Z';
+  out+=`<path d="${d}" fill="url(#g-${elId}-${s})" opacity="0.95"><title>${NOMES[s]}</title></path>`;
+  out+=`<path d="${smoothPath(ptsT,true)}" fill="none" stroke="#fff" stroke-width="${mini?1.4:2}"/>`;
+  base=top; }
+ if(!mini){
+  out+=pillSvg(X(1),Y(165000),'Sicredi · 321,5k',CORES.sic);
+  out+=pillSvg(X(1),Y(545000),'Mútuo · 270,0k',CORES.mut);
+  out+=`<circle cx="${X(0)}" cy="${Y(685535.10)}" r="5.5" fill="#1F2937" stroke="#fff" stroke-width="2.5"/>`;
+  out+=pillSvg(X(0)+12,Y(685535.10)+24,'hoje · 685,5k','#1F2937');
+  [['nov/26',0],['jul/27',8],['mar/28',16],['nov/28',24],['jul/29',32]].forEach(([m,i])=>{
+   out+=`<text class="ax" x="${X(i)}" y="${H-4}" text-anchor="${i===0?'start':i===32?'end':'middle'}">${m}</text>`; }); }
+ svg.innerHTML=defs+out;
+ const leg=document.getElementById(legId);
+ if(leg){ leg.innerHTML=''; const vals={sic:321542.09,ban:66340.87,cax:27652.14,mut:270000};
+  ordem.forEach(s=>leg.appendChild(el(`<span class="lg"><span class="sw" style="background:${CORES[s]}"></span>${NOMES[s]} <b>${fmtK(vals[s])}</b></span>`))); }
+}
+
+function svgCompromisso(){
+ const svg=document.getElementById('ch-comp'); if(!svg) return;
+ const W=1536,H=230,padL=46,padR=10,padT=26,padB=22;
+ const iw=W-padL-padR, ih=H-padT-padB, n=33, max=62000, step=iw/n, bw=step*0.62;
+ const Y=v=>padT+ih*(1-v/max);
+ let out='';
+ [[0,'0'],[30000,'30k'],[60000,'60k']].forEach(([v,l])=>{ out+=`<line class="gl" x1="${padL}" x2="${W-padR}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${padL-8}" y="${Y(v)+4}" text-anchor="end">${l}</text>`; });
+ COMPROMISSO.forEach((e,i)=>{ const x=padL+step*i+(step-bw)/2, y=Y(e.v), h=padT+ih-y;
+  const amb = e.m==='fev/27'||e.m==='mar/27';
+  out+=`<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="6" fill="${amb?'url(#gbarAmb)':'url(#gbar)'}"><title>${e.m} · ${fmtR(e.v)}</title></rect>`; });
+ const lab=(m,txt,amb)=>{ const i=COMPROMISSO.findIndex(e=>e.m===m); const x=padL+step*i+step/2;
+  return `<text class="vlab${amb?' amb':''}" x="${x}" y="${Y(COMPROMISSO[i].v)-7}" text-anchor="middle">${txt}</text>`; };
+ out+=lab('nov/26','22,6k'); out+=lab('fev/27','59,1k',1); out+=lab('mar/27','59,0k',1); out+=lab('out/27','29,1k'); out+=lab('jul/29','4,4k');
+ { const x=padL+step*4.5, t='O PICO · fev–mar/27', w=t.length*6.6+24;
+   out+=`<g><rect x="${x-w/2}" y="${padT-26}" width="${w}" height="21" rx="10.5" fill="#D97706"/><text x="${x}" y="${padT-11}" text-anchor="middle" style="font-size:11px;font-weight:800" fill="#fff">${t}</text></g>`; }
+ [['nov/26',0],['jul/27',8],['mar/28',16],['nov/28',24],['jul/29',32]].forEach(([m,i])=>{
+  out+=`<text class="ax" x="${padL+step*i+step/2}" y="${H-4}" text-anchor="middle">${m}</text>`; });
+ svg.innerHTML=`<defs><linearGradient id="gbar" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#7C3AED"/></linearGradient><linearGradient id="gbarAmb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#D97706"/><stop offset="1" stop-color="#F59E0B"/></linearGradient></defs>`+out;
+}
+
+function svgContrato(){
+ const svg=document.getElementById('ch-contrato'); if(!svg) return;
+ const W=1536,H=170,padL=46,padR=10,padT=12,padB=20;
+ const iw=W-padL-padR, ih=H-padT-padB, n=36, max=150000;
+ const X=i=>padL+iw*i/(n-1), Y=v=>padT+ih*(1-v/max);
+ const ag=[],re=[]; for(let i=0;i<n;i++){ ag.push(150000*(1-i/35)); re.push(i<=16? 150000*(1-i/35)+(i>6? (i-6)*120:0) : null); }
+ let out='';
+ [[0,'0'],[75000,'75k'],[150000,'150k']].forEach(([v,l])=>{ out+=`<line class="gl" x1="${padL}" x2="${W-padR}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${padL-8}" y="${Y(v)+4}" text-anchor="end">${l}</text>`; });
+ let dA='M'+X(0)+' '+Y(ag[0]); for(let i=1;i<n;i++) dA+=' L'+X(i)+' '+Y(ag[i]);
+ out+=`<path d="${dA}" fill="none" stroke="#9AA3B5" stroke-width="2" stroke-dasharray="6 6"/>`;
+ const ptsR=[]; for(let i=0;i<=16;i++) ptsR.push([X(i),Y(re[i])]);
+ const dR=smoothPath(ptsR,true);
+ out+=`<path d="${dR} L ${X(16).toFixed(1)} ${Y(0)} L ${X(0)} ${Y(0)} Z" fill="url(#gAreaReal)"/>`;
+ out+=`<path d="${dR}" fill="none" stroke="#4F46E5" stroke-width="2.5"/>`;
+ out+=`<circle cx="${X(16)}" cy="${Y(re[16])}" r="5" fill="var(--ind)" stroke="#fff" stroke-width="2"><title>parcela 16 · saldo ${fmtR(83333.36)}</title></circle>`;
+ out+=`<text class="vlab" x="${X(16)+10}" y="${Y(re[16])-8}">hoje · 83,3k</text>`;
+ [['12/24',0],['nov/26',16],['12/27',35]].forEach(([m,i])=>{ out+=`<text class="ax" x="${X(i)}" y="${H-2}" text-anchor="${i===0?'start':i===35?'end':'middle'}">${m}</text>`; });
+ svg.innerHTML=`<defs><linearGradient id="gAreaReal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4F46E5" stop-opacity="0.22"/><stop offset="1" stop-color="#4F46E5" stop-opacity="0"/></linearGradient></defs>`+out;
+}
+
+function cardContrato(c){
+ const p = c.banco==='mutuo' ? {txt:`devolvido ${fmtK(c.devolvido)} de ${fmtK(c.principal)}`, pct:Math.round(c.devolvido/c.principal*100)} : progresso(c.pagas,c.total);
+ const badges = c.banco==='mutuo'
+  ? `<span class="bdg">${c.taxa}</span><span class="bdg ok">nominal</span>`
+  : `<span class="bdg">${c.taxa}</span>` + (c.incompleto?`<span class="bdg err">${c.incompleto} — completar →</span>`:`<span class="bdg ok">em dia</span>`) + (c.prox.est?`<span class="bdg est">~ estimada</span>`:'');
+ const prox = c.banco==='mutuo'
+  ? `<span>devolução quando quiser</span><span class="quando"><a class="lk" href="#">registrar devolução →</a></span>`
+  : `<span>próxima</span><b>${rotEst(c.prox.v,!!c.prox.est)}${c.prox.enc?' <span class="mut">+ enc.</span>':''}</b><span class="quando">${c.prox.d}</span>`;
+ return el(`<div class="cc">
+   <div class="cab"><span class="chip b-${c.banco}"><span class="sg">${c.rot.toUpperCase()}</span></span>
+     <div><div class="nome">${c.num}</div><div class="num">${c.banco==='mutuo'?'mútuo · agenda nominal':'contrato'}</div></div>
+     <button class="menu">⋯</button></div>
+   <div class="badges">${badges}</div>
+   <div class="saldo">${fmtR(c.saldo)}</div><div class="sl">saldo devedor · ver →</div>
+   <div class="pb${c.banco==='mutuo'?' verde':''}"><i style="width:${p.pct}%"></i></div>
+   <div class="pbl"><span>${p.txt}</span><span>${p.pct}%</span></div>
+   <div class="prox">${prox}</div>
+ </div>`);
+}
+
+function render(){
+ const t=totais(CONTRATOS), c=custoAno(), pk=pico(COMPROMISSO);
+ const put=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+ put('k-total',fmtR(t.total)); put('k-bancos',fmtK(t.bancos)); put('k-mutuo',fmtK(t.mutuo));
+ put('k-custo',fmtR(c.total)); put('k-ctr',fmtK(c.contratos)); put('k-acima',fmtK(c.acima)); put('k-cheq',fmtK(c.cheque));
+ put('k-mes',fmtR(compromisso('nov/26'))); put('k-prox-mes',fmtR(compromisso('dez/26')));
+ put('k-livre','jul/2029'); put('k-ultima',fmtR(4385.97)); put('k-meses','33');
+ put('g-sic',fmtR(somaGrupo(CONTRATOS,'sicredi'))); put('g-ban',fmtR(somaGrupo(CONTRATOS,'banrisul')));
+ put('g-cax',fmtR(somaGrupo(CONTRATOS,'caixa'))); put('g-mut',fmtR(somaGrupo(CONTRATOS,'mutuo')));
+ ['sicredi','banrisul','caixa','mutuo'].forEach(b=>{ const g=document.getElementById('grp-'+b); if(g) grupo(CONTRATOS,b).forEach(ct=>g.appendChild(cardContrato(ct))); });
+ const rk=document.getElementById('rk');
+ if(rk) custoRank(CONTRATOS).slice(0,6).forEach((ct,i)=>{ const cor = ct.ef>=2.5?'var(--ros)':ct.ef>=1.8?'var(--amb)':'var(--ink)';
+  rk.appendChild(el(`<div class="rw${i===0?' top':''}">
+   <span class="pos${i===0?' ouro':''}">${i+1}</span>
+   <span class="chip b-${ct.banco}" style="width:44px;height:30px"></span>
+   <div class="rn">${ct.num}<span>${ct.rot}</span></div>
+   <div class="bar"><i style="width:${Math.round(ct.ef/3.21*100)}%"></i></div>
+   <div class="pf" style="color:${cor}">${ct.ef.toLocaleString('pt-BR',{minimumFractionDigits:2})}% a.m.</div>
+   <a class="ver" href="#">ver →</a></div>`)); });
+ const rb=document.getElementById('rk-banco');
+ if(rb){ CUSTO_BANCO.forEach(([n,v])=>{ rb.appendChild(el(`<div class="rw" style="grid-template-columns:90px 1fr 140px">
+   <div class="rn">${n}</div><div class="bar"><i style="width:${Math.round(v/67709.93*100)}%"></i></div>
+   <div class="pf">${fmtR(v)}</div></div>`)); });
+  rb.appendChild(el(`<div class="rw" style="grid-template-columns:90px 1fr 140px">
+   <div class="rn">Mútuo PF<span>sem juros</span></div><div class="bar"></div>
+   <div class="pf" style="color:var(--ink3)">R$ 0,00</div></div>`)); }
+ const rq=document.getElementById('rk-cheque');
+ if(rq){ CHEQUE.forEach(q=>{ const pct=q.limite?Math.round(q.usado/q.limite*100):0;
+  rq.appendChild(el(`<div class="rw" style="grid-template-columns:36px 158px 1fr 112px">
+   <span class="chip b-${q.banco}" style="width:36px;height:25px;border-radius:7px"></span>
+   <div class="rn">${q.conta}<span>${q.usado>0?`usado ${fmtK(q.usado)} de ${fmtK(q.limite)} · ${pct}%`:'sem uso no momento'}</span></div>
+   <div class="bar" style="background:#FBE7EC"><i style="width:${pct}%;background:linear-gradient(90deg,#E85D8A,#BE123C)"></i></div>
+   <div class="pf">${fmtR(q.juros26)}</div></div>`)); });
+  const nt=document.getElementById('cheque-nota');
+  if(nt) nt.textContent=`total ${fmtR(somaCheque())} · em novembro ${fmtR(r2(CHEQUE.reduce((s,q)=>s+q.mes,0)))} · a caixa de entrada reconhece sozinha (ⓘ)`; }
+ svgMontanha('ch-montanha',1536,300,'leg-montanha',false);
+ svgMontanha('ch-montanha-m',332,150,'leg-montanha-m',true);
+ svgCompromisso(); svgContrato();
+ /* detalhe */
+ put('d-saldo',fmtR(83333.36)); put('d-custo-tot',fmtR(24807.11)); put('d-custo-26',fmtR(16943.00));
+ put('d-prog','16 de 36'); const pb=document.getElementById('d-prog-bar'); if(pb) pb.style.width='44%';
+ put('d-prox',fmtR(4166.66));
+ const cron=document.getElementById('cron');
+ if(cron) CRON.forEach(r=>{
+  const st = r.st==='paga' ? '<span class="pill paga">Paga · conciliada</span>' : '<span class="pill aberta">Em aberto</span>';
+  const acao = r.st==='paga' ? '<a class="lk" href="#">desfazer</a>' : '<a class="lk" href="#">marcar paga</a>';
+  cron.appendChild(el(`<tr${r.exp?' style="background:#FBFCFE"':''}><td class="l"><b>${r.n}</b></td><td class="l">${r.venc}</td>
+    <td>${r.j!==null?fmt(r.j):'—'}<div class="mut">${r.jd}</div></td><td>${fmt(r.cap)}</td>
+    <td><b>${r.tot!==null?fmt(r.tot):'—'}</b></td><td>${r.pago??'—'}</td><td>${fmt(r.saldo)}</td><td>${st}</td><td>${acao}</td></tr>`));
+  if(r.exp){ const tr=el(`<tr><td colspan="9" style="padding:0 10px 12px"><div class="exp">
+    ${PEDACOS16.map(p=>`<div class="pz"><span class="mut">${p.d}</span><b>${p.desc}</b><span class="vx"><b>${fmtR(p.v)}</b> · <a class="lk" href="#">ver no extrato →</a></span></div>`).join('')}
+    <div class="soma"><span>soma dos pedaços</span><span class="vx">${fmtR(somaPedacos(PEDACOS16))} = parcela ✓</span></div>
+    <div class="split"><span class="sp cap">capital <b>${fmt(SPLIT16.capital)}</b></span><span class="sp jur">juros <b>${fmt(SPLIT16.juros)}</b></span><span class="sp cor">correção <b>${fmt(SPLIT16.correcao)}</b></span><span class="sp okk">encargo apurado no pagamento ✓</span></div>
+  </div></td></tr>`); cron.appendChild(tr); }
+ });
+ /* celular */
+ put('m-total',fmtR(t.total)); put('m-custo',fmtR(c.total)); put('m-acima','contratos '+fmtK(c.contratos)+' + cheque '+fmtK(c.cheque));
+ put('m-mes',fmtR(compromisso('nov/26'))); put('m-livre','jul/2029'); put('m-meses','33 meses');
+ const mc=document.getElementById('m-cards');
+ if(mc) [CONTRATOS[0],CONTRATOS[8]].forEach(ct=>mc.appendChild(cardContrato(ct)));
+}
+
+if (typeof document!=='undefined'){ rodaPinos(); render(); }
+else console.log(rodaPinos());
+</script>
+</body>
+</html>

@@ -4,6 +4,7 @@
 // Oráculo: campos extraídos validados contra o contrato impresso fornecido
 // pelo Yussef no enunciado da sprint.
 
+import { semComentarios } from './regras-ui/_leitura-de-fonte'
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -375,19 +376,14 @@ describe('Sprint AI/Contrato — schema + integração', () => {
     expect(code).toMatch(/futureCount/)
   })
 
-  it('autoConciliarParcelas honra isEstimate (recalcula realPayment)', () => {
-    const code = readFileSync(join(ROOT, 'lib/loans/auto-conciliacao.ts'), 'utf-8')
-    expect(code).toMatch(/isEstimate/)
-    expect(code).toMatch(/realPayment/)
-    expect(code).toMatch(/correcao/)
-    expect(code).toMatch(/openingBalance \* loan\.interestRateMonthly/)
+  it('⛔ R54/R55 (25/11): o auto-conciliar grava pela PORTA ÚNICA e não escreve na agenda', () => {
+    // ⚠️ este teste exigia o contrário (recalcular `payment`/`correcao` na agenda) — era o defeito
+    const code = semComentarios(readFileSync(join(ROOT, 'lib/loans/auto-conciliacao.ts'), 'utf-8'))
+    expect(code).toMatch(/vincularPagamentoDeParcela\(/)
+    expect(code).not.toMatch(/loanInstallment\.update(Many)?\(/)
+    expect(code).not.toMatch(/reconciledTransactionId:\s*strongMatch/)
   })
 
-  it('DRE enrichment soma interest + correcao', () => {
-    const code = readFileSync(join(ROOT, 'lib/loans/dre-enrichment.ts'), 'utf-8')
-    expect(code).toMatch(/correcao/)
-    expect(code).toMatch(/i\.interest \+ \(i\.correcao/)
-  })
 })
 
 // ============================================================================

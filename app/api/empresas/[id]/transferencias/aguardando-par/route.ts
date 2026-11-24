@@ -111,6 +111,8 @@ export async function GET(request: NextRequest, { params }: Params) {
           // Não cartão / não parcela emprestimo
           isCardPayment: false,
           loanInstallmentPaid: { is: null },
+          // ⭐ R54 (25/11/2026) — parcela paga pela porta N:1 também não é par de transferência
+          loanInstallmentPayments: { none: {} },
           // O par pode ser: outra pendingTransfer (par esperando par juntos)
           // OU tx órfã sem categoria. Se já tiver categoria, evita romper o
           // trabalho do user — só sugere se categoryId=null.

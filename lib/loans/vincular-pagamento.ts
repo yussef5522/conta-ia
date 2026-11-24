@@ -212,26 +212,40 @@ export async function vincularPagamentoDeParcela(input: VincularInput): Promise<
   const paidDate = todasAsDatas.reduce((max, d) => (d > max ? d : max), todasAsDatas[0])
   const status: 'PAID' | 'PARTIAL' = split.isPartial ? 'PARTIAL' : 'PAID'
 
-  for (const t of txs) {
-    await prisma.loanInstallmentPayment.create({
-      data: { installmentId: target.id, transactionId: t.id, amount: t.amount },
-    })
-  }
+  // ⭐ N+1 curado (25/11): os pedaços de um gesto entram numa escrita só
+  await prisma.loanInstallmentPayment.createMany({
+    data: txs.map((t) => ({ installmentId: target.id, transactionId: t.id, amount: t.amount })),
+  })
   await prisma.loanInstallment.update({
     where: { id: target.id },
     data: {
-      status, paidDate, paidTotal: split.paidTotal,
+      /**
+       * ⛔⛔ R55 — A AGENDA É SAGRADA (25/11/2026). Esta porta escreve SÓ nos campos de PAGO.
+       *
+       * ⚠️ Antes ela gravava `closingBalance` (e `amortization` no juro zero) com o valor do
+       * split, e o parcial gravava `status: 'PARTIAL'` — um status que o schema não tem. O
+       * parcial agora fica `OPEN` com o pago gravado: o estado PARCIAL é DERIVADO da soma
+       * dos pedaços (`estadoDaParcela`), nunca escrito. O fantasma do C41033828 #22 nasceu
+       * desse status gravado.
+       */
+      status: split.isPartial ? 'OPEN' : 'PAID',
+      paidDate: split.isPartial ? null : paidDate,
+      paidTotal: split.paidTotal,
       // ⚠️ o split só grava quando a agenda sustenta (FASE 5.3) — senão fica "a definir",
       // que é honesto; inventar encargo é pior que não ter.
       ...(gravaSplit ? {
         paidInterest: split.paidInterest,
         paidCorrection: split.paidCorrection,
         paidPenalty: split.paidPenalty,
-        closingBalance: split.closingBalance,
-        ...(isZeroRate ? { amortization: split.amortization } : {}),
       } : {}),
     },
   })
+
+  // ⭐ R54 — quem fechava o contrato era a porta 1:1 que morreu; agora é ESTA
+  if (!split.isPartial) {
+    const faltam = await prisma.loanInstallment.count({ where: { loanId, status: { not: 'PAID' } } })
+    if (faltam === 0) await prisma.loan.update({ where: { id: loanId }, data: { status: 'PAID_OFF' } })
+  }
 
   return {
     linked: txs.length, status, paidTotal: split.paidTotal,

@@ -16,7 +16,6 @@ import {
   computeOutstandingBalance,
   addMonths,
 } from '@/lib/loans/amortization'
-import { enrichTransactionsForDRE } from '@/lib/loans/dre-enrichment'
 import { calculateDRE } from '@/lib/dre/calculator'
 import type {
   TransactionForDRE,
@@ -152,45 +151,6 @@ describe('Sprint Empréstimos — utilitários', () => {
     expect(() =>
       generateSchedule({ principal: 1000, rateMonthly: 0.025, termMonths: 0, system: 'PRICE', firstDueDate: D('2026-08-01') }),
     ).toThrow(/termMonths/)
-  })
-})
-
-// ============================================================================
-// 2) Enrichment DRE
-// ============================================================================
-describe('Sprint Empréstimos — enrichment DRE', () => {
-  const baseTx = (id: string, overrides: Partial<TransactionForDRE> = {}): TransactionForDRE => ({
-    id,
-    type: 'CREDIT',
-    amount: 100,
-    date: D('2026-08-01'),
-    competenceDate: null,
-    paymentDate: D('2026-08-01'),
-    categoryId: 'cat-1',
-    ...overrides,
-  })
-
-  it('marca isLoanDisbursement=true quando disbursementTransactionId bate', () => {
-    const result = enrichTransactionsForDRE(
-      [baseTx('tx-1'), baseTx('tx-2')],
-      { loans: [{ disbursementTransactionId: 'tx-1' }], installments: [] },
-    )
-    expect(result[0].isLoanDisbursement).toBe(true)
-    expect(result[1].isLoanDisbursement).toBeUndefined()
-  })
-
-  it('marca loanInterestSplit quando reconciledTransactionId bate', () => {
-    const result = enrichTransactionsForDRE(
-      [baseTx('tx-1', { type: 'DEBIT', amount: 9744.87 })],
-      { loans: [], installments: [{ reconciledTransactionId: 'tx-1', interest: 2500 }] },
-    )
-    expect(result[0].loanInterestSplit).toBe(2500)
-  })
-
-  it('não muta o input original (função pura)', () => {
-    const tx = baseTx('tx-1')
-    enrichTransactionsForDRE([tx], { loans: [{ disbursementTransactionId: 'tx-1' }], installments: [] })
-    expect(tx.isLoanDisbursement).toBeUndefined()
   })
 })
 

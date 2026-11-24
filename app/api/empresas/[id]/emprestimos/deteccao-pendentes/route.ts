@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { CONTRATO_VISIVEL } from '@/lib/loans/ficha'
 import { detectLoanPayment, type DetectLoanLite } from '@/lib/loans/detect-payment'
 import { sugerirVinculoEmprestimo, type ParcelaLite } from '@/lib/loans/sugerir-vinculo'
 import { NEEDS_REVIEW_WHERE_PRISMA } from '@/lib/transacoes/needs-review'
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     // Empréstimos ativos por conta (dia de vencimento = dia do firstDueDate).
     const loans = await prisma.loan.findMany({
-      where: { companyId: empresaId },
+      where: { companyId: empresaId, ...CONTRATO_VISIVEL },
       select: { id: true, bankAccountId: true, contractNumber: true, lender: true, status: true, firstDueDate: true },
     })
     const byAccount = new Map<string, DetectLoanLite[]>()

@@ -6,12 +6,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import type { Prisma } from '@prisma/client'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { extractPdfText, PdfExtractError } from '@/lib/bank-statement-pdf/extract-pdf-text'
 import { detectScheduleParser } from '@/lib/loans/bank-parsers'
 import { applyImportedSchedule } from '@/lib/loans/apply-imported-schedule'
 import { descriptionMatchesContract } from '@/lib/loans/contract-core'
+import { hrefCadastrarNaHora, type ContratoDesconhecido } from '@/lib/loans/cadastro-na-hora'
+import { CONTRATO_VISIVEL } from '@/lib/loans/ficha'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -48,21 +51,35 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (contracts.length === 0) return NextResponse.json({ erro: `Nenhum contrato reconhecido (${parser.bank}).`, code: 'NO_CONTRACTS' }, { status: 422 })
 
     const loans = await prisma.loan.findMany({
-      where: { companyId: empresaId },
+      where: { companyId: empresaId, ...CONTRATO_VISIVEL },
       select: {
         id: true, contractNumber: true, rateType: true, termMonths: true,
-        installments: { orderBy: { number: 'asc' }, select: { id: true, number: true, status: true, reconciledTransactionId: true, paidInterest: true, _count: { select: { payments: true } } } },
+        installments: {
+          orderBy: { number: 'asc' },
+          select: {
+            id: true, number: true, status: true, reconciledTransactionId: true, _count: { select: { payments: true } },
+            // ⭐ N+1 (25/11) — os valores atuais, pra gravar SÓ a linha que mudou
+            dueDate: true, openingBalance: true, interest: true, amortization: true, correcao: true, payment: true,
+            closingBalance: true, isEstimate: true, paidTotal: true, paidInterest: true, paidCorrection: true, paidPenalty: true,
+          },
+        },
       },
     })
 
     const applied: Array<{ contractNumber: string; parcelasGravadas: number; saldo: number }> = []
     const skipped: Array<{ contractNumber: string; motivo: string }> = []
+    // ⭐ R63 (25/11) — contrato do documento que não existe aqui: OFERTA de cadastro, nunca pulo calado
+    const desconhecidos: Array<ContratoDesconhecido & { cadastrarHref: string }> = []
 
     for (const c of contracts) {
       if (onlyThese && !onlyThese.has(c.contractNumber)) continue
       const loan = loans.find((l) => l.contractNumber === c.contractNumber)
         ?? loans.find((l) => l.contractNumber && descriptionMatchesContract(c.contractNumber, l.contractNumber))
-      if (!loan) { skipped.push({ contractNumber: c.contractNumber, motivo: 'não cadastrado' }); continue }
+      if (!loan) {
+        const d: ContratoDesconhecido = { contractNumber: c.contractNumber, banco: parser.bank, valorFinanciado: c.valorFinanciado, numParcelas: c.numParcelas }
+        desconhecidos.push({ ...d, cadastrarHref: hrefCadastrarNaHora(empresaId, d) })
+        continue
+      }
 
       const plan = applyImportedSchedule(
         c,
@@ -88,28 +105,40 @@ export async function POST(request: NextRequest, { params }: Params) {
             ...(c.carenciaMeses != null ? { carencia: c.carenciaMeses } : {}),
           },
         })
+        /**
+         * ⭐ N+1 curado (25/11/2026): antes era um `update`/`create` por parcela. Agora a linha
+         * nova vai num `createMany` e a existente só é gravada se MUDOU — reimportar o mesmo
+         * PDF não escreve nada.
+         */
+        const novas: Prisma.LoanInstallmentCreateManyInput[] = []
         for (const r of plan.rows) {
           const ex = byNumber.get(r.number)
           const data = {
             dueDate: new Date(r.dueDate), openingBalance: r.openingBalance, interest: r.interest,
             amortization: r.amortization, correcao: r.correcao, payment: r.payment, closingBalance: r.closingBalance,
             status: r.status, isEstimate: r.isEstimate,
-            // Split do DOCUMENTO nas liquidadas (verbatim). Vínculos preservados.
             ...(r.status === 'PAID'
               ? { paidTotal: r.paidTotal, paidInterest: r.paidInterest, paidCorrection: 0, paidPenalty: 0 }
               : { paidTotal: null, paidInterest: null, paidCorrection: null, paidPenalty: null }),
           }
-          if (ex) await trx.loanInstallment.update({ where: { id: ex.id }, data })
-          else await trx.loanInstallment.create({ data: { loanId: loan.id, number: r.number, ...data } })
+          if (!ex) { novas.push({ loanId: loan.id, number: r.number, ...data }); continue }
+          const mudou = (Object.keys(data) as Array<keyof typeof data>).some((k) => {
+            const a = data[k], b = (ex as Record<string, unknown>)[k]
+            if (a instanceof Date) return !(b instanceof Date) || a.getTime() !== b.getTime()
+            return (a ?? null) !== (b ?? null)
+          })
+          if (mudou) await trx.loanInstallment.update({ where: { id: ex.id }, data })
         }
-        // Números que sumiram (não vinculados — vinculados já bloqueariam).
+        if (novas.length > 0) {
+          await trx.loanInstallment.createMany({ data: novas })
+        }
         const toDelete = loan.installments.filter((i) => !newNumbers.has(i.number) && !i.reconciledTransactionId && i._count.payments === 0)
         if (toDelete.length > 0) await trx.loanInstallment.deleteMany({ where: { id: { in: toDelete.map((i) => i.id) } } })
       })
       applied.push({ contractNumber: c.contractNumber, parcelasGravadas: plan.rows.length, saldo: plan.saldoDepois })
     }
 
-    return NextResponse.json({ ok: true, applied, skipped })
+    return NextResponse.json({ ok: true, applied, skipped, desconhecidos })
   } catch (error) {
     return handleApiError(error)
   }

@@ -13,7 +13,7 @@ import {
   registrarDevolucao,
   DevolucaoError,
 } from '../devolucao-flexivel'
-import { saldoDevedorAtual } from '../saldo'
+import { saldoDevedorAtual, capitalDevolvidoNaPaga } from '../saldo'
 import { resumoDoFlexivel } from '../resumo-do-flexivel'
 import { reAncorarContas } from '@/lib/balance/recalcular'
 
@@ -155,7 +155,9 @@ describe('⭐⭐⭐ o gesto completo — cria a saída E o vínculo, num commit 
      */
     const inst = tx.loanInstallmentPayments[0].installment
     expect(inst.status).toBe('PAID')
-    expect(inst.amortization).toBe(40000)
+    // ⭐ R55 (25/11) — o devolvido mora no PAGO; a agenda nominal NÃO é reescrita
+    expect(inst.paidTotal).toBe(40000)
+    expect(inst.amortization).not.toBe(40000)
     expect(inst.paidInterest ?? 0).toBe(0)
 
     const depois = await prisma.loan.findUniqueOrThrow({ where: { id: loanId }, include: { installments: true } })
@@ -193,9 +195,10 @@ describe('⭐⭐⭐ o gesto completo — cria a saída E o vínculo, num commit 
     expect(saldo).toBe(200000)
     expect(r.fecha, 'Σ(histórico) ≠ principal − saldo').toBe(true)
 
+    // ⭐ R55 (25/11) — o capital devolvido é o PAGO (a agenda nominal não é mais reescrita)
     const amortizado = loan.installments
       .filter((i) => i.status === 'PAID')
-      .reduce((s, i) => s + i.amortization, 0)
+      .reduce((s, i) => s + capitalDevolvidoNaPaga(i), 0)
     expect(Math.round(amortizado * 100) / 100, 'o amortizado tem que bater com a Σ do histórico').toBe(180000)
   })
 })

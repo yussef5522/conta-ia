@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { CONTRATO_VISIVEL } from '@/lib/loans/ficha'
 import { generateSchedule } from '@/lib/loans/amortization'
 import { saldoDevedorAtual } from '@/lib/loans/saldo'
 import { forecastProxima } from '@/lib/loans/forecast'
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     ctx.requirePermission('transaction.view')
 
     const loans = await prisma.loan.findMany({
-      where: { companyId: empresaId },
+      where: { companyId: empresaId, ...CONTRATO_VISIVEL },
       select: {
         id: true,
         lender: true,

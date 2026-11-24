@@ -105,6 +105,10 @@ destacado no TOPO da tela/modal dona dela (`components/perguntas/pergunta-no-top
 (`max-w-[1600px]`). Espaço morto nas laterais é proibido; tela larga ganha COLUNAS, nunca vazio.
 (Formulário/documento mantém o seu — molde de 23/08 em `leis-de-tela.md`.)
 
+**EMPRÉSTIMOS v1 (25/11)** — lei `docs/emprestimos-referencia.html` (R54–R65). Pagar parcela tem UMA porta
+(`vincularPagamentoDeParcela`: pedaço N:1 + `paid*`); a agenda do banco NUNCA é reescrita por pagamento (o pago
+mora em `paid*`); o 1:1 é só legado de leitura. Tela que lista contrato filtra `CONTRATO_VISIVEL` (excluído com história).
+
 **REGRA 1** teste que falha antes e passa depois · **REGRA 2** feature só está pronta se o
 dono VÊ na tela (o clique é dele) · **REGRA 3** teste EXECUTA o comportamento, nunca grep de
 string (*grep não distingue "refatorei" de "quebrei"*) · **REGRA 6** o caso NEGATIVO

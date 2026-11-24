@@ -34,6 +34,19 @@ export interface SaldoInstallment {
   correcao: number
   payment: number
   closingBalance: number
+  /** ⭐ R55 (25/11) — o PAGO mora aqui; a agenda (`amortization`) não é mais reescrita pelo pagamento */
+  paidTotal?: number | null
+}
+
+/**
+ * ⭐⭐ R55 — QUANTO DE CAPITAL esta parcela paga devolveu, no contrato de juro zero (mútuo).
+ *
+ * ⛔ A porta gravava o valor devolvido POR CIMA da `amortization` da agenda (a referência nominal
+ * de 41.428,57 virava 40.000,00) e o saldo lia de lá. Agora a agenda fica intacta e o devolvido
+ * é o PAGO. `amortization` só vale pro legado sem `paidTotal` (onde ela foi sobrescrita = o pago).
+ */
+export function capitalDevolvidoNaPaga(i: Pick<SaldoInstallment, 'amortization' | 'paidTotal'>): number {
+  return i.paidTotal != null ? i.paidTotal : i.amortization
 }
 
 export function saldoDevedorAtual(loan: SaldoLoan, installments: SaldoInstallment[]): number {
@@ -44,7 +57,7 @@ export function saldoDevedorAtual(loan: SaldoLoan, installments: SaldoInstallmen
   // pagas, que no split 0% = valor devolvido inteiro). Não depende do fechamento
   // do cronograma. Ver CLAUDE.md (mútuo Arafat).
   if (loan.scheduleSource === 'FLEXIBLE') {
-    const devolvido = round2(sorted.filter((i) => i.status === 'PAID').reduce((s, i) => s + i.amortization, 0))
+    const devolvido = round2(sorted.filter((i) => i.status === 'PAID').reduce((s, i) => s + capitalDevolvidoNaPaga(i), 0))
     return round2(loan.principal - devolvido)
   }
 

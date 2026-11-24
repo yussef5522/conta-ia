@@ -29,6 +29,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { carimbarSeTemVinculo } from './carimbar-vinculo'
 import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-pj/casar-pagamento'
 import { vincularPagamentoDeParcela, VinculoDeParcelaError } from '@/lib/loans/vincular-pagamento'
+import { aprenderJurosDeCheque } from '@/lib/loans/cheque-especial'
 import { registrarAporte, AporteError } from '@/lib/investimentos/registrar-aporte'
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 import { conviteDaPonte } from './convite-da-ponte'
@@ -86,6 +87,8 @@ export interface ResolverInput {
   loanId?: string
   installmentNumber?: number
   categoryId?: string
+  /** ⭐ R65 (25/11) — veio do palpite de juros de cheque especial: confirmar vira regra (conta + descrição) */
+  aprenderCheque?: boolean
   /** a saída original que este crédito estorna */
   estornoDeTxId?: string
   /** o par da transferência (a linha da outra conta) */
@@ -241,7 +244,7 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
 async function executarGesto(input: ResolverInput, db: PrismaClient): Promise<ResolverResultado> {
   const tx = await db.transaction.findFirst({
     where: { id: input.txId, bankAccount: { companyId: input.companyId } },
-    select: { id: true, type: true, amount: true, date: true, bankAccountId: true, categoryId: true, ignoredAt: true },
+    select: { id: true, type: true, amount: true, date: true, bankAccountId: true, categoryId: true, ignoredAt: true, description: true },
   })
   if (!tx) throw new ResolverError('Linha do extrato não encontrada.')
 
@@ -326,6 +329,11 @@ async function executarGesto(input: ResolverInput, db: PrismaClient): Promise<Re
     case 'RECEBIMENTO_VENDA': {
       if (!input.categoryId) throw new ResolverError('Escolha a categoria.')
       await db.transaction.update({ where: { id: tx.id }, data: { categoryId: input.categoryId, status: 'RECONCILED' } })
+      // ⭐⭐ R65 (25/11/2026) — confirmado UMA vez, o juros de cheque vira regra aprendida da conta.
+      // ⛔ A regra só faz PALPITE (palpites-da-caixa); ninguém marca linha sozinho por ela.
+      if (input.aprenderCheque && input.acao === 'CATEGORIA' && tx.type === 'DEBIT' && tx.bankAccountId) {
+        await aprenderJurosDeCheque(db, input.companyId, tx.bankAccountId, tx.description)
+      }
       /**
        * ⭐⭐ O GATILHO DE VENDAS RODA AQUI (a régua de 25/08: *"listar os caminhos que
        * CRIAM, não só os que importam"*). ⚠️ Ele é **fail-soft** e no-op quando a categoria

@@ -28,6 +28,8 @@ const schema = z.object({
   loanId: z.string().optional(),
   installmentNumber: z.number().int().optional(),
   categoryId: z.string().optional(),
+  /** ⭐ R65 (25/11) — o dono confirmou o palpite "juros de cheque especial": vira regra da conta */
+  aprenderCheque: z.boolean().optional(),
   estornoDeTxId: z.string().optional(),
   parTxId: z.string().optional(),
   /** ⭐ o(s) alvo(s) do CASAR quando o palpite já os traz POR ID (20/09) */

@@ -24,6 +24,8 @@ import {
   normalizeForContractMatch as normalizeForContractMatchShared,
 } from './contract-core'
 import { exigeContaDoEmprestimo, MutuoSemContaError } from './exige-conta'
+// ⭐⭐ R54 (25/11/2026) — o casamento automático do OFX grava pela PORTA ÚNICA
+import { vincularPagamentoDeParcela } from './vincular-pagamento'
 
 export interface AutoConciliacaoResult {
   matched: Array<{
@@ -87,14 +89,15 @@ export async function autoConciliarParcelas(
 
   // 1) Loans ACTIVE com installments OPEN da empresa
   const loans = await prisma.loan.findMany({
-    where: { companyId, status: { in: ['ACTIVE', 'LATE'] } },
+    where: { companyId, status: { in: ['ACTIVE', 'LATE'] }, archivedAt: null },
     select: {
       id: true,
       bankAccountId: true,
       contractNumber: true,
       interestRateMonthly: true,
       installments: {
-        where: { status: 'OPEN' },
+        // ⭐ R55 (25/11) — parcial agora é OPEN com pedaços; o automático não mexe nela
+        where: { status: 'OPEN', payments: { none: {} } },
         select: {
           id: true,
           number: true,
@@ -119,25 +122,40 @@ export async function autoConciliarParcelas(
   const installmentsAlreadyClaimed = new Set<string>()
   const txAlreadyUsed = new Set<string>()
 
+  /**
+   * ⭐ N+1 curado (25/11/2026): as candidatas de TODAS as contas vêm numa leitura só.
+   * ⛔ NUNCA `loan.bankAccountId` cru: com null vira `IS NULL` e casa com as transações
+   * órfãs de conta. Mútuo sem trânsito não tem o que conciliar (`exigeContaDoEmprestimo`).
+   */
+  const contas = Array.from(new Set(
+    loans.filter((l) => l.installments.length > 0)
+      .map((l) => exigeContaDoEmprestimo(l, 'conciliar automaticamente')),
+  ))
+  const todasCandidatas = contas.length === 0 ? [] : await prisma.transaction.findMany({
+    where: {
+      bankAccountId: { in: contas },
+      type: 'DEBIT',
+      origin: 'OFX',
+      lifecycle: 'EFFECTED',
+      createdAt: { gte: sinceDate },
+      loanInstallmentPaid: null, // tx ainda livre
+      // ⭐ R54 — livre da porta N:1 também (antes só a 1:1 era olhada)
+      loanInstallmentPayments: { none: {} },
+      reconciledWithId: null,
+    },
+    select: { id: true, date: true, amount: true, description: true, bankAccountId: true },
+  })
+  const candidatasPorConta = new Map<string, typeof todasCandidatas>()
+  for (const t of todasCandidatas) {
+    if (!t.bankAccountId) continue
+    const a = candidatasPorConta.get(t.bankAccountId) ?? []
+    a.push(t)
+    candidatasPorConta.set(t.bankAccountId, a)
+  }
+
   for (const loan of loans) {
     if (loan.installments.length === 0) continue
-
-    // Busca DEBIT na conta do empréstimo dos últimos N dias, ainda
-    // disponíveis (não pareadas a nada).
-    const candidates = await prisma.transaction.findMany({
-      where: {
-        // ⛔ NUNCA `loan.bankAccountId` cru: com null vira `IS NULL` e casa com as
-        // transações órfãs de conta. Mútuo sem trânsito não tem o que conciliar.
-        bankAccountId: exigeContaDoEmprestimo(loan, 'conciliar automaticamente'),
-        type: 'DEBIT',
-        origin: 'OFX',
-        lifecycle: 'EFFECTED',
-        createdAt: { gte: sinceDate },
-        loanInstallmentPaid: null, // tx ainda livre
-        reconciledWithId: null,
-      },
-      select: { id: true, date: true, amount: true, description: true },
-    })
+    const candidates = candidatasPorConta.get(exigeContaDoEmprestimo(loan, 'conciliar automaticamente')) ?? []
     if (candidates.length === 0) continue
 
     // Sprint Contract Suffix Fix (27/06/2026): hasContract avaliado pela
@@ -160,9 +178,7 @@ export async function autoConciliarParcelas(
         const dateDiff = diffDays(tx.date, ins.dueDate)
 
         // Sprint AI/Contrato (17/06/2026) — tolerância expandida pra ESTIMATE
-        // (pós-fixado): o valor real pode variar significativamente do estimado
-        // por causa da correção CDI. Aceita até 25% de diff quando contrato bate
-        // ou ±15% genérico.
+        // (pós-fixado): o valor real pode variar do estimado pela correção.
         const strongAmountTol = ins.isEstimate
           ? Math.max(ins.payment * 0.05, STRONG_AMOUNT_TOL)
           : STRONG_AMOUNT_TOL
@@ -170,9 +186,7 @@ export async function autoConciliarParcelas(
           ? Math.max(ins.payment * 0.15, AMBIGUOUS_AMOUNT_TOL)
           : AMBIGUOUS_AMOUNT_TOL
 
-        // (1) contractNumber match — agora via helper compartilhado, que
-        // extrai o "core" do contractNumber (ignora sufixo "-N"). Resolve
-        // C41033828-8 vs descrição "LIQUIDACAO DE PARCELA-C41033828".
+        // (1) contractNumber match via helper compartilhado (ignora sufixo "-N")
         if (
           hasContractToMatch &&
           descriptionMatchesContract(tx.description, loan.contractNumber) &&
@@ -194,7 +208,7 @@ export async function autoConciliarParcelas(
           continue
         }
 
-        // (3) janela mais larga = ambíguo (ou strong quando ESTIMATE com janela curta)
+        // (3) janela mais larga = ambíguo
         if (amountDiff <= ambiguousAmountTol && dateDiff <= AMBIGUOUS_DATE_WINDOW_DAYS) {
           ambiguousCandidates.push(tx)
         }
@@ -202,68 +216,35 @@ export async function autoConciliarParcelas(
 
       if (strongMatch) {
         try {
-          // Sprint AI/Contrato (17/06/2026):
-          // Quando ins.isEstimate (pós-fixado), recalcula juros + correção +
-          // closingBalance com base no realPayment. Mantém amortização constante
-          // (= ins.amortization), porque é fixa pelo SAC.
-          //   juros     = openingBalance * rateMonthly (fixo pelo contrato)
-          //   correcao  = realPayment - amortization - juros
-          //   closing   = openingBalance - amortization
-          // realPayment é salvo na coluna pra DRE enrichment usar.
-          const realPayment = strongMatch.tx.amount
-          let updateData: {
-            status: string
-            paidDate: Date
-            reconciledTransactionId: string
-            realPayment: number
-            interest?: number
-            correcao?: number
-            closingBalance?: number
-            payment?: number
-          } = {
-            status: 'PAID',
-            paidDate: strongMatch.tx.date,
-            reconciledTransactionId: strongMatch.tx.id,
-            realPayment,
-          }
-          if (ins.isEstimate) {
-            const interest = round2(ins.openingBalance * loan.interestRateMonthly)
-            const correcao = round2(realPayment - ins.amortization - interest)
-            const closingBalance = round2(ins.openingBalance - ins.amortization)
-            updateData = {
-              ...updateData,
-              interest,
-              correcao,
-              closingBalance,
-              payment: realPayment,
-            }
-          }
-
-          await prisma.$transaction(async (txClient) => {
-            const upd = await txClient.loanInstallment.updateMany({
-              where: { id: ins.id, status: 'OPEN', reconciledTransactionId: null },
-              data: updateData,
+          /**
+           * ⛔⛔ R54/R55 (25/11/2026) — antes este ramo gravava o vínculo 1:1 e REESCREVIA a
+           * agenda (`payment`/`interest`/`correcao`/`closingBalance`) no pós-fixado. Agora é a
+           * porta única: pedaço N:1 + encargos apurados, as MESMAS travas (teto, já quitada) e a
+           * agenda intacta. Recusa da porta (ou parcial) = a parcela fica pra caixa de entrada.
+           */
+          const tx = strongMatch.tx
+          const r = await prisma.$transaction(async (db) => {
+            const res = await vincularPagamentoDeParcela({
+              db, companyId, loanId: loan.id, installmentNumber: ins.number, transactionIds: [tx.id],
             })
-            if (upd.count !== 1) {
-              throw new Error('Race: installment já foi marcada')
-            }
+            // parcial não é casamento automático — desfaz a gravação inteira
+            if (res.isPartial) throw new Error('parcial')
+            return res
           })
           matched.push({
             loanId: loan.id,
             installmentId: ins.id,
             installmentNumber: ins.number,
-            transactionId: strongMatch.tx.id,
-            payment: ins.isEstimate ? realPayment : ins.payment,
-            interest: ins.isEstimate
-              ? round2(ins.openingBalance * loan.interestRateMonthly)
-              : ins.interest,
+            transactionId: tx.id,
+            payment: r.paidTotal,
+            interest: ins.interest,
             amortization: ins.amortization,
             reason: strongMatch.reason,
           })
           installmentsAlreadyClaimed.add(ins.id)
-          txAlreadyUsed.add(strongMatch.tx.id)
+          txAlreadyUsed.add(tx.id)
         } catch {
-          // race ou unique constraint — segue (ambiguous fica de fora também)
+          // recusa da porta, parcial ou corrida — segue (fica pra caixa de entrada)
         }
       } else if (ambiguousCandidates.length > 0) {
         const ids = Array.from(new Set(ambiguousCandidates.map((c) => c.id)))
@@ -278,21 +259,12 @@ export async function autoConciliarParcelas(
     }
   }
 
-  // Recalcula status do Loan: se todas as parcelas PAID → PAID_OFF.
-  let loansActivated = 0
-  const loanIdsTocados = new Set(matched.map((m) => m.loanId))
-  for (const loanId of loanIdsTocados) {
-    const remaining = await prisma.loanInstallment.count({
-      where: { loanId, status: { in: ['OPEN', 'LATE'] } },
-    })
-    if (remaining === 0) {
-      await prisma.loan.update({
-        where: { id: loanId },
-        data: { status: 'PAID_OFF' },
-      })
-      loansActivated += 1
-    }
-  }
+  // ⭐ N+1 curado (25/11): quem fecha o contrato agora é a porta; aqui só se CONTA quem fechou,
+  // numa leitura só
+  const tocados = Array.from(new Set(matched.map((m) => m.loanId)))
+  const loansActivated = tocados.length === 0 ? 0 : await prisma.loan.count({
+    where: { id: { in: tocados }, status: 'PAID_OFF' },
+  })
 
   return { matched, ambiguous, loansActivated }
 }

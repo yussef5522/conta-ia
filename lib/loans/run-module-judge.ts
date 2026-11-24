@@ -120,18 +120,19 @@ export async function runModuleJudge(prisma: PrismaClient): Promise<JudgeReport>
   // I9 — balance == Σtx (vigia o cache). recalcularSaldoConta em ROLLBACK.
   const balanceChecks: JudgeReport['balanceChecks'] = []
   const accounts = await prisma.bankAccount.findMany({ select: { id: true, name: true } })
-  for (const acc of accounts) {
-    try {
-      await prisma.$transaction(async (tx) => {
+  // ⭐ N+1 curado (25/11/2026): UMA transação de rollback pra todas as contas (era uma por conta)
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const acc of accounts) {
         const r = await recalcularSaldoConta(tx as unknown as PrismaClient, acc.id)
         if (Math.abs(r.delta) > 0.02) {
           balanceChecks.push({ accountId: acc.id, name: acc.name, stored: r2(r.saldoAntes), recomputed: r2(r.saldoDepois), delta: r2(r.delta) })
         }
-        throw new Error('__ROLLBACK__')
-      })
-    } catch (e) {
-      if ((e as Error).message !== '__ROLLBACK__') throw e
-    }
+      }
+      throw new Error('__ROLLBACK__')
+    }, { timeout: 120_000 })
+  } catch (e) {
+    if ((e as Error).message !== '__ROLLBACK__') throw e
   }
 
   const balanceIssues = balanceChecks.length
@@ -181,9 +182,13 @@ export async function runModuleJudge(prisma: PrismaClient): Promise<JudgeReport>
   // erra em silêncio. Entra no MESMO contador (`cardIssues`), então uma fatura PF
   // incoerente deixa o selo vermelho e dispara o e-mail igual à PJ.
   const perfisComCartao = await prisma.creditCard.findMany({ select: { profileId: true }, distinct: ['profileId'] })
+  // ⭐ N+1 curado (25/11/2026): os nomes dos perfis numa leitura só
+  const nomesDosPerfis = new Map(
+    (await prisma.personalProfile.findMany({ where: { id: { in: perfisComCartao.map((p) => p.profileId) } }, select: { id: true, name: true } }))
+      .map((p) => [p.id, p.name]),
+  )
   for (const p of perfisComCartao) {
-    const perfil = await prisma.personalProfile.findUnique({ where: { id: p.profileId }, select: { name: true } })
-    const nome = perfil?.name ?? p.profileId
+    const nome = nomesDosPerfis.get(p.profileId) ?? p.profileId
     const fails = await checkCardInvariantsPF(prisma, p.profileId, nome, nowJudge)
     for (const f of fails) cardChecks.push({ invariante: f.invariante, companyName: `PF · ${f.profileName}`, detalhe: f.detalhe })
   }

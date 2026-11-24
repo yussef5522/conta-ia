@@ -33,8 +33,11 @@ import { semComentarios, usosDe, blocoEntre, chamadasDe } from '../../../__tests
 const raiz = process.cwd()
 const ler = (p: string) => semComentarios(readFileSync(join(raiz, p), 'utf8'))
 
-const ROTA = 'app/api/empresas/[id]/emprestimos/[loanId]/vincular-parcela/preview/route.ts'
-const MODAL = 'components/emprestimos/LinkPaymentModal.tsx'
+// ⭐ R54 (25/11/2026) — o motor saiu da rota do modal órfão (LinkPaymentModal, que ninguém
+// importava: a maçaneta não existia) pra lib com dono, servida pelo "marcar paga" do detalhe.
+const ROTA = 'lib/loans/previa-do-vinculo.ts'
+const MODAL = 'app/(dashboard)/empresas/[id]/emprestimos/[loanId]/_components/candidatos-dialog.tsx'
+const ROTA_HTTP = 'app/api/empresas/[id]/emprestimos/[loanId]/parcelas/[number]/candidatos/route.ts'
 const PORTA = 'lib/loans/vincular-pagamento.ts'
 
 describe('a exceção da conta garantida é ALCANÇÁVEL pela tela', () => {
@@ -53,6 +56,21 @@ describe('a exceção da conta garantida é ALCANÇÁVEL pela tela', () => {
     // Janela de distância já produziu falso vermelho E falso verde nesta casa.
     const chamada = blocoEntre(ler(ROTA), 'buildLinkGroup(', ')')
     expect(chamada).toMatch(/contratosCadastrados/)
+  })
+})
+
+describe('⭐ a maçaneta EXISTE: o diálogo vivo chama a prévia, e a prévia é a lib', () => {
+  it('a rota HTTP do "marcar paga" serve `previaDoVinculo`', () => {
+    expect(ler(ROTA_HTTP)).toMatch(/previaDoVinculo\(prisma/)
+  })
+  it('o diálogo busca as candidatas E grava pelos pedaços escolhidos (transactionIds)', () => {
+    const src = ler(MODAL)
+    expect(src).toMatch(/\/candidatos/)
+    expect(src).toMatch(/transactionIds/)
+  })
+  it('e o detalhe REALMENTE abre o diálogo (porta sem maçaneta, 12ª volta)', () => {
+    const det = ler('app/(dashboard)/empresas/[id]/emprestimos/[loanId]/page.tsx')
+    expect(det).toMatch(/<CandidatosDialog\b/)
   })
 })
 
@@ -75,7 +93,9 @@ describe('o bloqueio atravessa a rota e desarma o botão', () => {
     // *Guard que conta ocorrência aprova o argumento trocado.* O que morde é exigir o
     // número CERTO **dentro de cada chamada** — estrutural, não contagem.
     const src = ler(ROTA)
-    expect(src).toMatch(/loanInstallmentPayment\.findMany/)
+    // o já-vinculado vem dos pedaços da parcela (lidos junto com ela) e entra na soma gravada
+    expect(src).toMatch(/payments:\s*\{\s*select:\s*\{\s*amount:\s*true/)
+    expect(blocoEntre(src, 'const paidTotalGravado', '\n')).toMatch(/jaVinculado/)
     expect(usosDe(src, 'paidTotalGravado')).toBeGreaterThanOrEqual(2)
 
     for (const fn of ['bloqueioDoVinculo(', 'computeLinkSplit(']) {

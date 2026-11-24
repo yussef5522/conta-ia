@@ -822,6 +822,39 @@
   --cart-fundo: #0b0e1c;
   --cart-chip-tinta: #F2F6FD;
 }
+/* ⭐⭐ --emp-* — EMPRÉSTIMOS v1 (25/11/2026, docs/emprestimos-referencia.html R54–R65). Tokens POR VALOR
+   da referência (o guard emprestimos-bate-com-a-lei abre o HTML e compara): fundo, tintas, sombra dupla
+   sem borda e as tintas do hero em 135°. As cores por credor (claro/escuro validados) e os gradientes
+   dos chips moram em `lib/loans/carteira.ts` (COR_DO_CREDOR, GRADIENTE_DO_CHIP, GRADIENTE_DA_SERIE). */
+:root {
+  --emp-bg: #F4F5F7; --emp-card: #FFFFFF; --emp-ink: #0B1220; --emp-ink2: #5A6475; --emp-ink3: #8B93A3;
+  --emp-line: #E9EBF1; --emp-ind: #4F46E5; --emp-rox: #7C3AED; --emp-amb: #B45309; --emp-ambbg: #FEF3C7;
+  --emp-ver: #0F766E; --emp-verbg: #D6F2EC; --emp-ros: #BE123C; --emp-rosbg: #FDE8EC;
+  --emp-sh: 0 1px 2px rgba(10,15,30,.05),0 10px 28px rgba(10,15,30,.07);
+  --emp-t-ind: linear-gradient(135deg,#EEF0FF 0%,#fff 58%);
+  --emp-t-amb: linear-gradient(135deg,#FFF4DE 0%,#fff 58%);
+  --emp-t-rox: linear-gradient(135deg,#F4EDFF 0%,#fff 58%);
+  --emp-t-ver: linear-gradient(135deg,#E2F7F0 0%,#fff 58%);
+  --emp-suave: #F7F8FC; --emp-trilho: #EDEFF4; --emp-neutro: #F1F2F7; --emp-grade: #ECEEF4;
+}
+.dark {
+  --emp-bg: #0b0e1c; --emp-card: #141a2e; --emp-ink: #E6EAF5; --emp-ink2: #A7B0C6; --emp-ink3: #7D869E;
+  --emp-line: #242a41; --emp-ind: #818CF8; --emp-rox: #A78BFA; --emp-amb: #F59E0B; --emp-ambbg: #3a2a0c;
+  --emp-ver: #34D399; --emp-verbg: #0f2e24; --emp-ros: #FB7185; --emp-rosbg: #3a1720;
+  --emp-sh: 0 1px 2px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.35);
+  --emp-t-ind: linear-gradient(135deg,#1f2347 0%,#141a2e 58%);
+  --emp-t-amb: linear-gradient(135deg,#2a2210 0%,#141a2e 58%);
+  --emp-t-rox: linear-gradient(135deg,#251d47 0%,#141a2e 58%);
+  --emp-t-ver: linear-gradient(135deg,#0f2e24 0%,#141a2e 58%);
+  --emp-suave: #1a2036; --emp-trilho: #23283f; --emp-neutro: #1f2438; --emp-grade: #23283f;
+}
+.emp-hk::after { content: ""; position: absolute; right: -34px; top: -34px; width: 150px; height: 150px; border-radius: 50%; pointer-events: none }
+.emp-hk.t-ind::after { background: radial-gradient(closest-side,rgba(79,70,229,.13),transparent) }
+.emp-hk.t-amb::after { background: radial-gradient(closest-side,rgba(217,119,6,.14),transparent) }
+.emp-hk.t-rox::after { background: radial-gradient(closest-side,rgba(124,58,237,.13),transparent) }
+.emp-hk.t-ver::after { background: radial-gradient(closest-side,rgba(15,118,110,.13),transparent) }
+.emp-chip::after { content: ""; position: absolute; inset: 0; background: radial-gradient(90px 46px at 18% 0%,rgba(255,255,255,.42),transparent 60%) }
+
 @keyframes cart-pulsa-amb { 0% { box-shadow: 0 0 0 0 rgba(180,83,9,.4) } 70% { box-shadow: 0 0 0 6px rgba(180,83,9,0) } 100% { box-shadow: 0 0 0 0 rgba(180,83,9,0) } }
 .cart-pulso { animation: cart-pulsa-amb 1.8s infinite }
 @media (prefers-reduced-motion: reduce) { .cart-pulso { animation: none } }
