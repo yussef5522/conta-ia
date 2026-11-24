@@ -75,6 +75,8 @@ const TELAS: { arquivo: string; ancora: keyof typeof ANCORAS; lista: string; aca
   { arquivo: 'app/(dashboard)/empresas/[id]/estoque/itens/page.tsx', ancora: 'JA_EXISTE', lista: 'placeholder="ex: Molho de tomate"', acao: '>usar o existente' },
   // (23/11) "algum destes é o pagamento desta fatura?" — morava depois dos totais e dos números
   { arquivo: 'app/(dashboard)/empresas/[id]/cartoes/[cardId]/importar-fatura/page.tsx', ancora: 'PAGAMENTO_DA_FATURA', lista: 'Linhas extraídas — IA sugeriu, você decide', acao: 'onChange={() => setReclassPaymentTxId(c.id)}' },
+  // (24/11) R51 — o que o sininho vigia nos cartões pousa no TOPO da página, antes do hero
+  { arquivo: 'app/(dashboard)/empresas/[id]/cartoes/page.tsx', ancora: 'CARTAO_VIGIA', lista: '<Hero carteira', acao: '{a.acaoRotulo} →' },
 ]
 
 describe('as outras perguntas do sistema — no TOPO, e a ação só dentro do cartão', () => {

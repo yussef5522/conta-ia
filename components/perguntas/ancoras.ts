@@ -7,4 +7,6 @@ export const ANCORAS = {
   CONFLITO: 'pergunta-conflito',
   JA_EXISTE: 'pergunta-ja-existe',
   PAGAMENTO_DA_FATURA: 'pergunta-pagamento-da-fatura',
+  // (24/11) R51 — o sininho vigia o cartão: fatura vencendo sem pagamento, fatura não importada, limite > 80%
+  CARTAO_VIGIA: 'pergunta-cartao-vigia',
 } as const

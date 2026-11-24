@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { getCardDashboard } from '@/lib/credit-card-pj/queries'
+import { lerFatura } from '@/lib/credit-card-pj/fatura-detalhe'
+import { diaDoBrasil } from '@/lib/margem/dia'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
 
@@ -35,8 +36,10 @@ export async function GET(request: NextRequest, { params }: Params) {
   // R4: ?fatura=YYYY-MM filtra a competencia (default = mais recente)
   const faturaParam = request.nextUrl.searchParams.get('fatura')
   const validFatura = faturaParam && /^\d{4}-\d{2}$/.test(faturaParam) ? faturaParam : null
-  const dashboard = await getCardDashboard(companyId, cardId, validFatura)
-  return NextResponse.json(dashboard)
+  // ⭐ CARTÕES v3 — a fatura consulta SÓ este cartão (nunca mais a empresa inteira)
+  const fatura = await lerFatura(companyId, cardId, validFatura, diaDoBrasil(new Date()))
+  if (!fatura) return NextResponse.json({ erro: 'Cartão não encontrado' }, { status: 404 })
+  return NextResponse.json(fatura)
 }
 
 const patchSchema = z.object({

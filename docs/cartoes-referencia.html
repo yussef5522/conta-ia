@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CARTÕES (financeiro) — referência v3 APROVADA</title>
+<!--
+═══════════════════════════════════════════════════════════════════
+CARTÕES DE CRÉDITO — a página nível mundo. Nasce do dossiê de
+23/11 (4 telas atuais, nota 3,5/10) + print do dono + fatura real
+Sicredi + estudo Ramp/Brex/Nubank. Pressupõe as TRÊS FUNDAÇÕES:
+(A) fatura é REGISTRO com ciclo; (B) parcelas futuras GRAVADAS;
+(C) UMA porta de conciliação. Duas amostras: a PÁGINA (lista) e a
+FATURA (detalhe). Tema escritório claro da casa. Herdadas: S15,
+S16, S18, S19, S20, R11 (escala única), R23 (excluir de verdade),
+lei do CLAUDE.md (pergunta no topo).
+
+R44 — DINHEIRO NA CARA. O topo responde em 4 cartões: quanto vou
+      PAGAR agora (fechadas não pagas, com o vencimento mais
+      próximo), quanto está ABERTO acumulando, quanto já está
+      COMPROMETIDO em parcelas futuras (com os próximos meses em
+      barras — o número que teu banco imprime e ninguém mostra), e
+      o LIMITE total usado/disponível. "ver a conta →" em cada um.
+
+R45 — CARTÃO É OBJETO COMPLETO. Bandeira (em texto, nunca logo
+      desenhado), nome, final; selo do CICLO (Aberta · Fechada ·
+      Paga · Parcial); valor da fatura do mês; barra de limite com
+      UMA régua (disponível = limite − aberta − fechadas não
+      pagas, a mesma conta em toda tela); "vence em N dias"
+      relativo; menu ⋯ com editar · arquivar · excluir (R23:
+      excluir com história → some das telas, história intacta).
+
+R46 — FATURA É REGISTRO COM CICLO. Linha do tempo da fatura:
+      abriu → fechou → vence → paga, com pagamento PARCIAL
+      mostrado como estado próprio. O mês navega por setas.
+
+R47 — PARCELA FUTURA É COMPROMISSO VISÍVEL. Painel "o que já está
+      comprometido": barras por mês (escala única) + a lista das
+      compras parceladas (quantas faltam, valor/mês, termina em).
+      O grupo da parcela se LIGA entre faturas (mesma compra,
+      meses seguidos = um grupo só).
+
+R48 — UMA PORTA DE CONCILIAÇÃO. A pergunta do topo e o botão
+      "casar pagamento" gravam A MESMA coisa: lançamento marcado
+      + fatura quitada (vira Paga/Parcial na hora). Desfazer
+      devolve tudo (categoria inclusa). Caminho duplo não existe.
+
+R49 — TRANSAÇÃO RICA. Busca + filtros com contador (Todas ·
+      Parceladas · Estornos · Sem categoria); categoria por linha
+      com regra aprendida — e a escolha do dono VIRA regra nova
+      (com "lembrar pra próxima?" de 1 toque); parcela NN/NN em
+      selo; estorno e pagamento com cara própria; compra em dólar
+      mostra US$ e cotação.
+
+R50 — GRÁFICO DA CASA. Por categoria em barras horizontais
+      (escala única, sem pizza) e evolução de 6 meses da fatura.
+      Nada de gráfico que mente.
+
+R51 — O SININHO VIGIA O CARTÃO. Fatura fechada sem pagamento
+      casado a N dias do vencimento; fechamento passou e a fatura
+      não foi importada; limite acima de 80%. Avisos pousam na
+      página com âncora.
+
+R52 — CELULAR DE VERDADE. Cartões empilham inteiros, o topo vira
+      2×2, a fatura vira abas (Lançamentos · Parcelas · Gráfico);
+      NADA rola de lado.
+
+Números da amostra: dossiê + fatura real de 23/11 (4 cartões;
+sicredi nov R$ 4.810,69; parcelas futuras R$ 62,8 mil vivos).
+A faixa preta separa as duas amostras. Pinos no <script>.
+═══════════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --esc-bg:#F3F5FA; --esc-card:#FFFFFF; --esc-linha:#C9D0E3;
+  --esc-tinta:#0A0F1E; --esc-tinta2:#46516B; --esc-tinta3:#8B94AD;
+  --esc-indigo:#4F46E5; --esc-indigo50:#EEF0FE; --esc-indigo-t:#3730A3;
+  --esc-verde:#0E9F6E; --esc-verde50:#E4F7EF; --esc-verde-t:#065F46;
+  --esc-ambar50:#FCF0DC; --esc-ambar-t:#7C4A03; --esc-ambar:#B45309;
+  --esc-roxo50:#F3EFFE; --esc-roxo-t:#5B21B6;
+  --chip1:#171E31; --chip2:#232D49;
+  --cat-mercado:#4F46E5; --cat-servicos:#7C3AED; --cat-saude:#0E9F6E;
+  --cat-educacao:#0284C7; --cat-roupas:#DB2777; --cat-outros:#64748B;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#F4F5F7;color:var(--esc-tinta);font-family:var(--font)}
+body{padding:0 0 46px}
+.num{font-variant-numeric:tabular-nums}
+.nav{position:sticky;top:0;z-index:5;display:flex;gap:7px;flex-wrap:wrap;
+  background:#0A0F1E;padding:9px 14px}
+.nav button{border:1px solid #334155;background:#1E293B;color:#CBD5E1;border-radius:999px;
+  padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.nav button.on{background:#F1F5F9;color:#0A0F1E;border-color:#F1F5F9}
+.faixa{background:#0A0F1E;color:#8FA0BF;font-size:10px;font-weight:800;letter-spacing:.12em;
+  text-transform:uppercase;padding:7px 18px}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 18px 26px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.top h1{margin:0;font-size:21px;font-weight:800;letter-spacing:-.01em}
+.btpri{border:0;background:var(--esc-indigo);color:#fff;border-radius:10px;height:40px;
+  font-size:13px;font-weight:800;cursor:pointer;font-family:var(--font);padding:0 16px}
+
+/* ── R44: o dinheiro na cara ── */
+.hero{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:16px}
+.hk{background:var(--esc-card);border:0;border-radius:20px;padding:16px 18px;box-shadow:0 1px 2px rgba(10,15,30,.05),0 10px 28px rgba(10,15,30,.07)}
+.hk.t-amb{background:linear-gradient(180deg,#FFFDF8,#FCF1DC)}
+.hk.t-ind{background:linear-gradient(180deg,#FBFBFF,#EFF0FE)}
+.hk.t-rox{background:linear-gradient(180deg,#FDFBFF,#F5EEFE)}
+.hk.t-ver{background:linear-gradient(180deg,#FAFEFC,#E7F8F0)}
+.hk.t-amb .rot{color:var(--esc-ambar-t)}
+.hk.t-ind .rot{color:var(--esc-indigo-t)}
+.hk.t-rox .rot{color:var(--esc-roxo-t)}
+.hk.t-ver .rot{color:var(--esc-verde-t)}
+.hk .rot{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase}
+.hk .v{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-top:5px}
+.hk .v.amb{color:var(--esc-ambar)}
+.hk .sub{font-size:11px;font-weight:700;color:var(--esc-tinta3);margin-top:3px}
+.hk .sub b{color:var(--esc-tinta2)}
+.hk .sub a{color:var(--esc-indigo);font-weight:800;text-decoration:none}
+.mini{display:flex;align-items:flex-end;gap:5px;height:40px;margin-top:8px}
+.mini .mb{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.mini .mb i{display:block;width:100%;border-radius:3px 3px 0 0;background:#D9DEF0}
+.mini .mb.on i{background:linear-gradient(180deg,#7C3AED,var(--esc-indigo))}
+.mini .mb span{font-size:8px;font-weight:800;color:var(--esc-tinta3)}
+.lim{height:10px;border-radius:99px;background:#EDF0F6;overflow:hidden;margin-top:11px}
+.lim i{display:block;height:100%;border-radius:99px;
+  background:linear-gradient(90deg,var(--esc-indigo),#7C3AED)}
+
+/* ── linha do mês ── */
+.mes{background:var(--esc-card);border:0;border-radius:20px;
+  padding:15px 18px 17px;margin-top:16px;box-shadow:0 1px 2px rgba(10,15,30,.05),0 10px 28px rgba(10,15,30,.07)}
+.mes .mh{display:flex;align-items:center;gap:8px;font-size:9.5px;font-weight:800;
+  letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase;margin-bottom:10px}
+.trilho{position:relative;height:66px}
+.trilho .tl{position:absolute;left:0;right:0;top:32px;height:2px;background:#E4E8F3}
+.ev{position:absolute;top:32px;width:0}
+.ev .pt{position:absolute;top:-6px;left:0;transform:translateX(-50%);
+  width:13px;height:13px;border-radius:50%;background:var(--esc-card);
+  border:3px solid var(--esc-indigo)}
+.ev.vc .pt{border-color:var(--esc-ambar)}
+.ev.ok .pt{border-color:var(--esc-verde)}
+.ev .tx{position:absolute;top:13px;left:0;transform:translateX(-50%);
+  font-size:9px;font-weight:800;color:var(--esc-tinta2);white-space:nowrap}
+.ev.alt .tx{top:auto;bottom:13px}
+.ev.hoje .pt{background:var(--esc-tinta);border-color:var(--esc-tinta);
+  width:9px;height:9px;top:-4px}
+.ev.hoje .tx{color:var(--esc-tinta)}
+
+/* ── R45: cartões-objeto ── */
+.grade{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.cc{background:var(--esc-card);border:0;border-radius:22px;padding:18px;position:relative;box-shadow:0 1px 2px rgba(10,15,30,.05),0 12px 32px rgba(10,15,30,.08)}
+.cc .topo{display:flex;align-items:center;gap:12px}
+.chip{width:84px;height:54px;border-radius:12px;background:linear-gradient(135deg,var(--chip1),var(--chip2));
+  color:#F2F6FD;display:flex;flex-direction:column;justify-content:space-between;
+  padding:5px 7px;flex:none;position:relative;overflow:hidden;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22), 0 4px 10px rgba(10,15,30,.18)}
+.chip::after{content:'';position:absolute;top:-60%;left:-25%;width:80%;height:160%;
+  background:radial-gradient(closest-side,rgba(255,255,255,.28),transparent 70%);
+  transform:rotate(18deg)}
+.chip.b-sicredi{background:linear-gradient(135deg,#0A3D2C,#1E8F63)}
+.chip.b-banrisul{background:linear-gradient(135deg,#102A66,#2B5CD9)}
+.chip.b-caixa{background:linear-gradient(135deg,#123B74,#1F7ACC)}
+.chip.b-mp{background:linear-gradient(135deg,#0B4E8E,#3BB3F4)}
+.chip .band{font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.85}
+.chip .fim{font-size:10.5px;font-weight:700;letter-spacing:.12em}
+.cc .idw .nome{font-size:14.5px;font-weight:800}
+.cc .idw .sub{font-size:10.5px;font-weight:700;color:var(--esc-tinta3);margin-top:1px}
+.selo{margin-left:auto;display:inline-flex;align-items:center;gap:5px;border-radius:999px;
+  padding:3px 10px;font-size:10.5px;font-weight:800}
+.selo.paga{background:var(--esc-verde50);color:var(--esc-verde-t)}
+.selo.aberta{background:var(--esc-indigo50);color:var(--esc-indigo-t)}
+.selo.fechada{background:var(--esc-ambar50);color:var(--esc-ambar-t)}
+.selo.parcial{background:var(--esc-roxo50);color:var(--esc-roxo-t)}
+.cc .menu{border:0;background:#F1F2F6;border-radius:10px;
+  width:30px;height:30px;font-size:15px;font-weight:800;color:var(--esc-tinta3);cursor:pointer;
+  margin-left:8px;flex:none;font-family:var(--font)}
+.cc .fat{display:flex;align-items:baseline;gap:9px;margin-top:12px;flex-wrap:wrap}
+.cc .fat .v{white-space:nowrap}
+.cc .fat .rot{font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);text-transform:uppercase}
+.cc .fat .v{font-size:28px;font-weight:800;letter-spacing:-.015em}
+.cc .fat .vc{margin-left:auto;font-size:11.5px;font-weight:800}
+.cc .fat .vc.alerta{color:var(--esc-ambar);display:inline-flex;align-items:center;gap:6px}
+.cc .fat .vc.alerta::before{content:'';width:7px;height:7px;border-radius:50%;
+  background:var(--esc-ambar);animation:pulsa-amb 1.8s infinite}
+@keyframes pulsa-amb{0%{box-shadow:0 0 0 0 rgba(180,83,9,.4)}70%{box-shadow:0 0 0 6px rgba(180,83,9,0)}100%{box-shadow:0 0 0 0 rgba(180,83,9,0)}}
+.cc .fat .vc.okz{color:var(--esc-verde-t)}
+.cc .lim{margin-top:10px}
+.cc .ll{display:flex;justify-content:space-between;font-size:10.5px;font-weight:700;
+  color:var(--esc-tinta3);margin-top:5px}
+.cc .ll b{color:var(--esc-tinta2)}
+.cc .pf{display:flex;align-items:center;gap:7px;margin-top:10px;border-top:1px solid #EEF1F8;
+  padding-top:9px;font-size:11px;font-weight:700;color:var(--esc-tinta2)}
+.cc .pf b{font-weight:800}
+.cc .pf a{margin-left:auto;color:var(--esc-indigo);font-weight:800;text-decoration:none;font-size:11px}
+.menupop{position:absolute;right:14px;top:52px;background:var(--esc-card);border:1px solid var(--esc-linha);
+  border-radius:11px;box-shadow:0 10px 28px rgba(10,15,30,.12);padding:5px;z-index:4;min-width:140px}
+.menupop button{display:block;width:100%;text-align:left;border:0;background:transparent;
+  border-radius:8px;padding:8px 11px;font-size:12.5px;font-weight:700;color:var(--esc-tinta);
+  cursor:pointer;font-family:var(--font)}
+.menupop button.perigo{color:#B42318}
+
+/* ── fatura (detalhe) ── */
+.fhead{display:flex;align-items:center;gap:13px;flex-wrap:wrap}
+.fhead .nav-mes{display:inline-flex;align-items:center;gap:9px;border:0;
+  background:#EEF0F5;border-radius:12px;height:38px;padding:0 8px}
+.fhead .nav-mes button{border:0;background:transparent;font-size:14px;font-weight:800;
+  color:var(--esc-tinta2);cursor:pointer;width:26px;font-family:var(--font)}
+.fhead .nav-mes .m{font-size:12.5px;font-weight:800}
+.fhead .tot{margin-left:auto;text-align:right}
+.fhead .tot .rot{font-size:9.5px;font-weight:800;letter-spacing:.07em;color:var(--esc-tinta3);text-transform:uppercase}
+.fhead .tot .v{font-size:30px;font-weight:800;letter-spacing:-.015em}
+.ciclo{background:var(--esc-card);border:0;box-shadow:0 1px 2px rgba(10,15,30,.05),0 10px 28px rgba(10,15,30,.07);border-radius:20px;
+  padding:14px 16px;margin-top:13px}
+.ciclo .trilho{height:50px}
+.concil{display:flex;align-items:center;gap:10px;background:var(--esc-verde50);
+  border-radius:11px;padding:10px 13px;margin-top:11px;font-size:12px;font-weight:800;color:var(--esc-verde-t)}
+.concil a{margin-left:auto;color:var(--esc-verde-t);font-weight:800;font-size:11.5px}
+.fgrid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:14px;margin-top:14px;align-items:start}
+.card{background:var(--esc-card);border:0;border-radius:20px;padding:16px 18px;box-shadow:0 1px 2px rgba(10,15,30,.05),0 10px 28px rgba(10,15,30,.07)}
+.chead{display:flex;align-items:center;gap:8px;font-size:9.5px;font-weight:800;
+  letter-spacing:.08em;color:var(--esc-tinta3);text-transform:uppercase;margin-bottom:6px}
+.chead .sp{flex:1}
+.filtros{display:flex;gap:7px;flex-wrap:wrap;margin:4px 0 8px}
+.filtros button{border:1px solid var(--esc-linha);background:var(--esc-card);color:var(--esc-tinta2);
+  border-radius:999px;height:29px;padding:0 11px;font-size:11px;font-weight:800;cursor:pointer;
+  font-family:var(--font);display:inline-flex;align-items:center;gap:5px}
+.filtros button.on{background:var(--esc-tinta);border-color:var(--esc-tinta);color:#fff}
+.filtros .fn{background:#E8EBF5;color:var(--esc-tinta2);border-radius:999px;padding:0 6px;font-size:9.5px;font-weight:800}
+.filtros button.on .fn{background:#2A3350;color:#D7DCF0}
+.tx{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:12px;align-items:center;
+  padding:10px 0;border-bottom:1px solid #F0F2F7}
+.tx:last-child{border-bottom:0}
+.ic{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:800}
+.ic.c-saude{background:#DCF5EA;color:#065F46}
+.ic.c-educacao{background:#DDF0FB;color:#075985}
+.ic.c-servicos{background:#EFE8FD;color:#5B21B6}
+.ic.c-mercado{background:#E7EAFD;color:#3730A3}
+.ic.c-outros{background:#EAEDF2;color:#475569}
+.ic.pg{background:#DCF5EA;color:#065F46}
+.ic.es{background:#DCF5EA;color:#065F46}
+.ic.sem{background:#FCF0DC;color:#7C4A03}
+.tx .mid .dt{font-size:10.5px;font-weight:700;color:var(--esc-tinta3)}
+.tx .mid .nm{font-size:13.5px;font-weight:700}
+.tx .mid .et{display:flex;gap:6px;margin-top:3px;flex-wrap:wrap}
+.tag{display:inline-block;border-radius:6px;padding:1px 7px;font-size:9.5px;font-weight:800}
+.tag.cat{background:#E8EBF5;color:var(--esc-tinta2)}
+.tag.cat.c-saude{background:#E4F7EF;color:#065F46}
+.tag.cat.c-educacao{background:#E3F2FB;color:#075985}
+.tag.cat.c-servicos{background:#F3EFFE;color:#5B21B6}
+.tag.cat.c-mercado{background:#EEF0FE;color:#3730A3}
+.tag.cat.c-roupas{background:#FCE9F3;color:#9D174D}
+.tag.parc{background:var(--esc-roxo50);color:var(--esc-roxo-t)}
+.tag.usd{background:var(--esc-indigo50);color:var(--esc-indigo-t)}
+.tag.apr{background:var(--esc-verde50);color:var(--esc-verde-t)}
+.tx .val{font-size:14.5px;font-weight:800;text-align:right;white-space:nowrap}
+.tx .val.cred{color:var(--esc-verde-t)}
+.tx.pgto{background:#F4FBF7;border-radius:14px;padding:10px 12px;margin:2px -12px}
+.vermais{margin-top:9px;font-size:11.5px;font-weight:800}
+.vermais a{color:var(--esc-indigo);text-decoration:none}
+
+/* parcelas futuras + gráficos */
+.pfm{display:flex;align-items:flex-end;gap:7px;height:64px;margin:6px 0 4px}
+.pfm .mb{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.pfm .mb i{display:block;width:100%;border-radius:4px 4px 0 0;
+  background:linear-gradient(180deg,#7C3AED,var(--esc-indigo))}
+.pfm .mb span{font-size:8.5px;font-weight:800;color:var(--esc-tinta3)}
+.pfm .mb em{font-style:normal;font-size:8.5px;font-weight:800;color:var(--esc-tinta2)}
+.pfl{border-top:1px solid #EEF1F8;margin-top:8px;padding-top:4px}
+.pfl .pr{display:flex;align-items:baseline;gap:8px;padding:6px 0;font-size:12px;font-weight:700}
+.pfl .pr .nm{flex:1}
+.pfl .pr small{font-size:10px;font-weight:800;color:var(--esc-tinta3)}
+.pfl .pr .vv{font-weight:800}
+.catbar{margin-top:4px}
+.cb{display:grid;grid-template-columns:86px minmax(0,1fr) 64px;gap:9px;align-items:center;padding:5px 0}
+.cb .cn{font-size:11px;font-weight:800;color:var(--esc-tinta2)}
+.cb .tr{height:9px;border-radius:99px;background:#EDF0F8;overflow:hidden}
+.cb .tr i{display:block;height:100%;background:var(--esc-indigo);border-radius:99px}
+.cb .cv{font-size:11.5px;font-weight:800;text-align:right}
+.evsvg{width:100%;height:76px;margin-top:4px}
+.evleg{display:flex;justify-content:space-between;font-size:8.5px;font-weight:800;color:var(--esc-tinta3)}
+
+/* celular */
+@media (max-width:980px){
+  .hero{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grade{grid-template-columns:minmax(0,1fr)}
+  .fgrid{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:640px){
+  #trilho-mes .ev .tx{display:none}
+  #trilho-mes .ev.hoje .tx,#trilho-mes .ev.vc .tx{display:block}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button>Estoque</button><button>Vendas</button><button>Produção</button>
+  <button class="on">Financeiro</button><button>Cardápio</button>
+</nav>
+
+<div class="faixa">amostra · a página de cartões</div>
+
+<main class="wrap">
+  <header class="top">
+    <h1>Cartões de crédito</h1>
+    <button class="btpri">+ Novo cartão</button>
+  </header>
+
+  <div class="hero">
+    <div class="hk t-amb"><div class="rot">A pagar agora</div>
+      <div class="v amb num">R$ 4.810,69</div>
+      <div class="sub num"><b>sicredi</b> · vence em 3 dias · <a href="#">ver →</a></div></div>
+    <div class="hk t-ind"><div class="rot">Faturas abertas</div>
+      <div class="v num">R$ 11.801,80</div>
+      <div class="sub num">2 cartões acumulando · <a href="#">ver →</a></div></div>
+    <div class="hk t-rox"><div class="rot">Comprometido em parcelas</div>
+      <div class="v num">R$ 62.810</div>
+      <div class="mini" id="mini-pf"></div></div>
+    <div class="hk t-ver"><div class="rot">Limite dos 4 cartões</div>
+      <div class="v num">R$ 61.361 <span style="font-size:11px;color:var(--esc-tinta3);font-weight:800">livres de R$ 80.200</span></div>
+      <div class="lim"><i style="width:23%"></i></div>
+      <div class="sub num">23% usado</div></div>
+  </div>
+
+  <div class="mes">
+    <div class="mh">Novembro · fechamentos e vencimentos</div>
+    <div class="trilho" id="trilho-mes"></div>
+  </div>
+
+  <div class="grade">
+    <div class="cc">
+      <div class="topo">
+        <div class="chip b-sicredi"><span class="band">Visa</span><span class="fim num">•••• 0115</span></div>
+        <div class="idw"><div class="nome">Sicredi</div><div class="sub">Visa Empresas · fecha dia 27</div></div>
+        <span class="selo fechada">● Fechada</span>
+        <button class="menu">⋯</button>
+      </div>
+      <div class="fat"><span class="rot">Nov/2026</span><span class="v num">R$ 4.810,69</span>
+        <span class="vc alerta num">vence em 3 dias · sem pagamento casado</span></div>
+      <div class="lim"><i style="width:43%"></i></div>
+      <div class="ll num"><span><b>R$ 10.843</b> na próxima fatura</span><span><b>R$ 14.157</b> disponíveis de R$ 25.000</span></div>
+      <div class="pf num">parcelas futuras: <b>R$ 6.032,69</b><a href="#">abrir fatura →</a></div>
+    </div>
+
+    <div class="cc">
+      <div class="topo">
+        <div class="chip b-banrisul"><span class="band">Mastercard</span><span class="fim num">•••• 4408</span></div>
+        <div class="idw"><div class="nome">Banrisul</div><div class="sub">fecha dia 25</div></div>
+        <span class="selo aberta">● Aberta</span>
+        <button class="menu">⋯</button>
+      </div>
+      <div class="fat"><span class="rot">Nov/2026</span><span class="v num">R$ 11.321,03</span>
+        <span class="vc num">fecha em 2 dias</span></div>
+      <div class="lim"><i style="width:38%"></i></div>
+      <div class="ll num"><span><b>38%</b> do limite</span><span><b>R$ 18.679</b> disponíveis de R$ 30.000</span></div>
+      <div class="pf num">parcelas futuras: <b>R$ 41.210</b><a href="#">abrir fatura →</a></div>
+      <div class="menupop">
+        <button>editar cartão</button>
+        <button>arquivar</button>
+        <button class="perigo">excluir</button>
+      </div>
+    </div>
+
+    <div class="cc">
+      <div class="topo">
+        <div class="chip b-caixa"><span class="band">Visa</span><span class="fim num">•••• 3883</span></div>
+        <div class="idw"><div class="nome">Caixa</div><div class="sub">fecha dia 2</div></div>
+        <span class="selo paga">✓ Paga</span>
+        <button class="menu">⋯</button>
+      </div>
+      <div class="fat"><span class="rot">Nov/2026</span><span class="v num">R$ 480,77</span>
+        <span class="vc okz num">paga em 12/nov</span></div>
+      <div class="lim"><i style="width:3%"></i></div>
+      <div class="ll num"><span><b>3%</b> do limite</span><span><b>R$ 17.519</b> disponíveis de R$ 18.000</span></div>
+      <div class="pf num">parcelas futuras: <b>R$ 9.344</b><a href="#">abrir fatura →</a></div>
+    </div>
+
+    <div class="cc">
+      <div class="topo">
+        <div class="chip b-mp"><span class="band">Visa</span><span class="fim num">•••• 2711</span></div>
+        <div class="idw"><div class="nome">Mercado Pago</div><div class="sub">fecha dia 8</div></div>
+        <span class="selo parcial">◐ Parcial</span>
+        <button class="menu">⋯</button>
+      </div>
+      <div class="fat"><span class="rot">Out/2026</span><span class="v num">R$ 912,41</span>
+        <span class="vc num">pagos R$ 500,00 · restam R$ 412,41</span></div>
+      <div class="lim"><i style="width:49%"></i></div>
+      <div class="ll num"><span><b>49%</b> do limite</span><span><b>R$ 3.662</b> disponíveis de R$ 7.200</span></div>
+      <div class="pf num">parcelas futuras: <b>R$ 6.223</b><a href="#">abrir fatura →</a></div>
+    </div>
+  </div>
+</main>
+
+<div class="faixa">amostra · a fatura (sicredi · nov/2026)</div>
+
+<main class="wrap" style="padding-top:18px">
+  <div class="fhead">
+    <div class="chip b-sicredi" style="width:62px;height:43px"><span class="band">Visa</span><span class="fim num">•••• 0115</span></div>
+    <div><div style="font-size:16px;font-weight:800">Sicredi</div>
+      <div style="font-size:11px;font-weight:700;color:var(--esc-tinta3)">Visa Empresas</div></div>
+    <div class="nav-mes"><button>‹</button><span class="m num">Nov/2026</span><button>›</button></div>
+    <span class="selo fechada" style="margin-left:0">● Fechada</span>
+    <div class="tot"><div class="rot">Total da fatura</div><div class="v num">R$ 4.810,69</div></div>
+  </div>
+
+  <div class="ciclo">
+    <div class="trilho" id="trilho-fat"></div>
+    <div class="concil">✓ pagamento casado: −R$ 4.810,69 em 13/nov · conta Sicredi
+      <a href="#">desfazer</a></div>
+  </div>
+
+  <div class="fgrid">
+    <div class="card">
+      <div class="chead">Lançamentos · 42
+        <span class="sp"></span>
+        <span style="font-size:11px;font-weight:800;color:var(--esc-indigo)">⌕ buscar</span>
+      </div>
+      <div class="filtros">
+        <button class="on">Todas <span class="fn num">42</span></button>
+        <button>Parceladas <span class="fn num">11</span></button>
+        <button>Estornos <span class="fn num">1</span></button>
+        <button>Sem categoria <span class="fn num">2</span></button>
+      </div>
+
+      <div class="tx pgto"><div class="ic pg">✓</div>
+        <div class="mid"><div class="nm">Pagamento da fatura de outubro</div>
+          <div class="dt num">13/nov · conta Sicredi</div></div>
+        <div class="val cred num">−R$ 6.667,14</div></div>
+
+      <div class="tx"><div class="ic c-saude">P</div>
+        <div class="mid"><div class="nm">Panvel Filial 79</div>
+          <div class="et"><span class="dt num">14/out</span><span class="tag cat c-saude">Saúde</span><span class="tag parc num">parcela 1/2</span></div></div>
+        <div class="val num">R$ 420,64</div></div>
+
+      <div class="tx"><div class="ic c-educacao">B</div>
+        <div class="mid"><div class="nm">Bnanacademy · London</div>
+          <div class="et"><span class="dt num">08/out</span><span class="tag cat c-educacao">Educação</span><span class="tag usd num">US$ 36,00 · 5,04</span></div></div>
+        <div class="val num">R$ 181,56</div></div>
+
+      <div class="tx"><div class="ic es">↩</div>
+        <div class="mid"><div class="nm">Mercadolivre Naturaldo</div>
+          <div class="et"><span class="dt num">06/out</span><span class="tag apr">estorno</span></div></div>
+        <div class="val cred num">−R$ 148,40</div></div>
+
+      <div class="tx"><div class="ic c-servicos">N</div>
+        <div class="mid"><div class="nm">Netflix Com</div>
+          <div class="et"><span class="dt num">04/out</span><span class="tag cat c-servicos">Serviços</span><span class="tag apr">🧠 regra aprendida</span></div></div>
+        <div class="val num">R$ 44,90</div></div>
+
+      <div class="tx"><div class="ic sem">?</div>
+        <div class="mid"><div class="nm">Mercadolivre Ibiacesso</div>
+          <div class="et"><span class="dt num">01/out</span><span class="tag cat" style="background:var(--esc-ambar50);color:var(--esc-ambar-t)">sem categoria · escolher</span></div></div>
+        <div class="val num">R$ 19,39</div></div>
+
+      <div class="vermais num"><a href="#">ver os 42 lançamentos →</a></div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="chead">Já comprometido · próximos meses</div>
+        <div class="pfm" id="pfm"></div>
+        <div class="pfl">
+          <div class="pr num"><span class="nm">Mp Lojabrazil <small>faltam 9 · até ago/27</small></span><span class="vv">R$ 221,90/mês</span></div>
+          <div class="pr num"><span class="nm">Mp Caiocezar <small>faltam 9 · até ago/27</small></span><span class="vv">R$ 112,71/mês</span></div>
+          <div class="pr num"><span class="nm">Pg Eduzz <small>faltam 10 · até set/27</small></span><span class="vv">R$ 27,06/mês</span></div>
+          <div class="pr num"><span class="nm">Panvel <small>falta 1 · dez</small></span><span class="vv">R$ 420,64</span></div>
+        </div>
+        <div class="vermais num"><a href="#">ver as 11 compras parceladas →</a></div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="chead">Por categoria</div>
+        <div class="catbar" id="catbar"></div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="chead">Fatura por mês</div>
+        <svg class="evsvg" id="evsvg" viewBox="0 0 320 76" preserveAspectRatio="none"></svg>
+        <div class="evleg num"><span>jun</span><span>jul</span><span>ago</span><span>set</span><span>out</span><span>nov</span></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+/* ═══ ESPECIFICAÇÃO EXECUTÁVEL — CARTÕES v1 ═══ */
+
+const brl0 = n => 'R$ ' + Math.round(n).toLocaleString('pt-BR');
+
+/* R45 — UMA régua do disponível, em toda tela */
+function disponivel(limite, aberta, fechadasNaoPagas){
+  return limite - aberta - fechadasNaoPagas;
+}
+
+/* R46 — o estado do ciclo é um só */
+function estadoCiclo(f){
+  if (f.pago >= f.total && f.total > 0) return 'paga';
+  if (f.pago > 0) return 'parcial';
+  if (f.fechada) return 'fechada';
+  return 'aberta';
+}
+
+/* R44 — vencimento relativo */
+function venceEm(dias){
+  if (dias < 0)  return 'venceu há ' + (-dias) + (dias === -1 ? ' dia' : ' dias');
+  if (dias === 0) return 'vence hoje';
+  if (dias === 1) return 'vence amanhã';
+  return 'vence em ' + dias + ' dias';
+}
+
+/* R47 — parcelas que faltam a partir de "NN/MM" */
+function faltamParcelas(sel){
+  const [n, m] = sel.split('/').map(Number);
+  return m - n;
+}
+function somaFuturo(compras){
+  return Math.round(compras.reduce((s,c) => s + faltamParcelas(c.sel) * c.vmes, 0) * 100) / 100;
+}
+function porMes(compras, meses){
+  return meses.map((_, k) =>
+    Math.round(compras.reduce((s,c) => s + (faltamParcelas(c.sel) > k ? c.vmes : 0), 0)));
+}
+
+/* R48 — uma porta: casar grava fatura + lançamento juntos */
+function casar(fatura, lanc){
+  return {faturaId: fatura.id, lancId: lanc.id, pago: Math.min(-lanc.valor, fatura.total)};
+}
+
+/* ── amostra ────────────────────────────────────────────────── */
+const COMPRAS_SICREDI = [
+  {nm:'Mp Lojabrazil', sel:'01/10', vmes:221.90},
+  {nm:'Mp Caiocezar',  sel:'01/10', vmes:112.71},
+  {nm:'Pg Eduzz',      sel:'02/12', vmes:27.06},
+  {nm:'Panvel',        sel:'01/02', vmes:420.64},
+  {nm:'Annacarolina',  sel:'01/03', vmes:198.06},
+  {nm:'Leiturinha',    sel:'05/12', vmes:54.93},
+  {nm:'Italab',        sel:'02/03', vmes:414.73},
+  {nm:'Shein',         sel:'01/04', vmes:378.20},
+];
+const MESES_PF = ['dez','jan','fev','mar','abr','mai'];
+const EVOLUCAO = [3120, 2840, 4210, 5660, 6667, 4811];
+const CATEGORIAS = [
+  ['Mercado', 1894, 'var(--cat-mercado)'], ['Serviços', 812, 'var(--cat-servicos)'],
+  ['Saúde', 421, 'var(--cat-saude)'],      ['Educação', 292, 'var(--cat-educacao)'],
+  ['Roupas', 263, 'var(--cat-roupas)'],    ['Outros', 377, 'var(--cat-outros)'],
+];
+const MINI_PF = [8390, 7820, 6150, 5080, 4420, 3910];
+
+/* ── pinos (rodam sempre; em node, só eles) ─────────────────── */
+const PINOS = [
+  ['disponível é uma régua só',     disponivel(25000, 10843, 0) === 14157],
+  ['fechada sem pagamento',         estadoCiclo({total:4810.69, pago:0, fechada:true}) === 'fechada'],
+  ['pagamento parcial é estado',    estadoCiclo({total:912.41, pago:500, fechada:true}) === 'parcial'],
+  ['paga quando quita',             estadoCiclo({total:480.77, pago:480.77, fechada:true}) === 'paga'],
+  ['aberta é o resto',              estadoCiclo({total:11321.03, pago:0, fechada:false}) === 'aberta'],
+  ['vence em 3 dias',               venceEm(3) === 'vence em 3 dias'],
+  ['vence hoje e amanhã',           venceEm(0) === 'vence hoje' && venceEm(1) === 'vence amanhã'],
+  ['parcela 01/10 tem 9 faltando',  faltamParcelas('01/10') === 9],
+  ['última parcela zera',           faltamParcelas('02/02') === 0],
+  ['casar grava a fatura junto',    casar({id:'f1', total:4810.69}, {id:'l1', valor:-4810.69}).faturaId === 'f1'],
+  ['parcial no casamento também',   casar({id:'f2', total:912.41}, {id:'l2', valor:-500}).pago === 500],
+  ['dez soma todas as vivas',       porMes(COMPRAS_SICREDI, MESES_PF)[0] === 1828],
+  ['futuro soma certo',             somaFuturo(COMPRAS_SICREDI) === 6032.69],
+  ['formato pt-BR',                 brl0(62810) === 'R$ 62.810'],
+];
+for (const [nome, ok] of PINOS) if (!ok) throw new Error('PINO FALHOU: ' + nome);
+
+/* ── render ─────────────────────────────────────────────────── */
+function render(){
+  const $ = id => document.getElementById(id);
+
+  /* mini-barras do hero (comprometido por mês, escala única) */
+  const maxm = Math.max(...MINI_PF);
+  $('mini-pf').innerHTML = MINI_PF.map((v, k) =>
+    `<div class="mb${k === 0 ? ' on' : ''}"><i style="height:${Math.round(v/maxm*30)}px"></i><span class="num">${MESES_PF[k]}</span></div>`).join('');
+
+  /* linha do mês (página) */
+  const EVTS = [
+    {d: 2,  tx: 'caixa fechou',    cls: 'ok'},
+    {d: 8,  tx: 'MP fechou',       cls: 'ok alt'},
+    {d: 12, tx: 'caixa paga',      cls: 'ok'},
+    {d: 23, tx: 'hoje',            cls: 'hoje alt'},
+    {d: 25, tx: 'banrisul fecha',  cls: ''},
+    {d: 26, tx: 'sicredi vence',   cls: 'vc alt'},
+    {d: 27.6, tx: 'sicredi fecha', cls: ''},
+  ];
+  $('trilho-mes').innerHTML = '<div class="tl"></div>' + EVTS.map(e =>
+    `<div class="ev ${e.cls}" style="left:${(e.d/30*100).toFixed(1)}%">
+       <div class="pt"></div><div class="tx num">${e.tx}</div></div>`).join('');
+
+  /* ciclo da fatura (detalhe) */
+  const CIC = [
+    {p: 4,  tx: 'abriu 28/out',   cls: 'ok'},
+    {p: 55, tx: 'fechou 27/out',  cls: 'ok'},
+    {p: 80, tx: 'paga 13/nov ✓',  cls: 'ok alt'},
+    {p: 94, tx: 'vencia 13/nov',  cls: 'ok'},
+  ];
+  $('trilho-fat').innerHTML = '<div class="tl"></div>' + CIC.map(e =>
+    `<div class="ev ${e.cls}" style="left:${e.p}%"><div class="pt"></div><div class="tx num">${e.tx}</div></div>`).join('');
+
+  /* comprometido por mês (fatura) */
+  const pm = porMes(COMPRAS_SICREDI, MESES_PF);
+  const maxp = Math.max(...pm);
+  $('pfm').innerHTML = pm.map((v, k) =>
+    `<div class="mb"><em class="num">${(v/1000).toFixed(1).replace('.', ',')}k</em>
+      <i style="height:${Math.round(v/maxp*40)}px"></i><span class="num">${MESES_PF[k]}</span></div>`).join('');
+
+  /* categorias (escala única) */
+  const maxc = Math.max(...CATEGORIAS.map(c => c[1]));
+  $('catbar').innerHTML = CATEGORIAS.map(([n, v, cor]) =>
+    `<div class="cb"><span class="cn">${n}</span>
+      <span class="tr"><i style="width:${Math.round(v/maxc*100)}%;background:${cor}"></i></span>
+      <span class="cv num">${brl0(v)}</span></div>`).join('');
+
+  /* evolução 6 meses */
+  const maxe = Math.max(...EVOLUCAO), mine = Math.min(...EVOLUCAO);
+  const px = i => 8 + i/(EVOLUCAO.length-1) * 304;
+  const py = v => 70 - 8 - (v-mine)/(maxe-mine) * 52;
+  /* curva suave (catmull-rom → bézier), estilo dos grandes */
+  const P = EVOLUCAO.map((v, i) => [px(i), py(v)]);
+  let path = `M ${P[0][0].toFixed(1)} ${P[0][1].toFixed(1)}`;
+  for (let i = 0; i < P.length - 1; i++){
+    const p0 = P[Math.max(0, i-1)], p1 = P[i], p2 = P[i+1], p3 = P[Math.min(P.length-1, i+2)];
+    const c1 = [p1[0] + (p2[0]-p0[0])/6, p1[1] + (p2[1]-p0[1])/6];
+    const c2 = [p2[0] - (p3[0]-p1[0])/6, p2[1] - (p3[1]-p1[1])/6];
+    path += ` C ${c1[0].toFixed(1)} ${c1[1].toFixed(1)}, ${c2[0].toFixed(1)} ${c2[1].toFixed(1)}, ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  const area = path + ` L ${px(EVOLUCAO.length-1).toFixed(1)} 74 L ${px(0).toFixed(1)} 74 Z`;
+  $('evsvg').innerHTML =
+    `<defs><linearGradient id="evg" x1="0" y1="0" x2="0" y2="1">
+       <stop offset="0" stop-color="#7C3AED" stop-opacity=".22"/>
+       <stop offset="1" stop-color="#4F46E5" stop-opacity="0"/></linearGradient></defs>` +
+    `<path d="${area}" fill="url(#evg)"/>` +
+    `<path d="${path}" fill="none" stroke="var(--esc-indigo)" stroke-width="2.5" stroke-linecap="round"/>` +
+    EVOLUCAO.map((v, i) =>
+      `<circle cx="${px(i).toFixed(1)}" cy="${py(v).toFixed(1)}" r="${i === EVOLUCAO.length-1 ? 5 : 3.5}"
+        fill="${i === EVOLUCAO.length-1 ? 'var(--esc-indigo)' : '#fff'}"
+        stroke="var(--esc-indigo)" stroke-width="2"/>`).join('');
+}
+
+if (typeof document !== 'undefined') render();
+else console.log('PINOS OK — ' + PINOS.length + ' verdes');
+</script>
+</body>
+</html>

@@ -49,6 +49,8 @@ interface PreviewLine {
   installmentNumber: number | null
   installmentTotal: number | null
   cardLastDigits: string | null
+  usd?: number | null
+  cotacaoDolar?: number | null
   needsReview: boolean
   note: string | null
   contentHash: string
@@ -393,6 +395,8 @@ export default function ImportarFaturaPage() {
               installmentNumber: l.installmentNumber ?? undefined,
               installmentTotal: l.installmentTotal ?? undefined,
               cardLastDigits: l.cardLastDigits,
+              usd: l.usd ?? undefined,
+              cotacaoDolar: l.cotacaoDolar ?? undefined,
             })),
             reclassificarPagamentoTxId: reclassPaymentTxId,
           }),

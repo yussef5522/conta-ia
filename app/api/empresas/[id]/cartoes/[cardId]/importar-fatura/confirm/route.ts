@@ -14,6 +14,9 @@ import { checkCreditCardPjFlag } from '@/lib/credit-card-pj/feature-flag'
 import { identidadeDaLinha, tipoDaLinha } from '@/lib/credit-card-pj/identidade-da-linha'
 import { competenciaDaFatura } from '@/lib/credit-card-pj/faturas-pra-quitar'
 import { fecharImport } from '@/lib/credit-card-pj/fechamento-do-import'
+import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-pj/casar-pagamento'
+import { registrarFatura, projetarParcelas } from '@/lib/credit-card-pj/materializar'
+import { chaveDaParcela } from '@/lib/credit-card-pj/ciclo'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
 
@@ -27,6 +30,9 @@ const lineSchema = z.object({
   installmentNumber: z.number().int().min(1).max(99).optional(),
   installmentTotal: z.number().int().min(1).max(99).optional(),
   cardLastDigits: z.string().regex(/^\d{2,6}$/).nullable().optional(),
+  // ⭐ R49 — compra no exterior: o dólar e a cotação que o PDF imprime
+  usd: z.number().positive().optional(),
+  cotacaoDolar: z.number().positive().optional(),
 })
 
 const bodySchema = z.object({
@@ -249,23 +255,34 @@ export async function POST(request: NextRequest, { params }: Params) {
   // parceladas).
   // GroupId por parcelamento (compartilhado pelas N parcelas — neste batch
   // só vem 1 parcela do mês, mas o ID pode ser usado em batches futuros).
+  // ⭐⭐ R47 (24/11): o grupo sai da chave da lei (cartão + valor + total + MÊS DE ORIGEM) — a antiga
+  // usava a descrição, que traz o "NN/MM" e muda todo mês (186 de 205 grupos com UMA linha, medido).
   const installmentGroupByLine = new Map<number, string>()
   for (let i = 0; i < body.lines.length; i++) {
     const l = body.lines[i]
-    if (l.kind === 'COMPRA_PARCELADA' && l.installmentNumber && l.installmentTotal) {
+    if (l.kind === 'COMPRA_PARCELADA' && l.installmentNumber && l.installmentTotal && invoiceMonth) {
       installmentGroupByLine.set(
         i,
         createHash('sha1')
-          .update(`${cardId}|${l.description}|${l.installmentTotal}|${l.amount}`)
+          .update(chaveDaParcela({ cardId, amount: l.amount, installmentNumber: l.installmentNumber, installmentTotal: l.installmentTotal, invoiceMonth }))
           .digest('hex')
           .slice(0, 16),
       )
     }
   }
 
+  // ⛔ R48 — a pergunta do topo casa pela PORTA, e a porta exige a fatura: sem competência, recusa ANTES de gravar
+  if (reclassTx && !invoiceMonth) {
+    return NextResponse.json(
+      { erro: 'Esta fatura não trouxe o vencimento — não sei QUAL fatura o pagamento quita. Importe sem marcar o pagamento e case depois, na tela do cartão.', code: 'VALIDATION_FAILED' },
+      { status: 422 },
+    )
+  }
+
   let inseridas = 0
   let duplicadas = 0
   let reclassificadaTxId: string | null = null
+  let faturaDepois: Awaited<ReturnType<typeof casarPagamentoDeCartao>>['fatura'] | null = null
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -309,6 +326,8 @@ export async function POST(request: NextRequest, { params }: Params) {
               installmentNumber: line.installmentNumber ?? null,
               installmentTotal: line.installmentTotal ?? null,
               installmentGroupId: installmentGroupByLine.get(origIdx) ?? null,
+              cardUsdAmount: line.usd ?? null,
+              cardFxRate: line.cotacaoDolar ?? null,
               isCardPayment: false,
               invoiceMonth: invoiceMonth,
             }
@@ -317,19 +336,30 @@ export async function POST(request: NextRequest, { params }: Params) {
         inseridas = filtered.length
       }
 
-      // RECLASSIFICAR pagamento (caso real R$ 2.654,63)
-      if (reclassTx) {
-        await tx.transaction.update({
-          where: { id: reclassTx.id },
-          data: {
-            isCardPayment: true,
-            businessCreditCardId: cardId,
-            // Mantém type=DEBIT na conta bancária (saiu dinheiro), mas
-            // o filtro isCardPayment=true vai removê-la do DRE como despesa.
-            categoryId: null, // remove categoria de despesa que tinha antes
-          },
+      /**
+       * ⭐⭐⭐ R46/R47 — a fatura nasce como REGISTRO e as parcelas futuras ficam gravadas, pela
+       * MESMA porta do backfill (`materializar.ts`). Dentro da transação: import que falha não
+       * deixa fatura órfã.
+       */
+      if (invoiceMonth) {
+        await registrarFatura(tx, {
+          companyId, cardId, mes: invoiceMonth, closingDay: card.closingDay, dueDay: card.dueDay,
+          origem: 'IMPORT', totalDeclarado: body.totalToPay ?? null, disponivelDeclarado: body.availableLimit ?? null, importId: importRow.id,
         })
-        reclassificadaTxId = reclassTx.id
+        await projetarParcelas(tx, companyId, cardId)
+      }
+
+      /**
+       * ⭐⭐⭐ R48 — A PERGUNTA DO TOPO GRAVA PELA PORTA ÚNICA (24/11/2026).
+       * ⛔ Aqui morava um `update` próprio que marcava o pagamento e tirava a categoria **sem dizer
+       * QUAL fatura ele quita** (sem `paidInvoiceMonth`) — a fatura nunca virava Paga, e o
+       * desfazer não tinha o que devolver. Agora é `casarPagamentoDeCartao`, o MESMO gesto do
+       * botão "casar pagamento": lançamento + fatura + o antes (pra desfazer devolver tudo).
+       */
+      if (reclassTx) {
+        const r = await casarPagamentoDeCartao({ companyId, cardId, txId: reclassTx.id, invoiceMonth }, tx)
+        reclassificadaTxId = r.transactionId
+        faturaDepois = r.fatura
       }
 
       await tx.ofxImport.update({
@@ -356,6 +386,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       }
     })
   } catch (err) {
+    if (err instanceof CasarPagamentoError) {
+      await prisma.ofxImport.update({ where: { id: importRow.id }, data: { status: 'FAILED', errorMessage: err.message } })
+      return NextResponse.json({ erro: err.message, code: 'VALIDATION_FAILED' }, { status: 422 })
+    }
     await prisma.ofxImport.update({
       where: { id: importRow.id },
       data: {
@@ -387,5 +421,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     duplicadas,
     total: body.lines.length,
     reclassificadaTxId,
+    fatura: faturaDepois,
   })
 }

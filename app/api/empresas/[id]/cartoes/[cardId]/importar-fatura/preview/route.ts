@@ -315,6 +315,9 @@ export async function POST(request: NextRequest, { params }: Params) {
         installmentNumber: line.installmentNumber ?? null,
         installmentTotal: line.installmentTotal ?? null,
         cardLastDigits: line.cardLastDigits ?? null,
+        // ⭐ R49 — a compra em dólar chega até a gravação (US$ + cotação que o leitor extraiu)
+        usd: line.usd ?? null,
+        cotacaoDolar: line.cotacaoDolar ?? null,
         needsReview: line.needsReview === true,
         note: line.note ?? null,
         // Dedup

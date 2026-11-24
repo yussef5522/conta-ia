@@ -1,11 +1,8 @@
 // Sprint Cartao Credito PJ (24/06/2026) — queries de cartao + agregados pra dashboard.
 
 import { prisma } from '@/lib/db'
-import { invoiceMonthIsPaid } from './invoice-paid'
-import { faturaNetTotal, signedFaturaAmount } from './fatura-net-total'
-import { loadActiveRules, buildRuleIndex } from '@/lib/ai-categorizer/apply'
-import { predictCategory } from '@/lib/ai-categorizer/predict'
-import { categoriasDestinoDespesa, type CategoriaDestino } from '@/lib/categorias/destino-valido'
+import { lerCarteira } from './carteira'
+import { diaDoBrasil } from '@/lib/margem/dia'
 
 export interface CardCardSummary {
   id: string
@@ -19,399 +16,46 @@ export interface CardCardSummary {
   closingDayRule: string
   defaultPaymentBankAccountId: string | null
   isActive: boolean
-  /** R4: soma da FATURA mais recente importada (era "mes corrente") */
+  /** a fatura mais recente importada (total líquido) */
   monthSpend: number
   monthTxCount: number
   utilizationPct: number
-  /** R4: competencia da fatura usada nos totais acima (YYYY-MM ou null) */
   latestInvoiceMonth: string | null
-  /** R6: true se existe pagamento casado (isCardPayment=true) com este cartao */
   isLatestInvoicePaid: boolean
-  /** Sprint Cartao-Uso-Pessoal: OPERACIONAL | PESSOAL_SOCIO (retirada default). */
   defaultTreatment: string
   socioPFId: string | null
-  /** Sprint Limite-do-PDF: disponível real (declarado na fatura) — conta futuras. */
+  /** ⭐ R45 — a régua ÚNICA do disponível (limite − aberta − fechadas não pagas) */
   availableLimit: number
 }
 
 /**
- * Sprint R4 — soma agora eh por FATURA (invoiceMonth) em vez de "mes corrente".
- * Pega a fatura mais recente de cada cartao (max invoiceMonth) e soma essa.
- * Se cartao nao tem nenhuma fatura importada -> 0.
+ * ⭐⭐ CARTÕES v3 (24/11/2026) — a lista é uma VISTA da carteira (`lerCarteira`), nunca uma conta
+ * própria. ⛔ Antes: um `findMany` POR cartão dentro de um `for` (o N+1 do dossiê) e o
+ * "disponível" daqui (o do PDF) diferente do do detalhe (`limite − gasto do mês`): duas réguas.
  */
-export async function listCardsForCompany(
-  companyId: string,
-): Promise<CardCardSummary[]> {
-  const cards = await prisma.businessCreditCard.findMany({
-    where: { companyId, isActive: true },
-    orderBy: { name: 'asc' },
-  })
-  if (cards.length === 0) return []
-
-  // Acha a competencia mais recente por cartao
-  const latestInvoiceByCard = await prisma.transaction.groupBy({
-    by: ['businessCreditCardId'],
-    where: {
-      businessCreditCardId: { in: cards.map((c) => c.id) },
-      invoiceMonth: { not: null },
-      isCardPayment: false,
-    },
-    _max: { invoiceMonth: true },
-  })
-  const latestByCardId = new Map(
-    latestInvoiceByCard.map((r) => [
-      r.businessCreditCardId as string,
-      r._max.invoiceMonth,
-    ]),
-  )
-
-  // Total LÍQUIDO da fatura mais recente de cada cartão (compras+encargos − estornos).
-  // ⚠️ UMA fonte só: faturaNetTotal. Antes somava só type=DEBIT e o estorno (CREDIT)
-  // escapava → total inflado (7.995,55 em vez de 7.896,32) e o pagamento não fechava.
-  const totalsByCard = new Map<string, { sum: number; count: number; invoiceMonth: string }>()
-  for (const cardId of cards.map((c) => c.id)) {
-    const inv = latestByCardId.get(cardId)
-    if (!inv) continue
-    const items = await prisma.transaction.findMany({
-      where: { businessCreditCardId: cardId, invoiceMonth: inv, isCardPayment: false },
-      select: { type: true, amount: true },
-    })
-    totalsByCard.set(cardId, {
-      sum: faturaNetTotal(items).net,
-      count: items.length,
-      invoiceMonth: inv,
-    })
-  }
-
-  // Fatura-Paga-Por-Competencia (14/08/2026): "paga" é da fatura MAIS RECENTE
-  // especificamente — NÃO "o cartão tem algum pagamento" (que era por-cartão-pra-
-  // sempre e fazia uma fatura nova nascer paga por causa de um pagamento de mês
-  // ANTERIOR). `paidInvoiceMonth` = a competência que o pagamento QUITA. Uma fatura
-  // só é paga se existe pagamento amarrado à SUA competência.
-  const paidPairs = await prisma.transaction.findMany({
-    where: {
-      businessCreditCardId: { in: cards.map((c) => c.id) },
-      isCardPayment: true,
-      paidInvoiceMonth: { not: null },
-    },
-    distinct: ['businessCreditCardId', 'paidInvoiceMonth'],
-    select: { businessCreditCardId: true, paidInvoiceMonth: true },
-  })
-  const paidMonthsByCard = new Map<string, string[]>()
-  for (const p of paidPairs) {
-    if (!p.businessCreditCardId || !p.paidInvoiceMonth) continue
-    const arr = paidMonthsByCard.get(p.businessCreditCardId) ?? []
-    arr.push(p.paidInvoiceMonth)
-    paidMonthsByCard.set(p.businessCreditCardId, arr)
-  }
-  const isLatestInvoicePaid = (cardId: string): boolean =>
-    invoiceMonthIsPaid(paidMonthsByCard.get(cardId) ?? [], latestByCardId.get(cardId) ?? null)
-
-  return cards.map((c) => {
-    const t = totalsByCard.get(c.id) ?? { sum: 0, count: 0, invoiceMonth: null as string | null }
-    return {
-      id: c.id,
-      name: c.name,
-      bankName: c.bankName,
-      brand: c.brand,
-      lastDigits: c.lastDigits,
-      creditLimit: c.creditLimit,
-      closingDay: c.closingDay,
-      dueDay: c.dueDay,
-      closingDayRule: c.closingDayRule,
-      defaultPaymentBankAccountId: c.defaultPaymentBankAccountId,
-      isActive: c.isActive,
-      monthSpend: round2(t.sum),
-      monthTxCount: t.count,
-      // Limite do PDF (14/08): "utilizado" = creditLimit − disponível DECLARADO (já
-      // conta parcelas futuras). Sem o declarado, cai no cálculo antigo (fatura atual).
-      utilizationPct:
-        c.creditLimit > 0
-          ? Math.min(1, (c.lastInvoiceAvailableLimit != null ? Math.max(0, c.creditLimit - c.lastInvoiceAvailableLimit) : t.sum) / c.creditLimit)
-          : 0,
-      availableLimit: c.lastInvoiceAvailableLimit ?? round2(c.creditLimit - t.sum),
-      latestInvoiceMonth: t.invoiceMonth,
-      isLatestInvoicePaid: isLatestInvoicePaid(c.id),
-      defaultTreatment: c.defaultTreatment,
-      socioPFId: c.socioPFId,
-    }
-  })
-}
-
-export interface CardDashboardData {
-  card: CardCardSummary
-  /** Transacoes do mes corrente, mais recentes primeiro */
-  monthTransactions: Array<{
-    id: string
-    date: string
-    description: string
-    amount: number
-    type: string
-    installmentNumber: number | null
-    installmentTotal: number | null
-    categoryId: string | null
-    categoryName: string | null
-    /** ⭐ regra APRENDIDA do dono — só pra linha sem categoria; sugere, nunca aplica */
-    suggestedCategoryId: string | null
-    isCardPayment: boolean
-  }>
-  /**
-   * ⭐⭐ AS CATEGORIAS QUE A GRAVAÇÃO ACEITA — a MESMA fonte (`categoriasDestinoDespesa`).
-   * ⛔ A tela pedia a lista crua de `/categorias` e oferecia **260 opções, 203 inativas**;
-   * escolher uma devolvia "Categoria não encontrada ou inativa". Oferecer o que a gravação
-   * recusa é a tela mentindo sobre o que dá pra fazer.
-   */
-  expenseCategories: CategoriaDestino[]
-  /** Gasto por categoria (Top N) no mes corrente */
-  spendByCategory: Array<{
-    categoryId: string | null
-    categoryName: string
-    amount: number
-  }>
-  /**
-   * Sprint R3 — pagamentos JA CASADOS com este cartao (isCardPayment=true +
-   * businessCreditCardId=cardId). Janela 180 dias. Cada item tem desfazer.
-   */
-  matchedPayments: Array<{
-    id: string
-    date: string
-    description: string
-    amount: number
-    bankAccountId: string | null
-    bankAccountName: string | null
-  }>
-  /** R4: lista de competencias YYYY-MM disponiveis pra esse cartao (mais recente 1o) */
-  availableInvoices: string[]
-  /** R4: competencia ativa nesta view */
-  currentInvoiceMonth: string | null
-  /**
-   * R5: candidatos a pagamento desta fatura que AINDA NAO ESTAO CASADOS.
-   * Inclui (a) tx isCardPayment=true sem cartao (hook OFX antigo R2) + (b)
-   * tx com valor exato dos totals da fatura (R4). Deduplicados por id.
-   * Cada candidato tem matchScore + label visual.
-   */
-  paymentCandidates: Array<{
-    id: string
-    date: string
-    description: string
-    amount: number
-    bankAccountId: string | null
-    bankAccountName: string | null
-    currentCategoryId: string | null
-    currentCategoryName: string | null
-    matchScore: number
-    matchLabel: string
-    isAlreadyMarkedPayment: boolean
-  }>
-}
-
-export async function getCardDashboard(
-  companyId: string,
-  cardId: string,
-  /** R4: competencia YYYY-MM. Default = fatura mais recente */
-  invoiceMonthFilter?: string | null,
-): Promise<CardDashboardData | null> {
-  const card = await prisma.businessCreditCard.findFirst({
-    where: { id: cardId, companyId },
-  })
-  if (!card) return null
-
-  // Reusa lista pro summary do header
-  const list = await listCardsForCompany(companyId)
-  const summary = list.find((c) => c.id === cardId)
-  if (!summary) return null
-
-  // R4: faturas disponiveis (DISTINCT invoiceMonth ordenadas desc)
-  const invoicesAvail = await prisma.transaction.findMany({
-    where: {
-      businessCreditCardId: cardId,
-      invoiceMonth: { not: null },
-      isCardPayment: false,
-    },
-    distinct: ['invoiceMonth'],
-    select: { invoiceMonth: true },
-    orderBy: { invoiceMonth: 'desc' },
-  })
-  const availableInvoices = invoicesAvail
-    .map((r) => r.invoiceMonth)
-    .filter((m): m is string => !!m)
-
-  // Competencia ativa: filtro do query string OU default (mais recente)
-  const currentInvoiceMonth =
-    invoiceMonthFilter && availableInvoices.includes(invoiceMonthFilter)
-      ? invoiceMonthFilter
-      : (availableInvoices[0] ?? null)
-
-  // Tx da fatura ativa
-  const txs = currentInvoiceMonth
-    ? await prisma.transaction.findMany({
-        where: {
-          businessCreditCardId: cardId,
-          invoiceMonth: currentInvoiceMonth,
-        },
-        orderBy: { date: 'desc' },
-        take: 500,
-        include: { category: { select: { name: true } } },
-      })
-    : []
-
-  /**
-   * ⭐⭐ A PORTA DE CATEGORIZAR NASCE AQUI (17/09/2026) — *"a lista das compras não oferece
-   * categoria por linha"*, e o dono chamou pelo nome: **porta sem maçaneta**.
-   *
-   * ⚠️ A sugestão é a **regra APRENDIDA** dele (`predictCategory`), determinística e barata
-   * — nada de chamada de IA numa rota de dashboard. ⛔ E ela SUGERE: quem aplica é o clique.
-   * *Categoria é decisão do dono* — a régua da casa desde 17/08.
-   */
-  const expenseCategories = await categoriasDestinoDespesa(card.companyId)
-  const sugestaoPorTx = new Map<string, string>()
-  const semCategoria = txs.filter((t) => !t.categoryId && !t.isCardPayment)
-  if (semCategoria.length > 0) {
-    const ruleIndex = buildRuleIndex(card.companyId, await loadActiveRules(card.companyId))
-    for (const t of semCategoria) {
-      const pred = predictCategory({ description: t.description }, ruleIndex)
-      if (pred?.categoryId && pred.confidence >= 0.6) sugestaoPorTx.set(t.id, pred.categoryId)
-    }
-  }
-
-  // Por categoria — COM SINAL (estorno CREDIT subtrai; antes somava positivo e
-  // inflava). Mesma fonte do total: signedFaturaAmount.
-  const byCat = new Map<string, { categoryId: string | null; name: string; amount: number }>()
-  for (const t of txs) {
-    if (t.isCardPayment) continue
-    const key = t.categoryId ?? 'sem-categoria'
-    const name = t.category?.name ?? 'Sem categoria'
-    const cur = byCat.get(key) ?? { categoryId: t.categoryId, name, amount: 0 }
-    cur.amount += signedFaturaAmount(t)
-    byCat.set(key, cur)
-  }
-  const spendByCategory = Array.from(byCat.values())
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 10)
-    .map((c) => ({
-      categoryId: c.categoryId,
-      categoryName: c.name,
-      amount: round2(c.amount),
-    }))
-
-  // Fatura-Paga-Por-Competencia (14/08/2026): pagamentos que quitam ESTA fatura
-  // (a competência ativa), NÃO "qualquer pagamento do cartão nos últimos 180 dias".
-  // `paidInvoiceMonth = currentInvoiceMonth` amarra o pagamento à fatura certa — sem
-  // isso, o pagamento de junho fazia a fatura de setembro aparecer paga. Sem
-  // competência ativa (cartão sem fatura) → nenhum match.
-  const matchedPaymentsRaw = currentInvoiceMonth
-    ? await prisma.transaction.findMany({
-    where: {
-      isCardPayment: true,
-      businessCreditCardId: cardId,
-      paidInvoiceMonth: currentInvoiceMonth,
-    },
-    select: {
-      id: true,
-      date: true,
-      description: true,
-      amount: true,
-      bankAccountId: true,
-      bankAccount: { select: { name: true } },
-    },
-    orderBy: { date: 'desc' },
-    take: 24,
-  })
-    : []
-
-  // R5: Detector forte por VALOR EXATO — usa os totals da ultima fatura
-  // do cartao (R5 schema) pra achar candidatos legitimos.
-  const targets: number[] = []
-  if (card.lastInvoiceTotalToPay && card.lastInvoiceTotalToPay > 0) {
-    targets.push(card.lastInvoiceTotalToPay)
-  }
-  if (
-    card.lastInvoiceTotalDeclared &&
-    card.lastInvoiceTotalDeclared > 0 &&
-    Math.abs(card.lastInvoiceTotalDeclared - (card.lastInvoiceTotalToPay ?? 0)) > 0.02
-  ) {
-    targets.push(card.lastInvoiceTotalDeclared)
-  }
-  const candidatesRaw =
-    targets.length > 0
-      ? await findCardPaymentCandidatesInBank(companyId, targets)
-      : await findCardPaymentCandidatesInBank(companyId, []) // ainda pega isCardPayment=true sem cartao
-
-  // Calcula score visual por candidato. Logica espelha o que o preview/import
-  // ja faz, pra UI ser consistente.
-  const toPay = card.lastInvoiceTotalToPay ?? null
-  const declared = card.lastInvoiceTotalDeclared ?? null
-  const paymentCandidates = candidatesRaw.map((c) => {
-    let matchScore = 0
-    let matchLabel = ''
-    if (toPay && Math.abs(c.amount - toPay) <= 0.02) {
-      matchScore = 1.0
-      matchLabel = 'valor exato da fatura'
-    } else if (declared && Math.abs(c.amount - declared) <= 0.02) {
-      matchScore = 0.95
-      matchLabel = 'valor exato (total compras)'
-    } else if (toPay && Math.abs(c.amount - toPay) <= 1) {
-      matchScore = 0.9
-      matchLabel = 'valor próximo'
-    } else if (declared && Math.abs(c.amount - declared) <= 1) {
-      matchScore = 0.85
-      matchLabel = 'valor próximo'
-    }
-    if (c.isCardPayment) {
-      // ja marcado pelo hook OFX — sempre mostra mesmo sem targets
-      matchScore = Math.max(matchScore, 0.7)
-      if (!matchLabel) matchLabel = 'detectado pelo extrato'
-    }
-    return {
-      id: c.id,
-      date: c.date.toISOString().slice(0, 10),
-      description: c.description,
-      amount: c.amount,
-      bankAccountId: c.bankAccountId,
-      bankAccountName: c.bankAccount?.name ?? null,
-      currentCategoryId: c.categoryId,
-      currentCategoryName: c.category?.name ?? null,
-      matchScore,
-      matchLabel,
-      isAlreadyMarkedPayment: c.isCardPayment,
-    }
-  })
-
-  // Ordena por matchScore desc, depois data desc
-  paymentCandidates.sort((a, b) => {
-    if (a.matchScore !== b.matchScore) return b.matchScore - a.matchScore
-    return a.date < b.date ? 1 : -1
-  })
-
-  return {
-    card: summary,
-    monthTransactions: txs.map((t) => ({
-      id: t.id,
-      date: t.date.toISOString().slice(0, 10),
-      description: t.description,
-      amount: t.amount,
-      type: t.type,
-      installmentNumber: t.installmentNumber,
-      installmentTotal: t.installmentTotal,
-      categoryId: t.categoryId,
-      categoryName: t.category?.name ?? null,
-      suggestedCategoryId: sugestaoPorTx.get(t.id) ?? null,
-      isCardPayment: t.isCardPayment,
-    })),
-    expenseCategories,
-    spendByCategory,
-    matchedPayments: matchedPaymentsRaw.map((p) => ({
-      id: p.id,
-      date: p.date.toISOString().slice(0, 10),
-      description: p.description,
-      amount: p.amount,
-      bankAccountId: p.bankAccountId,
-      bankAccountName: p.bankAccount?.name ?? null,
-    })),
-    availableInvoices,
-    currentInvoiceMonth,
-    paymentCandidates,
-  }
+export async function listCardsForCompany(companyId: string): Promise<CardCardSummary[]> {
+  const cart = await lerCarteira(companyId, diaDoBrasil(new Date()))
+  return cart.cartoes.map((c) => ({
+    id: c.id,
+    name: c.name,
+    bankName: c.bankName,
+    brand: c.brand,
+    lastDigits: c.lastDigits,
+    creditLimit: c.creditLimit,
+    closingDay: c.closingDay,
+    dueDay: c.dueDay,
+    closingDayRule: c.closingDayRule,
+    defaultPaymentBankAccountId: c.defaultPaymentBankAccountId,
+    isActive: true,
+    monthSpend: c.atual?.total ?? 0,
+    monthTxCount: c.atual?.linhas ?? 0,
+    utilizationPct: c.usoPct,
+    latestInvoiceMonth: c.atual?.mes ?? null,
+    isLatestInvoicePaid: c.atual?.estado === 'paga',
+    defaultTreatment: c.defaultTreatment,
+    socioPFId: c.socioPFId,
+    availableLimit: c.disponivel,
+  }))
 }
 
 /**

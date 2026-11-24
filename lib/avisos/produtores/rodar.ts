@@ -14,6 +14,7 @@ import { prisma } from '@/lib/db'
 import { produzirAvisosDeProducao, type ResumoDaCarga } from './producao'
 import { produzirAvisosDeEstoque } from './estoque'
 import { produzirAvisosDeFinanceiro } from './financeiro'
+import { produzirAvisosDeCartoes } from './cartoes'
 import { produzirAvisosDeMargem } from './margem'
 import { produzirAvisosDeImportDeVenda } from './import-de-venda'
 import { produzirAvisosDeConferencia } from './conferencia'
@@ -113,6 +114,15 @@ export async function rodarProdutoresDeAviso(agora: Date = new Date()): Promise<
       r.reabertos += f.reabertos
       r.resolvidos += f.resolvidos
       for (const x of f.recusados) r.recusados.push({ empresa: e.name, ...x })
+      /**
+       * ⭐⭐ R51 (24/11) — O SININHO VIGIA O CARTÃO: fatura vencendo sem pagamento casado, fatura
+       * que fechou e não foi importada, limite acima de 80%. ⚠️ Empresa sem cartão não grava nada.
+       */
+      const ct = await produzirAvisosDeCartoes(e.id, agora)
+      r.gravados += ct.gravados
+      r.reabertos += ct.reabertos
+      r.resolvidos += ct.resolvidos
+      for (const x of ct.recusados) r.recusados.push({ empresa: e.name, ...x })
       /**
        * ⭐⭐ A MARGEM (07/10) — sobra negativa, margem que despencou, e o relatório de
        * complementos incompleto.

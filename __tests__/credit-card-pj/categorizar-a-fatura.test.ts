@@ -54,7 +54,8 @@ describe('⭐⭐ o que a tela oferece é o que a gravação aceita', () => {
 
   /** ⛔ e a tela não pode voltar a montar a lista por conta própria */
   it('⭐ a tela do cartão recebe a lista pronta do servidor', () => {
-    expect(fonte('lib/credit-card-pj/queries.ts'))
+    // ⭐ (24/11) a leitura da fatura mudou de casa: `lerFatura` (CARTÕES v3) — a MESMA régua
+    expect(fonte('lib/credit-card-pj/fatura-detalhe.ts'))
       .toMatch(/categoriasDestinoDespesa\(/)
     expect(fonte('app/(dashboard)/empresas/[id]/cartoes/[cardId]/page.tsx'))
       .toMatch(/data\?\.expenseCategories/)

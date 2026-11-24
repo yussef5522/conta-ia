@@ -17,6 +17,9 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { signedFaturaAmount } from './fatura-net-total'
+// ⭐ as datas do ciclo moram no módulo PURO (`ciclo.ts`) — a tela também precisa delas; aqui só reexporta
+export { vencimentoDaCompetencia, fechamentoDaCompetencia } from './ciclo'
+import { vencimentoDaCompetencia, fechamentoDaCompetencia } from './ciclo'
 
 export interface FaturaPraQuitar {
   /** YYYY-MM — a competência */
@@ -35,27 +38,6 @@ export interface CartaoComFaturas {
   faturas: FaturaPraQuitar[]
 }
 
-/**
- * ⭐⭐ O VENCIMENTO DA COMPETÊNCIA — derivado do `dueDay`, nunca gravado.
- *
- * ⚠️ **O `invoiceMonth` É o mês do VENCIMENTO** (é assim que o módulo o define desde a Fase
- * 2: *"`invoiceMonth` YYYY-MM do vencimento"*), então o vencimento é o `dueDay` DENTRO dele —
- * não o mês seguinte. Somar um mês aqui erraria a data em toda fatura.
- *
- * ⛔ E a data é montada em **UTC**, como o resto do módulo: `new Date(ano, mes, dia)` usa o
- * fuso do processo, e o servidor roda em UTC — em São Paulo isso puxaria o dia pra trás.
- */
-export function vencimentoDaCompetencia(invoiceMonth: string, dueDay: number): string | null {
-  const m = /^(\d{4})-(\d{2})$/.exec(invoiceMonth)
-  if (!m) return null
-  const ano = Number(m[1])
-  const mes = Number(m[2])
-  if (mes < 1 || mes > 12) return null
-  // ⚠️ dia 31 num mês de 30 cai no último dia dele, não no 1º do seguinte
-  const ultimo = new Date(Date.UTC(ano, mes, 0)).getUTCDate()
-  const dia = Math.min(Math.max(1, dueDay), ultimo)
-  return new Date(Date.UTC(ano, mes - 1, dia)).toISOString().slice(0, 10)
-}
 
 /**
  * ⭐⭐ O INVERSO — A COMPETÊNCIA A PARTIR DO VENCIMENTO DO DOCUMENTO (20/10/2026).
@@ -79,33 +61,6 @@ export function competenciaDaFatura(dueDate: string | null | undefined): string 
   return dueDate.slice(0, 7)
 }
 
-/**
- * ⭐⭐ O FECHAMENTO DA COMPETÊNCIA — o irmão do `vencimentoDaCompetencia`, e ele mora AQUI
- * de propósito: *derivar as datas da fatura VIRTUAL do PJ a partir dos dias do cartão* é UMA
- * pergunta, e ela tem um endereço só. Escrever a conta do fechamento noutro arquivo faria as
- * duas metades da mesma data divergirem no primeiro mês de 30 dias.
- *
- * ⚠️ **O fechamento é ANTES do vencimento, e pode ser no mês ANTERIOR.** `fecha 26 · vence 12`
- * (o banco caixa, medido em prod) significa: fechou em 26 do mês passado e vence em 12 deste.
- * Cravar "mesmo mês" diria que a fatura fecha 14 dias DEPOIS de vencer.
- */
-export function fechamentoDaCompetencia(
-  invoiceMonth: string,
-  closingDay: number,
-  dueDay: number,
-): string | null {
-  const m = /^(\d{4})-(\d{2})$/.exec(invoiceMonth)
-  if (!m) return null
-  const ano = Number(m[1])
-  const mes = Number(m[2])
-  if (mes < 1 || mes > 12) return null
-  // fecha no mesmo mês do vencimento só quando o dia de fechar vem ANTES do de vencer
-  const deslocamento = closingDay < dueDay ? 0 : -1
-  const alvo = new Date(Date.UTC(ano, mes - 1 + deslocamento, 1))
-  const ultimo = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate()
-  const dia = Math.min(Math.max(1, closingDay), ultimo)
-  return new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth(), dia)).toISOString().slice(0, 10)
-}
 
 /**
  * ⭐⭐ Os cartões REGISTRADOS da empresa, cada um com as faturas que existem.

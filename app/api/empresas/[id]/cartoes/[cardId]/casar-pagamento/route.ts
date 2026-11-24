@@ -2,7 +2,7 @@
 //
 // POST   { txId } -> vincula a tx ao cartao (isCardPayment=true,
 //                    businessCreditCardId=cardId, remove categoryId que tinha)
-// DELETE ?txId=xxx -> desfaz (mantem isCardPayment=true mas zera cardId)
+// DELETE ?txId=xxx -> desfaz PELA PORTA (R48, 24/11): devolve tudo — marca, fatura e categoria
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -10,7 +10,7 @@ import { getAuthUser } from '@/lib/auth'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit } from '@/lib/audit'
 import { prisma } from '@/lib/db'
-import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-pj/casar-pagamento'
+import { casarPagamentoDeCartao, CasarPagamentoError, desfazerCasamentoDeCartao, DesfazerCasamentoError } from '@/lib/credit-card-pj/casar-pagamento'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
 
@@ -170,6 +170,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       previousCategoryId: r.previousCategoryId,
       previousCategoryName: targetTx.category?.name ?? null,
       deltaDespesaRemovidoDoDRE: r.deltaDespesaRemovidoDoDRE,
+      fatura: r.fatura,
     })
   } catch (e) {
     if (e instanceof CasarPagamentoError) return NextResponse.json({ erro: e.message }, { status: 422 })
@@ -212,15 +213,18 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     )
   }
 
-  // Desfaz vinculo (volta pra "aguardando casar"). Mantem isCardPayment=true.
-  // Caller pode optar por unset isCardPayment via /api/transacoes/[id] PATCH
-  // se quiser reverter pra despesa normal (caso 100% manual). Limpa também o
-  // paidInvoiceMonth — sem vínculo de cartão, não quita fatura nenhuma.
-  const updated = await prisma.transaction.update({
-    where: { id: targetTx.id },
-    data: { businessCreditCardId: null, paidInvoiceMonth: null },
-    select: { id: true, isCardPayment: true, businessCreditCardId: true },
-  })
+  /**
+   * ⭐⭐⭐ R48 — DESFAZER DEVOLVE TUDO, pela porta (`desfazerCasamentoDeCartao`).
+   * ⛔ Aqui morava o `update` que zerava só cartão + competência: a marca ficava e a categoria que o
+   * casamento tirou NÃO voltava.
+   */
+  let desfeito
+  try {
+    desfeito = await desfazerCasamentoDeCartao({ companyId, cardId, txId: targetTx.id }, prisma)
+  } catch (e) {
+    if (e instanceof DesfazerCasamentoError) return NextResponse.json({ erro: e.message }, { status: 404 })
+    throw e
+  }
 
   /**
    * ⭐⭐ O DESFAZER TAMBÉM DEIXA RASTRO — e ele é o gesto que o dono vai dar HOJE pra
@@ -235,7 +239,15 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     paidInvoiceMonthAnterior: targetTx.paidInvoiceMonth,
     amount: targetTx.amount,
     txDescription: targetTx.description,
+    categoriaDevolvida: desfeito.categoriaDevolvida,
+    origemDoAntes: desfeito.origemDoAntes,
   })
 
-  return NextResponse.json({ desfeito: true, transactionId: updated.id, state: updated })
+  return NextResponse.json({
+    desfeito: true,
+    transactionId: desfeito.transactionId,
+    categoriaDevolvida: desfeito.categoriaDevolvida,
+    origemDoAntes: desfeito.origemDoAntes,
+    fatura: desfeito.fatura,
+  })
 }

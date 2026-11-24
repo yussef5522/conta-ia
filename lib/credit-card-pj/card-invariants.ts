@@ -30,8 +30,10 @@ export interface CardResumo {
   visionBancos: string[]
 }
 
+import { INICIO_DO_MODULO } from './ciclo'
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
-const MODULE_INICIO_MES = '2026-08'
+// ⭐ o marco mora no módulo puro (a régua do disponível também precisa dele)
+const MODULE_INICIO_MES = INICIO_DO_MODULO
 const FILA_ALERTA_DIAS = 30 // K5: fila tem que esvaziar em 30 dias
 
 export async function checkCardInvariants(

@@ -364,9 +364,11 @@ model BusinessCreditCard {
   // futuras (mostrava 17.004 quando o real era 13.351). null = usa o cálculo antigo.
   lastInvoiceAvailableLimit Float?
 
-  company                   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  defaultPaymentBankAccount BankAccount?  @relation("CardDefaultPayment", fields: [defaultPaymentBankAccountId], references: [id], onDelete: SetNull)
-  transactions              Transaction[] @relation("CardTransactions")
+  company                   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultPaymentBankAccount BankAccount?      @relation("CardDefaultPayment", fields: [defaultPaymentBankAccountId], references: [id], onDelete: SetNull)
+  transactions              Transaction[]     @relation("CardTransactions")
+  faturas                   FaturaCartaoPJ[]
+  parcelasFuturas           ParcelaFuturaPJ[]
 
   @@index([companyId])
   @@index([companyId, isActive])
@@ -611,7 +613,14 @@ model Transaction {
   // usuario confirma qual fatura), limpo no desfazer. Null = pagamento nao amarrado
   // a nenhuma fatura ainda (nao quita nada). NÃO confundir com invoiceMonth (que é
   // a competencia de uma COMPRA).
-  paidInvoiceMonth String?
+  paidInvoiceMonth          String?
+  // ⭐ CARTÕES v3 (R48, 24/11/2026) — o que o casamento DESFEZ, pra o desfazer DEVOLVER tudo.
+  // Escritos SÓ pela porta `casarPagamentoDeCartao`; nulos = casamento anterior à porta.
+  cardPaymentPrevCategoryId String?
+  cardPaymentPrevFlag       Boolean?
+  // ⭐ CARTÕES v3 (R49) — compra no exterior: US$ e a cotação impressos na fatura (null = em reais)
+  cardUsdAmount             Float?
+  cardFxRate                Float?
 
   // === Sprint Pending Transfer State (27/06/2026, modelo QuickBooks/Xero) ===
   // Estado "transferência aguardando par" — usado quando o user marca uma tx
@@ -6014,4 +6023,60 @@ model StockItemParDecidido {
   @@unique([companyId, itemAId, itemBId])
   @@index([companyId])
   @@map("stock_item_par_decidido")
+}
+
+// ⭐⭐⭐ CARTÕES v3 — FATURA PJ É REGISTRO (R46, docs/cartoes-referencia.html · 24/11/2026).
+// Uma linha por (cartão, competência). ⚠️ O ESTADO NÃO É GRAVADO: sai de `estadoCiclo` sobre o
+// total (Σ das linhas), o pago (Σ dos pagamentos vinculados por `paidInvoiceMonth`) e o
+// fechamento — *saldo nunca é dado primário*. O vínculo pagamento↔fatura continua num lugar só:
+// `Transaction.businessCreditCardId + paidInvoiceMonth` == (cardId, mes) desta tabela.
+model FaturaCartaoPJ {
+  id                  String    @id @default(cuid())
+  companyId           String
+  cardId              String
+  mes                 String // YYYY-MM — competência (mês do vencimento)
+  fechamento          DateTime?
+  vencimento          DateTime?
+  totalDeclarado      Float? // "Total desta Fatura" do PDF (null no backfill de mês antigo)
+  disponivelDeclarado Float?
+  origem              String // IMPORT | BACKFILL
+  importId            String?
+  criadoEm            DateTime  @default(now())
+  atualizadoEm        DateTime  @updatedAt
+
+  card BusinessCreditCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, mes])
+  @@index([companyId])
+  @@map("business_card_invoices")
+}
+
+// ⭐⭐⭐ PARCELA FUTURA É COMPROMISSO GRAVADO (R47). Uma linha por parcela AINDA NÃO lançada de
+// uma compra parcelada viva. `grupo` = `agruparParcelas` (cartão + valor + total + mês de origem;
+// total + mês de origem) — a MESMA compra em meses seguidos é UM grupo só.
+// ⚠️ Quando a fatura que traz a parcela é importada, a previsão é REALIZADA (realizadaTxId),
+// nunca apagada.
+model ParcelaFuturaPJ {
+  id            String    @id @default(cuid())
+  companyId     String
+  cardId        String
+  grupo         String
+  descricao     String
+  numero        Int
+  total         Int
+  valor         Float
+  mes           String // YYYY-MM — a fatura em que a parcela deve cair
+  origemTxId    String
+  realizadaTxId String?
+  // a compra PAROU de aparecer na fatura mais recente (quitada/estornada/antecipada): sai da conta,
+  // não se apaga — e volta (null) se ela reaparecer
+  canceladaEm   DateTime?
+  criadoEm      DateTime  @default(now())
+
+  card BusinessCreditCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, grupo, numero])
+  @@index([companyId, mes])
+  @@index([cardId, mes])
+  @@map("business_card_installments")
 }

@@ -1,195 +1,206 @@
-// Sprint Cartao Credito PJ — lista de cartoes da empresa
-
+// ⭐⭐⭐ CARTÕES v3 — A PÁGINA (docs/cartoes-referencia.html, R44/R45/R51/R52 · 24/11/2026).
+//
+// O topo responde em 4 cartões (a pagar agora · faturas abertas · comprometido em parcelas ·
+// limite), a linha do mês mostra fechamentos e vencimentos com "hoje", e cada cartão é OBJETO
+// completo: chip do banco, selo do ciclo, "vence em N dias" com pulso âmbar sem pagamento casado,
+// UMA régua do disponível, parcelas futuras e o menu ⋯ (editar · arquivar · excluir LIGADOS).
+// ⚠️ Tudo vem de UMA leitura em lote (`/cartoes/carteira` → `lerCarteira`): o N+1 morreu.
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { CreditCard, Plus, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Header } from '@/components/layout/header'
+import { Loader2 } from 'lucide-react'
+import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
-
-interface CardRow {
-  id: string
-  name: string
-  bankName: string | null
-  brand: string | null
-  lastDigits: string | null
-  creditLimit: number
-  closingDay: number
-  dueDay: number
-  monthSpend: number
-  monthTxCount: number
-  utilizationPct: number
-  latestInvoiceMonth: string | null
-  isLatestInvoicePaid: boolean
-  availableLimit: number
-}
-
-const MESES_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
-function fmtInvoiceLabel(ym: string | null): string {
-  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return ''
-  const [y, m] = ym.split('-')
-  const idx = Math.max(0, Math.min(11, parseInt(m, 10) - 1))
-  return `${MESES_PT[idx]}/${y}`
-}
+import type { Carteira, CartaoNaCarteira } from '@/lib/credit-card-pj/carteira'
+import { alertasDaCarteira } from '@/lib/credit-card-pj/vigia'
+import { ANCORAS } from '@/components/perguntas/ancoras'
+import { PerguntaNoTopo } from '@/components/perguntas/pergunta-no-topo'
+import { Hero, LinhaDoMes, CartaoObjeto, MenuDoCartao, fraseDoExcluir, fraseDoArquivar, SOMBRA, ROT } from '@/components/cartoes/visual'
+import { EditarCartao } from '@/components/cartoes/editar-cartao'
 
 const MESES_LABEL = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
-export default function CartoesListaPage() {
-  const params = useParams<{ id: string }>()
-  const [cards, setCards] = useState<CardRow[] | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [reviewQueue, setReviewQueue] = useState<{ count: number; sum: number; oldestMonth: string | null } | null>(null)
+type Confirmar = { tipo: 'arquivar' | 'excluir'; k: CartaoNaCarteira } | null
 
-  useEffect(() => {
+export default function CartoesPage() {
+  const params = useParams<{ id: string }>()
+  const { toast } = useToast()
+  const [c, setC] = useState<Carteira | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [erro, setErro] = useState<string | null>(null)
+  const [reviewQueue, setReviewQueue] = useState<{ count: number; sum: number; oldestMonth: string | null } | null>(null)
+  const [menuDe, setMenuDe] = useState<string | null>(null)
+  const [editando, setEditando] = useState<CartaoNaCarteira | null>(null)
+  const [confirmar, setConfirmar] = useState<Confirmar>(null)
+  const [gravando, setGravando] = useState(false)
+
+  const carregar = useCallback(() => {
     setLoading(true)
-    fetch(`/api/empresas/${params.id}/cartoes`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setCards(d?.cards ?? []))
+    fetch(`/api/empresas/${params.id}/cartoes/carteira`, { credentials: 'include' })
+      .then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro ?? 'não consegui ler os cartões'); return r.json() })
+      .then((d: Carteira) => { setC(d); setErro(null) })
+      .catch((e: Error) => setErro(e.message))
       .finally(() => setLoading(false))
     fetch(`/api/empresas/${params.id}/cartoes/review-queue`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((q) => setReviewQueue(q))
-      .catch(() => {})
+      .then((r) => (r.ok ? r.json() : null)).then((q) => setReviewQueue(q)).catch(() => {})
   }, [params.id])
+  useEffect(() => { carregar() }, [carregar])
+
+  async function patch(k: CartaoNaCarteira, body: Record<string, unknown>, ok: string) {
+    setGravando(true)
+    try {
+      const r = await fetch(`/api/empresas/${params.id}/cartoes/${k.id}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { toast({ title: 'Não consegui salvar', description: j.erro ?? 'tente de novo', variant: 'destructive' }); return false }
+      toast({ title: ok })
+      carregar()
+      return true
+    } finally { setGravando(false) }
+  }
+  async function reativar(id: string, nome: string) {
+    const r = await fetch(`/api/empresas/${params.id}/cartoes/${id}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ isActive: true }) })
+    if (!r.ok) { toast({ title: 'Não consegui reativar', variant: 'destructive' }); return }
+    toast({ title: `${nome} voltou pra página` })
+    carregar()
+  }
+  async function executar() {
+    if (!confirmar) return
+    const { tipo, k } = confirmar
+    setGravando(true)
+    try {
+      if (tipo === 'arquivar') {
+        if (await patch(k, { isActive: false }, `${k.bankName ?? k.name} arquivado`)) setConfirmar(null)
+        return
+      }
+      // ⭐ R23 — a API que já existia: com história some das telas (isActive=false), sem história apaga
+      const r = await fetch(`/api/empresas/${params.id}/cartoes/${k.id}`, { method: 'DELETE', credentials: 'include' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { toast({ title: 'Não consegui excluir', description: j.erro ?? 'tente de novo', variant: 'destructive' }); return }
+      toast({ title: j.softDeleted ? `${k.bankName ?? k.name} saiu das telas — ${j.txCount} lançamentos intactos` : `${k.bankName ?? k.name} apagado` })
+      setConfirmar(null)
+      carregar()
+    } finally { setGravando(false) }
+  }
+
+  const alertas = c ? alertasDaCarteira(params.id, c) : []
+  const hrefAPagar = c?.hero.aPagar.cartaoId ? `/empresas/${params.id}/cartoes/${c.hero.aPagar.cartaoId}?fatura=${c.hero.aPagar.mes}` : null
 
   return (
-    <div className="space-y-6">
-      <Header
-        title="Cartões de crédito"
-        description="Cartões PJ da empresa. Compras viram despesa; pagamento da fatura = transferência banco → cartão."
-      >
-        <Link href={`/empresas/${params.id}/cartoes/novo`}>
-          <Button>
-            <Plus className="h-4 w-4 mr-1" />
-            Novo cartão
-          </Button>
-        </Link>
-      </Header>
+    <div className="-mx-4 min-h-full px-4 pb-10 pt-2 sm:-mx-6 sm:px-6" style={{ background: 'var(--cart-fundo)', color: 'var(--esc-tinta)' }} onClick={() => menuDe && setMenuDe(null)}>
+      <div className="mx-auto max-w-[1180px]">
+        <header className="flex flex-wrap items-center justify-between gap-[14px] pt-3">
+          <h1 className="m-0 text-[21px] font-extrabold tracking-[-0.01em]">Cartões de crédito</h1>
+          <Link href={`/empresas/${params.id}/cartoes/novo`} className="inline-flex h-10 items-center rounded-[10px] px-4 text-[13px] font-extrabold" style={{ background: 'var(--esc-indigo)', color: 'var(--esc-on)' }}>+ Novo cartão</Link>
+        </header>
 
-      {/* Fila "A CLASSIFICAR" — GRITA (nunca silenciosa). O objetivo é ESVAZIAR. */}
-      {reviewQueue && reviewQueue.count > 0 && (
-        <Card className="border-purple-300 bg-purple-50/60">
-          <CardContent className="py-3 flex items-center gap-3">
-            <AlertCircle className="h-5 w-5 text-purple-600 flex-shrink-0" />
-            <p className="text-sm text-purple-900">
-              <strong>{reviewQueue.count} compras de cartão aguardando classificação</strong> ({formatBRL(reviewQueue.sum)})
-              {reviewQueue.oldestMonth && (() => {
-                const [y, m] = reviewQueue.oldestMonth.split('-')
-                return <> — a mais antiga desde <strong>{MESES_LABEL[parseInt(m, 10) - 1]}/{y}</strong></>
-              })()}
-              . Fora do DRE até você classificar. Abra o cartão pra mover em lote.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+        {/* ⭐ R51 + lei do topo: o que o sininho avisa, a página mostra AQUI, na âncora onde ele pousa */}
+        <div className="mt-4">
+          <PerguntaNoTopo id={ANCORAS.CARTAO_VIGIA} titulo="O que pede olho nos cartões" quantas={alertas.length} singular="aviso" plural="avisos">
+            <ul className="mt-2 space-y-2">
+              {alertas.map((a) => (
+                <li key={a.alvo} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                  <span className="min-w-0 flex-1"><b>{a.titulo}</b> — {a.corpo}</span>
+                  <Link href={a.acaoHref} className="font-semibold text-amber-900 underline">{a.acaoRotulo} →</Link>
+                </li>
+              ))}
+            </ul>
+          </PerguntaNoTopo>
+        </div>
 
-      {loading && (
-        <div className="flex items-center justify-center h-32 text-muted-foreground">
-          <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-          Carregando…
+        {/* Fila "A CLASSIFICAR" — GRITA (nunca silenciosa). O objetivo é ESVAZIAR. */}
+        {reviewQueue && reviewQueue.count > 0 && (
+          <div className="mt-4 rounded-[14px] px-4 py-3 text-sm" style={{ background: 'var(--esc-roxo50)', color: 'var(--esc-roxo-t)' }}>
+            <strong>{reviewQueue.count} compras de cartão aguardando classificação</strong> ({formatBRL(reviewQueue.sum)})
+            {reviewQueue.oldestMonth && (() => {
+              const [y, m] = reviewQueue.oldestMonth.split('-')
+              return <> — a mais antiga desde <strong>{MESES_LABEL[parseInt(m, 10) - 1]}/{y}</strong></>
+            })()}
+            . Fora do DRE até você classificar. Abra o cartão pra mover em lote.
+          </div>
+        )}
+
+        {loading && !c && (
+          <div className="flex h-32 items-center justify-center" style={{ color: 'var(--esc-tinta3)' }}>
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Carregando…
+          </div>
+        )}
+        {erro && <p className="mt-4 rounded-[12px] px-4 py-3 text-sm font-bold" style={{ background: 'var(--esc-perigo-bg)', color: 'var(--esc-perigo)' }}>{erro}</p>}
+
+        {c && c.cartoes.length === 0 && (
+          <div className="mt-6 rounded-[20px] px-6 py-14 text-center" style={{ ...SOMBRA, background: 'var(--esc-card)' }}>
+            <p className="text-base font-extrabold">Nenhum cartão cadastrado</p>
+            <p className="mt-1 text-sm" style={{ color: 'var(--esc-tinta3)' }}>Cadastre o 1º cartão pra importar a fatura PDF e categorizar as compras.</p>
+            <Link href={`/empresas/${params.id}/cartoes/novo`} className="mt-4 inline-flex h-10 items-center rounded-[10px] px-4 text-[13px] font-extrabold" style={{ background: 'var(--esc-indigo)', color: 'var(--esc-on)' }}>Cadastrar cartão</Link>
+          </div>
+        )}
+
+        {c && c.cartoes.length > 0 && (
+          <>
+            <Hero carteira={c} hrefAPagar={hrefAPagar} />
+            <LinhaDoMes carteira={c} />
+            <div id="cartoes" className="mt-[14px] grid grid-cols-1 gap-[14px] lg:grid-cols-2">
+              {c.cartoes.map((k) => (
+                <CartaoObjeto
+                  key={k.id}
+                  k={k}
+                  hoje={c.hoje}
+                  hrefFatura={`/empresas/${params.id}/cartoes/${k.id}`}
+                  onMenu={() => setMenuDe(menuDe === k.id ? null : k.id)}
+                  menu={menuDe === k.id ? (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <MenuDoCartao
+                        onEditar={() => { setMenuDe(null); setEditando(k) }}
+                        onArquivar={() => { setMenuDe(null); setConfirmar({ tipo: 'arquivar', k }) }}
+                        onExcluir={() => { setMenuDe(null); setConfirmar({ tipo: 'excluir', k }) }}
+                      />
+                    </div>
+                  ) : null}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {c && c.arquivados.length > 0 && (
+          <div className="mt-6 rounded-[16px] px-4 py-3" style={{ background: 'var(--esc-card)', ...SOMBRA }}>
+            <div className={ROT} style={{ color: 'var(--esc-tinta3)' }}>Arquivados · {c.arquivados.length}</div>
+            <ul className="mt-1">
+              {c.arquivados.map((a) => (
+                <li key={a.id} className="flex items-center gap-3 py-1.5 text-[12.5px] font-bold">
+                  <span className="min-w-0 flex-1 truncate">{a.bankName ?? a.name}{a.lastDigits ? ` · •••• ${a.lastDigits}` : ''}</span>
+                  <button type="button" className="font-extrabold" style={{ color: 'var(--esc-indigo)' }} onClick={() => reativar(a.id, a.bankName ?? a.name)}>reativar</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {confirmar && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center" onClick={() => !gravando && setConfirmar(null)}>
+          <div data-testid="confirmar-cartao" className="w-full max-w-[420px] rounded-[18px] p-5" style={{ background: 'var(--esc-card)', ...SOMBRA }} onClick={(e) => e.stopPropagation()}>
+            <p className="text-[14px] font-bold leading-relaxed">{confirmar.tipo === 'excluir' ? fraseDoExcluir(confirmar.k) : fraseDoArquivar(confirmar.k)}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" disabled={gravando} onClick={() => setConfirmar(null)} className="h-9 rounded-[10px] px-4 text-[13px] font-extrabold" style={{ background: 'var(--esc-trilho)', color: 'var(--esc-tinta2)' }}>Cancelar</button>
+              <button type="button" disabled={gravando} onClick={executar} className="h-9 rounded-[10px] px-4 text-[13px] font-extrabold"
+                style={{ background: confirmar.tipo === 'excluir' ? 'var(--esc-perigo)' : 'var(--esc-indigo)', color: 'var(--esc-on)' }}>
+                {gravando ? '…' : confirmar.tipo === 'excluir' ? 'Excluir' : 'Arquivar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {!loading && cards && cards.length === 0 && (
-        <Card>
-          <CardContent className="py-16 text-center space-y-3">
-            <CreditCard className="h-10 w-10 mx-auto text-muted-foreground/40" />
-            <p className="text-base font-medium">Nenhum cartão cadastrado</p>
-            <p className="text-sm text-muted-foreground">
-              Cadastre o 1º cartão pra importar fatura PDF com IA + categorizar compras.
-            </p>
-            <Link href={`/empresas/${params.id}/cartoes/novo`}>
-              <Button className="mt-2">
-                <Plus className="h-4 w-4 mr-1" />
-                Cadastrar cartão
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      )}
-
-      {!loading && cards && cards.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {cards.map((c) => {
-            const hasInvoice = !!c.latestInvoiceMonth
-            const paga = c.isLatestInvoicePaid
-            return (
-              <Link key={c.id} href={`/empresas/${params.id}/cartoes/${c.id}`}>
-                <Card className="rounded-2xl border-border/60 shadow-sm hover:shadow-md hover:border-foreground/20 transition-all cursor-pointer overflow-hidden">
-                  <CardContent className="py-5 px-5 space-y-5">
-                    {/* Header: mini-cartão + selo status */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-9 w-12 rounded-md bg-gradient-to-br from-slate-900 to-slate-700 dark:from-slate-100 dark:to-slate-300 flex items-end justify-end p-1.5 flex-shrink-0">
-                          <CreditCard className="h-3 w-3 text-white/80 dark:text-slate-900/80" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium truncate">
-                            {[c.brand, c.lastDigits ? `•••• ${c.lastDigits}` : null].filter(Boolean).join(' · ') || c.bankName}
-                          </p>
-                          <p className="text-sm font-medium truncate">{c.name}</p>
-                        </div>
-                      </div>
-                      {hasInvoice && <CardStatusPill paga={paga} />}
-                    </div>
-
-                    {/* Valor destaque */}
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                        {hasInvoice ? `Fatura ${fmtInvoiceLabel(c.latestInvoiceMonth)}` : 'Sem fatura'}
-                      </p>
-                      <p className="text-2xl font-medium tabular-nums tracking-[-0.01em] mt-0.5">
-                        {hasInvoice ? formatBRL(c.monthSpend) : '—'}
-                      </p>
-                    </div>
-
-                    {/* Barra de limite */}
-                    <div className="space-y-1.5">
-                      <div className="h-[5px] bg-muted rounded-full overflow-hidden">
-                        <div
-                          className={`h-full transition-all ${
-                            c.utilizationPct >= 0.9
-                              ? 'bg-red-500'
-                              : c.utilizationPct >= 0.7
-                                ? 'bg-amber-500'
-                                : 'bg-emerald-500/80'
-                          }`}
-                          style={{ width: `${Math.min(100, c.utilizationPct * 100)}%` }}
-                        />
-                      </div>
-                      <p className="text-[10px] text-muted-foreground">
-                        <span className="font-medium text-foreground">{Math.round(c.utilizationPct * 100)}%</span>{' '}
-                        de {formatBRL(c.creditLimit)} · <span className="font-medium text-foreground">{formatBRL(c.availableLimit)}</span> disponível · vence dia {c.dueDay}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            )
-          })}
-        </div>
+      {editando && (
+        <EditarCartao
+          k={editando}
+          gravando={gravando}
+          onFechar={() => setEditando(null)}
+          onSalvar={async (body) => { if (await patch(editando, body, 'Cartão salvo')) setEditando(null) }}
+        />
       )}
     </div>
-  )
-}
-
-function CardStatusPill({ paga }: { paga: boolean }) {
-  if (paga) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/70 dark:border-emerald-900/60 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300 flex-shrink-0">
-        <CheckCircle2 className="h-2.5 w-2.5" />
-        Paga
-      </span>
-    )
-  }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-900/60 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 flex-shrink-0">
-      <AlertCircle className="h-2.5 w-2.5" />
-      Aberta
-    </span>
   )
 }

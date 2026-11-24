@@ -16,6 +16,7 @@ import { z } from 'zod'
 import { resolvePaidInvoiceMonth } from '@/lib/credit-card-pj/resolve-paid-month'
 import { vincularPagamentoDeParcela } from '@/lib/loans/vincular-pagamento'
 import type { OfxLineKind } from './types'
+import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-pj/casar-pagamento'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -144,15 +145,16 @@ export async function aplicarMarcacao(
        * import — ela volta como desfecho e o orquestrador DIZ o motivo.
        */
       if (!paidInvoiceMonth) return 'sem-competencia'
-      await db.transaction.update({
-        where: { id: tx.id },
-        data: {
-          isCardPayment: true,
-          businessCreditCardId: params.cardId,
-          paidInvoiceMonth,
-          categoryId: null, // pagamento de cartão não é despesa direta
-        },
-      })
+      /**
+       * ⭐⭐ R48 (24/11/2026) — PELA PORTA ÚNICA. Aqui morava o 3º `update` do mesmo fato; agora é
+       * `casarPagamentoDeCartao`, que grava também o ANTES (o desfazer devolve a categoria).
+       */
+      try {
+        await casarPagamentoDeCartao({ companyId, cardId: params.cardId, txId: tx.id, invoiceMonth: paidInvoiceMonth }, db as PrismaClient)
+      } catch (e) {
+        if (e instanceof CasarPagamentoError) return 'sem-competencia'
+        throw e
+      }
       return 'applied'
     }
 
