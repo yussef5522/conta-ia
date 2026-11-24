@@ -28,6 +28,8 @@ export interface FaturaResumo {
   vencimento: string
   linhas: number
   pagamentos: { id: string; data: string; valor: number; conta: string | null }[]
+  /** R53 — fatura de quitação (semeada das parcelas do cartão encerrado; não tem linhas) */
+  quitacao: boolean
 }
 
 export interface CartaoNaCarteira {
@@ -61,6 +63,10 @@ export interface CartaoNaCarteira {
   futurasPorMes: { mes: string; valor: number }[]
   /** pro "excluir" dizer o que some (R23) */
   historia: { lancamentos: number; faturas: number }
+  /** ⭐ R53 — encerrado no banco, ainda em quitação (null = ativo) */
+  encerradoEm: string | null
+  /** R53 — a régua de QUITAÇÃO do encerrado: falta quitar · N parcelas · última em; quitado = nada mais a pagar */
+  quitacao: { falta: number; parcelas: number; ultima: string | null; quitado: boolean } | null
 }
 
 export interface Carteira {
@@ -72,7 +78,7 @@ export interface Carteira {
     aPagar: { valor: number; cartaoId: string | null; banco: string | null; dias: number | null; mes: string | null }
     abertas: { valor: number; cartoes: number }
     comprometido: { valor: number; porMes: { mes: string; valor: number }[] }
-    limite: { total: number; disponivel: number; usoPct: number }
+    limite: { total: number; disponivel: number; usoPct: number; cartoes: number }
   }
 }
 
@@ -99,7 +105,7 @@ export async function lerCarteira(
 
   // 2..6 — tudo em lote, em paralelo
   const [registros, somas, pagamentos, previstas, linhasPorCartao] = await Promise.all([
-    db.faturaCartaoPJ.findMany({ where: { cardId: { in: ids } }, select: { cardId: true, mes: true, fechamento: true, vencimento: true, totalDeclarado: true } }),
+    db.faturaCartaoPJ.findMany({ where: { cardId: { in: ids } }, select: { cardId: true, mes: true, fechamento: true, vencimento: true, totalDeclarado: true, quitacao: true } }),
     db.transaction.groupBy({
       by: ['businessCreditCardId', 'invoiceMonth', 'type'],
       where: { businessCreditCardId: { in: ids }, isCardPayment: false, invoiceMonth: { not: null } },
@@ -142,10 +148,12 @@ export async function lerCarteira(
   const cartoes: CartaoNaCarteira[] = cards.map((c) => {
     const faturas = [...porCartaoMes.values()].filter((s) => s.cardId === c.id).sort((a, b) => (a.mes < b.mes ? 1 : -1))
     const resumo = (s: Soma): FaturaResumo => {
-      const total = r2(s.total)
+      const reg = regPor.get(`${c.id}|${s.mes}`)
+      // ⭐ R53 — a quitação não tem linhas: o total é o que foi semeado (Σ das parcelas do mês)
+      const ehQuitacao = reg?.quitacao === true && s.linhas === 0
+      const total = r2(ehQuitacao ? (reg?.totalDeclarado ?? 0) : s.total)
       const pg = pagosPor.get(`${c.id}|${s.mes}`) ?? []
       const pago = pagoDaFatura(total, pg.map((p) => p.amount))
-      const reg = regPor.get(`${c.id}|${s.mes}`)
       const dd = datasDoCiclo(s.mes, c.closingDay, c.dueDay)
       const d = {
         fechamento: reg?.fechamento?.toISOString().slice(0, 10) ?? dd.fechamento,
@@ -155,6 +163,7 @@ export async function lerCarteira(
         mes: s.mes, total, pago, estado: estadoCiclo({ total, pago, fechada: true }),
         fechamento: d.fechamento, vencimento: d.vencimento, linhas: s.linhas,
         pagamentos: pg.map((p) => ({ id: p.id, data: p.date.toISOString().slice(0, 10), valor: p.amount, conta: p.bankAccount?.name ?? null })),
+        quitacao: ehQuitacao,
       }
     }
     const todas = faturas.map(resumo)
@@ -169,6 +178,16 @@ export async function lerCarteira(
     const disp = r2(disponivel(c.creditLimit, totalAberta, fechadasNaoPagas))
     const meses = [...new Set(prevs.map((p) => p.mes))].sort()
     const dA = datasDoCiclo(mesAberta, c.closingDay, c.dueDay)
+    const encerradoEm = c.encerradoEm ? c.encerradoEm.toISOString().slice(0, 10) : null
+    // ⭐ R53 — a régua de QUITAÇÃO: o que ainda deve (fechadas não pagas + as que vêm), em quantas e até quando
+    let quitacao: CartaoNaCarteira['quitacao'] = null
+    if (encerradoEm) {
+      const quitacoesEmAberto = todas.filter((f) => f.quitacao && f.estado !== 'paga').map((f) => f.mes)
+      const pend = previstas.filter((p) => p.cardId === c.id && (p.mes >= mesAberta || quitacoesEmAberto.includes(p.mes)))
+      const ultima = pend.length ? pend.map((p) => p.mes).sort().at(-1)! : null
+      const falta = r2(fechadasNaoPagas + prevs.reduce((a, p) => a + p.valor, 0))
+      quitacao = { falta, parcelas: pend.length, ultima, quitado: falta <= 0.009 && pend.length === 0 }
+    }
     return {
       id: c.id, name: c.name, bankName: c.bankName, brand: c.brand, lastDigits: c.lastDigits,
       creditLimit: c.creditLimit, closingDay: c.closingDay, dueDay: c.dueDay, closingDayRule: c.closingDayRule,
@@ -182,6 +201,8 @@ export async function lerCarteira(
       parcelasFuturas: r2(prevs.reduce((a, p) => a + p.valor, 0)),
       futurasPorMes: meses.map((m) => ({ mes: m, valor: r2(prevs.filter((p) => p.mes === m).reduce((a, p) => a + p.valor, 0)) })),
       historia: { lancamentos: historiaLanc.get(c.id) ?? 0, faturas: faturas.length },
+      encerradoEm,
+      quitacao,
     }
   })
 
@@ -190,8 +211,10 @@ export async function lerCarteira(
     .filter((c) => c.atual && c.atual.mes >= INICIO_DO_MODULO && (c.atual.estado === 'fechada' || c.atual.estado === 'parcial'))
     .sort((a, b) => (a.atual!.vencimento < b.atual!.vencimento ? -1 : 1))
   const prox = aPagarFat[0] ?? null
-  const totalLimite = r2(cartoes.reduce((a, c) => a + c.creditLimit, 0))
-  const totalDisp = r2(cartoes.reduce((a, c) => a + c.disponivel, 0))
+  // ⛔ R53 — cartão ENCERRADO não tem limite: sai da conta dos DOIS lados (total e usado)
+  const ativos = cartoes.filter((c) => !c.encerradoEm)
+  const totalLimite = r2(ativos.reduce((a, c) => a + c.creditLimit, 0))
+  const totalDisp = r2(ativos.reduce((a, c) => a + c.disponivel, 0))
   const mesesFut = [...new Set(cartoes.flatMap((c) => c.futurasPorMes.map((f) => f.mes)))].sort().slice(0, 6)
   return {
     hoje,
@@ -205,12 +228,13 @@ export async function lerCarteira(
         dias: prox ? diasAte(hoje, prox.atual!.vencimento) : null,
         mes: prox?.atual?.mes ?? null,
       },
-      abertas: { valor: r2(cartoes.reduce((a, c) => a + c.aberta.total, 0)), cartoes: cartoes.filter((c) => c.aberta.total > 0).length },
+      // ⛔ R53 — encerrado não acumula compra: nada de fatura "aberta" dele
+      abertas: { valor: r2(ativos.reduce((a, c) => a + c.aberta.total, 0)), cartoes: ativos.filter((c) => c.aberta.total > 0).length },
       comprometido: {
         valor: r2(cartoes.reduce((a, c) => a + c.parcelasFuturas, 0)),
         porMes: mesesFut.map((m) => ({ mes: m, valor: r2(cartoes.reduce((a, c) => a + (c.futurasPorMes.find((f) => f.mes === m)?.valor ?? 0), 0)) })),
       },
-      limite: { total: totalLimite, disponivel: totalDisp, usoPct: totalLimite > 0 ? Math.min(1, Math.max(0, (totalLimite - totalDisp) / totalLimite)) : 0 },
+      limite: { total: totalLimite, disponivel: totalDisp, usoPct: totalLimite > 0 ? Math.min(1, Math.max(0, (totalLimite - totalDisp) / totalLimite)) : 0, cartoes: ativos.length },
     },
   }
 }
@@ -222,7 +246,7 @@ function carteiraVazia(hoje: string): Carteira {
       aPagar: { valor: 0, cartaoId: null, banco: null, dias: null, mes: null },
       abertas: { valor: 0, cartoes: 0 },
       comprometido: { valor: 0, porMes: [] },
-      limite: { total: 0, disponivel: 0, usoPct: 0 },
+      limite: { total: 0, disponivel: 0, usoPct: 0, cartoes: 0 },
     },
   }
 }

@@ -59,7 +59,8 @@ export function alertasDaCarteira(companyId: string, c: Carteira): AlertaDoCarta
       }
     }
     // ⚠️ a fatura que já devia estar no sistema: o ciclo da "aberta" fechou e o PDF não entrou
-    if (fat && k.aberta.mes >= INICIO_DO_MODULO && diasAte(k.aberta.fechamento, c.hoje) > FOLGA_DO_PDF_DIAS) {
+    // ⛔ R53 — cartão ENCERRADO não tem mais fatura do banco: nunca pedir "importe a fatura"
+    if (!k.encerradoEm && fat && k.aberta.mes >= INICIO_DO_MODULO && diasAte(k.aberta.fechamento, c.hoje) > FOLGA_DO_PDF_DIAS) {
       out.push({
         tipo: 'FATURA_NAO_IMPORTADA', cartaoId: k.id, alvo: `${k.id}:${k.aberta.mes}:sem-import`,
         severidade: 'azul',
@@ -69,7 +70,7 @@ export function alertasDaCarteira(companyId: string, c: Carteira): AlertaDoCarta
         acaoRotulo: 'importar a fatura', acaoHref: `/empresas/${companyId}/cartoes/${k.id}/importar-fatura`,
       })
     }
-    if (k.creditLimit > 0 && k.usoPct > LIMITE_ALTO) {
+    if (!k.encerradoEm && k.creditLimit > 0 && k.usoPct > LIMITE_ALTO) {
       out.push({
         tipo: 'LIMITE_ALTO', cartaoId: k.id, alvo: `${k.id}:limite`,
         severidade: 'ambar',

@@ -289,8 +289,9 @@ export default function FaturaDoCartaoPage() {
   const painel = (qual: Aba) => `${aba === qual ? 'block' : 'hidden'} lg:block`
 
   return (
-    <div className="-mx-4 min-h-full px-4 pb-10 pt-2 sm:-mx-6 sm:px-6" style={{ background: 'var(--cart-fundo)', color: 'var(--esc-tinta)' }}>
-      <div className="mx-auto max-w-[1180px]">
+    <div className="min-h-full pb-10" style={{ color: 'var(--esc-tinta)' }}>
+      {/* ⛔ S24 — a LARGURA DA ÁREA ÚTIL do app: nenhum max-w próprio; o respiro lateral é o do shell */}
+      <div>
         <div className="flex flex-wrap items-center gap-2 pt-2 text-[12px] font-extrabold">
           <Link href={`/empresas/${params.id}/cartoes`} style={{ color: 'var(--esc-indigo)' }}>← Cartões</Link>
           <span className="ml-auto" />
@@ -392,7 +393,7 @@ export default function FaturaDoCartaoPage() {
         )}
 
         {fatura && (
-          <div className="mt-[14px] grid grid-cols-1 items-start gap-[14px] lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+          <div className="mt-[14px] grid grid-cols-1 items-start gap-[14px] lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] 2xl:gap-5">
             {/* ── R49 lançamentos ── */}
             <div className={`${painel('lanc')} min-w-0 rounded-[20px] px-[18px] py-4`} style={{ ...SOMBRA, background: 'var(--esc-card)' }}>
               <div className={`${ROT} mb-[6px] flex flex-wrap items-center gap-2`} style={{ color: 'var(--esc-tinta3)' }}>
@@ -435,7 +436,19 @@ export default function FaturaDoCartaoPage() {
                 </div>
               ))}
 
-              {visiveis.length === 0 && <p className="py-4 text-[12.5px] font-bold" style={{ color: 'var(--esc-tinta3)' }}>Nada neste filtro.</p>}
+              {fatura.quitacao && (
+                <div data-testid="parcelas-da-quitacao" className="mb-2 rounded-[12px] px-3 py-2" style={{ background: 'var(--esc-trilho)' }}>
+                  <p className="text-[11.5px] font-extrabold" style={{ color: 'var(--esc-tinta2)' }}>Fatura de quitação — o cartão foi encerrado; estas são as parcelas que caem neste mês:</p>
+                  {data.parcelasDaQuitacao.map((p, i) => (
+                    <div key={p.descricao + i} className="num flex items-baseline gap-2 py-1 text-[12.5px] font-bold">
+                      <span className="min-w-0 flex-1 truncate">{p.descricao}</span>
+                      <span className="rounded-[6px] px-[7px] py-[1px] text-[9.5px] font-extrabold" style={{ background: 'var(--esc-roxo50)', color: 'var(--esc-roxo-t)' }}>parcela {String(p.numero).padStart(2, '0')}/{String(p.total).padStart(2, '0')}</span>
+                      <span className="whitespace-nowrap font-extrabold">{formatBRL(p.valor)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!fatura.quitacao && visiveis.length === 0 && <p className="py-4 text-[12.5px] font-bold" style={{ color: 'var(--esc-tinta3)' }}>Nada neste filtro.</p>}
               {visiveis.map((t: LinhaDaFatura) => {
                 const credito = t.type === 'CREDIT'
                 const catId = valorDoSeletor(otimista, t)

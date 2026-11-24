@@ -356,6 +356,10 @@ model BusinessCreditCard {
   // Usado pelo dashboard pra alimentar o detector de pagamento por VALOR
   // EXATO (findCardPaymentCandidatesInBank). Sem isso o dashboard nao sabe
   // qual eh o valor da fatura aberta, e nao consegue achar candidatos.
+  // ⭐ R53 (24/11) — CARTÃO ENCERRADO EM QUITAÇÃO: cancelado no banco, ainda deve as parcelas.
+  // null = ativo. ⛔ NÃO é arquivar (isActive): encerrado continua na página até quitar.
+  encerradoEm DateTime?
+
   lastInvoiceMonth          String?
   lastInvoiceTotalDeclared  Float?
   lastInvoiceTotalToPay     Float?
@@ -6040,6 +6044,9 @@ model FaturaCartaoPJ {
   totalDeclarado      Float? // "Total desta Fatura" do PDF (null no backfill de mês antigo)
   disponivelDeclarado Float?
   origem              String // IMPORT | BACKFILL
+  // ⭐ R53 — fatura de QUITAÇÃO: semeada pelo sistema pro cartão encerrado, a partir das parcelas
+  // previstas do mês (total = totalDeclarado; não tem linhas). null/false = fatura do banco.
+  quitacao            Boolean?
   importId            String?
   criadoEm            DateTime  @default(now())
   atualizadoEm        DateTime  @updatedAt

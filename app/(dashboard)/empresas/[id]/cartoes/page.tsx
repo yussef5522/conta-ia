@@ -88,8 +88,9 @@ export default function CartoesPage() {
   const hrefAPagar = c?.hero.aPagar.cartaoId ? `/empresas/${params.id}/cartoes/${c.hero.aPagar.cartaoId}?fatura=${c.hero.aPagar.mes}` : null
 
   return (
-    <div className="-mx-4 min-h-full px-4 pb-10 pt-2 sm:-mx-6 sm:px-6" style={{ background: 'var(--cart-fundo)', color: 'var(--esc-tinta)' }} onClick={() => menuDe && setMenuDe(null)}>
-      <div className="mx-auto max-w-[1180px]">
+    <div className="min-h-full pb-10" style={{ color: 'var(--esc-tinta)' }} onClick={() => menuDe && setMenuDe(null)}>
+      {/* ⛔ S24 — a LARGURA DA ÁREA ÚTIL do app: nenhum max-w próprio; o respiro lateral é o do shell */}
+      <div>
         <header className="flex flex-wrap items-center justify-between gap-[14px] pt-3">
           <h1 className="m-0 text-[21px] font-extrabold tracking-[-0.01em]">Cartões de crédito</h1>
           <Link href={`/empresas/${params.id}/cartoes/novo`} className="inline-flex h-10 items-center rounded-[10px] px-4 text-[13px] font-extrabold" style={{ background: 'var(--esc-indigo)', color: 'var(--esc-on)' }}>+ Novo cartão</Link>
@@ -140,7 +141,7 @@ export default function CartoesPage() {
           <>
             <Hero carteira={c} hrefAPagar={hrefAPagar} />
             <LinhaDoMes carteira={c} />
-            <div id="cartoes" className="mt-[14px] grid grid-cols-1 gap-[14px] lg:grid-cols-2">
+            <div id="cartoes" className="mt-[14px] grid grid-cols-1 gap-[14px] lg:grid-cols-2 2xl:grid-cols-3">
               {c.cartoes.map((k) => (
                 <CartaoObjeto
                   key={k.id}
@@ -148,6 +149,7 @@ export default function CartoesPage() {
                   hoje={c.hoje}
                   hrefFatura={`/empresas/${params.id}/cartoes/${k.id}`}
                   onMenu={() => setMenuDe(menuDe === k.id ? null : k.id)}
+                  onArquivar={() => setConfirmar({ tipo: 'arquivar', k })}
                   menu={menuDe === k.id ? (
                     <div onClick={(e) => e.stopPropagation()}>
                       <MenuDoCartao

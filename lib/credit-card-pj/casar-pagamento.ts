@@ -40,13 +40,15 @@ export interface CasarPagamentoResultado {
 /** R46/R48 — o estado da fatura (cartão, competência) lido do vínculo — a MESMA conta da tela */
 export async function estadoDaFatura(db: Db, cardId: string, mes: string): Promise<CasarPagamentoResultado['fatura']> {
   const [registro, linhas, pagamentos] = await Promise.all([
-    db.faturaCartaoPJ.findUnique({ where: { cardId_mes: { cardId, mes } }, select: { id: true } }),
+    db.faturaCartaoPJ.findUnique({ where: { cardId_mes: { cardId, mes } }, select: { id: true, quitacao: true, totalDeclarado: true } }),
     db.transaction.findMany({ where: { businessCreditCardId: cardId, invoiceMonth: mes, isCardPayment: false }, select: { type: true, amount: true } }),
     db.transaction.findMany({ where: { businessCreditCardId: cardId, isCardPayment: true, paidInvoiceMonth: mes }, select: { amount: true } }),
   ])
-  const total = faturaNetTotal(linhas).net
+  // ⭐ R53 — a fatura de QUITAÇÃO não tem linhas: o total é o semeado. Mesma porta, zero caminho especial.
+  const quitacao = registro?.quitacao === true && linhas.length === 0
+  const total = quitacao ? (registro?.totalDeclarado ?? 0) : faturaNetTotal(linhas).net
   const pago = pagoDaFatura(total, pagamentos.map((p) => p.amount))
-  return { id: registro?.id ?? null, total, pago, estado: estadoCiclo({ total, pago, fechada: linhas.length > 0 }) }
+  return { id: registro?.id ?? null, total, pago, estado: estadoCiclo({ total, pago, fechada: linhas.length > 0 || quitacao }) }
 }
 
 export async function casarPagamentoDeCartao(

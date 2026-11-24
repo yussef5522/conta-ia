@@ -61,6 +61,8 @@ export interface FaturaDetalhe {
   /** R50 — fatura por mês (até 6, mais antiga primeiro) */
   evolucao: { mes: string; total: number }[]
   candidatos: CandidatoDePagamento[]
+  /** R53 — fatura de quitação: as parcelas que a compõem (ela não tem linhas do banco) */
+  parcelasDaQuitacao: { descricao: string; numero: number; total: number; valor: number }[]
 }
 
 /** a pontuação visual do candidato — a mesma escada do preview (R5) */
@@ -102,6 +104,12 @@ export async function lerFatura(
       orderBy: { mes: 'asc' },
     }),
   ])
+  const parcelasDaQuitacao = fatura?.quitacao
+    ? (await db.parcelaFuturaPJ.findMany({
+        where: { cardId, mes: fatura.mes, realizadaTxId: null, canceladaEm: null },
+        select: { descricao: true, numero: true, total: true, valor: true }, orderBy: { valor: 'desc' },
+      }))
+    : []
 
   // ⭐ a sugestão é a regra APRENDIDA (determinística, barata) — e ela SUGERE: quem aplica é o clique
   const sugestao = new Map<string, string>()
@@ -176,5 +184,6 @@ export async function lerFatura(
     },
     evolucao: cartao.faturas.slice(0, 6).map((f) => ({ mes: f.mes, total: f.total })).reverse(),
     candidatos,
+    parcelasDaQuitacao,
   }
 }

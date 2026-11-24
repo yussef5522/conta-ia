@@ -11,6 +11,7 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import { registrarAviso, reconciliarOrigem } from '../central'
 import { avaliarLinguaDoBalcao } from '../lingua-do-balcao'
 import { lerCarteira } from '@/lib/credit-card-pj/carteira'
+import { semearQuitacoes } from '@/lib/credit-card-pj/materializar'
 import { alertasDaCarteira, hrefDaVigia } from '@/lib/credit-card-pj/vigia'
 import { diaDoBrasil } from '@/lib/margem/dia'
 
@@ -27,6 +28,8 @@ export interface ResumoDosCartoes {
 
 export async function produzirAvisosDeCartoes(companyId: string, agora: Date = new Date(), db: Db = prisma): Promise<ResumoDosCartoes> {
   const r: ResumoDosCartoes = { gravados: 0, reabertos: 0, resolvidos: 0, recusados: [] }
+  // ⭐ R53 — o virar do mês: o cron semeia a quitação ANTES de vigiar (aí ela entra no "a pagar")
+  await semearQuitacoes(db, companyId, diaDoBrasil(agora))
   const carteira = await lerCarteira(companyId, diaDoBrasil(agora), db)
   const vivos: string[] = []
   for (const a of alertasDaCarteira(companyId, carteira)) {

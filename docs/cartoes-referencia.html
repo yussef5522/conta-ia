@@ -65,6 +65,25 @@ R52 — CELULAR DE VERDADE. Cartões empilham inteiros, o topo vira
       2×2, a fatura vira abas (Lançamentos · Parcelas · Gráfico);
       NADA rola de lado.
 
+── EMENDAS APROVADAS PELO DONO (24/11/2026) ──
+S24 — LARGURA DA ÁREA ÚTIL (lei permanente, vale pra TODA tela, nova
+      e futura): toda página usa a largura da área útil padrão do app —
+      a régua da Vendas ao vivo pós-emenda E1 (11-12/11): nenhum
+      max-width próprio, o respiro lateral é o do shell. Espaço morto
+      nas laterais é proibido; tela larga ganha COLUNAS e respiro (cards
+      de cartão: 3 colunas em tela larga, 2 na média, 1 no celular). O
+      max-width:1180px deste arquivo é da PÁGINA SOLTA do mock.
+R53 — CARTÃO ENCERRADO EM QUITAÇÃO. Cartão cancelado no banco ainda
+      deve as parcelas. Estado no editar: Ativo / Encerrado (não apaga,
+      não é arquivar; selo "Encerrado · em quitação" no chip). O limite
+      dele sai do hero (total e usado); a régua vira "falta quitar R$ X
+      · N parcelas · última em MM/AAAA". O sistema semeia a FATURA DE
+      QUITAÇÃO do mês a partir das parcelas gravadas (nasce fechada,
+      vence no dia do cartão; idempotente: virar do mês + on-read); fatura
+      real do banco no mesmo mês manda. Paga pela MESMA porta (diferença
+      → parcial). O vigia não pede import de encerrado. Última parcela
+      paga → quitado, propõe arquivar.
+
 Números da amostra: dossiê + fatura real de 23/11 (4 cartões;
 sicredi nov R$ 4.810,69; parcelas futuras R$ 62,8 mil vivos).
 A faixa preta separa as duas amostras. Pinos no <script>.

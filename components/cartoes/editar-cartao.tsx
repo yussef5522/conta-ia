@@ -20,6 +20,7 @@ export function EditarCartao({ k, gravando, onFechar, onSalvar }: {
     name: k.name, bankName: k.bankName ?? '', brand: (k.brand ?? '').toUpperCase(), lastDigits: k.lastDigits ?? '',
     creditLimit: String(k.creditLimit).replace('.', ','), closingDay: String(k.closingDay), dueDay: String(k.dueDay),
     closingDayRule: k.closingDayRule === 'PROXIMA' ? 'PROXIMA' : 'ATUAL',
+    estado: k.encerradoEm ? 'ENCERRADO' : 'ATIVO',
   })
   const [erro, setErro] = useState<string | null>(null)
   const set = (c: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF((p) => ({ ...p, [c]: e.target.value }))
@@ -37,6 +38,7 @@ export function EditarCartao({ k, gravando, onFechar, onSalvar }: {
     onSalvar({
       name: f.name.trim(), bankName: f.bankName.trim() || null, brand: f.brand || null, lastDigits: f.lastDigits || null,
       creditLimit: limite, closingDay: fecha, dueDay: vence, closingDayRule: f.closingDayRule,
+      encerrado: f.estado === 'ENCERRADO',
     })
   }
 
@@ -69,6 +71,16 @@ export function EditarCartao({ k, gravando, onFechar, onSalvar }: {
               <option value="ATUAL">nesta fatura</option>
               <option value="PROXIMA">na próxima fatura</option>
             </select></label>
+          <label className={`${rot} sm:col-span-2`} style={{ color: 'var(--esc-tinta2)' }}>Estado do cartão
+            <select data-testid="estado-do-cartao" className={campo} style={estilo} value={f.estado} onChange={set('estado')}>
+              <option value="ATIVO">Ativo</option>
+              <option value="ENCERRADO">Encerrado (cancelado no banco — só pago as parcelas que ficaram)</option>
+            </select></label>
+          {f.estado === 'ENCERRADO' && (
+            <p className="text-[11.5px] font-bold sm:col-span-2" style={{ color: 'var(--esc-tinta3)' }}>
+              Encerrar não apaga nada e não é arquivar: o cartão continua na página até a última parcela, sai da conta do limite e ganha a fatura de quitação de cada mês.
+            </p>
+          )}
         </div>
         {erro && <p className="mt-3 text-[12.5px] font-bold" style={{ color: 'var(--esc-perigo)' }}>{erro}</p>}
         <div className="mt-4 flex justify-end gap-2">

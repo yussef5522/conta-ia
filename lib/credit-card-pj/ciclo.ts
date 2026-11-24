@@ -215,3 +215,24 @@ export const GRADIENTE_DO_BANCO: Record<ReturnType<typeof classeDoBanco>, [strin
   mp: ['#0B4E8E', '#3BB3F4'],
   neutro: ['#171E31', '#232D49'],
 }
+
+/**
+ * ⭐⭐⭐ R53 — CARTÃO ENCERRADO EM QUITAÇÃO (emenda 24/11/2026). O cartão foi cancelado no banco e
+ * não tem mais fatura do banco, mas as parcelas continuam caindo. O sistema faz o que o banco faz:
+ * a FATURA DE QUITAÇÃO do mês, a partir das parcelas previstas gravadas — nasce fechada.
+ * ⛔ Fatura real do banco no mesmo mês MANDA: a quitação não nasce. Só do mês corrente em diante.
+ * Puro: o semeador (on-read + cron) e o guard decidem por AQUI.
+ */
+export function quitacaoASemear(p: {
+  encerradoEm: string | null // YYYY-MM-DD
+  hoje: string
+  mesesComFatura: Set<string>
+  previstasDoMes: (mes: string) => number
+}): { mes: string; total: number } | null {
+  if (!p.encerradoEm) return null
+  const mes = p.hoje.slice(0, 7)
+  if (mes < p.encerradoEm.slice(0, 7)) return null
+  if (p.mesesComFatura.has(mes)) return null
+  const total = Math.round(p.previstasDoMes(mes) * 100) / 100
+  return total > 0 ? { mes, total } : null
+}

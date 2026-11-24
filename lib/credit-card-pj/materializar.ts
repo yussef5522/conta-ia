@@ -10,7 +10,7 @@
 // ⛔ Nada se apaga: a previsão que a fatura nova traz de verdade é REALIZADA (`realizadaTxId`).
 
 import type { PrismaClient, Prisma } from '@prisma/client'
-import { agruparParcelas, parcelasQueFaltam, datasDoCiclo } from './ciclo'
+import { agruparParcelas, parcelasQueFaltam, datasDoCiclo, quitacaoASemear } from './ciclo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -20,6 +20,8 @@ export async function registrarFatura(
     companyId: string; cardId: string; mes: string; closingDay: number; dueDay: number
     origem: 'IMPORT' | 'BACKFILL'
     totalDeclarado?: number | null; disponivelDeclarado?: number | null; importId?: string | null
+    /** R53 — fatura de quitação semeada pelo sistema (cartão encerrado) */
+    quitacao?: boolean
   },
 ): Promise<{ criada: boolean }> {
   const antes = await db.faturaCartaoPJ.findUnique({ where: { cardId_mes: { cardId: f.cardId, mes: f.mes } }, select: { id: true } })
@@ -30,10 +32,12 @@ export async function registrarFatura(
     create: {
       companyId: f.companyId, cardId: f.cardId, mes: f.mes, ...datas, origem: f.origem,
       totalDeclarado: f.totalDeclarado ?? null, disponivelDeclarado: f.disponivelDeclarado ?? null, importId: f.importId ?? null,
+      ...(f.quitacao ? { quitacao: true } : {}),
     },
     // ⚠️ o backfill nunca reescreve; o import (a fonte mais nova, o PDF) atualiza o que declarou
     update: f.origem === 'IMPORT'
-      ? { origem: 'IMPORT', totalDeclarado: f.totalDeclarado ?? null, disponivelDeclarado: f.disponivelDeclarado ?? null, importId: f.importId ?? null }
+      // ⭐ R53 — a fatura REAL do banco manda: o import sobre uma quitação a converte em fatura do banco
+      ? { origem: 'IMPORT', totalDeclarado: f.totalDeclarado ?? null, disponivelDeclarado: f.disponivelDeclarado ?? null, importId: f.importId ?? null, quitacao: null }
       : {},
   })
   return { criada: !antes }
@@ -123,4 +127,38 @@ export async function projetarParcelas(db: Db, companyId: string, cardId: string
   if (plano.reativar.length) await db.parcelaFuturaPJ.updateMany({ where: { id: { in: plano.reativar } }, data: { canceladaEm: null } })
   if (plano.novas.length) await db.parcelaFuturaPJ.createMany({ data: plano.novas.map((n) => ({ ...n, companyId, cardId })) })
   return { criadas: plano.novas.length, realizadas: plano.realizar.length, vivas: plano.vivas, canceladas: plano.cancelar.length }
+}
+
+/**
+ * ⭐⭐⭐ R53 — SEMEIA A FATURA DE QUITAÇÃO do mês corrente dos cartões ENCERRADOS de uma empresa.
+ * A receita das rotinas: decisão pura (`quitacaoASemear`) + o índice único (cardId, mes) como trava —
+ * chamada na LEITURA da página (on-read) e no cron das 3h (virar do mês). Rodar 2× não duplica.
+ */
+export async function semearQuitacoes(db: Db, companyId: string, hoje: string): Promise<{ semeadas: { cardId: string; mes: string; total: number }[] }> {
+  const encerrados = await db.businessCreditCard.findMany({
+    where: { companyId, isActive: true, encerradoEm: { not: null } },
+    select: { id: true, closingDay: true, dueDay: true, encerradoEm: true },
+  })
+  const semeadas: { cardId: string; mes: string; total: number }[] = []
+  for (const c of encerrados) {
+    const mes = hoje.slice(0, 7)
+    const [faturas, prev] = await Promise.all([
+      db.faturaCartaoPJ.findMany({ where: { cardId: c.id }, select: { mes: true } }),
+      db.parcelaFuturaPJ.findMany({ where: { cardId: c.id, mes, realizadaTxId: null, canceladaEm: null }, select: { valor: true } }),
+    ])
+    const s = quitacaoASemear({
+      encerradoEm: c.encerradoEm!.toISOString().slice(0, 10), hoje,
+      mesesComFatura: new Set(faturas.map((f) => f.mes)),
+      previstasDoMes: () => prev.reduce((a, p) => a + p.valor, 0),
+    })
+    if (!s) continue
+    try {
+      const r = await registrarFatura(db, { companyId, cardId: c.id, mes: s.mes, closingDay: c.closingDay, dueDay: c.dueDay, origem: 'BACKFILL', totalDeclarado: s.total, quitacao: true })
+      if (r.criada) semeadas.push({ cardId: c.id, ...s })
+    } catch (e) {
+      // ⚠️ dois disparos simultâneos: o segundo bate no índice único — já existe, é o que se queria
+      if ((e as { code?: string })?.code !== 'P2002') throw e
+    }
+  }
+  return { semeadas }
 }

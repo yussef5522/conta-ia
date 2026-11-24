@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { lerCarteira } from '@/lib/credit-card-pj/carteira'
+import { semearQuitacoes } from '@/lib/credit-card-pj/materializar'
 import { diaDoBrasil } from '@/lib/margem/dia'
 
 interface Params { params: Promise<{ id: string }> }
@@ -17,5 +18,9 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
   const acesso = await prisma.userCompany.findFirst({ where: { userId: user.sub, companyId }, select: { companyId: true } })
   if (!acesso) return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
-  return NextResponse.json(await lerCarteira(companyId, diaDoBrasil(new Date())))
+  const hoje = diaDoBrasil(new Date())
+  // ⭐ R53 — on-read: a fatura de quitação do mês do cartão encerrado nasce aqui se ainda não nasceu
+  // (o cron das 3h é o outro disparo). ⚠️ A leitura nunca cai por causa da semeadura.
+  try { await semearQuitacoes(prisma, companyId, hoje) } catch { /* idem rotinas */ }
+  return NextResponse.json(await lerCarteira(companyId, hoje))
 }

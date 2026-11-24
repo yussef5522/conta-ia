@@ -76,14 +76,14 @@ describe('tokens por VALOR', () => {
 
 // ── dado de verdade (os números da amostra da lei) ──
 const fat = (o: Partial<FaturaResumo> = {}): FaturaResumo => ({
-  mes: '2026-11', total: 4810.69, pago: 0, estado: 'fechada', fechamento: '2026-10-27', vencimento: '2026-11-26', linhas: 42, pagamentos: [], ...o,
+  mes: '2026-11', total: 4810.69, pago: 0, estado: 'fechada', fechamento: '2026-10-27', vencimento: '2026-11-26', linhas: 42, pagamentos: [], quitacao: false, ...o,
 })
 const cartao = (o: Partial<CartaoNaCarteira> = {}): CartaoNaCarteira => ({
   id: 'c1', name: 'Sicredi', bankName: 'Sicredi', brand: 'Visa', lastDigits: '0115', creditLimit: 25000, closingDay: 27, dueDay: 26,
   closingDayRule: 'ATUAL', defaultPaymentBankAccountId: null, defaultTreatment: 'OPERACIONAL', socioPFId: null,
   atual: fat(), faturas: [fat()], aberta: { mes: '2026-12', total: 10843, fechamento: '2026-11-27', vencimento: '2026-12-26' },
   fechadasNaoPagas: 0, disponivel: 14157, usoPct: 0.43, parcelasFuturas: 6032.69,
-  futurasPorMes: [{ mes: '2026-12', valor: 1828 }], historia: { lancamentos: 42, faturas: 6 }, ...o,
+  futurasPorMes: [{ mes: '2026-12', valor: 1828 }], historia: { lancamentos: 42, faturas: 6 }, encerradoEm: null, quitacao: null, ...o,
 })
 const carteira = (cs: CartaoNaCarteira[]): Carteira => ({
   hoje: '2026-11-23', cartoes: cs, arquivados: [],
@@ -91,7 +91,7 @@ const carteira = (cs: CartaoNaCarteira[]): Carteira => ({
     aPagar: { valor: 4810.69, cartaoId: 'c1', banco: 'Sicredi', dias: 3, mes: '2026-11' },
     abertas: { valor: 11801.8, cartoes: 2 },
     comprometido: { valor: 62810, porMes: ['2026-12', '2027-01', '2027-02', '2027-03', '2027-04', '2027-05'].map((mes, i) => ({ mes, valor: [8390, 7820, 6150, 5080, 4420, 3910][i] })) },
-    limite: { total: 80200, disponivel: 61361, usoPct: 0.23 },
+    limite: { total: 80200, disponivel: 61361, usoPct: 0.23, cartoes: 4 },
   },
 })
 
@@ -219,6 +219,28 @@ describe('TELA × LEI — as telas (lidas sem comentário)', () => {
     for (const f of ['Cartões de crédito', '+ Novo cartão']) { expect(LEI).toContain(f); expect(PAGINA).toContain(f) }
     expect(LEI).toContain('fechamentos e vencimentos')
     expect(VISUAL).toContain('fechamentos e vencimentos')
+  })
+  it('⛔ S24 — a LARGURA DA ÁREA ÚTIL do app: nenhum max-w próprio nem margem negativa; tela larga ganha COLUNAS', () => {
+    for (const s of [PAGINA, FATURA]) {
+      // o CONTAINER (centralizado + teto); diálogo e select com largura própria não são container
+      expect(s, 'container próprio com teto').not.toMatch(/className="[^"]*\bmx-auto\b[^"]*\bmax-w-|className="[^"]*\bmax-w-[^"]*\bmx-auto\b/)
+      expect(s, 'sangria lateral').not.toMatch(/(?:^|\s)-mx-\d/)
+    }
+    expect(PAGINA).toContain('lg:grid-cols-2 2xl:grid-cols-3')
+    expect(LEI).toContain('S24 — LARGURA DA ÁREA ÚTIL')
+    expect(ler('CLAUDE.md')).toContain('S24 — LARGURA DA ÁREA ÚTIL')
+  })
+  it('⭐ R53 — encerrado: selo no chip, régua de QUITAÇÃO no lugar do disponível, quitado propõe arquivar', () => {
+    const k = cartao({ encerradoEm: '2026-11-23', quitacao: { falta: 1887.91, parcelas: 9, ultima: '2027-06', quitado: false }, atual: fat({ quitacao: true, total: 334.61 }) })
+    const s = renderToStaticMarkup(<CartaoObjeto k={k} hoje="2026-11-23" hrefFatura="/f" menu={null} onMenu={() => {}} />)
+    expect(s).toContain('Encerrado · em quitação')
+    expect(s).toMatch(/falta quitar R\$\s1\.887,91 · 9 parcelas · última em 06\/2027/)
+    expect(s).toContain('Nov/2026 · quitação')
+    expect(s).not.toContain('disponíveis de')
+    const q = renderToStaticMarkup(<CartaoObjeto k={{ ...k, quitacao: { falta: 0, parcelas: 0, ultima: null, quitado: true } }} hoje="2026-11-23" hrefFatura="/f" menu={null} onMenu={() => {}} onArquivar={() => {}} />)
+    expect(q).toContain('quitado — nada mais a pagar')
+    expect(q).toContain('>arquivar</button>')
+    expect(LEI).toContain('R53 — CARTÃO ENCERRADO EM QUITAÇÃO')
   })
   it('R52 — NADA rola de lado: nenhuma rolagem horizontal nas telas e peças', () => {
     for (const s of [PAGINA, FATURA, VISUAL]) expect(s).not.toMatch(/overflow-x-(auto|scroll)/)

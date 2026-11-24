@@ -63,7 +63,8 @@ function Kpi({ tinta, rotCor, rot, children }: { tinta: string; rotCor: string; 
 export function Hero({ carteira, hrefAPagar }: { carteira: Carteira; hrefAPagar: string | null }) {
   const h = carteira.hero
   const maxm = Math.max(1, ...h.comprometido.porMes.map((m) => m.valor))
-  const n = carteira.cartoes.length
+  // ⛔ R53 — o limite conta só os cartões ATIVOS (encerrado não tem limite)
+  const n = h.limite.cartoes
   return (
     <div data-testid="hero-cartoes" className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Kpi tinta="var(--cart-t-amb)" rotCor="var(--esc-ambar-t)" rot="A pagar agora">
@@ -171,11 +172,22 @@ export function textoDoVencimento(k: CartaoNaCarteira, hoje: string): { txt: str
   return { txt: `${venceEm(diasAte(hoje, f.vencimento))} · sem pagamento casado`, tom: 'alerta' }
 }
 
-export function CartaoObjeto({ k, hoje, hrefFatura, menu, onMenu }: {
+/** R53 — "04/2027" */
+const mmaaaa = (ym: string) => `${ym.slice(5, 7)}/${ym.slice(0, 4)}`
+/** R53 — a régua de QUITAÇÃO do cartão encerrado (no lugar da régua do disponível) */
+export function textoDaQuitacao(q: NonNullable<CartaoNaCarteira['quitacao']>): string {
+  if (q.quitado) return 'quitado — nada mais a pagar'
+  const n = `${q.parcelas} ${q.parcelas === 1 ? 'parcela' : 'parcelas'}`
+  return `falta quitar ${formatBRL(q.falta)} · ${n}${q.ultima ? ` · última em ${mmaaaa(q.ultima)}` : ''}`
+}
+
+export function CartaoObjeto({ k, hoje, hrefFatura, menu, onMenu, onArquivar }: {
   k: CartaoNaCarteira; hoje: string; hrefFatura: string
   /** o menu ⋯ aberto (editar · arquivar · excluir), ou null */
   menu: ReactNode | null
   onMenu: () => void
+  /** R53 — cartão quitado propõe arquivar com UM clique */
+  onArquivar?: () => void
 }) {
   const v = textoDoVencimento(k, hoje)
   const banco = k.bankName ?? k.name
@@ -183,7 +195,13 @@ export function CartaoObjeto({ k, hoje, hrefFatura, menu, onMenu }: {
   return (
     <div data-testid="cartao-objeto" className="relative min-w-0 rounded-[22px] p-[18px]" style={{ ...SOMBRA_CC, background: 'var(--esc-card)' }}>
       <div className="flex items-center gap-3">
-        <Chip bankName={k.bankName} brand={k.brand} lastDigits={k.lastDigits} />
+        <div className="relative flex-none">
+          <Chip bankName={k.bankName} brand={k.brand} lastDigits={k.lastDigits} />
+          {k.encerradoEm && (
+            <span data-testid="selo-encerrado" className="absolute -bottom-[9px] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-[7px] py-[1px] text-[8.5px] font-extrabold"
+              style={{ background: 'var(--esc-tinta)', color: 'var(--esc-on)' }}>{k.quitacao?.quitado ? 'Encerrado · quitado' : 'Encerrado · em quitação'}</span>
+          )}
+        </div>
         <div className="min-w-0">
           <div className="truncate text-[14.5px] font-extrabold" style={{ color: 'var(--esc-tinta)' }}>{banco}</div>
           <div className="truncate text-[10.5px] font-bold" style={{ color: 'var(--esc-tinta3)' }}>{sub}</div>
@@ -194,7 +212,7 @@ export function CartaoObjeto({ k, hoje, hrefFatura, menu, onMenu }: {
           className="ml-2 h-[30px] w-[30px] flex-none rounded-[10px] text-[15px] font-extrabold" style={{ background: 'var(--esc-trilho)', color: 'var(--esc-tinta3)' }}>⋯</button>
       </div>
       <div className="mt-3 flex flex-wrap items-baseline gap-x-[9px] gap-y-1">
-        <span className={ROT} style={{ color: 'var(--esc-tinta3)' }}>{k.atual ? rotuloFatura(k.atual.mes) : 'sem fatura'}</span>
+        <span className={ROT} style={{ color: 'var(--esc-tinta3)' }}>{k.atual ? `${rotuloFatura(k.atual.mes)}${k.atual.quitacao ? ' · quitação' : ''}` : 'sem fatura'}</span>
         <span className="num whitespace-nowrap text-[24px] font-extrabold tracking-[-0.015em] sm:text-[28px]" style={{ color: 'var(--esc-tinta)' }}>{k.atual ? formatBRL(k.atual.total) : '—'}</span>
         <span data-vencimento={v.tom} className="num ml-auto inline-flex items-center gap-[6px] text-[11.5px] font-extrabold"
           style={{ color: v.tom === 'alerta' ? 'var(--esc-ambar)' : v.tom === 'ok' ? 'var(--esc-verde-t)' : 'var(--esc-tinta2)' }}>
@@ -202,15 +220,28 @@ export function CartaoObjeto({ k, hoje, hrefFatura, menu, onMenu }: {
           {v.txt}
         </span>
       </div>
-      <div className="mt-[10px] h-[10px] overflow-hidden rounded-full" style={{ background: 'var(--esc-trilho2)' }}>
-        <i className="block h-full rounded-full" style={{ width: `${Math.round(k.usoPct * 100)}%`, background: 'var(--cart-lim)' }} />
-      </div>
-      <div className="num mt-[5px] flex flex-wrap justify-between gap-x-3 text-[10.5px] font-bold" style={{ color: 'var(--esc-tinta3)' }}>
-        <span>{k.aberta.total > 0
-          ? <><b style={{ color: 'var(--esc-tinta2)' }}>{brl0(k.aberta.total)}</b> na próxima fatura</>
-          : <><b style={{ color: 'var(--esc-tinta2)' }}>{Math.round(k.usoPct * 100)}%</b> do limite</>}</span>
-        <span data-testid="disponivel"><b style={{ color: 'var(--esc-tinta2)' }}>{brl0(k.disponivel)}</b> disponíveis de {brl0(k.creditLimit)}</span>
-      </div>
+      {k.quitacao ? (
+        // ⭐ R53 — encerrado: a régua do disponível vira régua de QUITAÇÃO (o limite morreu com o cartão)
+        <div data-testid="regua-quitacao" className="num mt-[10px] flex flex-wrap items-center gap-2 rounded-[11px] px-3 py-2 text-[11.5px] font-extrabold"
+          style={k.quitacao.quitado ? { background: 'var(--esc-verde50)', color: 'var(--esc-verde-t)' } : { background: 'var(--esc-trilho)', color: 'var(--esc-tinta2)' }}>
+          <span className="min-w-0 flex-1">{textoDaQuitacao(k.quitacao)}</span>
+          {k.quitacao.quitado && onArquivar && (
+            <button type="button" onClick={onArquivar} className="rounded-[8px] px-[10px] py-[3px] text-[11px] font-extrabold" style={{ background: 'var(--esc-verde-t)', color: 'var(--esc-on)' }}>arquivar</button>
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="mt-[10px] h-[10px] overflow-hidden rounded-full" style={{ background: 'var(--esc-trilho2)' }}>
+            <i className="block h-full rounded-full" style={{ width: `${Math.round(k.usoPct * 100)}%`, background: 'var(--cart-lim)' }} />
+          </div>
+          <div className="num mt-[5px] flex flex-wrap justify-between gap-x-3 text-[10.5px] font-bold" style={{ color: 'var(--esc-tinta3)' }}>
+            <span>{k.aberta.total > 0
+              ? <><b style={{ color: 'var(--esc-tinta2)' }}>{brl0(k.aberta.total)}</b> na próxima fatura</>
+              : <><b style={{ color: 'var(--esc-tinta2)' }}>{Math.round(k.usoPct * 100)}%</b> do limite</>}</span>
+            <span data-testid="disponivel"><b style={{ color: 'var(--esc-tinta2)' }}>{brl0(k.disponivel)}</b> disponíveis de {brl0(k.creditLimit)}</span>
+          </div>
+        </>
+      )}
       <div className="num mt-[10px] flex items-center gap-[7px] pt-[9px] text-[11px] font-bold" style={{ borderTop: '1px solid var(--esc-linha2)', color: 'var(--esc-tinta2)' }}>
         parcelas futuras: <b className="font-extrabold">{formatBRL(k.parcelasFuturas)}</b>
         <a href={hrefFatura} className="ml-auto text-[11px] font-extrabold no-underline" style={{ color: 'var(--esc-indigo)' }}>abrir fatura →</a>

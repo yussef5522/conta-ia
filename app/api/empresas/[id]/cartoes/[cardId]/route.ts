@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { lerFatura } from '@/lib/credit-card-pj/fatura-detalhe'
+import { semearQuitacoes } from '@/lib/credit-card-pj/materializar'
 import { diaDoBrasil } from '@/lib/margem/dia'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
@@ -37,7 +38,9 @@ export async function GET(request: NextRequest, { params }: Params) {
   const faturaParam = request.nextUrl.searchParams.get('fatura')
   const validFatura = faturaParam && /^\d{4}-\d{2}$/.test(faturaParam) ? faturaParam : null
   // ⭐ CARTÕES v3 — a fatura consulta SÓ este cartão (nunca mais a empresa inteira)
-  const fatura = await lerFatura(companyId, cardId, validFatura, diaDoBrasil(new Date()))
+  const hoje = diaDoBrasil(new Date())
+  try { await semearQuitacoes(prisma, companyId, hoje) } catch { /* R53 on-read — a leitura nunca cai */ }
+  const fatura = await lerFatura(companyId, cardId, validFatura, hoje)
   if (!fatura) return NextResponse.json({ erro: 'Cartão não encontrado' }, { status: 404 })
   return NextResponse.json(fatura)
 }
@@ -56,6 +59,8 @@ const patchSchema = z.object({
   // Sprint Cartao-Uso-Pessoal: OPERACIONAL (despesa) | PESSOAL_SOCIO (retirada default).
   defaultTreatment: z.enum(['OPERACIONAL', 'PESSOAL_SOCIO']).optional(),
   socioPFId: z.string().cuid().nullable().optional(),
+  // ⭐ R53 — Ativo / Encerrado (em quitação). Encerrar não apaga nada e NÃO é arquivar.
+  encerrado: z.boolean().optional(),
 })
 
 export async function PATCH(request: NextRequest, { params }: Params) {
@@ -117,9 +122,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     )
   }
 
+  const { encerrado, ...resto } = data
   const updated = await prisma.businessCreditCard.update({
     where: { id: cardId },
-    data,
+    data: {
+      ...resto,
+      ...(encerrado === undefined ? {} : { encerradoEm: encerrado ? (card.encerradoEm ?? new Date()) : null }),
+    },
   })
   return NextResponse.json({ card: updated })
 }

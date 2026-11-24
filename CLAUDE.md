@@ -100,6 +100,11 @@ destacado no TOPO da tela/modal dona dela (`components/perguntas/pergunta-no-top
 1), nunca no meio ou no fim da lista; o aviso do sininho pousa nela (`#âncora` de `perguntas/ancoras.ts`).
 *Pergunta escondida é pergunta que não existe* (o FRUKI LATA no rodapé do modal da baixa).
 
+**S24 — LARGURA DA ÁREA ÚTIL (24/11, vale pra TODA tela nova e futura)** — página usa a largura da área
+útil do app (a régua da Vendas ao vivo pós-E1): nenhum `max-w` próprio, o respiro lateral é o do shell
+(`max-w-[1600px]`). Espaço morto nas laterais é proibido; tela larga ganha COLUNAS, nunca vazio.
+(Formulário/documento mantém o seu — molde de 23/08 em `leis-de-tela.md`.)
+
 **REGRA 1** teste que falha antes e passa depois · **REGRA 2** feature só está pronta se o
 dono VÊ na tela (o clique é dele) · **REGRA 3** teste EXECUTA o comportamento, nunca grep de
 string (*grep não distingue "refatorei" de "quebrei"*) · **REGRA 6** o caso NEGATIVO
