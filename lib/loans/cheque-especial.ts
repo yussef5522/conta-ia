@@ -57,20 +57,27 @@ export interface LinhaParaCheque {
   temVinculoDeContrato: boolean
 }
 
-/** as categorias em que o DONO já disse "isto é juros de crédito" */
+/** as categorias pra onde o PALPITE aponta (a dedicada primeiro) */
 export const CATEGORIAS_DE_JUROS_DE_CREDITO = ['Juros Cheque Especial', 'Juros sobre Empréstimos'] as const
+
+/**
+ * ⛔ a ÚNICA categoria que, sozinha, faz a linha contar como rotativo. "Juros sobre Empréstimos" NÃO
+ * decide: em prod (25/11) ela carregava prestação sem vínculo (PREV-EMP.BBH 4.177,96) e pagamento de
+ * Mercado Pago (2.568,04) — heurística sugere, nunca decide. Essas linhas viram regra só se o dono confirmar.
+ */
+export const CATEGORIA_DO_CHEQUE = 'Juros Cheque Especial'
 
 /**
  * ⭐ a régua da TELA (R64): a linha conta como juros de crédito rotativo se é débito sem vínculo
  * de contrato e (a) tem descrição conhecida de juros de limite, (b) casa uma regra aprendida da
- * conta, ou (c) o dono a categorizou como juros de crédito e ela não fala de parcela.
+ * conta, ou (c) o dono a categorizou em "Juros Cheque Especial" e ela não fala de parcela.
  */
 export function ehJurosDeCheque(l: LinhaParaCheque, regras: ReadonlySet<string>): boolean {
   if (l.temVinculoDeContrato) return false
   const padrao = padraoDaDescricao(l.description)
   if (sugereJurosCheque(l.description)) return true
   if (l.bankAccountId && regras.has(`${l.bankAccountId}|${padrao}`)) return true
-  if (l.categoryName && (CATEGORIAS_DE_JUROS_DE_CREDITO as readonly string[]).includes(l.categoryName)) {
+  if (l.categoryName === CATEGORIA_DO_CHEQUE) {
     return !FALA_DE_PARCELA.test(padrao)
   }
   return false

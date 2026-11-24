@@ -59,10 +59,13 @@ describe('R64 — juros de limite por conta, no custo do dinheiro', () => {
     expect(q[0].usado).toBe(79253.12)
   })
 
-  it('a categoria de juros de crédito conta — menos linha que fala de PARCELA, e menos linha vinculada a contrato', () => {
+  it('só a categoria DEDICADA decide — "Juros sobre Empréstimos" não (prestação e Mercado Pago medidos em prod)', () => {
     const regras = new Set<string>()
-    expect(ehJurosDeCheque({ description: 'OP CRED C GARANT', bankAccountId: 'b', categoryName: 'Juros sobre Empréstimos', temVinculoDeContrato: false }, regras)).toBe(true)
-    expect(ehJurosDeCheque({ description: 'LIQUIDACAO DE PARCELA-C41022570', bankAccountId: 'b', categoryName: 'Juros sobre Empréstimos', temVinculoDeContrato: false }, regras)).toBe(false)
+    expect(ehJurosDeCheque({ description: 'OP CRED C GARANT', bankAccountId: 'b', categoryName: 'Juros Cheque Especial', temVinculoDeContrato: false }, regras)).toBe(true)
+    expect(ehJurosDeCheque({ description: 'LIQUIDACAO DE PARCELA-C41022570', bankAccountId: 'b', categoryName: 'Juros Cheque Especial', temVinculoDeContrato: false }, regras)).toBe(false)
+    // ⛔ os falsos positivos de prod (25/11): a categoria genérica de juros NÃO faz virar rotativo
+    expect(ehJurosDeCheque({ description: 'PREV-EMP.BBH', bankAccountId: 'b', categoryName: 'Juros sobre Empréstimos', temVinculoDeContrato: false }, regras)).toBe(false)
+    expect(ehJurosDeCheque({ description: 'MERCADO PAGO INSTITUICAO DE PAGAMENTO', bankAccountId: 'b', categoryName: 'Juros sobre Empréstimos', temVinculoDeContrato: false }, regras)).toBe(false)
     expect(ehJurosDeCheque({ description: 'JUROS UTILIZ.CH.ESPECIAL', bankAccountId: 'b', categoryName: null, temVinculoDeContrato: true }, regras)).toBe(false)
     expect(sugereJurosCheque('JUROS')).toBe(true)
     expect(sugereJurosCheque('JUROS — DIVINE ALIMENTOS LTDA')).toBe(false)
