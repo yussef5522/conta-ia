@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EMPRÉSTIMOS (financeiro) — referência v1 APROVADA</title>
+<title>EMPRÉSTIMOS (financeiro) — referência v2 APROVADA</title>
 <!--
 ═══════════════════════════════════════════════════════════════════════════════
 EMPRÉSTIMOS — ARQUIVO-LEI v1 · 24/11/2026
@@ -56,6 +56,13 @@ R65 — JUROS DE CHEQUE SE RECONHECEM SOZINHOS. Linha do extrato com
       com palpite pronto ("juros de cheque especial · conta X");
       confirmada uma vez, vira regra aprendida (banco + descrição).
       Nunca se marca sozinha.
+R66 — LISTA RESPIRA, DETALHE SOB CLIQUE (v2, 25/11 — pente do dono no
+      telão real: "cards muito grandes"). Contratos são LINHAS compactas
+      — chip, nº, estado, progresso, próxima e saldo SEMPRE à vista
+      (S18) — nunca cartazes. O clique abre o detalhe inline (acordeão):
+      barra grande, taxa, custo pago, e as ações (abrir contrato →,
+      marcar paga, editar, excluir). Padrão Mercury/Revolut de
+      densidade; vale no computador e no celular.
 
 HERDADAS (valem inteiras): S15 TELA MUDA (zero prosa/nº de lei na UI;
 explicação só no ⓘ) · S16 LINHA É COLUNA · S17 CUSTO CLICÁVEL · S18 CELULAR
@@ -140,27 +147,42 @@ body{background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,"SF Pro 
 .gcab h4{font-size:13px;letter-spacing:.1em;color:var(--ink2);font-weight:800}
 .gcab .gn{font-size:12.5px;color:var(--ink3)}
 .gcab .gs{margin-left:auto;font-size:14px;font-weight:700}
-.ggrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-.cc{border-radius:20px;background:var(--card);box-shadow:var(--sh);padding:16px 18px;position:relative}
-.cc .cab{display:flex;gap:12px;align-items:center}
-.cc .nome{font-weight:700;font-size:14.5px}
-.cc .num{font-size:12px;color:var(--ink3)}
-.cc .menu{margin-left:auto;border:0;background:#F1F2F7;border-radius:9px;width:30px;height:30px;font-size:16px;color:var(--ink2);cursor:pointer}
 .badges{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 8px}
 .bdg{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:#F1F2F7;color:var(--ink2)}
 .bdg.ok{background:var(--verbg);color:var(--ver)}
 .bdg.est{background:#EEF0FF;color:var(--ind)}
 .bdg.err{background:var(--rosbg);color:var(--ros)}
-.cc .cab .chip{width:62px;height:41px}
-.cc .saldo{font-size:24px;font-weight:800;letter-spacing:-.02em;white-space:nowrap;font-variant-numeric:tabular-nums}
-.cc .sl{font-size:11.5px;color:var(--ink3)}
 .pb{height:8px;border-radius:999px;background:#EDEFF4;margin:10px 0 6px;overflow:hidden}
 .pb i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#4F46E5,#7C3AED)}
 .pb.verde i{background:linear-gradient(90deg,#0F9D73,#1E8F63)}
-.cc .pbl{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2)}
-.cc .prox{display:flex;align-items:baseline;gap:8px;margin-top:12px;padding:9px 12px;border-radius:12px;background:#F7F8FC;font-size:13px;color:var(--ink2)}
-.cc .prox b{font-size:15px;color:var(--ink);font-weight:800;white-space:nowrap}
-.cc .prox .quando{margin-left:auto;font-size:12px;color:var(--ink3)}
+.pbl{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2)}
+/* ───────── linhas de contrato (R66) */
+.lista{display:flex;flex-direction:column;gap:8px;margin-bottom:4px}
+.lrow{border-radius:16px;background:var(--card);box-shadow:var(--sh)}
+.lr{display:grid;grid-template-columns:44px minmax(150px,1.05fr) minmax(0,1.5fr) 180px 200px 170px 26px;gap:14px;align-items:center;padding:12px 16px;cursor:pointer}
+.lid .num{font-weight:700;font-size:14px}
+.lid .sub{font-size:11.5px;color:var(--ink3)}
+.lbad{display:flex;gap:6px;flex-wrap:wrap;min-width:0}
+.lprog .mbar{height:6px;border-radius:999px;background:#EDEFF4;overflow:hidden}
+.lprog .mbar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#4F46E5,#7C3AED)}
+.lprog .mbar.verde i{background:linear-gradient(90deg,#0F9D73,#1E8F63)}
+.lprog .mtxt{font-size:11.5px;color:var(--ink2);margin-top:4px}
+.pcell{text-align:right;display:flex;flex-direction:column;gap:2px;min-width:0}
+.pcell .pv{font-size:13.5px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.pcell .pq{font-size:11.5px;color:var(--ink3)}
+.mut2{color:var(--ink3);font-weight:400;font-size:11.5px}
+.lsaldo{font-size:16.5px;font-weight:800;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.chev{color:var(--ink3);font-size:15px;transition:transform .15s;text-align:center}
+.lrow.aberta .chev{transform:rotate(180deg)}
+.lexp{display:none;border-top:1px solid var(--line);padding:16px 18px;background:#FAFBFE;border-radius:0 0 16px 16px}
+.lrow.aberta .lexp{display:block}
+.lx{display:grid;grid-template-columns:1fr 230px;gap:26px;align-items:start}
+.facts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.ft{font-size:12px;color:var(--ink2);background:#fff;box-shadow:var(--sh);border-radius:999px;padding:5px 11px}
+.ft b{color:var(--ink)}
+.lacts{display:flex;flex-direction:column;gap:8px}
+.lacts .btn{text-align:center}
+.lr-mob{grid-template-columns:38px 1fr auto 20px;padding:11px 12px}
 /* ───────── ranking de custo */
 .rk{display:flex;flex-direction:column;gap:6px}
 .rk .rw{display:grid;grid-template-columns:26px 44px 1fr 110px 96px 52px;gap:12px;align-items:center;padding:7px 10px;border-radius:14px}
@@ -229,13 +251,13 @@ dialog{border:0;border-radius:18px;padding:22px 24px;max-width:520px;box-shadow:
 dialog::backdrop{background:rgba(10,15,30,.35)}
 dialog h5{font-size:15px;margin-bottom:8px}
 dialog p{font-size:13.5px;color:var(--ink2);margin-bottom:6px}
-@media (max-width:1280px){.ggrid{grid-template-columns:repeat(2,1fr)}.hero{grid-template-columns:repeat(2,1fr)}.duo{grid-template-columns:1fr}}
-@media (max-width:760px){.ggrid{grid-template-columns:1fr}.hero{grid-template-columns:1fr 1fr}.rk .rw{grid-template-columns:44px 1fr 90px 54px}.rk .jr{display:none}}
+@media (max-width:1280px){.hero{grid-template-columns:repeat(2,1fr)}.duo{grid-template-columns:1fr}.lr{grid-template-columns:44px 1fr 180px 170px 26px}.lbad,.lprog{display:none}}
+@media (max-width:760px){.hero{grid-template-columns:1fr 1fr}.rk .rw{grid-template-columns:26px 1fr 90px 54px}.rk .jr{display:none}.lr{grid-template-columns:38px 1fr auto 20px}.pcell{display:none}}
 </style>
 </head>
 <body>
 
-<div class="masthead"><h1>EMPRÉSTIMOS — REFERÊNCIA v1 APROVADA</h1><span class="tag">lei da campanha · amostra com números reais de 24/11 · largura = área útil padrão do app (S24)</span></div>
+<div class="masthead"><h1>EMPRÉSTIMOS — REFERÊNCIA v2 APROVADA</h1><span class="tag">v2 de 25/11: contratos viram linhas compactas com detalhe no clique (R66) · amostra com números reais · largura = área útil do app (S24)</span></div>
 
 <!-- ════════════════ TELA 1 — CARTEIRA ════════════════ -->
 <section class="secao" id="t1">
@@ -295,13 +317,13 @@ dialog p{font-size:13.5px;color:var(--ink2);margin-bottom:6px}
   </div>
 
   <div class="gcab"><h4>SICREDI</h4><span class="gn">4 contratos</span><span class="gs" id="g-sic"></span></div>
-  <div class="ggrid" id="grp-sicredi"></div>
+  <div class="lista" id="grp-sicredi"></div>
   <div class="gcab"><h4>BANRISUL</h4><span class="gn">2 contratos</span><span class="gs" id="g-ban"></span></div>
-  <div class="ggrid" id="grp-banrisul"></div>
+  <div class="lista" id="grp-banrisul"></div>
   <div class="gcab"><h4>CAIXA</h4><span class="gn">2 contratos</span><span class="gs" id="g-cax"></span></div>
-  <div class="ggrid" id="grp-caixa"></div>
+  <div class="lista" id="grp-caixa"></div>
   <div class="gcab"><h4>MÚTUO PF</h4><span class="gn">agenda nominal — nunca atrasa</span><span class="gs" id="g-mut"></span></div>
-  <div class="ggrid" id="grp-mutuo"></div>
+  <div class="lista" id="grp-mutuo"></div>
 </div>
 
 <!-- ════════════════ TELA 2 — DETALHE DO CONTRATO ════════════════ -->
@@ -372,7 +394,7 @@ dialog p{font-size:13.5px;color:var(--ink2);margin-bottom:6px}
     <b>O que a lei manda no celular:</b><br>
     · os 4 números do topo inteiros — dinheiro nunca some nem vira "..." (S18);<br>
     · a montanha completa, com toque mostrando o mês (R57);<br>
-    · cards de contrato em 1 coluna, com saldo, barra e próxima parcela;<br>
+    · contratos em linhas compactas — chip, nº e saldo — e o toque abre o detalhe (R66);<br>
     · o compromisso mês a mês vira lista rolável com o pico marcado (R58);<br>
     · cheque especial por conta, com juros do mês (R64);<br>
     · "marcar paga", editar e excluir existem também aqui (R54 · R60).
@@ -500,6 +522,9 @@ const PINOS = [
  ['P17 cheque por conta fecha no total', ()=> somaCheque()===17582.75],
  ['P18 juros de cheque se reconhecem', ()=> sugereJurosCheque('JUROS CHEQUE ESPECIAL BANRISUL')===true
    && sugereJurosCheque('DB JUR ADC CONTA GARANTIDA')===true && sugereJurosCheque('PIX RECEBIDO CLIENTE')===false],
+ ['P19 linha compacta nunca esconde dinheiro', ()=> CONTRATOS.every(c=>{ const r=linhaResumo(c);
+   return typeof r.saldo==='number' && r.prog>=0 && r.prog<=100 && !!r.estado && !!r.progTxt; })
+   && linhaResumo(CONTRATOS[1]).prox.v===4166.66 && linhaResumo(CONTRATOS[8]).prox===null],
 ];
 
 function rodaPinos(){ const falhas=[];
@@ -599,24 +624,44 @@ function svgContrato(){
  svg.innerHTML=`<defs><linearGradient id="gAreaReal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4F46E5" stop-opacity="0.22"/><stop offset="1" stop-color="#4F46E5" stop-opacity="0"/></linearGradient></defs>`+out;
 }
 
-function cardContrato(c){
- const p = c.banco==='mutuo' ? {txt:`devolvido ${fmtK(c.devolvido)} de ${fmtK(c.principal)}`, pct:Math.round(c.devolvido/c.principal*100)} : progresso(c.pagas,c.total);
- const badges = c.banco==='mutuo'
-  ? `<span class="bdg">${c.taxa}</span><span class="bdg ok">nominal</span>`
-  : `<span class="bdg">${c.taxa}</span>` + (c.incompleto?`<span class="bdg err">${c.incompleto} — completar →</span>`:`<span class="bdg ok">em dia</span>`) + (c.prox.est?`<span class="bdg est">~ estimada</span>`:'');
- const prox = c.banco==='mutuo'
-  ? `<span>devolução quando quiser</span><span class="quando"><a class="lk" href="#">registrar devolução →</a></span>`
-  : `<span>próxima</span><b>${rotEst(c.prox.v,!!c.prox.est)}${c.prox.enc?' <span class="mut">+ enc.</span>':''}</b><span class="quando">${c.prox.d}</span>`;
- return el(`<div class="cc">
-   <div class="cab"><span class="chip b-${c.banco}"><span class="sg">${c.rot.toUpperCase()}</span></span>
-     <div><div class="nome">${c.num}</div><div class="num">${c.banco==='mutuo'?'mútuo · agenda nominal':'contrato'}</div></div>
-     <button class="menu">⋯</button></div>
-   <div class="badges">${badges}</div>
-   <div class="saldo">${fmtR(c.saldo)}</div><div class="sl">saldo devedor · ver →</div>
-   <div class="pb${c.banco==='mutuo'?' verde':''}"><i style="width:${p.pct}%"></i></div>
-   <div class="pbl"><span>${p.txt}</span><span>${p.pct}%</span></div>
-   <div class="prox">${prox}</div>
- </div>`);
+function linhaResumo(c){ const mut=c.banco==='mutuo';                                /* R66 */
+ return { saldo:c.saldo,
+  prox: mut? null : c.prox,
+  estado: c.incompleto? 'incompleto' : (mut? 'nominal' : 'dia'),
+  prog: mut? Math.round(c.devolvido/c.principal*100) : Math.round(c.pagas/c.total*100),
+  progTxt: mut? `devolvido ${fmtK(c.devolvido)} de ${fmtK(c.principal)}` : `${c.pagas} de ${c.total}` }; }
+function tgl(row){ row.classList.toggle('aberta'); }
+function linhaContrato(c, mob){ const r=linhaResumo(c); const mut=c.banco==='mutuo';
+ const badges = (c.incompleto?`<span class="bdg err">${c.incompleto} →</span>`:`<span class="bdg ok">${mut?'nominal':'em dia'}</span>`)
+  + (r.prox&&r.prox.est?'<span class="bdg est">~ estimada</span>':'') + `<span class="bdg">${c.taxa}</span>`;
+ const pcell = mut
+  ? `<div class="pcell"><span class="pv"><a class="lk" href="#">registrar devolução →</a></span><span class="pq">quando quiser</span></div>`
+  : `<div class="pcell"><span class="pv">${rotEst(r.prox.v,!!r.prox.est)}${r.prox.enc?' <span class="mut2">+ enc.</span>':''}</span><span class="pq">próxima · ${r.prox.d}</span></div>`;
+ const facts = mut
+  ? `<span class="ft">principal <b>${fmtR(c.principal)}</b></span><span class="ft">devolvido <b>${fmtR(c.devolvido)}</b></span><span class="ft">agenda nominal — nunca atrasa</span>`
+  : `<span class="ft">taxa <b>${c.taxa}</b></span><span class="ft">custo pago em 2026 <b>${fmtR(c.juros26)}</b></span><span class="ft">agenda do banco <b>✓</b></span>`
+    + (r.prox?`<span class="ft">próxima <b>${rotEst(r.prox.v,!!r.prox.est)} · ${r.prox.d}</b></span>`:'');
+ const acts = (mut
+  ? `<button class="btn pri">abrir contrato →</button><button class="btn">registrar devolução</button>`
+  : `<button class="btn pri">abrir contrato →</button><button class="btn">marcar paga</button>`)
+  + `<button class="btn">editar</button><button class="btn" style="color:var(--ros)">excluir</button>`;
+ const lexp = `<div class="lexp"><div class="lx"${mob?' style="grid-template-columns:1fr"':''}>
+   <div><div class="pb${mut?' verde':''}" style="height:10px;margin:2px 0 6px"><i style="width:${r.prog}%"></i></div>
+   <div class="pbl"><span>${r.progTxt}</span><span>${r.prog}%</span></div>
+   <div class="facts">${facts}</div></div>
+   <div class="lacts">${acts}</div></div></div>`;
+ if(mob) return el(`<div class="lrow"><div class="lr lr-mob" onclick="tgl(this.parentNode)">
+   <span class="chip b-${c.banco}" style="width:38px;height:26px;border-radius:7px"></span>
+   <div class="lid"><div class="num">${c.num}</div><div class="sub">${c.rot}${mut?' · mútuo':''}</div></div>
+   <div class="lsaldo" style="font-size:14.5px">${fmtR(c.saldo)}</div><span class="chev">⌄</span></div>${lexp}</div>`);
+ return el(`<div class="lrow"><div class="lr" onclick="tgl(this.parentNode)">
+   <span class="chip b-${c.banco}" style="width:44px;height:30px;border-radius:8px"></span>
+   <div class="lid"><div class="num">${c.num}</div><div class="sub">${c.rot}${mut?' · mútuo':''}</div></div>
+   <div class="lbad">${badges}</div>
+   <div class="lprog"><div class="mbar${mut?' verde':''}"><i style="width:${r.prog}%"></i></div><div class="mtxt">${r.progTxt} · ${r.prog}%</div></div>
+   ${pcell}
+   <div class="lsaldo">${fmtR(c.saldo)}</div>
+   <span class="chev">⌄</span></div>${lexp}</div>`);
 }
 
 function render(){
@@ -628,7 +673,9 @@ function render(){
  put('k-livre','jul/2029'); put('k-ultima',fmtR(4385.97)); put('k-meses','33');
  put('g-sic',fmtR(somaGrupo(CONTRATOS,'sicredi'))); put('g-ban',fmtR(somaGrupo(CONTRATOS,'banrisul')));
  put('g-cax',fmtR(somaGrupo(CONTRATOS,'caixa'))); put('g-mut',fmtR(somaGrupo(CONTRATOS,'mutuo')));
- ['sicredi','banrisul','caixa','mutuo'].forEach(b=>{ const g=document.getElementById('grp-'+b); if(g) grupo(CONTRATOS,b).forEach(ct=>g.appendChild(cardContrato(ct))); });
+ ['sicredi','banrisul','caixa','mutuo'].forEach(b=>{ const g=document.getElementById('grp-'+b);
+  if(g) grupo(CONTRATOS,b).forEach(ct=>{ const row=linhaContrato(ct,false);
+   if(ct.id==='sic-22570') row.classList.add('aberta'); g.appendChild(row); }); });
  const rk=document.getElementById('rk');
  if(rk) custoRank(CONTRATOS).slice(0,6).forEach((ct,i)=>{ const cor = ct.ef>=2.5?'var(--ros)':ct.ef>=1.8?'var(--amb)':'var(--ink)';
   rk.appendChild(el(`<div class="rw${i===0?' top':''}">
@@ -678,7 +725,8 @@ function render(){
  put('m-total',fmtR(t.total)); put('m-custo',fmtR(c.total)); put('m-acima','contratos '+fmtK(c.contratos)+' + cheque '+fmtK(c.cheque));
  put('m-mes',fmtR(compromisso('nov/26'))); put('m-livre','jul/2029'); put('m-meses','33 meses');
  const mc=document.getElementById('m-cards');
- if(mc) [CONTRATOS[0],CONTRATOS[8]].forEach(ct=>mc.appendChild(cardContrato(ct)));
+ if(mc) [CONTRATOS[0],CONTRATOS[1],CONTRATOS[8]].forEach((ct,i)=>{ const row=linhaContrato(ct,true);
+  if(i===1) row.classList.add('aberta'); mc.appendChild(row); });
 }
 
 if (typeof document!=='undefined'){ rodaPinos(); render(); }

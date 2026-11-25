@@ -111,10 +111,10 @@ export default function EmprestimosPage() {
 
         <div id="grupos">
           {ORDEM_DO_CREDOR.filter((b) => b !== 'mutuo').map((b) => (
-            <GrupoDoCredor key={b} banco={b} contratos={c.contratos.filter((k) => k.banco === b)} />
+            <GrupoDoCredor key={b} banco={b} ano={c.ano} contratos={c.contratos.filter((k) => k.banco === b)} />
           ))}
           {/* ⛔ R61 — o mútuo é OUTRA natureza: grupo próprio, nunca somado com banco sem rótulo */}
-          <GrupoDoCredor banco="mutuo" contratos={c.contratos.filter((k) => k.banco === 'mutuo')} />
+          <GrupoDoCredor banco="mutuo" ano={c.ano} contratos={c.contratos.filter((k) => k.banco === 'mutuo')} />
         </div>
       </>}
     </div>

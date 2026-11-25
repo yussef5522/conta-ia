@@ -1,8 +1,8 @@
 /**
- * ⭐⭐⭐ EMPRÉSTIMOS v1 — o guard TELA × LEI (25/11/2026: docs/emprestimos-referencia.html, R54–R65).
+ * ⭐⭐⭐ EMPRÉSTIMOS v1 — o guard TELA × LEI (25/11/2026: docs/emprestimos-referencia.html, R54–R66 · v2: contratos em linhas compactas).
  *
  * ARQUIVO DE REFERÊNCIA = LEI: o guard ABRE o HTML aprovado e
- *  (1) roda os 18 PINOS do último <script> CONTRA A LIB (as funções da lei trocadas pelas da lib —
+ *  (1) roda os 19 PINOS do último <script> CONTRA A LIB (as funções da lei trocadas pelas da lib —
  *      as amostras e a lista de pinos são as da lei, por valor, não uma cópia minha);
  *  (2) compara os tokens por VALOR (fundo/tintas, sombra sem borda, tintas do hero, chips por credor,
  *      cores da montanha claro E escuro, paleta das barras e dos chips do split);
@@ -16,7 +16,7 @@ import * as lib from '@/lib/loans/carteira'
 import * as cheque from '@/lib/loans/cheque-especial'
 import * as ficha from '@/lib/loans/ficha'
 import {
-  HeroCarteira, Montanha, Compromisso, Podio, ChequeEspecial, CardContrato, SplitEmChips, CurvaRealAgenda,
+  HeroCarteira, Montanha, Compromisso, Podio, ChequeEspecial, LinhaContrato, DetalheDaLinha, SplitEmChips, CurvaRealAgenda,
 } from '@/components/emprestimos/visual'
 import { semComentarios } from './_leitura-de-fonte'
 
@@ -30,13 +30,13 @@ const CARTEIRA_TELA = sem('app/(dashboard)/empresas/[id]/emprestimos/page.tsx')
 const DETALHE_TELA = sem('app/(dashboard)/empresas/[id]/emprestimos/[loanId]/page.tsx')
 
 describe('a lei é a aprovada', () => {
-  it('título EXATO', () => expect(LEI).toContain('<title>EMPRÉSTIMOS (financeiro) — referência v1 APROVADA</title>'))
-  it('as leis R54–R65 estão no header', () => {
-    for (let r = 54; r <= 65; r++) expect(HEADER).toContain(`R${r} —`)
+  it('título EXATO', () => expect(LEI).toContain('<title>EMPRÉSTIMOS (financeiro) — referência v2 APROVADA</title>'))
+  it('as leis R54–R66 estão no header', () => {
+    for (let r = 54; r <= 66; r++) expect(HEADER).toContain(`R${r} —`)
   })
 })
 
-describe('⭐⭐⭐ os 18 PINOS da lei, rodando contra a LIB', () => {
+describe('⭐⭐⭐ os 19 PINOS da lei, rodando contra a LIB', () => {
   const trecho = (de: string, ate: string) => {
     const a = SCRIPT.indexOf(de), b = SCRIPT.indexOf(ate)
     expect(a, `a lei perdeu o marco "${de}"`).toBeGreaterThan(-1)
@@ -68,12 +68,13 @@ describe('⭐⭐⭐ os 18 PINOS da lei, rodando contra a LIB', () => {
      const somaPedacos = __lib.somaPedacos
      const destinoExclusao = __ficha.destinoExclusao
      const somaGrupo = __lib.somaGrupo
+     const linhaResumo = __lib.linhaResumo
      ${montanha}
      ${detalhe}
      ${pinos}
      return PINOS`,
   )(lib, cheque, ficha, lib.fmt, lib.fmtK, lib.r2)
-  it('a lei tem 18 pinos (o guard não passa por lista vazia)', () => expect(PINOS).toHaveLength(18))
+  it('a lei tem 19 pinos (o guard não passa por lista vazia)', () => expect(PINOS).toHaveLength(19))
   for (const [nome, fn] of PINOS) it(`pino: ${nome}`, () => expect(fn()).toBe(true))
 })
 
@@ -98,9 +99,10 @@ describe('tokens por VALOR', () => {
       expect(raizDoApp(t), `--emp-${t}`).toBe(raizDaLei(t))
     }
   })
-  it('cards SEM borda (sombra dupla)', () => {
+  it('cards e linhas SEM borda (sombra dupla) — e a linha do contrato tem raio 16 (R66)', () => {
     expect(css('.hk', 'box-shadow')).toBe('var(--sh)')
-    expect(css('.cc', 'box-shadow')).toBe('var(--sh)')
+    expect(css('.lrow', 'box-shadow')).toBe('var(--sh)')
+    expect(css('.lrow', 'border-radius')).toBe('16px')
   })
   it('as 4 tintas do hero em 135°', () => {
     for (const t of ['ind', 'amb', 'rox', 'ver']) expect(raizDoApp(`t-${t}`), t).toBe(css(`.hk.t-${t}`, 'background'))
@@ -146,7 +148,7 @@ describe('tokens por VALOR', () => {
 // ── dado (os números da amostra da lei) ──
 const k = (o: Partial<lib.ContratoNaCarteira> = {}): lib.ContratoNaCarteira => ({
   id: 'c1', banco: 'sicredi', rot: 'Sicredi', num: 'C41022570', lender: 'Sicredi', taxa: 'PÓS · SELIC + 0,49% a.m.',
-  saldo: 83333.36, pagas: 16, total: 36, prox: { d: '15/dez', v: 4166.66, est: false, enc: true, estado: 'A_VENCER' },
+  saldo: 83333.36, pagas: 16, total: 36, prox: { n: 17, d: '15/dez', v: 4166.66, est: false, enc: true, estado: 'A_VENCER' },
   ef: 1.71, juros26: 16943, pendencias: [], flexible: false, principal: 150000, devolvido: 0, href: '/e/c1', ...o,
 })
 const meses = ['2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04']
@@ -154,7 +156,7 @@ const carteira = (): lib.CarteiraDeEmprestimos => ({
   hoje: '2026-11-25', ano: 2026, mes: '2026-11',
   contratos: [
     k(),
-    k({ id: 'c2', num: 'C41022227-1', saldo: 140351, ef: 1.52, pendencias: [{ campo: 'indexer', rotulo: 'indexador em branco' }], prox: { d: '15/dez', v: 4890, est: true, enc: true, estado: 'A_VENCER' } }),
+    k({ id: 'c2', num: 'C41022227-1', saldo: 140351, ef: 1.52, pendencias: [{ campo: 'indexer', rotulo: 'indexador em branco' }], prox: { n: 15, d: '15/dez', v: 4890, est: true, enc: true, estado: 'A_VENCER' } }),
     k({ id: 'c3', banco: 'caixa', rot: 'Caixa', num: '•• 1837311', saldo: 5975.14, ef: 3.21 }),
     k({ id: 'm1', banco: 'mutuo', rot: 'Mútuo PF', num: '1ª tranche', saldo: 160000, ef: null, flexible: true, principal: 200000, devolvido: 40000, prox: null }),
   ],
@@ -215,16 +217,51 @@ describe('R59/R61/R64 — pódio, cheque e cards (renderizado)', () => {
     expect(q).toContain('usado R$ 7.417,19')
     expect(q).toContain('R$ 27.236,93')
   })
-  it('R60 — o pós sem indexador é COBRADO no card ("completar →"), e a estimada leva "~"', () => {
-    const s = renderToStaticMarkup(<CardContrato k={carteira().contratos[1]} />)
-    expect(s).toContain('indexador em branco — completar →')
+  // ⭐ R66 — a lista respira: LINHA compacta, detalhe sob clique
+  const linha = (i: number) => renderToStaticMarkup(<LinhaContrato k={carteira().contratos[i]} ano={2026} />)
+  const detalhe = (i: number) => renderToStaticMarkup(<DetalheDaLinha k={carteira().contratos[i]} ano={2026} />)
+  it('R66 — a linha FECHADA mostra chip, nº, estado, progresso, próxima e o SALDO inteiro (nenhuma nasce aberta)', () => {
+    const s = linha(0)
+    expect(s).toContain('data-aberta="0"')
+    expect(s).not.toContain('data-detalhe')
+    // ⚠️ cada viewport se mede no SEU trecho (o saldo do celular não absolve a linha larga sem saldo)
+    const larga = s.slice(s.indexOf('data-linha="larga"'), s.indexOf('data-linha="minima"'))
+    for (const t of ['data-chip="sicredi"', 'C41022570', 'em dia', '16 de 36 · 44%', 'R$ 4.166,66', '+ enc.', 'próxima · 15/dez', 'data-saldo', 'R$ 83.333,36']) expect(larga, t).toContain(t)
+    // S18 — o celular tem a linha mínima com o MESMO saldo inteiro
+    const min = s.slice(s.indexOf('data-linha="minima"'))
+    for (const t of ['data-chip="sicredi"', 'C41022570', 'data-saldo', 'R$ 83.333,36']) expect(min, t).toContain(t)
+    expect(s).not.toMatch(/R\$ [\d.]*,?\d*\.\.\./)
+  })
+  it('R60/R62 — o pós sem indexador é COBRADO na linha ("indexador em branco →"), e a estimada leva "~"', () => {
+    const s = linha(1)
+    expect(s).toContain('indexador em branco →')
+    expect(s).toContain('href="/e/c1?editar=1"')
+    expect(s).toContain('~ estimada')
     expect(s).toContain('~ R$ 4.890,00')
     expect(s).toContain('linear-gradient(135deg,#0A3D2C,#1E8F63)')
   })
-  it('R61 — o mútuo tem card próprio com "registrar devolução →"', () => {
-    const s = renderToStaticMarkup(<CardContrato k={carteira().contratos[3]} />)
+  it('R61 — o mútuo: "registrar devolução →" no lugar da próxima, progresso do devolvido', () => {
+    const s = linha(3)
     expect(s).toContain('registrar devolução →')
-    expect(s).toContain('devolvido 40,0k de 200,0k')
+    expect(s).toContain('devolvido 40,0k de 200,0k · 20%')
+  })
+  it('R66 — o detalhe aberto: barra, fatos e as 4 AÇÕES (marcar paga cai na porta única do detalhe)', () => {
+    const d = detalhe(0)
+    for (const t of ['taxa <b>', 'custo pago em 2026 <b>R$ 16.943,00</b>', 'agenda do banco <b>✓</b>', 'próxima <b>R$ 4.166,66 · 15/dez</b>']) expect(d).toContain(t)
+    expect([...d.matchAll(/data-acao="(\w+)"/g)].map((x) => x[1])).toEqual(['abrir', 'pagar', 'editar', 'excluir'])
+    expect(d).toContain('href="/e/c1?pagar=17"')
+    const m = detalhe(3)
+    expect([...m.matchAll(/data-acao="(\w+)"/g)].map((x) => x[1])).toEqual(['abrir', 'pagar', 'editar', 'excluir'])
+    expect(m).toContain('registrar devolução')
+  })
+  it('R66 — a linha abre o MESMO detalhe (uso, não menção) e o detalhe pede a porta pela URL', () => {
+    const v = sem('components/emprestimos/visual.tsx')
+    const corpo = v.slice(v.indexOf('export function LinhaContrato'), v.indexOf('export function GrupoDoCredor'))
+    expect(corpo).toMatch(/\{aberta && <DetalheDaLinha k=\{k\} ano=\{ano\} \/>\}/)
+    expect(corpo).toMatch(/useState\(false\)/)
+    expect(v).not.toMatch(/export function CardContrato/)
+    expect(DETALHE_TELA).toMatch(/q\.get\('pagar'\)/)
+    expect(DETALHE_TELA).toMatch(/setOpenCandidatos\(n\)/)
   })
   it('detalhe: split em chips e curva real × agenda', () => {
     const sp = renderToStaticMarkup(<SplitEmChips capital={4166.66} juros={425.95} correcao={970.37} mora={0} />)
@@ -252,7 +289,7 @@ describe('as telas (lidas SEM comentário)', () => {
     expect(DETALHE_TELA).not.toMatch(/label="Juros do contrato"/)
   })
   it('⛔ S15 — nenhum número de lei na tela', () => {
-    for (const t of [CARTEIRA_TELA, DETALHE_TELA, sem('components/emprestimos/visual.tsx')]) expect(t).not.toMatch(/\bR(5[4-9]|6[0-5])\b/)
+    for (const t of [CARTEIRA_TELA, DETALHE_TELA, sem('components/emprestimos/visual.tsx')]) expect(t).not.toMatch(/\bR(5[4-9]|6[0-6])\b/)
   })
 })
 

@@ -123,6 +123,32 @@ export function progresso(p: number, t: number) { return { txt: `${p} de ${t}`, 
 export function rotuloEstimado(v: number, est: boolean): string { return (est ? '~ ' : '') + fmtR(v) }
 /** P13 — R55/R59: encargo apurado = pago − capital */
 export function encargoApurado(pago: number, capital: number): number { return r2(pago - capital) }
+/**
+ * P19 — R66: a linha compacta nunca esconde dinheiro. O saldo, o progresso e o estado SEMPRE saem;
+ * a próxima sai para contrato de banco (o mútuo não tem "próxima": devolve quando quiser).
+ */
+export interface ContratoParaLinha {
+  banco: string
+  saldo: number
+  prox: { v: number | null; d?: string | null; est?: boolean; enc?: boolean } | null
+  pagas: number
+  total: number
+  principal?: number
+  devolvido?: number
+  incompleto?: string | null
+}
+export function linhaResumo<C extends ContratoParaLinha>(c: C) {
+  const mut = c.banco === 'mutuo'
+  const principal = c.principal ?? 0, devolvido = c.devolvido ?? 0
+  const prog = mut ? (principal > 0 ? Math.round((devolvido / principal) * 100) : 0) : progresso(c.pagas, c.total).pct
+  return {
+    saldo: c.saldo,
+    prox: mut ? null : c.prox,
+    estado: c.incompleto ? 'incompleto' : mut ? 'nominal' : 'dia',
+    prog: Math.max(0, Math.min(100, prog)),
+    progTxt: mut ? `devolvido ${fmtK(devolvido)} de ${fmtK(principal)}` : `${c.pagas} de ${c.total}`,
+  } as const
+}
 /** P12 */
 export function somaPedacos(pzs: ReadonlyArray<{ v: number }>): number { return r2(pzs.reduce((s, p) => s + p.v, 0)) }
 /** P15 */
@@ -179,7 +205,7 @@ export interface ContratoNaCarteira {
   saldo: number
   pagas: number
   total: number
-  prox: { d: string | null; v: number | null; est: boolean; enc: boolean; estado: string } | null
+  prox: { n: number; d: string | null; v: number | null; est: boolean; enc: boolean; estado: string } | null
   ef: number | null
   juros26: number
   pendencias: PendenciaDeCadastro[]
@@ -309,6 +335,7 @@ export async function lerCarteiraDeEmprestimos(companyId: string, agora: Date, d
       total: l.installments.length,
       prox: prox
         ? {
+            n: prox.i.number,
             d: diaCurto(prox.i.dueDate),
             // ⭐ a parcial mostra o que FALTA (o card diz "falta"), nunca o nominal da agenda
             v: prox.a.veredito.estado === 'PARCIAL' ? prox.a.veredito.falta : prox.a.v.valor,

@@ -105,7 +105,7 @@ destacado no TOPO da tela/modal dona dela (`components/perguntas/pergunta-no-top
 (`max-w-[1600px]`). Espaço morto nas laterais é proibido; tela larga ganha COLUNAS, nunca vazio.
 (Formulário/documento mantém o seu — molde de 23/08 em `leis-de-tela.md`.)
 
-**EMPRÉSTIMOS v1 (25/11)** — lei `docs/emprestimos-referencia.html` (R54–R65). Pagar parcela tem UMA porta
+**EMPRÉSTIMOS v2 (25/11)** — lei `docs/emprestimos-referencia.html` (R54–R66; emenda R66: contrato é LINHA compacta, detalhe no clique). Pagar parcela tem UMA porta
 (`vincularPagamentoDeParcela`: pedaço N:1 + `paid*`); a agenda do banco NUNCA é reescrita por pagamento (o pago
 mora em `paid*`); o 1:1 é só legado de leitura. Tela que lista contrato filtra `CONTRATO_VISIVEL` (excluído com história).
 

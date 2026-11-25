@@ -6539,3 +6539,10 @@ Lei `docs/emprestimos-referencia.html` (md5 f44e8305…; 18 pinos rodam contra a
   44.759,56 → 45.264,57 (+505,01 = o encargo do PARTIAL, antes invisível). Restam 2 pagas sem data nem tx (C41022227-1 #22, Caixa #31).
 - ⚠️ **Cicatriz medida:** o atalho "categoria Juros sobre Empréstimos = rotativo" contou PREV-EMP.BBH 4.177,96 (prestação) e
   Mercado Pago 2.568,04 (Stone) como cheque. Agora só `Juros Cheque Especial` decide (b39433db). *Categoria genérica não classifica.*
+
+### Emenda R66 — linhas compactas com detalhe no clique (25/11/2026, lei v2 md5 ce6aef87…)
+- Pente do dono no telão: "cards muito grandes". `CardContrato` (cartaz em grade 2-3 col) → `LinhaContrato` (uma linha:
+  chip, nº, estado, mini-barra, próxima, SALDO, chevron) + `DetalheDaLinha` (acordeão: barra, fatos, 4 ações). Celular: linha mínima.
+- "marcar paga" da linha → `?pagar=<nº>` no detalhe abre o `CandidatosDialog` (a MESMA porta); `?excluir=1` abre a confirmação.
+- P19 (`linhaResumo` em `lib/loans/carteira.ts`) roda contra a lib. ⚠️ Replantio (a1) "linha sem saldo" passou VERDE na 1ª
+  versão do guard: o saldo da linha do CELULAR absolvia a linha larga — cada viewport agora se mede no SEU trecho.

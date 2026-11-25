@@ -260,7 +260,7 @@ export default function DetalheEmprestimoPage({
   const [editando, setEditando] = useState<false | 'ficha' | 'indexer'>(false)
   // ⭐ os pedaços do dia de cada parcela paga, expandíveis
   const [abertos, setAbertos] = useState<Set<number>>(() => new Set())
-  // ⭐ o link da carteira chega com ?editar=1 / ?devolucao=1 — abre o gesto direto
+  // ⭐ o link da carteira chega com ?editar=1 / ?devolucao=1 / ?excluir=1 / ?pagar=<nº> — abre o gesto direto
   const [pedidoDaUrl, setPedidoDaUrl] = useState<string | null>(null)
 
   function refresh() {
@@ -278,12 +278,18 @@ export default function DetalheEmprestimoPage({
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
-    setPedidoDaUrl(q.get('editar') ? 'editar' : q.get('devolucao') ? 'devolucao' : null)
+    setPedidoDaUrl(q.get('editar') ? 'editar' : q.get('devolucao') ? 'devolucao' : q.get('excluir') ? 'excluir' : q.get('pagar') ? `pagar:${q.get('pagar')}` : null)
   }, [])
   useEffect(() => {
     if (!data || !pedidoDaUrl) return
     if (pedidoDaUrl === 'editar') setEditando(data.agregados.pendencias.some((p) => p.campo === 'indexer') ? 'indexer' : 'ficha')
     if (pedidoDaUrl === 'devolucao' && data.loan.flexible) setAbrirDevolucao(true)
+    if (pedidoDaUrl === 'excluir') setConfirmDel(true)
+    // ⭐ o "marcar paga" da linha da carteira cai na MESMA porta (CandidatosDialog → vincularPagamentoDeParcela)
+    if (pedidoDaUrl.startsWith('pagar:') && !data.loan.flexible) {
+      const n = Number(pedidoDaUrl.slice(6))
+      if (Number.isInteger(n) && n > 0) setOpenCandidatos(n)
+    }
     setPedidoDaUrl(null)
   }, [data, pedidoDaUrl])
 

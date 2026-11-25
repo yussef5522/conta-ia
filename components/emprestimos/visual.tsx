@@ -9,7 +9,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import {
-  fmt, fmtR, fmtK, rotuloEstimado, rotuloMesCurto, pico, progresso, rankingDeCusto,
+  fmt, fmtR, fmtK, rotuloEstimado, linhaResumo, rotuloMesCurto, pico, progresso, rankingDeCusto,
   ORDEM_DO_CREDOR, COR_DO_CREDOR, PALETA, GRADIENTE_DA_SERIE, GRADIENTE_DO_CHIP, NOME_DO_CREDOR,
   type Credor, type CarteiraDeEmprestimos, type ContratoNaCarteira, type MesDoCompromisso,
 } from '@/lib/loans/carteira'
@@ -362,7 +362,7 @@ export function ChequeEspecial({ c }: { c: CarteiraDeEmprestimos }) {
   )
 }
 
-// ─────────────────────────── o card de contrato ───────────────────────────
+// ─────────────────────────── a linha de contrato ───────────────────────────
 const Bdg = ({ tom, children, href }: { tom?: 'ok' | 'est' | 'err'; children: ReactNode; href?: string }) => {
   const st = tom === 'ok' ? { background: 'var(--emp-verbg)', color: 'var(--emp-ver)' }
     : tom === 'est' ? { background: PALETA.indSuave, color: 'var(--emp-ind)' }
@@ -372,51 +372,114 @@ const Bdg = ({ tom, children, href }: { tom?: 'ok' | 'est' | 'err'; children: Re
   return href ? <Link href={href} data-bdg={tom} className={cls} style={st}>{children}</Link> : <span data-bdg={tom} className={cls} style={st}>{children}</span>
 }
 
-export function CardContrato({ k }: { k: ContratoNaCarteira }) {
-  const p = k.flexible
-    ? { txt: `devolvido ${fmtK(k.devolvido)} de ${fmtK(k.principal)}`, pct: k.principal > 0 ? Math.round((k.devolvido / k.principal) * 100) : 0 }
-    : progresso(k.pagas, k.total)
+/** um fato do detalhe aberto (taxa, custo pago, agenda, próxima) */
+const Fato = ({ children }: { children: ReactNode }) => (
+  <span data-fato className="rounded-full px-[11px] py-[5px] text-[12px]" style={{ background: 'var(--emp-card)', boxShadow: SH, color: 'var(--emp-ink2)' }}>{children}</span>
+)
+const rotuloDaProxima = (k: ContratoNaCarteira) => k.prox?.estado === 'PARCIAL' ? 'falta' : k.prox?.estado === 'ATRASADA' ? 'atrasada' : 'próxima'
+const BOTAO = 'block rounded-[10px] px-3 py-2 text-center text-[13px] font-semibold no-underline'
+
+/** o detalhe que a linha abre: barra grande, os fatos e as 4 ações empilhadas (marcar paga = a porta única) */
+export function DetalheDaLinha({ k, ano }: { k: ContratoNaCarteira; ano: number }) {
+  const r = linhaResumo({ ...k, incompleto: k.pendencias[0]?.rotulo ?? null })
+  const mut = k.banco === 'mutuo'
+  const barra = mut ? PALETA.progressoVerde : PALETA.progresso
+  const prox = r.prox && r.prox.v != null ? rotuloEstimado(r.prox.v, !!r.prox.est) : r.prox ? 'a apurar' : null
+  const rotuloProx = rotuloDaProxima(k)
   return (
-    <div data-contrato={k.id} className="relative rounded-[20px] px-[18px] py-4" style={{ background: 'var(--emp-card)', boxShadow: SH }}>
-      <div className="flex items-center gap-3">
-        <Chip banco={k.banco} rot={k.rot} w={62} h={41} />
-        <div className="min-w-0">
-          <div className="truncate text-[14.5px] font-bold" style={{ color: 'var(--emp-ink)' }} title={k.num}>{k.num}</div>
-          <div className="text-[12px]" style={{ color: 'var(--emp-ink3)' }}>{k.flexible ? 'mútuo · agenda nominal' : 'contrato'}</div>
+    <div data-detalhe className="rounded-b-[16px] px-[18px] py-4" style={{ borderTop: '1px solid var(--emp-line)', background: 'var(--emp-suave)' }}>
+      <div className="grid grid-cols-1 items-start gap-[26px] lg:grid-cols-[1fr_230px]">
+        <div>
+          <div className="mb-1.5 mt-0.5 h-2.5 overflow-hidden rounded-full" style={{ background: 'var(--emp-trilho)' }}><i className="block h-full rounded-full" style={{ width: `${r.prog}%`, background: barra }} /></div>
+          <div className="flex justify-between text-[12px]" style={{ color: 'var(--emp-ink2)' }}><span>{r.progTxt}</span><span>{r.prog}%</span></div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {mut ? <>
+              <Fato>principal <b>{fmtR(k.principal)}</b></Fato>
+              <Fato>devolvido <b>{fmtR(k.devolvido)}</b></Fato>
+              <Fato>agenda nominal — nunca atrasa</Fato>
+            </> : <>
+              <Fato>taxa <b>{k.taxa}</b></Fato>
+              <Fato>custo pago em {ano} <b>{fmtR(k.juros26)}</b></Fato>
+              <Fato>agenda do banco <b>✓</b></Fato>
+              {prox && <Fato>{rotuloProx} <b>{prox} · {k.prox?.d}</b></Fato>}
+            </>}
+            {r.estado === 'incompleto' && <Bdg tom="err" href={`${k.href}?editar=1`}>{k.pendencias[0].rotulo} — completar →</Bdg>}
+          </div>
         </div>
-        <Link href={k.href} aria-label="abrir contrato" className="ml-auto inline-flex h-[30px] w-[30px] items-center justify-center rounded-[9px] text-[16px] no-underline" style={{ background: 'var(--emp-neutro)', color: 'var(--emp-ink2)' }}>⋯</Link>
-      </div>
-      <div className="mb-2 mt-2.5 flex flex-wrap gap-1.5">
-        <Bdg>{k.taxa}</Bdg>
-        {k.flexible ? <Bdg tom="ok">nominal</Bdg> : <>
-          {k.pendencias.map((pd) => <Bdg key={pd.campo} tom="err" href={`${k.href}?editar=1`}>{pd.rotulo} — completar →</Bdg>)}
-          {k.pendencias.length === 0 && <Bdg tom="ok">em dia</Bdg>}
-          {k.prox?.est && <Bdg tom="est">~ estimada</Bdg>}
-        </>}
-      </div>
-      <div className="whitespace-nowrap text-[clamp(20px,2vw,24px)] font-extrabold tracking-[-0.02em] tabular-nums" style={{ color: 'var(--emp-ink)' }}>{fmtR(k.saldo)}</div>
-      <Link href={k.href} className="text-[11.5px] no-underline" style={{ color: 'var(--emp-ink3)' }}>saldo devedor · ver →</Link>
-      <div className="mb-1.5 mt-2.5 h-2 overflow-hidden rounded-full" style={{ background: 'var(--emp-trilho)' }}>
-        <i className="block h-full rounded-full" style={{ width: `${p.pct}%`, background: k.flexible ? PALETA.progressoVerde : PALETA.progresso }} />
-      </div>
-      <div className="flex justify-between text-[12px]" style={{ color: 'var(--emp-ink2)' }}><span>{p.txt}</span><span>{p.pct}%</span></div>
-      <div className="mt-3 flex flex-wrap items-baseline gap-2 rounded-[12px] px-3 py-[9px] text-[13px]" style={{ background: 'var(--emp-suave)', color: 'var(--emp-ink2)' }}>
-        {k.flexible ? <>
-          <span>devolução quando quiser</span>
-          <Link href={`${k.href}?devolucao=1`} className="ml-auto text-[12.5px] font-semibold no-underline" style={{ color: 'var(--emp-ind)' }}>registrar devolução →</Link>
-        </> : k.prox ? <>
-          <span>{k.prox.estado === 'PARCIAL' ? 'falta' : k.prox.estado === 'ATRASADA' ? 'atrasada' : 'próxima'}</span>
-          <b className="whitespace-nowrap text-[15px] font-extrabold" style={{ color: 'var(--emp-ink)' }}>
-            {k.prox.v != null ? rotuloEstimado(k.prox.v, k.prox.est) : 'a apurar'}{k.prox.enc && <span className="text-[12px] font-normal" style={{ color: 'var(--emp-ink3)' }}> + enc.</span>}
-          </b>
-          <span className="ml-auto text-[12px]" style={{ color: 'var(--emp-ink3)' }}>{k.prox.d}</span>
-        </> : <span>quitado</span>}
+        <div data-acoes className="flex flex-col gap-2">
+          <Link data-acao="abrir" href={k.href} className={BOTAO} style={{ background: 'var(--emp-ind)', color: 'var(--emp-card)' }}>abrir contrato →</Link>
+          {mut
+            ? <Link data-acao="pagar" href={`${k.href}?devolucao=1`} className={BOTAO} style={{ background: 'var(--emp-card)', boxShadow: SH, color: 'var(--emp-ink)' }}>registrar devolução</Link>
+            : <Link data-acao="pagar" href={k.prox ? `${k.href}?pagar=${k.prox.n}` : k.href} className={BOTAO} style={{ background: 'var(--emp-card)', boxShadow: SH, color: 'var(--emp-ink)' }}>marcar paga</Link>}
+          <Link data-acao="editar" href={`${k.href}?editar=1`} className={BOTAO} style={{ background: 'var(--emp-card)', boxShadow: SH, color: 'var(--emp-ink)' }}>editar</Link>
+          <Link data-acao="excluir" href={`${k.href}?excluir=1`} className={BOTAO} style={{ background: 'var(--emp-card)', boxShadow: SH, color: 'var(--emp-ros)' }}>excluir</Link>
+        </div>
       </div>
     </div>
   )
 }
 
-export function GrupoDoCredor({ banco, contratos }: { banco: Credor; contratos: readonly ContratoNaCarteira[] }) {
+/**
+ * A LINHA do contrato: chip, nº, estado, progresso, próxima e saldo SEMPRE à vista — nunca cartaz.
+ * O clique abre o detalhe inline (acordeão); nenhuma nasce aberta, várias podem ficar abertas.
+ * No celular a linha é mínima (chip, nº, saldo, chevron) e o toque abre o MESMO detalhe empilhado.
+ */
+export function LinhaContrato({ k, ano }: { k: ContratoNaCarteira; ano: number }) {
+  const [aberta, setAberta] = useState(false)
+  const r = linhaResumo({ ...k, incompleto: k.pendencias[0]?.rotulo ?? null })
+  const mut = k.banco === 'mutuo'
+  const barra = mut ? PALETA.progressoVerde : PALETA.progresso
+  const prox = r.prox && r.prox.v != null ? rotuloEstimado(r.prox.v, !!r.prox.est) : r.prox ? 'a apurar' : null
+  const rotuloProx = rotuloDaProxima(k)
+  const alternar = () => setAberta((v) => !v)
+  const sub = <div className="text-[11.5px]" style={{ color: 'var(--emp-ink3)' }}>{k.rot}{mut ? ' · mútuo' : ''}</div>
+  const saldo = (tam: string) => <div data-saldo className={`whitespace-nowrap text-right font-extrabold tabular-nums ${tam}`} style={{ color: 'var(--emp-ink)' }}>{fmtR(r.saldo)}</div>
+  const chev = <span aria-hidden className="text-center text-[15px] transition-transform" style={{ color: 'var(--emp-ink3)', transform: aberta ? 'rotate(180deg)' : undefined }}>⌄</span>
+  return (
+    <div data-contrato={k.id} data-aberta={aberta ? '1' : '0'} className="rounded-[16px]" style={{ background: 'var(--emp-card)', boxShadow: SH }}>
+      <div role="button" tabIndex={0} aria-expanded={aberta} onClick={alternar} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternar() } }}
+        className="cursor-pointer">
+        {/* computador: a linha inteira */}
+        <div data-linha="larga" className="hidden items-center gap-3.5 px-4 py-3 lg:grid lg:grid-cols-[44px_minmax(150px,1.05fr)_minmax(0,1.5fr)_180px_200px_170px_26px]">
+          <Chip banco={k.banco} rot={k.rot} w={44} h={30} />
+          <div className="min-w-0"><div className="text-[14px] font-bold" style={{ color: 'var(--emp-ink)' }}>{k.num}</div>{sub}</div>
+          <div data-estado={r.estado} className="flex min-w-0 flex-wrap gap-1.5">
+            {r.estado === 'incompleto'
+              ? <Bdg tom="err" href={`${k.href}?editar=1`}>{k.pendencias[0].rotulo} →</Bdg>
+              : <Bdg tom="ok">{mut ? 'nominal' : 'em dia'}</Bdg>}
+            {r.prox?.est && <Bdg tom="est">~ estimada</Bdg>}
+            <Bdg>{k.taxa}</Bdg>
+          </div>
+          <div data-progresso>
+            <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'var(--emp-trilho)' }}><i className="block h-full rounded-full" style={{ width: `${r.prog}%`, background: barra }} /></div>
+            <div className="mt-1 text-[11.5px]" style={{ color: 'var(--emp-ink2)' }}>{r.progTxt} · {r.prog}%</div>
+          </div>
+          <div data-proxima className="flex min-w-0 flex-col gap-0.5 text-right">
+            {mut ? <>
+              <Link href={`${k.href}?devolucao=1`} onClick={(e) => e.stopPropagation()} className="whitespace-nowrap text-[13.5px] font-bold no-underline" style={{ color: 'var(--emp-ind)' }}>registrar devolução →</Link>
+              <span className="text-[11.5px]" style={{ color: 'var(--emp-ink3)' }}>quando quiser</span>
+            </> : prox ? <>
+              <span className="whitespace-nowrap text-[13.5px] font-bold tabular-nums" style={{ color: 'var(--emp-ink)' }}>{prox}{r.prox?.enc && <span className="text-[11.5px] font-normal" style={{ color: 'var(--emp-ink3)' }}> + enc.</span>}</span>
+              <span className="text-[11.5px]" style={{ color: 'var(--emp-ink3)' }}>{rotuloProx} · {k.prox?.d}</span>
+            </> : <span className="text-[12px]" style={{ color: 'var(--emp-ink3)' }}>quitado</span>}
+          </div>
+          {saldo('text-[16.5px]')}
+          {chev}
+        </div>
+        {/* celular: a linha mínima */}
+        <div data-linha="minima" className="grid grid-cols-[38px_1fr_auto_20px] items-center gap-3 px-3 py-[11px] lg:hidden">
+          <Chip banco={k.banco} rot={k.rot} w={38} h={26} />
+          <div className="min-w-0"><div className="text-[14px] font-bold" style={{ color: 'var(--emp-ink)' }}>{k.num}</div>{sub}</div>
+          {saldo('text-[14.5px]')}
+          {chev}
+        </div>
+      </div>
+      {aberta && <DetalheDaLinha k={k} ano={ano} />}
+    </div>
+  )
+}
+
+export function GrupoDoCredor({ banco, contratos, ano }: { banco: Credor; contratos: readonly ContratoNaCarteira[]; ano: number }) {
   if (contratos.length === 0) return null
   const soma = contratos.reduce((s, k) => s + k.saldo, 0)
   return (
@@ -426,8 +489,8 @@ export function GrupoDoCredor({ banco, contratos }: { banco: Credor; contratos: 
         <span className="text-[12.5px]" style={{ color: 'var(--emp-ink3)' }}>{contratos.length} contrato{contratos.length > 1 ? 's' : ''}{banco === 'mutuo' ? ' · outra natureza' : ''}</span>
         <span className="ml-auto whitespace-nowrap text-[14px] font-bold tabular-nums" style={{ color: 'var(--emp-ink)' }}>{fmtR(soma)}</span>
       </div>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
-        {contratos.map((k) => <CardContrato key={k.id} k={k} />)}
+      <div data-lista className="flex flex-col gap-2">
+        {contratos.map((k) => <LinhaContrato key={k.id} k={k} ano={ano} />)}
       </div>
     </div>
   )
