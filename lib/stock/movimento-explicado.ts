@@ -28,6 +28,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { movePrateleira } from './saldo'
+import { ORIGEM_ACERTO_FICHA_TARDIA } from './vendas/baixou-na-hora'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -291,6 +292,8 @@ export async function explicarMovimentos(
       }
       case 'VENDA': {
         const imp = ref ? importPorId.get(ref) : null
+        // ⭐ (25/11) o acerto da ficha tardia: movimento de HOJE, venda de outro dia — o extrato diz o porquê
+        if (m.origem === ORIGEM_ACERTO_FICHA_TARDIA) return imp ? `acerto · ficha criada depois (venda de ${dia(imp.data)})` : 'acerto · ficha criada depois'
         return imp ? `vendas de ${dia(imp.data)}` : 'baixa de venda'
       }
       case 'SAIDA': {

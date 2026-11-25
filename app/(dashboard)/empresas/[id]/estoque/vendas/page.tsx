@@ -24,6 +24,7 @@ import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 import { FaixaDaSuit, PerguntaDiaDaSuit, FaixaDosSabores } from '@/components/estoque/faixa-da-suit'
 import { FaixaDiaParado } from '@/components/estoque/faixa-dia-parado'
 import { CORTE_COMPLEMENTOS, diaCurto } from '@/lib/suit/cortes'
+import { PerguntaFichaTardia } from '@/components/estoque/pergunta-ficha-tardia'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
 interface Preview { linhas: Linha[]; totalUnidades: number; totalProdutos: number; naoMapeados: number; opcoes: { fichas: { id: string; nome: string; tipo: string }[]; itens: { id: string; nome: string }[] } }
@@ -341,6 +342,9 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
           disabled={processados.length === 0}
           className="ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"><Download className="h-3.5 w-3.5" /> CSV</button>
       </div>
+
+      {/* ⭐⭐ (25/11) LEI DA PERGUNTA NO TOPO — venda de dia fechado que saiu sem baixar (ficha criada depois) */}
+      <PerguntaFichaTardia companyId={id} />
 
       {processados.length > 0 && (
         <StatCardGrid>

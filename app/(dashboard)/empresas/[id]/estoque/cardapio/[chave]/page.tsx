@@ -19,6 +19,7 @@ import { podeAtenderProdutoDoPdv } from '@/lib/stock/tipos-ficha'
 import { formatarQtd } from '@/lib/stock/quantidade'
 import { ArrowLeft, Loader2, UtensilsCrossed, TrendingUp, CircleDollarSign, Percent, Factory, AlertTriangle, Check, Pencil, PackageSearch, ChevronRight } from 'lucide-react'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
+import { PerguntaFichaTardia } from '@/components/estoque/pergunta-ficha-tardia'
 
 type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK'
 interface Linha {
@@ -73,6 +74,8 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
    * lote (ela aceita `min(1)`), então não nasce uma segunda porta de gravação.
    */
   const [trocandoSecao, setTrocandoSecao] = useState(false)
+  // ⭐ (25/11) a pergunta da ficha tardia recarrega depois de salvar a ficha/vínculo (REGRA 9: hook no topo)
+  const [recargaTardia, setRecargaTardia] = useState(0)
   const [erro, setErro] = useState<string | null>(null)
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/cardapio/${chave}`)
@@ -122,6 +125,9 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
   return (
     <div className="space-y-3">
       <a href={`/empresas/${id}/estoque/cardapio`} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> Cardápio</a>
+
+      {/* ⭐⭐ (25/11) LEI DA PERGUNTA NO TOPO — salvou a ficha de um produto que já vendeu sem baixar? pergunta NA HORA */}
+      <PerguntaFichaTardia companyId={id} fichaId={l.fichaId} nomes={l.nomesSuitable.length ? l.nomesSuitable : [l.nome]} recarga={recargaTardia} />
 
       <div className="flex flex-wrap items-center gap-2.5">
         <UtensilsCrossed className="h-5 w-5 shrink-0 text-[#185FA5]" />
@@ -289,6 +295,7 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
             aoSalvar={async () => {
               setEditandoFicha(false)
               await carregar()
+              setRecargaTardia((n) => n + 1)
               // ⭐ ITEM 5: confere que a linha VOLTOU com ficha. Se não voltou, a tela DIZ —
               // em vez de mostrar "sem ficha" como se nada tivesse sido salvo (o que levou o
               // dono a salvar de novo e duplicar a PIZZA PEQUENA às 23:22).

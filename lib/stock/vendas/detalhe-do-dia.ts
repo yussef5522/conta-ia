@@ -16,6 +16,8 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { montarPlanoDeLinhas } from './baixa-venda'
 import { canonicoDaGrafia } from './grafia-canonica'
 import { ehSaborDeVerdade } from './razao-sabor-pizza'
+import { resolvedorDeGrafia } from './grafia-canonica'
+import { ficouPraTras, baixouNaHora, chaveDoAcerto } from './baixou-na-hora'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
@@ -28,6 +30,13 @@ export type DestinoNoEstoque =
   | 'CONFLITO'
   /** ⚠️ decisão do dono: não controla estoque. Não é pendência. */
   | 'IGNORADO'
+  /**
+   * ⛔⛔ (25/11) O EVENTO MANDA: tem ficha HOJE, mas no fechamento não tinha — nada baixou. A linha
+   * diz o que ACONTECEU e cai na conta dos "sem destino" (o PROMOO 3 PIZZAS de 24/11 dizia "baixou ✓").
+   */
+  | 'SEM_FICHA_NA_HORA'
+  /** ⭐ idem, mas o dono já disse SIM ao acerto (movimento novo, datado do dia do acerto) */
+  | 'ACERTADO_DEPOIS'
 
 export const ROTULO_DO_DESTINO: Record<DestinoNoEstoque, string> = {
   BAIXOU_FICHA: 'baixou ficha ✓',
@@ -36,6 +45,8 @@ export const ROTULO_DO_DESTINO: Record<DestinoNoEstoque, string> = {
   SEM_DESTINO: 'sem destino',
   CONFLITO: 'grafias em conflito — escolha a ficha',
   IGNORADO: 'ignorado (sua decisão)',
+  SEM_FICHA_NA_HORA: 'não baixou — sem ficha na hora ✕',
+  ACERTADO_DEPOIS: 'sem ficha na hora — acertado depois ✓',
 }
 
 export interface LinhaProduto {
@@ -59,6 +70,8 @@ export interface LinhaSabor {
   nome: string
   vezes: number
   temFicha: boolean
+  /** ⛔ (25/11) tem ficha hoje, não tinha no fechamento: nada baixou naquele dia */
+  semFichaNaHora: boolean
   /** ⚠️ tamanho vazado (`GRANDE`) NUNCA oferece "criar ficha" — decisão do dono de 07/10 */
   ehSabor: boolean
   rotulo: string
@@ -113,18 +126,23 @@ export async function lerDetalheDoDia(
   const deDia = new Date(`${dia}T00:00:00.000Z`)
   const ateDia = new Date(deDia.getTime() + 86_400_000)
   const noDia = { gte: deDia, lt: ateDia }
-  const [linhas, comp, mapaComp, bases] = await Promise.all([
+  const [linhas, comp, mapaComp, bases, mapaComData, acertos] = await Promise.all([
     db.stockVendaLinha.findMany({
       where: { companyId, data: noDia },
-      select: { nomeSuitable: true, quantidade: true, valorTotal: true },
+      select: { importId: true, nomeSuitable: true, quantidade: true, valorTotal: true, mapeadoNoImport: true, criadoEm: true },
     }),
     db.stockVendaComplementoLinha.findMany({
       where: { companyId, data: noDia },
-      select: { nomeSuitable: true, ocorrencias: true },
+      select: { nomeSuitable: true, ocorrencias: true, mapeadoNoImport: true, criadoEm: true },
     }),
     db.stockVendaComplementoMap.findMany({ where: { companyId } }),
     basesApontadas(companyId, db),
+    // ⭐ (25/11) o EVENTO: a data de cada linha do mapa e os acertos já feitos
+    db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true, itemId: true, criadoEm: true } }),
+    db.stockAcertoFichaTardia.findMany({ where: { companyId, dia }, select: { importId: true, nomeSuitable: true } }),
   ])
+  const resolverComData = resolvedorDeGrafia(mapaComData)
+  const acertado = new Set(acertos.map((a) => chaveDoAcerto(a.importId, a.nomeSuitable)))
 
   /**
    * ⭐⭐ O PLANO VEM DO MOTOR REAL. `incluir: null` = "todos os mapeados", que é exatamente o
@@ -158,6 +176,8 @@ export async function lerDetalheDoDia(
     if (ignorados.has(l.nomeSuitable)) destino = 'IGNORADO'
     else if (emConflito.has(l.nomeSuitable)) destino = 'CONFLITO'
     else if (pendentes.has(l.nomeSuitable) || !p) destino = 'SEM_DESTINO'
+    // ⛔⛔ o plano diz o que a ficha de HOJE faria; quem diz o que ACONTECEU é o registro do fechamento
+    else if (ficouPraTras(l, resolverComData(l.nomeSuitable))) destino = acertado.has(chaveDoAcerto(l.importId, l.nomeSuitable)) ? 'ACERTADO_DEPOIS' : 'SEM_FICHA_NA_HORA'
     else if (p.alvoTipo === 'REVENDA') destino = 'BAIXOU_REVENDA'
     else if (p.fichaId && bases.has(p.fichaId)) destino = 'BAIXOU_BASE_E_SABORES'
     else destino = 'BAIXOU_FICHA'
@@ -191,14 +211,22 @@ export async function lerDetalheDoDia(
     .sort((a, b) => b.valor - a.valor)
 
   const comFicha = new Set(mapaComp.filter((m) => m.fichaId).map((m) => m.nomeSuitable))
+  const mapaCompPorNome = new Map(mapaComp.map((m) => [m.nomeSuitable, m]))
   const sabores: LinhaSabor[] = comp
     .map((c) => {
       const ehSab = ehSaborDeVerdade(c.nomeSuitable)
       const tem = comFicha.has(c.nomeSuitable)
+      /**
+       * ⛔ (25/11, REGRA 14 — o irmão da coluna dos produtos): "com ficha · baixou ✓" lia o mapa de HOJE.
+       * Sabor que ganhou ficha DEPOIS do fechamento não baixou naquele dia — o registro da linha diz.
+       */
+      const mc = mapaCompPorNome.get(c.nomeSuitable)
+      const semFichaNaHora = tem && !!mc && !baixouNaHora(c, { tipo: 'EXATA', mapa: { nomeSuitable: mc.nomeSuitable, alvoTipo: 'FICHA', fichaId: mc.fichaId, itemId: null, criadoEm: mc.criadoEm } })
       return {
         nome: c.nomeSuitable,
         vezes: c.ocorrencias,
         temFicha: tem,
+        semFichaNaHora,
         ehSabor: ehSab,
         /**
          * ⛔ TAMANHO VAZADO NÃO OFERECE "CRIAR FICHA". `GRANDE` (208 ocorrências) é tamanho,
@@ -207,9 +235,11 @@ export async function lerDetalheDoDia(
          */
         rotulo: !ehSab
           ? 'tamanho, não sabor — fora da fila'
-          : tem
-            ? 'com ficha · baixou ✓'
-            : 'sem ficha',
+          : semFichaNaHora
+            ? 'não baixou — sem ficha na hora ✕'
+            : tem
+              ? 'com ficha · baixou ✓'
+              : 'sem ficha',
       }
     })
     .sort((a, b) => b.vezes - a.vezes)
@@ -225,7 +255,8 @@ export async function lerDetalheDoDia(
       valor,
       linhas: linhas.length,
       // ⚠️ conflito também não tem destino: não baixa até o dono escolher
-      semDestino: produtos.filter((p) => p.destino === 'SEM_DESTINO' || p.destino === 'CONFLITO').length,
+      // ⛔ (25/11) e o que não tinha ficha NA HORA também não baixou — o evento manda, mesmo com ficha hoje
+      semDestino: produtos.filter((p) => p.destino === 'SEM_DESTINO' || p.destino === 'CONFLITO' || p.destino === 'SEM_FICHA_NA_HORA').length,
       ocorrencias: comp.reduce((s, c) => s + c.ocorrencias, 0),
       // ⚠️ só conta "sem ficha" o que É sabor — tamanho vazado não é pendência
       saboresSemFicha: sabores.filter((s) => s.ehSabor && !s.temFicha).length,

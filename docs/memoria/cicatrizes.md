@@ -4114,3 +4114,27 @@ contando como vermelho**.
    corrente, ela traz as **pagas** primeiro, e conta paga não abre seção. As linhas-seção aparecem
    no recorte do cartão. **Pré-existente** (a ordenação é de 26/09).
 
+
+## ⛔⛔⛔ A FICHA QUE CHEGOU DEPOIS — A TELA LIA A CONFIG DE HOJE (25/11/2026)
+
+**O caso (medido em prod, só leitura):** `PROMOO 3 PIZZAS GRANDES POR APENAS` vendeu **31 un · R$ 3.330,40**
+em 24/11. Linha gravada **25/11 04:17 UTC** com `mapeadoNoImport=false`; item/ficha/mapa nasceram
+**04:59–05:00** (43 min depois). O import de 24/11 tem 63 BAIXA_VENDA e **nenhuma** dos itens da ficha.
+A ficha tira por un: CAIXA P/ PIZZA 35 cm 3 · porção queijo 130 g 6 · metade de bolinha 6.
+- A coluna "destino no estoque" dizia **"baixou ficha ✓"**: `detalhe-do-dia` perguntava ao PLANO (mapa
+  de hoje), não ao fechamento. A lista de dias da central tinha a mesma régua (irmão).
+- A guarda diária **acusou**, sim — aviso vermelho BAIXA_FURADA 24/11 às 06:15 ("3 itens não bateram",
+  citando caixa/queijo/bolinha) — mas em **língua de item**: o dono procura o PRODUTO, e nada perguntava
+  "e o que ficou pra trás?". Ela rodou DEPOIS da ficha, então o `semVinculo` também não citou o PROMOO.
+- Varredura 30d: além dele, `XIS - STROGONOFF DE FRANGO` 1 un em 29/10 e 1 un em 30/10 (mapa de 31/10).
+
+**A cura:** porta única `lib/stock/vendas/baixou-na-hora.ts` ("o evento manda": `mapeadoNoImport` + prova
+da data do mapa), e o writer passou a gravar `mapeadoNoImport` = "BAIXOU de fato". Destinos novos
+`SEM_FICHA_NA_HORA` (vermelho, conta nos sem destino) e `ACERTADO_DEPOIS`; aba Sabores idem.
+Pergunta de acerto (`ficha-tardia.ts`, lei da pergunta no topo, sininho `FICHA_TARDIA`): movimento novo
+DATADO DE HOJE (BAIXA_VENDA, `receiptId` = import da venda, `origem` ACERTO_FICHA_TARDIA), idempotente por
+`stock_acerto_ficha_tardia` (único import+nome), **trava da contagem** (item contado desde o início do dia
+operacional da venda fica fora e entra na guarda como "fixado pela contagem"). ⚠️ Reprocessar o dia
+estorna o acerto junto (mesmo receipt) e refaz pela ficha — não duplica.
+**Prova REGRA 11:** os 3 replantios (coluna lendo config · guarda cega pra vendido×0 · acerto que duplica
+item contado) ficaram vermelhos nos testes do grupo certo e voltaram por `cp` de backup com md5.

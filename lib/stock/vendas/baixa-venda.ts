@@ -298,11 +298,20 @@ export async function processarVendas(companyId: string, data: string, html: str
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 
 /** ⭐ AS LINHAS DO DIA têm UM escritor (10/11): o `gravarVenda` e o dia da API que espera o
- *  dono passam pelo mesmo lugar — `mapeadoNoImport` é o MESMO critério nos dois. */
-async function gravarLinhasDoImport(tx: Tx | PrismaClient, companyId: string, importId: string, dataDate: Date, linhas: LinhaVenda[]): Promise<void> {
+ *  dono passam pelo mesmo lugar — `mapeadoNoImport` é o MESMO critério nos dois.
+ *
+ *  ⭐⭐ (25/11) `mapeadoNoImport` é o REGISTRO DO EVENTO: "esta linha BAIXOU de fato" — estava no
+ *  plano executado e a explosão tinha o que tirar. ⛔ Era "a grafia exata tem linha no mapa", que
+ *  não via a irmã canônica e não é o que aconteceu. Quem lê o evento: `baixou-na-hora.ts`. */
+async function gravarLinhasDoImport(tx: Tx | PrismaClient, companyId: string, importId: string, dataDate: Date, linhas: LinhaVenda[], baixaram: ReadonlySet<string>): Promise<void> {
   await tx.stockVendaLinha.deleteMany({ where: { companyId, importId } })
-  const mapaNomes = new Set((await tx.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true } })).map((m) => m.nomeSuitable))
-  await tx.stockVendaLinha.createMany({ data: linhas.map((l) => ({ companyId, importId, data: dataDate, nomeSuitable: l.produto, quantidade: l.quantidade, valorTotal: l.valorTotal, mapeadoNoImport: mapaNomes.has(l.produto) })) })
+  await tx.stockVendaLinha.createMany({ data: linhas.map((l) => ({ companyId, importId, data: dataDate, nomeSuitable: l.produto, quantidade: l.quantidade, valorTotal: l.valorTotal, mapeadoNoImport: baixaram.has(l.produto) })) })
+}
+
+/** os nomes que o plano BAIXA de fato (destino + explosão com quantidade, fora os itens deixados pendentes) */
+export const nomesQueBaixam = (plano: PlanoVenda, itensPendentes: readonly string[] = []): Set<string> => {
+  const fora = new Set(itensPendentes)
+  return new Set(plano.produtos.filter((p) => p.baixa.some((b) => b.qtd > 0 && !fora.has(b.itemId))).map((p) => p.nome))
 }
 
 /** "SuitAPI · pedidos de D" — o nome do "arquivo" do dia que entrou pela API (StockVendaArquivo) */
@@ -460,7 +469,7 @@ async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[]
     if (barrados.length) throw new BaixaComItemBarradoError(barrados, aBaixar.filter((x) => x.qtd > 0).length - barrados.length)
 
     // linhas (todas) pra pendentes/reprocessar — reescreve
-    await gravarLinhasDoImport(tx, companyId, imp.id, dataDate, linhas)
+    await gravarLinhasDoImport(tx, companyId, imp.id, dataDate, linhas, nomesQueBaixam(plano, itensPendentes))
     return imp.id
   })
 

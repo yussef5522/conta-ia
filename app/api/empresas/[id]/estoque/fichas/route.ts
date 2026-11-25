@@ -7,6 +7,7 @@ import { guardStock } from '@/lib/stock/require-stock'
 import { listFichas, criarFicha, FichaError } from '@/lib/stock/producao/fichas'
 import { ReceitaHomonimaError, reativarFicha, nomeDaAntiga } from '@/lib/stock/producao/receita-ja-existe'
 import { renomearEmLote } from '@/lib/stock/nomes/renomear-em-lote'
+import { avisarFichaTardiaSemFalhar } from '@/lib/stock/vendas/ficha-tardia'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!parsed.success) return NextResponse.json({ erro: 'Dados da ficha inválidos.', detalhe: parsed.error.issues[0]?.message }, { status: 400 })
   try {
     const r = await criarFicha({ companyId, userId: a.user!.sub, ...parsed.data })
+    await avisarFichaTardiaSemFalhar(companyId)
     // ⭐ ITEM 5 do dono: a resposta DIZ se o vínculo foi feito. "salvou mas não vinculou" é
     // infinitamente melhor que voltar em silêncio — foi o silêncio que gerou a duplicata.
     return NextResponse.json({ ok: true, ...r })

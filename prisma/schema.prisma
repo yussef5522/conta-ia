@@ -119,23 +119,23 @@ model SavedView {
 
 model Company {
   chequeEspecialRegras ChequeEspecialRegra[]
-  id        String  @id @default(cuid())
-  cnpj      String  @unique
-  name      String
-  tradeName String?
-  type      String  @default("OTHER")
+  id                   String                @id @default(cuid())
+  cnpj                 String                @unique
+  name                 String
+  tradeName            String?
+  type                 String                @default("OTHER")
   // Sprint 5.0.2.l — Setor normalizado pra Knowledge Base setorial.
   // Valores: RESTAURANTE | ACADEMIA | COMERCIO_ROUPA | VAREJO_GERAL | OTHER.
   // null permitido pra empresas legado (categorização cai só nas regras UNIVERSAL).
-  setor     String?
-  email     String?
-  phone     String?
-  address   String?
-  city      String?
-  state     String?
-  zipCode   String?
-  taxRegime String  @default("SIMPLES_NACIONAL")
-  isActive  Boolean @default(true)
+  setor                String?
+  email                String?
+  phone                String?
+  address              String?
+  city                 String?
+  state                String?
+  zipCode              String?
+  taxRegime            String                @default("SIMPLES_NACIONAL")
+  isActive             Boolean               @default(true)
 
   // ⭐ CORTE DE ÉPOCA DA CONCILIAÇÃO (11/09/2026): a fila só OFERECE linha de extrato a
   // partir desta data. null = sem corte (o padrão). Ver lib/conciliacao/corte-de-epoca.ts —
@@ -219,25 +219,25 @@ model UserCompany {
 
 model BankAccount {
   chequeEspecialRegras ChequeEspecialRegra[]
-  id            String  @id @default(cuid())
-  companyId     String
-  name          String
-  bankName      String?
-  bankCode      String?
-  agency        String?
-  accountNumber String?
+  id                   String                @id @default(cuid())
+  companyId            String
+  name                 String
+  bankName             String?
+  bankCode             String?
+  agency               String?
+  accountNumber        String?
   // CHECKING | SAVINGS | CASH
   // CASH = Conta Caixa (dinheiro físico/cofre) — Sprint Caixa.
   // Travas: allowNegativeBalance=false, creditLimit=0, sem campos bancários,
   //   sem importação OFX, não aparece em Conciliação (origin != OFX).
-  accountType   String  @default("CHECKING")
+  accountType          String                @default("CHECKING")
   // Sprint Caixa — subtipo da Conta Caixa pra crescer pro PDV completo no
   // futuro sem refactor. null em CHECKING/SAVINGS. Em CASH:
   //   MAIN          — caixa principal (default no MVP)
   //   PETTY         — fundo fixo / petty cash
   //   PDV_TERMINAL  — terminal de venda (etapa futura)
-  cashKind      String?
-  balance       Float   @default(0)
+  cashKind             String?
+  balance              Float                 @default(0)
 
   // Sprint Saldo-Ancorado-LEDGERBAL (17/06/2026) — "o banco é a lei".
   // LEDGERBAL = saldo final do extrato OFX no momento do import (DTASOF).
@@ -3015,12 +3015,12 @@ model Loan {
   // contexto (ex: "saldo remanescente de mútuo de 340.000 iniciado em mai/2026").
   notes          String?
 
-  status    String   @default("ACTIVE") // ACTIVE | PAID_OFF | LATE
+  status     String    @default("ACTIVE") // ACTIVE | PAID_OFF | LATE
   // R60 (25/11/2026) — excluído COM história: some de todas as telas (todo leitor de tela filtra
   // `archivedAt: null`), o nome sobrevive só nos relatórios históricos (DRE lê as parcelas).
   archivedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   installments LoanInstallment[]
 
@@ -4307,6 +4307,29 @@ model StockVendaLinha {
   @@index([companyId, importId])
   @@index([companyId, data])
   @@map("stock_venda_linha")
+}
+
+// ⭐⭐ ACERTO DA FICHA TARDIA (25/11/2026) — produto vendeu num dia JÁ FECHADO sem ficha (nada
+// baixou), e a ficha nasceu depois. Com o SIM do dono, o que ficou pra trás baixa HOJE (BAIXA_VENDA
+// com `receiptId` = o import do dia e `origem` = ACERTO_FICHA_TARDIA). ⛔ Passado não se reprocessa.
+// A linha é a IDEMPOTÊNCIA (1 acerto por import + nome) e o registro do que ficou FORA pela contagem.
+model StockAcertoFichaTardia {
+  id              String   @id @default(cuid())
+  companyId       String // REGRA 8 — valor, sem @relation
+  importId        String // stock_venda_import do dia da venda
+  dia             String // YYYY-MM-DD do dia da venda
+  nomeSuitable    String
+  quantidade      Int
+  /// JSON: [{itemId, nome, qtd, movementId}] — o que saiu no acerto
+  baixados        String
+  /// JSON: [{itemId, nome, qtd, contadoEm}] — o que a contagem já fixou (fica fora)
+  foraPorContagem String
+  criadoPorId     String?
+  criadoEm        DateTime @default(now())
+
+  @@unique([companyId, importId, nomeSuitable])
+  @@index([companyId, dia])
+  @@map("stock_acerto_ficha_tardia")
 }
 
 // ESTOQUE PARTE C (22/08) — SAÍDA que não é venda (waste log dos líderes: MarketMan comps/

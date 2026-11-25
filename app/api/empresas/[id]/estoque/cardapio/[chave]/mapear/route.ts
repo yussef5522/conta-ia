@@ -15,6 +15,7 @@ import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { removerVendaMap, upsertVendaMap, VendaMapError } from '@/lib/stock/vendas/venda-map'
 import { parseChave } from '@/lib/stock/cardapio/detalhe'
+import { avisarFichaTardiaSemFalhar } from '@/lib/stock/vendas/ficha-tardia'
 
 interface Params { params: Promise<{ id: string; chave: string }> }
 
@@ -71,5 +72,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (e instanceof VendaMapError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e
   }
+  await avisarFichaTardiaSemFalhar(companyId)
   return NextResponse.json({ ok: true, chave: 'fichaId' in body.data ? `ficha:${body.data.fichaId}` : `item:${body.data.itemId}` })
 }

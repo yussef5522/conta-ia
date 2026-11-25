@@ -109,6 +109,10 @@ destacado no TOPO da tela/modal dona dela (`components/perguntas/pergunta-no-top
 (`vincularPagamentoDeParcela`: pedaço N:1 + `paid*`); a agenda do banco NUNCA é reescrita por pagamento (o pago
 mora em `paid*`); o 1:1 é só legado de leitura. Tela que lista contrato filtra `CONTRATO_VISIVEL` (excluído com história).
 
+**O EVENTO MANDA (25/11)** — tela/guarda que diz o que um fechamento FEZ lê o registro do fechamento
+(`baixou-na-hora.ts`), nunca a config de hoje. Ficha criada depois de venda fechada = pergunta de acerto
+(movimento novo datado de hoje, idempotente, item contado depois fica fora) — nunca reprocessar o passado.
+
 **REGRA 1** teste que falha antes e passa depois · **REGRA 2** feature só está pronta se o
 dono VÊ na tela (o clique é dele) · **REGRA 3** teste EXECUTA o comportamento, nunca grep de
 string (*grep não distingue "refatorei" de "quebrei"*) · **REGRA 6** o caso NEGATIVO

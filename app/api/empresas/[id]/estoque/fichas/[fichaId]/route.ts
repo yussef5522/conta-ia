@@ -7,6 +7,7 @@ import { guardStock } from '@/lib/stock/require-stock'
 import { getFicha, atualizarFicha, FichaError, DoseImplausivelError } from '@/lib/stock/producao/fichas'
 import { excluirFicha, preverExclusaoDaFicha, ExcluirFichaError } from '@/lib/stock/producao/excluir-ficha'
 import { respostaDeErroDoEstoque } from '@/lib/stock/erro-da-tela'
+import { avisarFichaTardiaSemFalhar } from '@/lib/stock/vendas/ficha-tardia'
 
 interface Params { params: Promise<{ id: string; fichaId: string }> }
 
@@ -46,6 +47,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!parsed.success || Object.keys(parsed.data).length === 0) return NextResponse.json({ erro: 'Nada pra atualizar' }, { status: 400 })
   try {
     const r = await atualizarFicha(companyId, fichaId, { ...parsed.data, userId: a.user!.sub })
+    await avisarFichaTardiaSemFalhar(companyId)
     return NextResponse.json({ ok: true, ...r })
   } catch (e) {
     // ⭐ PERGUNTA, não erro final: a tela mostra antes → depois e reenvia com `confirmouDose`

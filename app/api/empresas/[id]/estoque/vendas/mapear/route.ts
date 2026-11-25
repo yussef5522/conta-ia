@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { upsertVendaMap, removerVendaMap, VendaMapError } from '@/lib/stock/vendas/venda-map'
+import { avisarFichaTardiaSemFalhar } from '@/lib/stock/vendas/ficha-tardia'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       : { tipo: 'REVENDA' as const, itemId: d.itemId }
   try {
     await upsertVendaMap(companyId, d.nomeSuitable, alvo, user.sub, prisma)
+    await avisarFichaTardiaSemFalhar(companyId)
     return NextResponse.json({ ok: true })
   } catch (e) {
     if (e instanceof VendaMapError) return NextResponse.json({ erro: e.message }, { status: 422 })
