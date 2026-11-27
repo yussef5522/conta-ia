@@ -173,11 +173,13 @@ export async function lerDetalheDoDia(
   for (const l of linhas) {
     const p = noPlano.get(l.nomeSuitable)
     let destino: DestinoNoEstoque
-    if (ignorados.has(l.nomeSuitable)) destino = 'IGNORADO'
+    // ⭐ o ACERTO é um evento gravado — vale antes de qualquer config (o reprocesso reescreve a linha, 27/11)
+    if (acertado.has(chaveDoAcerto(l.importId, l.nomeSuitable))) destino = 'ACERTADO_DEPOIS'
+    else if (ignorados.has(l.nomeSuitable)) destino = 'IGNORADO'
     else if (emConflito.has(l.nomeSuitable)) destino = 'CONFLITO'
     else if (pendentes.has(l.nomeSuitable) || !p) destino = 'SEM_DESTINO'
     // ⛔⛔ o plano diz o que a ficha de HOJE faria; quem diz o que ACONTECEU é o registro do fechamento
-    else if (ficouPraTras(l, resolverComData(l.nomeSuitable))) destino = acertado.has(chaveDoAcerto(l.importId, l.nomeSuitable)) ? 'ACERTADO_DEPOIS' : 'SEM_FICHA_NA_HORA'
+    else if (ficouPraTras(l, resolverComData(l.nomeSuitable))) destino = 'SEM_FICHA_NA_HORA'
     else if (p.alvoTipo === 'REVENDA') destino = 'BAIXOU_REVENDA'
     else if (p.fichaId && bases.has(p.fichaId)) destino = 'BAIXOU_BASE_E_SABORES'
     else destino = 'BAIXOU_FICHA'

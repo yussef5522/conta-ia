@@ -6,7 +6,8 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useEscape } from '@/lib/hooks/use-dismissivel'
-import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck, Keyboard, Receipt } from 'lucide-react'
+import { AvisoDoModo } from './aviso-do-modo'
+import { Check, Search, Camera, AlertTriangle, Store, X, ChevronRight, Eye, Loader2, PackageCheck, Keyboard, Receipt } from 'lucide-react'
 import { sugerirFator, placeholderFator } from '@/lib/stock/unidade-fator'
 import { interpretarAjusteQtd } from '@/lib/stock/ajuste-quantidade'
 import { ItensManuaisEditor } from './itens-manuais-editor'
@@ -332,10 +333,7 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
     // cards soltos cada um com sua largura. Agora: largura total + TABELA de
     // recebimento no desktop (padrão MarketMan/Apicbase), cards no mobile.
     <div className="space-y-3 pb-24">
-      <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${data.modoTeste ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}`}>
-        {data.modoTeste ? <><FlaskConical className="h-4 w-4 shrink-0" /> Modo teste — nada é gravado. Experimente à vontade.</>
-          : <><Eye className="h-4 w-4 shrink-0" /> Visualização da nota real — o CONFIRMAR liga em breve. Nada é gravado ainda.</>}
-      </div>
+      <AvisoDoModo modoTeste={data.modoTeste} />
 
       {/* CABEÇALHO DA NOTA — uma linha só (era card de 3 blocos empilhados) */}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg border border-slate-200 bg-white px-3 py-2">

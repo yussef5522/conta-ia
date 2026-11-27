@@ -15,6 +15,7 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { registrarAviso, resolverAviso } from '@/lib/avisos/central'
 import { montarPlanoReprocesso } from './baixa-venda'
+import { ORIGEM_BAIXA_DO_FECHAMENTO } from './baixou-na-hora'
 import { montarPlanoComplementos } from './baixa-complemento'
 import { importIdDe } from './identidade-import-complemento'
 import { custoMedioPorItem } from '../saldo'
@@ -46,21 +47,19 @@ export interface ConferenciaDaBaixa {
   ficaramPraTras: { nome: string; qtd: number }[]
 }
 
-/** o que o razão TEM baixado de um recibo: as BAIXA_VENDA dele menos os estornos delas, por item */
+/**
+ * o que o razão TEM baixado de um recibo NO FECHAMENTO: as BAIXA_VENDA dele nascidas do fechamento
+ * menos os estornos delas, por item.
+ * ⭐ (27/11) O ACERTO da ficha tardia mora no mesmo recibo, mas NÃO entra aqui: o produto acertado já
+ * saiu do "vendido" (`montarPlanoReprocesso` — a mesma blindagem do reprocesso). O acerto é um evento
+ * fechado em si (o que saiu + o que a contagem fixou); somar só um dos lados era o que inventava furo.
+ */
 async function baixadoDoRecibo(db: PrismaClient, companyId: string, receiptId: string, acc: Map<string, number>): Promise<void> {
-  // ⚠️ o ACERTO da ficha tardia entra aqui de graça: é BAIXA_VENDA com o `receiptId` do dia da venda
-  const base = await db.stockMovement.findMany({ where: { companyId, receiptId, tipo: 'BAIXA_VENDA' }, select: { id: true, itemId: true, quantidade: true } })
+  const base = await db.stockMovement.findMany({ where: { companyId, receiptId, tipo: 'BAIXA_VENDA', origem: ORIGEM_BAIXA_DO_FECHAMENTO }, select: { id: true, itemId: true, quantidade: true } })
   if (base.length) {
     const est = await db.stockMovement.findMany({ where: { companyId, tipo: 'ESTORNO', estornoDeId: { in: base.map((b) => b.id) } }, select: { itemId: true, quantidade: true } })
     for (const m of [...base, ...est]) acc.set(m.itemId, (acc.get(m.itemId) ?? 0) - m.quantidade)
   }
-  /**
-   * ⭐ (25/11) O QUE A CONTAGEM JÁ FIXOU no acerto conta como resolvido: o dono disse SIM ao acerto e o
-   * item tinha sido contado depois da venda — a contagem é a âncora, e o buraco dele não existe mais
-   * na prateleira. ⚠️ Lido do REGISTRO do acerto (o evento), nunca recalculado.
-   */
-  const acertos = await db.stockAcertoFichaTardia.findMany({ where: { companyId, importId: receiptId }, select: { foraPorContagem: true } })
-  for (const a of acertos) for (const f of JSON.parse(a.foraPorContagem) as { itemId: string; qtd: number }[]) acc.set(f.itemId, (acc.get(f.itemId) ?? 0) + f.qtd)
 }
 
 /** ⭐ a CONTA, só leitura */

@@ -14,13 +14,14 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { prisma } from '@/lib/db'
 import { criarFicha } from '@/lib/stock/producao/fichas'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
-import { processarLinhasDaApi, montarPlanoDeLinhas } from '../baixa-venda'
+import { processarLinhasDaApi, montarPlanoDeLinhas, reprocessarDia, montarPlanoReprocesso } from '../baixa-venda'
 import { lerDetalheDoDia } from '../detalhe-do-dia'
 import { lerCentralDeImport } from '../central-de-import'
 import { conferirBaixaDoDia, guardarBaixaDoDia } from '../guarda-da-baixa'
 import { listarFichaTardia, acertarFichaTardia, ORIGEM_AVISO_FICHA_TARDIA, ALVO_AVISO_FICHA_TARDIA } from '../ficha-tardia'
 import { ORIGEM_ACERTO_FICHA_TARDIA } from '../baixou-na-hora'
 import { explicarMovimentos } from '../../movimento-explicado'
+import { saldoItem } from '../../saldo'
 
 const CNPJ = '81828384000357'
 const PROMO = 'PROMOO 3 PIZZAS GRANDES POR APENAS'
@@ -151,3 +152,48 @@ describe('(c) a pergunta de acerto — trava da contagem e idempotência', () =>
     expect(av?.resolvidoEm).not.toBeNull()
   })
 })
+
+/**
+ * ⭐⭐ (d) A BLINDAGEM DO REPROCESSO (27/11/2026) — achado nº 1 da auditoria de 26/11.
+ * Reprocessar o dia DEPOIS do acerto estornava o acerto (as 93 caixas) e rebaixava o PROMOO inteiro
+ * com a ficha de hoje — o queijo que a contagem já fixou saía de novo.
+ */
+describe('(d) reprocessar o dia depois do acerto — o acerto fica de pé, o contado não sai de novo', () => {
+  const ativasDe = async (itemId: string) => {
+    const movs = await prisma.stockMovement.findMany({ where: { companyId, receiptId: importId, tipo: 'BAIXA_VENDA', itemId }, select: { id: true, quantidade: true, origem: true } })
+    const est = new Set((await prisma.stockMovement.findMany({ where: { companyId, tipo: 'ESTORNO', estornoDeId: { in: movs.map((m) => m.id) } }, select: { estornoDeId: true } })).map((e) => e.estornoDeId))
+    return movs.filter((m) => !est.has(m.id))
+  }
+
+  it('⭐⭐ o dry-run do reprocesso não conta o acerto nem o item contado como estorno', async () => {
+    // o pão (do XIS, que baixou no fechamento) também é CONTADO depois do dia — a trava vale pra ele
+    const cont = await prisma.stockContagem.create({ data: { companyId, tipo: 'ROTINA', status: 'FINALIZADA', finalizadaEm: new Date() } })
+    await prisma.stockContagemItem.create({ data: { companyId, contagemId: cont.id, itemId: it_.pao, saldoSistema: 96, qtdContada: 96, divergencia: 0, custoUnitario: 1, valorDivergencia: 0, contadoEm: new Date() } })
+    const r = await montarPlanoReprocesso(companyId, DIA, prisma)
+    expect(r!.plano.produtos.map((p) => p.nome)).toEqual(['XIS'])
+    expect(r!.estornaItens).toBe(0)
+  })
+
+  it('⭐⭐⭐ reprocessar 24/11 NÃO apaga as 93 caixas do acerto nem baixa queijo/pão de novo', async () => {
+    const antes = { caixa: (await saldoItem(prisma, companyId, it_.caixa)).saldo, queijo: (await saldoItem(prisma, companyId, it_.queijo)).saldo, pao: (await saldoItem(prisma, companyId, it_.pao)).saldo }
+    const paoAntes = await ativasDe(it_.pao)
+    await reprocessarDia(companyId, DIA, undefined, prisma, true)
+    const caixa = await ativasDe(it_.caixa)
+    expect(caixa.map((m) => [m.quantidade, m.origem])).toEqual([[-93, ORIGEM_ACERTO_FICHA_TARDIA]])
+    expect(await ativasDe(it_.queijo)).toEqual([])
+    expect((await ativasDe(it_.pao)).map((m) => m.id)).toEqual(paoAntes.map((m) => m.id))
+    expect((await saldoItem(prisma, companyId, it_.caixa)).saldo).toBe(antes.caixa)
+    expect((await saldoItem(prisma, companyId, it_.queijo)).saldo).toBe(antes.queijo)
+    expect((await saldoItem(prisma, companyId, it_.pao)).saldo).toBe(antes.pao)
+  })
+
+  it('⭐ depois do reprocesso a tela segue dizendo "acertado depois" e a guarda bate', async () => {
+    const d = await lerDetalheDoDia(companyId, DIA, prisma)
+    expect(d.produtos.find((p) => p.nome === PROMO)!.destino).toBe('ACERTADO_DEPOIS')
+    expect(d.produtos.find((p) => p.nome === 'XIS')!.destino).toBe('BAIXOU_FICHA')
+    expect(d.totais.semDestino).toBe(0)
+    expect((await conferirBaixaDoDia(companyId, DIA, prisma)).status).toBe('BATE')
+    expect(await listarFichaTardia(companyId, {}, prisma)).toEqual([])
+  })
+})
+

@@ -47,6 +47,12 @@ export function ficouPraTras(l: LinhaDoFechamento, r: ResolucaoDeGrafia<MapaComD
   return !baixouNaHora(l, r)
 }
 
+/**
+ * ⭐ a `origem` das BAIXA_VENDA nascidas DO PRÓPRIO FECHAMENTO (o import do dia, o destravar). ⛔ O
+ * reprocesso só estorna ESTAS — o acerto da ficha tardia mora no mesmo recibo e fica de pé (27/11).
+ */
+export const ORIGEM_BAIXA_DO_FECHAMENTO = 'MANUAL'
+
 /** ⭐ a `origem` do movimento de acerto — o extrato do item lê ela pra dizer "ficha criada depois" */
 export const ORIGEM_ACERTO_FICHA_TARDIA = 'ACERTO_FICHA_TARDIA'
 

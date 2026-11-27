@@ -17,6 +17,8 @@ import { resolvedorDeGrafia, mapaQueDecide } from './grafia-canonica'
 import { custoDaBaixa, estadoParaBaixa, valorPrevistoDaBaixa } from './custo-da-baixa'
 import { BaixaComItemBarradoError, semOsPendentes, type ItemBarrado } from './itens-pendentes-da-baixa'
 import { MovementInvalidError } from '../movement'
+import { ORIGEM_BAIXA_DO_FECHAMENTO } from './baixou-na-hora'
+import { contadosDesdeODia } from './trava-da-contagem'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 /**
@@ -371,6 +373,32 @@ async function marcarXlsPorCima(companyId: string, data: string, db: PrismaClien
   await db.suitDiaMaterializado.updateMany({ where: { companyId, dia: data, NOT: { status: 'XLS_POR_CIMA' } }, data: { status: 'XLS_POR_CIMA', motivo: 'o dono subiu o arquivo por cima do dia da Suit', atualizadoEm: new Date() } })
 }
 
+/**
+ * ⭐⭐ A BLINDAGEM DO REPROCESSO (27/11/2026) — reprocessar um dia já fechado NÃO desfaz o que veio depois.
+ *
+ * ⛔ O CASO (auditoria 26/11): reprocessar 24/11 estornava TODA BAIXA_VENDA do recibo — inclusive o
+ * ACERTO da ficha tardia (93 caixas do PROMOO, datado de 25/11) — e rebaixava o PROMOO inteiro com a
+ * ficha de hoje: o queijo e a bolinha que a contagem de 25/11 já tinha fixado saíam de novo.
+ *
+ * ⭐ A REGRA:
+ *   · só se estorna o que nasceu DO PRÓPRIO FECHAMENTO (`ORIGEM_BAIXA_DO_FECHAMENTO`); o acerto fica de pé;
+ *   · o produto que já tem ACERTO não é rebaixado — o acerto É a baixa dele (com a trava aplicada);
+ *   · ⛔ TRAVA DA CONTAGEM (a mesma da ficha tardia, `trava-da-contagem.ts`): item contado desde o início
+ *     do dia não é estornado NEM rebaixado — a baixa original fica, a contagem já fixou a verdade.
+ */
+async function blindagemDoReprocesso(db: Tx | PrismaClient, companyId: string, importId: string): Promise<{ acertados: Set<string> }> {
+  const acertos = await db.stockAcertoFichaTardia.findMany({ where: { companyId, importId }, select: { nomeSuitable: true } })
+  return { acertados: new Set(acertos.map((a) => a.nomeSuitable)) }
+}
+
+/** as BAIXA_VENDA ATIVAS (sem estorno) nascidas do fechamento deste recibo — o acerto não entra */
+async function baixasAtivasDoFechamento(db: Tx | PrismaClient, companyId: string, importId: string): Promise<{ id: string; itemId: string }[]> {
+  const baixas = await db.stockMovement.findMany({ where: { companyId, receiptId: importId, tipo: TIPO_BAIXA, origem: ORIGEM_BAIXA_DO_FECHAMENTO }, select: { id: true, itemId: true } })
+  if (!baixas.length) return []
+  const estornados = new Set((await db.stockMovement.findMany({ where: { companyId, tipo: 'ESTORNO', estornoDeId: { in: baixas.map((b) => b.id) } }, select: { estornoDeId: true } })).map((e) => e.estornoDeId))
+  return baixas.filter((b) => !estornados.has(b.id))
+}
+
 /** DRY-RUN do reprocesso: o que vai acontecer se refizer um dia já importado (com o mapa
  *  ATUAL) + quantas baixas ativas serão estornadas. Não grava. */
 export async function montarPlanoReprocesso(companyId: string, data: string, db: PrismaClient = defaultPrisma): Promise<{ plano: PlanoVenda; estornaItens: number } | null> {
@@ -378,10 +406,11 @@ export async function montarPlanoReprocesso(companyId: string, data: string, db:
   const imp = await db.stockVendaImport.findUnique({ where: { companyId_data: { companyId, data: dataDate } }, select: { id: true } })
   if (!imp) return null
   const linhas = await db.stockVendaLinha.findMany({ where: { companyId, importId: imp.id }, select: { nomeSuitable: true, quantidade: true, valorTotal: true } })
-  const plano = await montarPlanoDeLinhas(companyId, data, linhas.map((l) => ({ produto: l.nomeSuitable, quantidade: l.quantidade, valorTotal: l.valorTotal })), null, db)
-  const baixas = await db.stockMovement.findMany({ where: { companyId, receiptId: imp.id, tipo: 'BAIXA_VENDA' }, select: { id: true } })
-  const estornos = new Set((await db.stockMovement.findMany({ where: { companyId, tipo: 'ESTORNO', estornoDeId: { in: baixas.map((b) => b.id) } }, select: { estornoDeId: true } })).map((e) => e.estornoDeId))
-  return { plano, estornaItens: baixas.filter((b) => !estornos.has(b.id)).length }
+  const blindagem = await blindagemDoReprocesso(db, companyId, imp.id)
+  const plano = await montarPlanoDeLinhas(companyId, data, linhas.filter((l) => !blindagem.acertados.has(l.nomeSuitable)).map((l) => ({ produto: l.nomeSuitable, quantidade: l.quantidade, valorTotal: l.valorTotal })), null, db)
+  const ativas = await baixasAtivasDoFechamento(db, companyId, imp.id)
+  const travados = await contadosDesdeODia(db, companyId, data, [...new Set([...ativas.map((b) => b.itemId), ...plano.agregada.map((a) => a.itemId)])])
+  return { plano, estornaItens: ativas.filter((b) => !travados.has(b.itemId)).length }
 }
 
 /** REPROCESSA um dia já importado a partir das linhas GRAVADAS (sem re-upload) — quando o
@@ -397,7 +426,10 @@ export async function reprocessarDia(companyId: string, data: string, userId: st
 /** EXECUTA: cria/atualiza o import do dia (idempotente), estorna baixas anteriores e refaz,
  *  grava BAIXA_VENDA no ledger + as linhas (pra pendentes/reprocessar). */
 async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[], incluir: string[] | null, userId: string | undefined, db: PrismaClient = defaultPrisma, confirmouSanidade = false, itensPendentes: string[] = []): Promise<ReciboVenda> {
-  const plano = await montarPlanoDeLinhas(companyId, data, linhas, incluir, db)
+  // ⭐ BLINDAGEM DO REPROCESSO: o produto que já tem ACERTO (ficha tardia) não entra no plano — o acerto é a baixa dele
+  const jaExiste = await db.stockVendaImport.findUnique({ where: { companyId_data: { companyId, data: new Date(`${data}T12:00:00`) } }, select: { id: true } })
+  const { acertados } = jaExiste ? await blindagemDoReprocesso(db, companyId, jaExiste.id) : { acertados: new Set<string>() }
+  const plano = await montarPlanoDeLinhas(companyId, data, linhas.filter((l) => !acertados.has(l.produto)), incluir, db)
   // ⛔⛔ ANTES DE ESCREVER: o import de 10/09 baixou 1.499 FANTA UVA porque nada perguntou.
   // Quem recusa é o SERVIDOR (a régua do FREIO da contagem) — aviso que mora na tela some
   // no dia em que a rota for chamada por outro caminho.
@@ -413,10 +445,12 @@ async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[]
       update: { totalLinhas: linhas.length, totalUnidades, status: 'CONFIRMADO' },
     })
     // REPROCESSO: estorna as BAIXA_VENDA ativas deste import (movimento imutável → estorno)
-    const baixasAntigas = await tx.stockMovement.findMany({ where: { companyId, receiptId: imp.id, tipo: TIPO_BAIXA }, select: { id: true } })
-    const estornos = await tx.stockMovement.findMany({ where: { companyId, tipo: 'ESTORNO', estornoDeId: { in: baixasAntigas.map((b) => b.id) } }, select: { estornoDeId: true } })
-    const jaEstornado = new Set(estornos.map((e) => e.estornoDeId))
-    for (const b of baixasAntigas) if (!jaEstornado.has(b.id)) await estornarMovimento(tx, b.id, { criadoPorId: userId ?? null })
+    // ⛔ BLINDAGEM: só o que nasceu do fechamento (o acerto fica de pé); item contado desde o dia fica como está
+    const ativas = await baixasAtivasDoFechamento(tx, companyId, imp.id)
+    const travados = jaExiste
+      ? await contadosDesdeODia(tx, companyId, data, [...new Set([...ativas.map((b) => b.itemId), ...plano.agregada.map((a) => a.itemId)])])
+      : new Map<string, Date>()
+    for (const b of ativas) if (!travados.has(b.itemId)) await estornarMovimento(tx, b.id, { criadoPorId: userId ?? null })
 
     /**
      * ⭐⭐ BAIXA NOVA — **custo em PRECISÃO CHEIA** (19/09).
@@ -449,12 +483,12 @@ async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[]
      */
     const estado = await estadoParaBaixa(tx, companyId)
     const barrados: ItemBarrado[] = []
-    const aBaixar = semOsPendentes(plano.agregada, itensPendentes)
+    const aBaixar = semOsPendentes(plano.agregada, itensPendentes).filter((a) => !travados.has(a.itemId))
     for (const a of aBaixar) {
       if (a.qtd <= 0) continue
       const { custoUnitario: custo, custoTotal } = custoDaBaixa(a.itemId, a.qtd, estado)
       try {
-        await criarMovimento(tx, { companyId, itemId: a.itemId, tipo: TIPO_BAIXA, quantidade: -a.qtd, custoUnitario: custo, custoTotal, receiptId: imp.id, origem: 'MANUAL', criadoPorId: userId ?? null, dataMovimento: dataDate })
+        await criarMovimento(tx, { companyId, itemId: a.itemId, tipo: TIPO_BAIXA, quantidade: -a.qtd, custoUnitario: custo, custoTotal, receiptId: imp.id, origem: ORIGEM_BAIXA_DO_FECHAMENTO, criadoPorId: userId ?? null, dataMovimento: dataDate })
       } catch (e) {
         /**
          * ⛔ O LOTE NÃO É REFÉM DE UM: em vez de estourar no primeiro barrado, junta TODOS
@@ -469,7 +503,10 @@ async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[]
     if (barrados.length) throw new BaixaComItemBarradoError(barrados, aBaixar.filter((x) => x.qtd > 0).length - barrados.length)
 
     // linhas (todas) pra pendentes/reprocessar — reescreve
-    await gravarLinhasDoImport(tx, companyId, imp.id, dataDate, linhas, nomesQueBaixam(plano, itensPendentes))
+    // o travado cuja baixa original ficou de pé conta como "baixou"; o travado sem baixa antiga, não
+    const mantidos = new Set(ativas.filter((b) => travados.has(b.itemId)).map((b) => b.itemId))
+    const naoBaixaram = [...itensPendentes, ...[...travados.keys()].filter((id) => !mantidos.has(id))]
+    await gravarLinhasDoImport(tx, companyId, imp.id, dataDate, linhas, nomesQueBaixam(plano, naoBaixaram))
     return imp.id
   })
 

@@ -20,6 +20,7 @@ import { criarMovimento, MovementInvalidError } from '../movement'
 import { recomputeSaldoCache } from '../saldo'
 import { custoDaBaixa, estadoParaBaixa } from './custo-da-baixa'
 import { resolverAviso } from '@/lib/avisos/central'
+import { ORIGEM_BAIXA_DO_FECHAMENTO } from './baixou-na-hora'
 
 export const STATUS_RESOLVIDO_PELA_CONTAGEM = 'RESOLVIDO_PELA_CONTAGEM'
 const ORIGEM_DIA_PARADO = 'SUIT_DIA_PARADO'
@@ -82,7 +83,7 @@ export async function destravarDiaParadoPelaContagem(
     for (const a of plano.aplicar) {
       const { custoUnitario, custoTotal } = custoDaBaixa(a.itemId, a.qtd, estado)
       try {
-        await criarMovimento(tx, { companyId, itemId: a.itemId, tipo: 'BAIXA_VENDA', quantidade: -a.qtd, custoUnitario, custoTotal, receiptId: plano.importId, origem: 'MANUAL', criadoPorId: null, dataMovimento: dataDate })
+        await criarMovimento(tx, { companyId, itemId: a.itemId, tipo: 'BAIXA_VENDA', quantidade: -a.qtd, custoUnitario, custoTotal, receiptId: plano.importId, origem: ORIGEM_BAIXA_DO_FECHAMENTO, criadoPorId: null, dataMovimento: dataDate })
         movimentos++
       } catch (e) {
         if (e instanceof MovementInvalidError) { barrados.push({ nome: e.culpado?.nome ?? a.nome, motivo: e.message }); continue }

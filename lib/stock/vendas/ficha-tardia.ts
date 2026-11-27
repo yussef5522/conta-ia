@@ -23,7 +23,6 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { registrarAviso, resolverAviso } from '@/lib/avisos/central'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
-import { HORA_VIRADA_DIA } from '@/lib/suit/regua-sombra'
 import { ANCORAS } from '@/components/perguntas/ancoras'
 import { montarPlanoDeLinhas } from './baixa-venda'
 import { resolvedorDeGrafia, mapaQueDecide } from './grafia-canonica'
@@ -31,6 +30,7 @@ import { ficouPraTras, chaveDoAcerto, ORIGEM_ACERTO_FICHA_TARDIA, fraseDaPendenc
 import { custoDaBaixa, estadoParaBaixa } from './custo-da-baixa'
 import { criarMovimento, MovementInvalidError } from '../movement'
 import { recomputeSaldoCache } from '../saldo'
+import { contadosDesdeODia } from './trava-da-contagem'
 
 export const JANELA_FICHA_TARDIA_DIAS = 30
 export { ORIGEM_ACERTO_FICHA_TARDIA, fraseDaPendencia }
@@ -58,8 +58,6 @@ export class AcertoFichaTardiaError extends Error {
 
 const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
-/** o instante em que o dia operacional da venda COMEÇA (relógio da API, UTC) — contagem daí em diante já viu a venda */
-const inicioDoDia = (dia: string) => new Date(`${dia}T${HORA_VIRADA_DIA}Z`)
 
 /**
  * ⭐ a LISTA (só leitura). `filtro.fichaId` / `filtro.nomes` restringem ao produto da tela;
@@ -109,19 +107,10 @@ export async function listarFichaTardia(
     if (!p) continue
     const ids = p.baixa.filter((b) => b.qtd > 0).map((b) => b.itemId)
     if (!ids.length) continue
-    const [itens, contados] = await Promise.all([
+    const [itens, ultimaContagem] = await Promise.all([
       db.stockItem.findMany({ where: { companyId, id: { in: ids } }, select: { id: true, unidadeControle: true } }),
-      db.stockContagemItem.findMany({
-        where: { companyId, itemId: { in: ids }, contadoEm: { gte: inicioDoDia(dia) } },
-        select: { itemId: true, contadoEm: true, contagemId: true },
-        orderBy: { contadoEm: 'desc' },
-      }),
+      contadosDesdeODia(db, companyId, dia, ids),
     ])
-    const vivas = contados.length
-      ? new Set((await db.stockContagem.findMany({ where: { companyId, id: { in: [...new Set(contados.map((c) => c.contagemId))] }, NOT: { status: 'CANCELADA' } }, select: { id: true } })).map((c) => c.id))
-      : new Set<string>()
-    const ultimaContagem = new Map<string, Date>()
-    for (const c of contados) if (vivas.has(c.contagemId) && !ultimaContagem.has(c.itemId)) ultimaContagem.set(c.itemId, c.contadoEm)
     const un = new Map(itens.map((i) => [i.id, i.unidadeControle]))
     const baixa: ItemDoAcerto[] = []
     const fora: ItemForaPorContagem[] = []
